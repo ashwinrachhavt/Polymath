@@ -173,6 +173,7 @@ export async function acceptZettel(auth: AuthContext, input: { proposalId: strin
       )
       .returning();
     if (!proposal) throw new Error("zettel not found or already decided");
+    if (!proposal.documentId) throw new Error("proposal is not document-sourced");
 
     const [doc] = await tx
       .select({ fileId: documents.fileId, title: documents.title })

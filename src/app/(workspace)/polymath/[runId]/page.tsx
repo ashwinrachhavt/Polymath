@@ -13,7 +13,7 @@ import { MessageFeedback } from "@/components/chat/message-feedback";
 import { getAuthContext } from "@/lib/auth";
 import { timeAgo } from "@/lib/time";
 import { displayTitle } from "@/lib/display-text";
-import { getRun, getRunUsage, listRecentRuns, type RunUsage } from "@/domains/agents/queries";
+import { getRun, getRunUsage, listRecentRuns, listRunMessageIds, type RunUsage } from "@/domains/agents/queries";
 import { getOpenQuestion, getRunAgent, listRunPendingProposals } from "@/domains/agents/run-context";
 import { getRunReviews } from "@/domains/agents/run-reviews";
 import { modelById } from "@/domains/agents/models";
@@ -66,34 +66,59 @@ async function ConversationSurface({ runId }: { runId: string }) {
   // Missing and other-workspace are the same answer on purpose (see getRun).
   if (!run) notFound();
 
-  const [history, threads, drafts, usage, reviews, agent, openQuestion, pendingProposals] = await Promise.all([
-    // The history menu is the same conversation list the idle home renders
-    // (history.ts feeds both), so it excludes onboarding runs for the same
-    // reason: machinery the person never typed is not a conversation.
-    listRecentRuns(auth.workspaceId, 50, { excludeOnboarding: true }),
-    listThreads(auth.workspaceId, [run.id]),
-    draftsForRuns(auth, [run.id]),
-    getRunUsage(auth.workspaceId, run.id),
-    getRunReviews(auth.workspaceId, run.id),
-    getRunAgent(auth.workspaceId, run.id),
-    getOpenQuestion(auth.workspaceId, run.id),
-    listRunPendingProposals(auth.workspaceId, run.id),
-  ]);
+  const [history, threads, drafts, usage, reviews, agent, openQuestion, pendingProposals, messageIds] =
+    await Promise.all([
+      // The history menu is the same conversation list the idle home renders
+      // (history.ts feeds both), so it excludes onboarding runs for the same
+      // reason: machinery the person never typed is not a conversation.
+      listRecentRuns(auth.workspaceId, 50, { excludeOnboarding: true }),
+      listThreads(auth.workspaceId, [run.id]),
+      draftsForRuns(auth, [run.id]),
+      getRunUsage(auth.workspaceId, run.id),
+      getRunReviews(auth.workspaceId, run.id),
+      getRunAgent(auth.workspaceId, run.id),
+      getOpenQuestion(auth.workspaceId, run.id),
+      listRunPendingProposals(auth.workspaceId, run.id),
+      listRunMessageIds(auth.workspaceId, run.id),
+    ]);
   const historyGroups = groupHistory(
-    history.map(
-      (row): HistoryRow => ({
-        id: row.id,
-        title: displayTitle(stripMentionContext(row.objective)) || "Untitled conversation",
-        href: `/polymath/${row.id}`,
-        at: row.createdAt,
-      }),
-    ),
+    history.map((row): HistoryRow => ({
+      id: row.id,
+      title: displayTitle(stripMentionContext(row.objective)) || "Untitled conversation",
+      href: `/polymath/${row.id}`,
+      at: row.createdAt,
+    })),
   );
 
   const thread = threads.get(run.id) ?? [];
   // A user entry may carry the mention context block the model reads; the
   // stored snapshot renders only the words the person typed.
-  const visibleThread = thread.map((entry) => (entry.kind === "user" && hasMentionContext(entry.text) ? { ...entry, text: stripMentionContext(entry.text) } : entry));
+  const visibleThread = thread.map((entry) =>
+    entry.kind === "user" && hasMentionContext(entry.text)
+      ? { ...entry, text: stripMentionContext(entry.text) }
+      : entry,
+  );
+  /*
+   * Pair rendered blocks to stored messages by index, and only when the
+   * counts match (plan Task 8): the Zoe bridge mirrors rendered messages
+   * into `messages`, but a guarded mirror can lag or fail, and a mismatched
+   * pairing would attach a comment to the wrong message. threadBlocks skips
+   * empty texts, so the pairing runs over the same rendered subsequence the
+   * block list will show; a null messageId hides the comment control rather
+   * than guess.
+   */
+  const stored = visibleThread.flatMap((entry) =>
+    entry.kind === "user" || entry.kind === "assistant"
+      ? [{ sequence: entry.sequence, role: entry.kind, text: entry.text, turnId: entry.turnId ?? null }]
+      : [],
+  );
+  const rendered = stored.filter((message) => message.text.length > 0);
+  const pairedIds = messageIds.length === rendered.length ? messageIds : null;
+  let nextId = 0;
+  const pairedStored = stored.map((message) => {
+    if (!pairedIds || message.text.length === 0) return { ...message, messageId: null };
+    return { ...message, messageId: pairedIds[nextId++] ?? null };
+  });
   const unavailable = eveBridgeUnavailableReason();
   // Mirrors the server's own terminal set: a run that has not finished may still
   // produce events, so it streams; anything else is history.
@@ -124,9 +149,7 @@ async function ConversationSurface({ runId }: { runId: string }) {
             id: openQuestion.id,
             kind: "question",
             title: "The agent needs an answer",
-            body: openQuestion.context
-              ? `${openQuestion.question}\n\n${openQuestion.context}`
-              : openQuestion.question,
+            body: openQuestion.context ? `${openQuestion.question}\n\n${openQuestion.context}` : openQuestion.question,
             ...(openQuestion.options.length > 0 ? { options: openQuestion.options } : {}),
           }
         : firstProposal
@@ -189,13 +212,7 @@ async function ConversationSurface({ runId }: { runId: string }) {
             <ChatSurface
               runId={run.id}
               subject={{ type: "artifact", id: run.id }}
-              initial={threadBlocks(
-                visibleThread.flatMap((entry) =>
-                  entry.kind === "user" || entry.kind === "assistant"
-                    ? [{ sequence: entry.sequence, role: entry.kind, text: entry.text, turnId: entry.turnId ?? null }]
-                    : [],
-                ),
-              )}
+              initial={threadBlocks(pairedStored)}
               placeholder="Reply to continue…"
               composerLabel="Follow-up message"
               emptyText="This conversation has no messages yet."
@@ -225,7 +242,10 @@ async function ConversationSurface({ runId }: { runId: string }) {
                 entry.kind === "user" ? (
                   // The owner's words stay visible without a slab of chrome: right-aligned,
                   // tinted only enough to separate from the answer, no big bubble.
-                  <div key={entry.sequence} className="bg-muted/60 ml-auto w-fit max-w-[75%] rounded-md px-2.5 py-1 text-[14px] leading-6">
+                  <div
+                    key={entry.sequence}
+                    className="bg-muted/60 ml-auto w-fit max-w-[75%] rounded-md px-2.5 py-1 text-[14px] leading-6"
+                  >
                     {inline(entry.text)}
                   </div>
                 ) : entry.kind === "assistant" ? (
@@ -241,7 +261,15 @@ async function ConversationSurface({ runId }: { runId: string }) {
                   <ChainOfThought
                     key={entry.sequence}
                     streaming={false}
-                    steps={[{ id: String(entry.sequence), kind: "reasoning", label: "Thought process", text: entry.text, status: "complete" }]}
+                    steps={[
+                      {
+                        id: String(entry.sequence),
+                        kind: "reasoning",
+                        label: "Thought process",
+                        text: entry.text,
+                        status: "complete",
+                      },
+                    ]}
                   />
                 ) : (
                   <p key={entry.sequence} className="text-muted-foreground text-[12px]">
@@ -253,7 +281,9 @@ async function ConversationSurface({ runId }: { runId: string }) {
           )}
 
           {run.error ? (
-            <p role="alert" className="text-destructive text-[13px]">{run.error}</p>
+            <p role="alert" className="text-destructive text-[13px]">
+              {run.error}
+            </p>
           ) : null}
           {/* One quiet action row under the transcript: the live composer above
               already sends messages, so this row only carries what it lacks —
@@ -288,7 +318,11 @@ async function ConversationSurface({ runId }: { runId: string }) {
                     }
                   : null,
                 feedback: reviews.feedback
-                  ? { verdict: reviews.feedback.verdict, reasons: reviews.feedback.reasons, note: reviews.feedback.note }
+                  ? {
+                      verdict: reviews.feedback.verdict,
+                      reasons: reviews.feedback.reasons,
+                      note: reviews.feedback.note,
+                    }
                   : null,
               }}
             />

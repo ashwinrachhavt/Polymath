@@ -1,10 +1,9 @@
 import type { RecordReference } from "./composer-plus";
 
 /*
- * The @-mention context contract. Picking a person or company inserts
- * `@Name` into the draft and remembers the entity; at submit the remembered
- * entities whose name still appears as `@Name` are fetched and serialized as
- * a context block appended to the message the model reads. The visible text
+ * The context chip contract. Picking a record adds a chip and fetches its
+ * context right away; at submit the fetched contexts are serialized as a
+ * context block appended to the message the model reads. The visible text
  * keeps only what the person typed — the block is stripped at render time by
  * stripMentionContext, so the transcript never shows JSON.
  *
@@ -19,8 +18,22 @@ import type { RecordReference } from "./composer-plus";
  */
 
 export type MentionEntity = RecordReference & {
-  kind: "person" | "company";
+  kind: "person" | "company" | "zettel";
 };
+
+/**
+ * A chip in the composer: the picked entity plus its fetch state. The
+ * context is fetched when the chip is picked, not at send — the send path
+ * only serializes what is already fetched, and a chip whose fetch failed or
+ * has not landed blocks the send until it is retried or removed.
+ */
+export type ContextChip = {
+  entity: MentionEntity;
+  context: Record<string, unknown> | null;
+  error: string | null;
+};
+
+export type SerializeResult = { payload: string; truncated: boolean };
 
 const CONTEXT_OPEN = "[context:mention id=";
 const CONTEXT_CLOSE = "]\n";
@@ -50,9 +63,7 @@ function clampContext<T>(value: T): T {
   if (typeof value === "string") return truncateForContext(value, MAX_CONTEXT_FIELD_CHARS) as T;
   if (Array.isArray(value)) return value.map(clampContext) as T;
   if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, item]) => [key, clampContext(item)]),
-    ) as T;
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, clampContext(item)])) as T;
   }
   return value;
 }
@@ -78,11 +89,12 @@ export function mentionedEntities(entities: MentionEntity[], text: string): Ment
     if (starts.length === 0) return false;
     return starts.some(
       (start) =>
-        !entities.some((other) =>
-          other !== entity &&
-          other.title.length > entity.title.length &&
-          other.title.startsWith(`${entity.title} `) &&
-          (startsFor.get(other.title) ?? []).includes(start),
+        !entities.some(
+          (other) =>
+            other !== entity &&
+            other.title.length > entity.title.length &&
+            other.title.startsWith(`${entity.title} `) &&
+            (startsFor.get(other.title) ?? []).includes(start),
         ),
     );
   });
@@ -104,7 +116,9 @@ export function escapeRegExp(text: string): string {
  * strip's close-brace anchor), and once MAX_TOTAL_CONTEXT_CHARS is reached
  * the remaining entities are skipped in call order.
  */
-export function serializeMentionContext(entries: Array<{ entity: MentionEntity; context: Record<string, unknown> }>): string {
+export function serializeMentionContext(
+  entries: Array<{ entity: MentionEntity; context: Record<string, unknown> }>,
+): string {
   if (entries.length === 0) return "";
   const blocks: string[] = [];
   let total = 0;
@@ -163,6 +177,24 @@ export function fitMentionContext(message: string, cap: number): string {
 }
 
 /**
+ * Serialize the context of already-fetched chips into the hidden block
+ * appended to the model's copy of the message. Chips whose fetch failed
+ * carry no context and are skipped — the send path refuses to send while
+ * any chip is in that state, so a skipped chip cannot happen here. The
+ * wrapper reports whether the budget dropped a block: serializeMentionContext
+ * returns only a string, so the produced block count is compared with the
+ * number of chips that carried context.
+ */
+export function serializeChips(chips: ContextChip[]): SerializeResult {
+  const resolved = chips.filter(
+    (chip): chip is ContextChip & { context: Record<string, unknown> } => chip.context !== null,
+  );
+  const payload = serializeMentionContext(resolved);
+  const blockCount = payload === "" ? 0 : payload.split(CONTEXT_OPEN).length - 1;
+  return { payload, truncated: blockCount < resolved.length };
+}
+
+/**
  * The one mention-resolution sequence every submit path repeats: keep the
  * entities the text still names, fetch each one's context, and append the
  * serialized blocks. The fetcher is injected (a server action) so this
@@ -176,7 +208,10 @@ export async function resolveMentionPayload(
   const named = mentionedEntities(mentions, text);
   if (named.length === 0) return text;
   const contexts = await Promise.all(
-    named.map(async (entity) => ({ entity, context: (await fetchContext({ kind: entity.kind, id: entity.id })) ?? null })),
+    named.map(async (entity) => ({
+      entity,
+      context: (await fetchContext({ kind: entity.kind, id: entity.id })) ?? null,
+    })),
   );
   const resolved = contexts.filter(
     (entry): entry is { entity: MentionEntity; context: Record<string, unknown> } => entry.context !== null,

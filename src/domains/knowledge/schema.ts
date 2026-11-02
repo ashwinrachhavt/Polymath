@@ -56,13 +56,7 @@ export const artifactKind = pgEnum("artifact_kind", [
   "deck",
   "infographic",
 ]);
-export const artifactStatus = pgEnum("artifact_status", [
-  "draft",
-  "generated",
-  "reviewed",
-  "published",
-  "archived",
-]);
+export const artifactStatus = pgEnum("artifact_status", ["draft", "generated", "reviewed", "published", "archived"]);
 export const versionReason = pgEnum("version_reason", [
   "created",
   "edited",
@@ -72,36 +66,16 @@ export const versionReason = pgEnum("version_reason", [
   "extracted",
 ]);
 export const fileStatus = pgEnum("file_status", ["uploaded", "imported", "quarantined"]);
-export const extractionStatus = pgEnum("extraction_status", [
-  "pending",
-  "succeeded",
-  "failed",
-  "skipped",
-]);
-export const documentDecision = pgEnum("document_decision", [
-  "keep",
-  "rename",
-  "classify",
-  "link",
-  "discard",
-]);
-export const claimStatus = pgEnum("claim_status", [
-  "proposed",
-  "accepted",
-  "rejected",
-  "retracted",
-]);
+export const extractionStatus = pgEnum("extraction_status", ["pending", "succeeded", "failed", "skipped"]);
+export const documentDecision = pgEnum("document_decision", ["keep", "rename", "classify", "link", "discard"]);
+export const claimStatus = pgEnum("claim_status", ["proposed", "accepted", "rejected", "retracted"]);
 export const zettelProposalStatus = pgEnum("zettel_proposal_status", ["proposed", "accepted", "rejected"]);
 // The applied database types are `dossier_*` — no migration ever created the
 // `project_*` spellings (2026-10-30 alignment; `notebook_memories.source` is
 // plain text with a 'manual' default in the applied history, so it has no
 // enum type at all).
 export const dossierSourcePolicy = pgEnum("dossier_source_policy", ["bounded", "open"]);
-export const dossierQuestionStatus = pgEnum("dossier_question_status", [
-  "open",
-  "answered",
-  "dropped",
-]);
+export const dossierQuestionStatus = pgEnum("dossier_question_status", ["open", "answered", "dropped"]);
 export const conceptSense = pgEnum("concept_sense", ["ordinary", "technical", "domain"]);
 
 export const artifacts = pgTable(
@@ -246,10 +220,9 @@ export const documents = pgTable(
      * version clears it, so the pointer can never strand a document on a
      * failed or stale read. Set null if the row is pruned.
      */
-    activeExtractionId: uuid("active_extraction_id").references(
-      (): AnyPgColumn => documentExtractions.id,
-      { onDelete: "set null" },
-    ),
+    activeExtractionId: uuid("active_extraction_id").references((): AnyPgColumn => documentExtractions.id, {
+      onDelete: "set null",
+    }),
     ...mutable,
   },
   (t) => [
@@ -492,11 +465,7 @@ export const documentExtractions = pgTable(
  * current state; this holds every try, so a retry never erases the error that
  * made it necessary. `outcome` is null while the attempt holds the lease.
  */
-export const extractionAttemptOutcome = pgEnum("extraction_attempt_outcome", [
-  "succeeded",
-  "failed",
-  "abandoned",
-]);
+export const extractionAttemptOutcome = pgEnum("extraction_attempt_outcome", ["succeeded", "failed", "abandoned"]);
 
 export const documentExtractionAttempts = pgTable(
   "document_extraction_attempts",
@@ -607,7 +576,8 @@ export const youtubeTranscripts = pgTable(
   ],
 );
 
-export const claims = pgTable("claims",
+export const claims = pgTable(
+  "claims",
   {
     id: primaryId(),
     workspaceId: tenantId(),
@@ -620,7 +590,10 @@ export const claims = pgTable("claims",
     producedByRunId: uuid("produced_by_run_id"),
     ...mutable,
   },
-  (t) => [index("claims_workspace_status_idx").on(t.workspaceId, t.status), index("claims_artifact_idx").on(t.artifactId)],
+  (t) => [
+    index("claims_workspace_status_idx").on(t.workspaceId, t.status),
+    index("claims_artifact_idx").on(t.artifactId),
+  ],
 );
 
 export const artifactLinks = pgTable(
@@ -802,7 +775,9 @@ export const notebookAutomations = pgTable(
     ...mutable,
   },
   (t) => [
-    index("notebook_automations_due_idx").on(t.nextRunAt).where(sql`archived_at is null and enabled is true`),
+    index("notebook_automations_due_idx")
+      .on(t.nextRunAt)
+      .where(sql`archived_at is null and enabled is true`),
     index("notebook_automations_notebook_idx").on(t.notebookId, t.createdAt),
   ],
 );
@@ -936,12 +911,7 @@ export const partyResolutionStatus = pgEnum("party_resolution_status", [
   "created",
   "rejected",
 ]);
-export const fieldProposalStatus = pgEnum("field_proposal_status", [
-  "proposed",
-  "accepted",
-  "rejected",
-  "superseded",
-]);
+export const fieldProposalStatus = pgEnum("field_proposal_status", ["proposed", "accepted", "rejected", "superseded"]);
 export const fieldKind = pgEnum("field_kind", [
   "date",
   "money",
@@ -954,18 +924,8 @@ export const fieldKind = pgEnum("field_kind", [
 ]);
 export type FieldKind = (typeof fieldKind.enumValues)[number];
 export const assertionStatus = pgEnum("assertion_status", ["active", "superseded", "retracted"]);
-export const assertionSubjectType = pgEnum("assertion_subject_type", [
-  "contact",
-  "company",
-  "project",
-  "document",
-]);
-export const obligationStatus = pgEnum("obligation_status", [
-  "proposed",
-  "accepted",
-  "rejected",
-  "superseded",
-]);
+export const assertionSubjectType = pgEnum("assertion_subject_type", ["contact", "company", "project", "document"]);
+export const obligationStatus = pgEnum("obligation_status", ["proposed", "accepted", "rejected", "superseded"]);
 
 export const documentParties = pgTable(
   "document_parties",
@@ -991,10 +951,7 @@ export const documentParties = pgTable(
   (t) => [
     // At most one target: both null is an unresolved party awaiting a human
     // decision, exactly one is resolved, both set is a double-counted one.
-    check(
-      "document_parties_one_target_check",
-      sql`not (contact_id is not null and company_id is not null)`,
-    ),
+    check("document_parties_one_target_check", sql`not (contact_id is not null and company_id is not null)`),
     uniqueIndex("document_parties_contact_key")
       .on(t.documentId, t.partyRole, t.contactId)
       .where(sql`contact_id is not null`),
@@ -1067,21 +1024,14 @@ export const reviewedAssertions = pgTable(
     sourceAttribution: text("source_attribution").notNull(),
     effectiveFrom: date("effective_from"),
     effectiveTo: date("effective_to"),
-    supersedesAssertionId: uuid("supersedes_assertion_id").references(
-      (): AnyPgColumn => reviewedAssertions.id,
-      { onDelete: "set null" },
-    ),
+    supersedesAssertionId: uuid("supersedes_assertion_id").references((): AnyPgColumn => reviewedAssertions.id, {
+      onDelete: "set null",
+    }),
     status: assertionStatus("status").notNull().default("active"),
     ...mutable,
   },
   (t) => [
-    index("reviewed_assertions_subject_idx").on(
-      t.workspaceId,
-      t.subjectType,
-      t.subjectId,
-      t.attribute,
-      t.status,
-    ),
+    index("reviewed_assertions_subject_idx").on(t.workspaceId, t.subjectType, t.subjectId, t.attribute, t.status),
   ],
 );
 
@@ -1117,23 +1067,24 @@ export const documentObligations = pgTable(
 );
 
 /*
- * A proposed zettel: one claim drawn from one succeeded document, with the
- * exact passage it rests on. Nothing here is knowledge until a human accepts
- * it; accepting writes the concept and the evidence link, rejecting writes
- * nothing else. The dedupe key follows obligationDedupeKey: a re-run lands on
- * the existing row.
+ * A proposed zettel: one claim drawn from one succeeded document (the
+ * enrichment pipeline) or from one artifact — a conversation mined for ideas
+ * (PR C's zettelization). With the artifact path, the verbatim passage still
+ * binds: span offsets index into the source the proposal names. Nothing here
+ * is knowledge until a human accepts it; accepting writes the concept and the
+ * evidence link, rejecting writes nothing else. The dedupe key follows
+ * obligationDedupeKey: a re-run lands on the existing row. The 0012
+ * (document_id, dedupe_key) index governs the document path; the partial
+ * index on (source_artifact_id, dedupe_key) governs the artifact path, which
+ * NULL-distinctness in the 0012 index would otherwise leave unconstrained.
  */
 export const zettelProposals = pgTable(
   "zettel_proposals",
   {
     id: primaryId(),
     workspaceId: tenantId(),
-    documentId: uuid("document_id")
-      .notNull()
-      .references(() => documents.id, { onDelete: "cascade" }),
-    extractionId: uuid("extraction_id")
-      .notNull()
-      .references(() => documentExtractions.id, { onDelete: "cascade" }),
+    documentId: uuid("document_id").references(() => documents.id, { onDelete: "cascade" }),
+    extractionId: uuid("extraction_id").references(() => documentExtractions.id, { onDelete: "cascade" }),
     title: text("title").notNull(),
     claim: text("claim").notNull(),
     /** The verbatim passage; span offsets index into the extraction text. */
@@ -1146,6 +1097,12 @@ export const zettelProposals = pgTable(
     claimId: uuid("claim_id"),
     /** The zettel artifact an accept created — the card in the graph. */
     artifactId: uuid("artifact_id").references((): AnyPgColumn => artifacts.id, { onDelete: "set null" }),
+    /** The artifact a conversation-sourced proposal was drawn from (PR C). */
+    sourceArtifactId: uuid("source_artifact_id").references((): AnyPgColumn => artifacts.id, { onDelete: "cascade" }),
+    /** The existing idea this candidate duplicates; the flag the owner decides on. */
+    duplicateOfArtifactId: uuid("duplicate_of_artifact_id").references((): AnyPgColumn => artifacts.id, {
+      onDelete: "set null",
+    }),
     proposer: text("proposer"),
     decidedAt: timestamp("decided_at", { withTimezone: true }),
     decidedBy: uuid("decided_by"),
@@ -1153,8 +1110,12 @@ export const zettelProposals = pgTable(
   },
   (t) => [
     uniqueIndex("zettel_proposals_dedupe_key").on(t.documentId, t.dedupeKey),
+    uniqueIndex("zettel_proposals_artifact_dedupe_key")
+      .on(t.sourceArtifactId, t.dedupeKey)
+      .where(sql`source_artifact_id is not null`),
     index("zettel_proposals_workspace_status_idx").on(t.workspaceId, t.status),
     check("zettel_proposals_span_check", sql`span_start >= 0 AND span_end > span_start`),
+    check("zettel_proposals_one_source_check", sql`num_nonnulls(document_id, source_artifact_id) = 1`),
   ],
 );
 
@@ -1187,8 +1148,14 @@ export const documentEnrichment = pgTable(
   (t) => [
     uniqueIndex("document_enrichment_document_stage_key").on(t.documentId, t.stage),
     index("document_enrichment_workspace_document_idx").on(t.workspaceId, t.documentId),
-    check("document_enrichment_stage_check", sql.raw(`stage in (${ENRICHMENT_STAGES.map((k) => `'${k}'`).join(", ")})`)),
-    check("document_enrichment_status_check", sql.raw(`status in (${ENRICHMENT_STATUSES.map((k) => `'${k}'`).join(", ")})`)),
+    check(
+      "document_enrichment_stage_check",
+      sql.raw(`stage in (${ENRICHMENT_STAGES.map((k) => `'${k}'`).join(", ")})`),
+    ),
+    check(
+      "document_enrichment_status_check",
+      sql.raw(`status in (${ENRICHMENT_STATUSES.map((k) => `'${k}'`).join(", ")})`),
+    ),
     check("document_enrichment_attempts_check", sql`attempts >= 0`),
   ],
 );

@@ -20,7 +20,7 @@ const item = (label: string): ComposerPlusItem => ({
 
 describe("composer plus", () => {
   it("renders nothing when the caller offers no items and no reference picking", () => {
-    const markup = renderToStaticMarkup(createElement(ComposerPlus, { items: [] }));
+    const markup = renderToStaticMarkup(createElement(ComposerPlus, { items: [], open: false }));
     expect(markup).toBe("");
   });
 
@@ -29,9 +29,10 @@ describe("composer plus", () => {
       createElement(ComposerPlus, {
         items: [item("Attach a file")],
         label: "Add to message",
+        open: false,
       }),
     );
-    expect(markup).toContain("aria-label=\"Add to message\"");
+    expect(markup).toContain('aria-label="Add to message"');
   });
 
   it("renders a closed-state trigger (Radix owns the open menu body)", () => {
@@ -41,18 +42,17 @@ describe("composer plus", () => {
       createElement(ComposerPlus, {
         items: [item("Pin a skill"), item("Attach a file")],
         onReference: () => {},
+        open: false,
       }),
     );
-    expect(markup).toContain("aria-haspopup=\"dialog\"");
-    expect(markup).toContain("aria-expanded=\"false\"");
+    expect(markup).toContain('aria-haspopup="dialog"');
+    expect(markup).toContain('aria-expanded="false"');
   });
 
   it("renders the trigger when onFile alone is offered", () => {
     // The menu body mounts on open (Radix's behavior, not ours to pin here);
     // the static contract is that a file-only caller still gets the button.
-    const markup = renderToStaticMarkup(
-      createElement(ComposerPlus, { onFile: () => {} }),
-    );
-    expect(markup).toContain("aria-haspopup=\"dialog\"");
+    const markup = renderToStaticMarkup(createElement(ComposerPlus, { onFile: () => {}, open: false }));
+    expect(markup).toContain('aria-haspopup="dialog"');
   });
 });

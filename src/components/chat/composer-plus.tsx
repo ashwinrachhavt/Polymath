@@ -17,21 +17,16 @@ import { Popover } from "radix-ui";
 import { cn } from "cn";
 
 /*
- * The composer's plus button: one control, inside the textarea's own frame,
- * that opens the small menu of things a message can carry. ChatGPT-shaped:
- * the button sits in the input area's bottom-left, a round hover target the
- * same size as the send button, quiet until hovered.
+ * The composer's picker: one control, inside the textarea's own frame, one
+ * menu for both gestures. The plus button opens it fresh; a typed "@" opens
+ * the same menu with the token as the seeded query. Both gestures share one
+ * search input, one fetch effect (the host's), and one set of results.
  *
- * Two kinds of offer:
- *  - actions: caller-supplied, executed on click (attach a file);
- *  - record references: a searchable lookup over the workspace's notes,
- *    zettels, artifacts and conversations. Picking one calls onReference
- *    with a markdown link the caller inserts into the draft, because the
- *    message text is what the model actually reads.
- *
- * A caller with nothing to offer passes no items and no onReference, and the
- * button does not render — a plus that opens an empty menu is chrome lying
- * about capability.
+ * A pick hands the record to the host, which decides what it means: a
+ * person, company or idea becomes a context chip; anything else becomes a
+ * reference link in the draft. A caller with nothing to offer passes no
+ * items and no onReference, and the button does not render — a plus that
+ * opens an empty menu is chrome lying about capability.
  */
 
 export type ComposerPlusItem = {
@@ -108,13 +103,16 @@ function KindGlyph({ kind, className }: { kind: RecordReference["kind"]; classNa
   return <Glyph aria-hidden className={cn("text-muted-foreground size-3.5 shrink-0", className)} />;
 }
 
-function referenceLink(record: RecordReference): string {
+/** The markdown link a pick inserts when the host treats it as a reference. */
+export function referenceLink(record: RecordReference): string {
   return `[${KIND_SINGULAR[record.kind]}: ${record.title}](${record.href})`;
 }
 
 export function ComposerPlus({
   items = [],
   records,
+  open,
+  initialQuery,
   onReference,
   onQueryChange,
   onOpenChange,
@@ -122,15 +120,17 @@ export function ComposerPlus({
   label = "Add to message",
   disabled = false,
   className,
-  mention,
-  onMentionPick,
 }: {
   items?: ComposerPlusItem[];
   /** Live lookup results; undefined while idle, null while loading. */
   records?: RecordReference[] | null;
-  /** Receives a markdown link for the picked record, to insert into the draft. */
-  onReference?: (markdown: string, record: RecordReference) => void;
-  /** Fires when the menu opens (empty query) or the search text changes. */
+  /** Open state lives with the host: the plus button toggles it and a typed "@" forces it. */
+  open: boolean;
+  /** The query the menu opens with (the @ token, when the host opens it that way). */
+  initialQuery?: string;
+  /** Receives the picked record; the host decides chip versus reference link. */
+  onReference?: (record: RecordReference) => void;
+  /** Fires when the search text changes (including the open edge's seed). */
   onQueryChange?: (query: string) => void;
   /** Fires when the menu opens or closes; lets the caller gate the search fetch. */
   onOpenChange?: (open: boolean) => void;
@@ -140,35 +140,34 @@ export function ComposerPlus({
   label?: string;
   disabled?: boolean;
   className?: string;
-  /**
-   * @-mention mode: the host derives this from its draft and caret. When set,
-   * open state and query follow it (the textarea is the search field), and a
-   * commit goes to onMentionReplace instead of appending to the draft.
-   */
-  mention?: MentionState | null;
-  /** Receives the picked record in mention mode; the host rewrites its own draft. */
-  onMentionPick?: (record: RecordReference) => void;
 }) {
-  const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
-  // In mention mode the textarea owns open/query; otherwise the popover's own
-  // search input does. The effect reports the open edge so the caller's fetch
-  // gate stays working for both modes without a setState-during-render.
-  const mentionOpen = mention?.open ?? false;
-  useEffect(() => {
-    if (!mention) return;
-    onOpenChange?.(mentionOpen);
-    // Fires on the mention open/close edge only; the callback identity is not
-    // an interesting change and callers pass stable closures.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mentionOpen]);
   const searchRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const listId = useId();
   const fileInputId = useId();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [lastKey, setLastKey] = useState("");
+
+  // Opening seeds the search: empty from the plus button, the @ token from
+  // the mention gesture. Re-seeding while open keeps the input following the
+  // token as it grows in the textarea; an input edited directly is left
+  // alone, because then the textarea is not changing. Focus moves into the
+  // input only on a fresh (empty-seed) open — an @ open keeps the caret in
+  // the textarea, where the token is being typed. The setState calls defer
+  // into a frame callback: synchronous setState in an effect body is what
+  // the react-hooks rule bans, and one frame is imperceptible here.
+  useEffect(() => {
+    if (!open) return;
+    const seed = initialQuery ?? "";
+    const frame = requestAnimationFrame(() => {
+      setQuery(seed);
+      onQueryChange?.(seed);
+      if (!seed) searchRef.current?.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [open, initialQuery, onQueryChange]);
 
   const grouped: Array<{ kind: RecordReference["kind"]; rows: RecordReference[] }> = [];
   for (const record of records ?? []) {
@@ -189,39 +188,14 @@ export function ComposerPlus({
     setActive(0);
   }
 
-  const isOpen = mention ? mentionOpen : open;
-  const activeQuery = mention ? mention.query : query;
-
-  function changeOpen(next: boolean) {
-    if (mention) return; // the textarea controls open/close in mention mode
-    setOpen(next);
-    if (next) {
-      // Fresh menu, fresh search. The focus lands here too: Radix's
-      // onOpenAutoFocus would fight the popover's own focus return, so the
-      // open transition owns both.
-      setQuery("");
-      onQueryChange?.("");
-      requestAnimationFrame(() => searchRef.current?.focus());
-    }
-    onOpenChange?.(next);
-  }
-
   function changeQuery(next: string) {
-    if (mention) {
-      onQueryChange?.(next);
-      return;
-    }
     setQuery(next);
     onQueryChange?.(next);
   }
 
   function commit(record: RecordReference) {
-    if (mention) {
-      onMentionPick?.(record);
-      return;
-    }
-    changeOpen(false);
-    onReference?.(referenceLink(record), record);
+    onOpenChange?.(false);
+    onReference?.(record);
   }
 
   function onKeyDown(event: React.KeyboardEvent) {
@@ -253,12 +227,13 @@ export function ComposerPlus({
   if (items.length === 0 && !onReference && !onFile) return null;
 
   return (
-    <Popover.Root open={isOpen} onOpenChange={changeOpen}>
+    <Popover.Root open={open} onOpenChange={onOpenChange}>
       <Popover.Trigger
         type="button"
         disabled={disabled}
         aria-label={label}
         title={label}
+        onClick={() => onOpenChange?.(!open)}
         className={cn(
           "text-muted-foreground hover:bg-muted hover:text-foreground flex size-8 shrink-0 items-center justify-center rounded-full outline-none transition-colors",
           "focus-visible:ring-ring focus-visible:ring-3",
@@ -277,7 +252,7 @@ export function ComposerPlus({
           onKeyDown={onKeyDown}
           className="bg-popover text-popover-foreground border-border z-50 w-80 max-w-[calc(100vw-2rem)] rounded-xl border p-1 shadow-md"
         >
-          {onReference && !mention ? (
+          {onReference ? (
             <div className="flex items-center gap-2 border-border border-b px-2.5 pb-1.5">
               <Search aria-hidden className="text-muted-foreground size-3.5 shrink-0" />
               <input
@@ -300,12 +275,18 @@ export function ComposerPlus({
 
           {records !== null && onReference && flat.length === 0 ? (
             <p className="text-muted-foreground px-2.5 py-3 text-[12px]">
-              {activeQuery.trim() ? "Nothing matches. Try a different word." : "No records yet."}
+              {query.trim() ? "Nothing matches. Try a different word." : "No records yet."}
             </p>
           ) : null}
 
           {flat.length > 0 ? (
-            <ul ref={listRef} id={listId} role="listbox" aria-label="Records" className="max-h-64 overflow-y-auto py-0.5">
+            <ul
+              ref={listRef}
+              id={listId}
+              role="listbox"
+              aria-label="Records"
+              className="max-h-64 overflow-y-auto py-0.5"
+            >
               {grouped.map((group) => (
                 <li key={group.kind} role="presentation">
                   <p className="text-muted-foreground px-2.5 pt-1.5 pb-0.5 text-[10px] font-medium tracking-wide uppercase">
@@ -339,14 +320,14 @@ export function ComposerPlus({
             </ul>
           ) : null}
 
-          {items.length > 0 && !mention ? (
+          {items.length > 0 ? (
             <div className="border-border border-t pt-1 pb-0.5">
               {items.map((item) => (
                 <button
                   key={item.label}
                   type="button"
                   onClick={() => {
-                    setOpen(false);
+                    onOpenChange?.(false);
                     item.onSelect();
                   }}
                   className="hover:bg-muted focus-visible:bg-muted flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] outline-none"
@@ -363,7 +344,7 @@ export function ComposerPlus({
             </div>
           ) : null}
 
-          {onFile && !mention ? (
+          {onFile ? (
             <div className={cn("border-border pt-1 pb-0.5", items.length > 0 && "border-t")}>
               <button
                 type="button"
@@ -371,7 +352,6 @@ export function ComposerPlus({
                   // The menu closes BEFORE the picker opens: the hidden input
                   // lives outside this portal (below), so it stays mounted and
                   // its change event always fires.
-                  setOpen(false);
                   onOpenChange?.(false);
                   pickFile();
                 }}

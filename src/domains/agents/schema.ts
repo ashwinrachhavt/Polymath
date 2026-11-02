@@ -347,6 +347,35 @@ export const threadCheckpoints = pgTable(
   (t) => [index("thread_checkpoints_thread_idx").on(t.threadId, t.createdAt)],
 );
 
+/*
+ * Margin comments on a stored message (chat-actions PR B). A comment belongs
+ * to the message as a whole - the same whole-message ceiling note_comments
+ * keeps; no text-anchor spans. Resolved is a visible state (resolved_at),
+ * never a deletion. Messages cascade with their thread, so deleting the
+ * thread deletes their comments.
+ */
+export const messageComments = pgTable(
+  "message_comments",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    threadId: uuid("thread_id")
+      .notNull()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    messageId: uuid("message_id")
+      .notNull()
+      .references(() => messages.id, { onDelete: "cascade" }),
+    body: text("body").notNull(),
+    /** Null while open; set when someone resolves the thread. */
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    ...mutable,
+  },
+  (t) => [
+    index("message_comments_message_idx").on(t.workspaceId, t.messageId, t.createdAt),
+    check("message_comments_body_check", sql`length(btrim(body)) between 1 and 2000`),
+  ],
+);
+
 export const agentRuns = pgTable(
   "agent_runs",
   {

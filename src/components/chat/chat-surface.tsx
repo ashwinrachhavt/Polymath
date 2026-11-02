@@ -11,14 +11,21 @@ import type { ChatBlock } from "@/domains/agents/stream-contract";
 import { useChatStream } from "./use-chat-stream";
 import { makePending, stillPending, type PendingMessage } from "./pending-messages";
 import { MessageActions } from "./message-actions";
-import { ComposerPlus, mentionAt, replaceMention, type RecordReference } from "./composer-plus";
+import { ComposerPlus, mentionAt, referenceLink, replaceMention, type RecordReference } from "./composer-plus";
 import { ChainOfThought, type ThoughtStep } from "./chain-of-thought";
 import { AgentPanel, type AgentPanelData } from "./agent-panel";
 import { Confirmation, type InterruptCard } from "./confirmation";
 import { toolLabel } from "@/domains/agents/tool-labels";
 import { collectRecords } from "./record-links";
 import { fetchMentionContext } from "@/app/(workspace)/polymath/mention-actions";
-import { resolveMentionPayload, stripMentionContext, hasMentionContext, type MentionEntity } from "./mention-context";
+import {
+  serializeChips,
+  stripMentionContext,
+  hasMentionContext,
+  type ContextChip,
+  type MentionEntity,
+} from "./mention-context";
+import { ContextChips } from "./context-chips";
 import { CitedText } from "./cited-text";
 import { citedIndices } from "@/domains/knowledge/inline-citations";
 import { inline } from "@/components/markdown-inline";
@@ -137,8 +144,10 @@ export function ChatSurface({
   const [caret, setCaret] = useState(0);
   // @-mention: the draft and caret yield the token; whitespace closes it.
   const mention = mentionAt(draft, caret);
-  const mentionOpen = mention?.open ?? false;
-  const mentionQuery = mention?.query ?? "";
+  // Destructured so the effect below can key on the primitives — the derived
+  // object is new every render, and a caret move that keeps the token must
+  // not re-open anything.
+  const { open: mentionOpen, query: mentionQuery } = mention ?? { open: false, query: "" };
   // A first message typed on a surface that navigated here (the Assistant home)
   // crosses via sessionStorage; read once, then clear so a reload never replays it.
   const [crossedMessage] = useState(() => {
@@ -160,15 +169,32 @@ export function ChatSurface({
   const [pending, setPending] = useState<PendingMessage[]>([]);
   const [attachNote, setAttachNote] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  // Entities picked from the mention menu; the ones the sent message still
-  // name as @Name become the context block on the model's copy.
-  const [mentions, setMentions] = useState<MentionEntity[]>([]);
+  // Records picked as context chips. The context is fetched when the chip is
+  // picked — never at send, which only serializes what the chips already
+  // fetched — and a chip whose fetch failed blocks the send until it is
+  // retried or removed.
+  const [chips, setChips] = useState<ContextChip[]>([]);
   const [records, setRecords] = useState<RecordReference[] | null | undefined>(undefined);
-  const [plusOpen, setPlusOpen] = useState(false);
+  // One picker serves both gestures: the plus button toggles menuOpen, and a
+  // typed "@" forces it open with the token as the seeded query. One fetch
+  // effect (below) runs for whichever gesture is live.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [seedQuery, setSeedQuery] = useState("");
   const [plusQuery, setPlusQuery] = useState("");
   useEffect(() => {
-    if (!plusOpen && !mentionOpen) return;
-    const query = mentionOpen ? mentionQuery : plusQuery;
+    if (!mentionOpen) return;
+    // Deferred a frame — synchronous setState in an effect body is what the
+    // react-hooks rule bans, and a menu opening one frame late is not
+    // perceptible.
+    const frame = requestAnimationFrame(() => {
+      setMenuOpen(true);
+      setSeedQuery(mentionQuery);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [mentionOpen, mentionQuery]);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const query = plusQuery;
     const controller = new AbortController();
     // Fetching lands in the timeout, so every setRecords call is async from
     // React's view — no synchronous setState inside the effect body.
@@ -182,10 +208,25 @@ export function ChatSurface({
       clearTimeout(timer);
       controller.abort();
     };
-  }, [plusOpen, plusQuery, mentionOpen, mentionQuery]);
+  }, [menuOpen, plusQuery]);
 
   function insertReference(markdown: string) {
     setDraft((current) => (current.trim() ? `${current.trimEnd()} ${markdown} ` : `${markdown} `));
+  }
+
+  // One pick handler for both gestures: a chip kind adds a chip (the draft
+  // keeps the typed words), a reference kind becomes a link — replacing the
+  // live @ token when the pick came from that gesture.
+  function handleRecordPick(record: RecordReference) {
+    if (record.kind === "person" || record.kind === "company" || record.kind === "zettel") {
+      pickChip({ id: record.id, kind: record.kind, title: record.title, href: record.href });
+      return;
+    }
+    if (mention) {
+      setDraft((current) => replaceMention(current, mention, referenceLink(record)));
+      return;
+    }
+    insertReference(referenceLink(record));
   }
   // Set by a send: the owner's own message always scrolls into view, even when
   // they had scrolled up to reread something.
@@ -262,6 +303,46 @@ export function ChatSurface({
     forceScrollRef.current = false;
   }, [transcript.length, lastText, waiting.length]);
 
+  async function fetchChipContext(id: string, kind: MentionEntity["kind"]) {
+    try {
+      const context = await fetchMentionContext({ kind, id });
+      setChips((current) =>
+        current.map((chip) =>
+          chip.entity.id === id
+            ? context
+              ? { ...chip, context, error: null }
+              : { ...chip, error: "Could not load context. Retry." }
+            : chip,
+        ),
+      );
+    } catch {
+      setChips((current) =>
+        current.map((chip) => (chip.entity.id === id ? { ...chip, error: "Could not load context. Retry." } : chip)),
+      );
+    }
+  }
+
+  function pickChip(entity: MentionEntity) {
+    setChips((current) => {
+      if (current.some((chip) => chip.entity.id === entity.id)) return current;
+      return [...current, { entity, context: null, error: null }];
+    });
+    void fetchChipContext(entity.id, entity.kind);
+  }
+
+  function retryChip(id: string) {
+    const chip = chips.find((item) => item.entity.id === id);
+    if (!chip) return;
+    setChips((current) =>
+      current.map((item) => (item.entity.id === id ? { ...item, context: null, error: null } : item)),
+    );
+    void fetchChipContext(id, chip.entity.kind);
+  }
+
+  function removeChip(id: string) {
+    setChips((current) => current.filter((chip) => chip.entity.id !== id));
+  }
+
   async function send() {
     const message = draft.trim();
     if (!message || sending) return;
@@ -285,15 +366,15 @@ export function ChatSurface({
       // the surface would otherwise dead-end mid-thought. Without the handler
       // this is the plain follow-up the run endpoint serves.
       if (onContinue) {
-        // Named entities load their context as JSON appended to the model's
-        // copy; the transcript renders only the typed words.
-        const payload = await resolveMentionPayload(mentions, message, fetchMentionContext);
-        const result = await onContinue(runId, payload);
+        // Chips already fetched their context on pick; sending serializes
+        // what is here and touches no network for it.
+        const { payload } = serializeChips(chips);
+        const result = await onContinue(runId, `${message}${payload}`);
         if (!result.ok) {
           restore(result.message);
           return;
         }
-        setMentions([]);
+        setChips([]);
         if (result.runId !== runId) {
           // A new segment answered, so this transcript is no longer the head of
           // the conversation; the shell re-renders on the new run.
@@ -301,18 +382,18 @@ export function ChatSurface({
         }
         return;
       }
-      const payload = await resolveMentionPayload(mentions, message, fetchMentionContext);
+      const { payload } = serializeChips(chips);
       const response = await fetch(`/api/v1/runs/${encodeURIComponent(runId)}/messages`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ message: payload }),
+        body: JSON.stringify({ message: `${message}${payload}` }),
       });
       if (!response.ok) {
         const problem = (await response.json().catch(() => null)) as { detail?: string; title?: string } | null;
         restore(problem?.detail ?? problem?.title ?? "The message was not sent.");
         return;
       }
-      setMentions([]);
+      setChips([]);
     } catch {
       restore("The message was not sent. Check the connection and try again.");
     } finally {
@@ -410,7 +491,12 @@ export function ChatSurface({
                       the prose and the list below resolve in one numbering. */}
                     <CitedText text={block.text} citations={chat.citations} />
                     {block.kind === "assistant" && block.done ? (
-                      <MessageActions runId={runId} turnId={turnIdOf(block.id)} text={block.text} />
+                      <MessageActions
+                        runId={runId}
+                        turnId={turnIdOf(block.id)}
+                        text={block.text}
+                        messageId={block.messageId ?? null}
+                      />
                     ) : null}
                   </div>
                 ),
@@ -543,6 +629,14 @@ export function ChatSurface({
               {sendError}
             </p>
           )}
+          <div className="px-3.5 pt-2.5">
+            <ContextChips
+              chips={chips}
+              onRemove={removeChip}
+              onRetry={retryChip}
+              truncated={serializeChips(chips).truncated}
+            />
+          </div>
           <Textarea
             aria-label={composerLabel}
             className="composer-input max-h-48 min-h-[76px] resize-none rounded-none border-0 bg-transparent px-3.5 pt-3 pb-11 text-[15px] leading-6 shadow-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent"
@@ -575,30 +669,15 @@ export function ChatSurface({
               <ComposerPlus
                 label="Add to message"
                 records={records}
-                onReference={insertReference}
+                open={menuOpen}
+                initialQuery={seedQuery}
+                onReference={handleRecordPick}
                 onQueryChange={setPlusQuery}
                 onOpenChange={(open) => {
-                  setPlusOpen(open);
+                  setMenuOpen(open);
                   if (!open) setPlusQuery("");
                 }}
                 onFile={attachFile}
-                mention={mention}
-                onMentionPick={(record) => {
-                  if (!mention) return;
-                  if (record.kind === "person" || record.kind === "company") {
-                    const entity: MentionEntity = {
-                      id: record.id,
-                      kind: record.kind,
-                      title: record.title,
-                      href: record.href,
-                    };
-                    setMentions((current) => {
-                      if (current.some((picked) => picked.id === entity.id)) return current;
-                      return [...current, entity];
-                    });
-                  }
-                  setDraft((current) => replaceMention(current, mention, `@${record.title}`));
-                }}
               />
               <span className="px-1 truncate text-[11px] text-muted-foreground">{attachNote}</span>
             </div>
@@ -608,7 +687,14 @@ export function ChatSurface({
               aria-label={sending ? "Sending" : "Send"}
               title={sending ? "Sending" : "Send"}
               className="size-8 shrink-0 rounded-full"
-              disabled={!draft.trim() || sending}
+              disabled={
+                !draft.trim() ||
+                sending ||
+                // A chip still loading or sitting on a failed fetch has no
+                // context to serialize: sending would drop it silently. The
+                // retry is one click; the removal is another.
+                chips.some((chip) => chip.error !== null || chip.context === null)
+              }
             >
               <ArrowUp aria-hidden className="size-4" />
             </Button>
