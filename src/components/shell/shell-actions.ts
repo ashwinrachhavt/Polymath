@@ -10,6 +10,7 @@ import { opportunities } from "@/domains/opportunities/schema";
 import { tasks } from "@/domains/work/schema";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
+import { searchPaletteKnowledge } from "@/domains/knowledge/palette-records";
 import { capturesTag } from "@/lib/cache-tags";
 import { db } from "@/lib/db";
 
@@ -29,10 +30,7 @@ export type QuickCreateResult = { ok: true; message: string } | { ok: false; err
  * on (workspace, source, url) and answers with the capture already in the
  * inbox, so a re-paste links instead of stacking a second row.
  */
-export async function quickCapture(
-  text: string,
-  idempotencyKey: string,
-): Promise<QuickCreateResult> {
+export async function quickCapture(text: string, idempotencyKey: string): Promise<QuickCreateResult> {
   // Writes the canonical capture row, so member or above (ASH-121 AC05).
   const auth = await getAuthContext();
   requireRole(auth, "member");
@@ -53,7 +51,9 @@ export async function quickCapture(
 }
 
 export type WorkspaceRecord = {
-  kind: "task" | "note" | "contact" | "inbox" | "opportunity" | "document";
+  // "knowledge" is the palette's second phase: an artifact card (zettel,
+  // memo, report, transcript, document card) the meaning leg surfaced.
+  kind: "task" | "note" | "contact" | "inbox" | "opportunity" | "document" | "knowledge";
   id: string;
   label: string;
   context: string;
@@ -108,13 +108,21 @@ export async function searchWorkspace(query: string): Promise<WorkspaceRecord[]>
     db
       .select({ id: opportunities.id, title: opportunities.title, stage: opportunities.stage })
       .from(opportunities)
-      .where(and(eq(opportunities.workspaceId, auth.workspaceId), isNull(opportunities.archivedAt), ilike(opportunities.title, pattern)))
+      .where(
+        and(
+          eq(opportunities.workspaceId, auth.workspaceId),
+          isNull(opportunities.archivedAt),
+          ilike(opportunities.title, pattern),
+        ),
+      )
       .orderBy(desc(opportunities.updatedAt))
       .limit(4),
     db
       .select({ id: documents.id, title: documents.title })
       .from(documents)
-      .where(and(eq(documents.workspaceId, auth.workspaceId), isNull(documents.archivedAt), ilike(documents.title, pattern)))
+      .where(
+        and(eq(documents.workspaceId, auth.workspaceId), isNull(documents.archivedAt), ilike(documents.title, pattern)),
+      )
       .orderBy(desc(documents.updatedAt))
       .limit(4),
   ]);
@@ -170,6 +178,25 @@ export async function searchWorkspace(query: string): Promise<WorkspaceRecord[]>
   return rankRecords(found, q);
 }
 
+export type WorkspaceKnowledgeResult = {
+  records: WorkspaceRecord[];
+  /** "ok", or why the meaning leg did not run (unconfigured = no provider key). */
+  meaning: "ok" | "off" | "unconfigured" | "failed";
+};
+
+/**
+ * The palette's second phase (spec: one search language everywhere): the same
+ * artifact store the notes page ranks, by body text and meaning, streamed in
+ * behind searchWorkspace's title matches. Degrades to keyword-only rows with
+ * meaning "unconfigured" when no embedding provider is set - never an error
+ * surface, the palette answers either way. A read: membership is enough,
+ * nothing is revalidated.
+ */
+export async function searchWorkspaceKnowledge(query: string): Promise<WorkspaceKnowledgeResult> {
+  const auth = await getAuthContext();
+  const found = await searchPaletteKnowledge(auth, query);
+  return { records: found.records, meaning: found.meaning };
+}
 
 /*
  * Best match first across every kind: exact title, then prefix, then a word
