@@ -11,6 +11,7 @@ import {
   reviewedAssertions,
 } from "@/domains/knowledge/schema";
 import { users, workspaces } from "@/domains/identity/schema";
+import { assertTestDatabaseIsScratch } from "../helpers/app-db-safety";
 
 /*
  * The document-intelligence invariants that a mock would only pretend to hold:
@@ -38,11 +39,8 @@ afterAll(async () => {
 suite("document intelligence schema", () => {
   beforeAll(async () => {
     if (!url) return;
-    if (url === process.env.DATABASE_URL) {
-      throw new Error(
-        "TEST_DATABASE_URL equals DATABASE_URL. This suite truncates every table; use a scratch database or a Neon branch.",
-      );
-    }
+    // Same truncation hazard as reliability.test.ts — shared guard.
+    assertTestDatabaseIsScratch();
     await client.unsafe(
       `do $$ declare t text; begin for t in
          select tablename from pg_tables where schemaname = 'public'
@@ -51,19 +49,16 @@ suite("document intelligence schema", () => {
   });
 
   async function seedWorkspace(slug: string) {
-    const [user] = await db.insert(users).values({ clerkUserId: `clerk_${slug}` }).returning();
-    const [workspace] = await db
-      .insert(workspaces)
-      .values({ name: slug, slug, createdBy: user.id })
+    const [user] = await db
+      .insert(users)
+      .values({ clerkUserId: `clerk_${slug}` })
       .returning();
+    const [workspace] = await db.insert(workspaces).values({ name: slug, slug, createdBy: user.id }).returning();
     return { user, workspace };
   }
 
   async function seedDocument(workspaceId: string) {
-    const [document] = await db
-      .insert(documents)
-      .values({ workspaceId, title: "Acme services agreement" })
-      .returning();
+    const [document] = await db.insert(documents).values({ workspaceId, title: "Acme services agreement" }).returning();
     const [extraction] = await db
       .insert(documentExtractions)
       .values({ workspaceId, documentId: document.id, contentHash: `hash-${crypto.randomUUID()}` })
@@ -88,23 +83,13 @@ suite("document intelligence schema", () => {
     const visibleToB = await db
       .select()
       .from(fieldProposals)
-      .where(
-        and(
-          eq(fieldProposals.fieldName, "invoice_total"),
-          eq(fieldProposals.workspaceId, b.workspace.id),
-        ),
-      );
+      .where(and(eq(fieldProposals.fieldName, "invoice_total"), eq(fieldProposals.workspaceId, b.workspace.id)));
     expect(visibleToB).toHaveLength(0);
 
     const visibleToA = await db
       .select()
       .from(fieldProposals)
-      .where(
-        and(
-          eq(fieldProposals.fieldName, "invoice_total"),
-          eq(fieldProposals.workspaceId, a.workspace.id),
-        ),
-      );
+      .where(and(eq(fieldProposals.fieldName, "invoice_total"), eq(fieldProposals.workspaceId, a.workspace.id)));
     expect(visibleToA).toHaveLength(1);
   });
 
@@ -122,14 +107,8 @@ suite("document intelligence schema", () => {
     });
 
     // Both set: a double-counted party.
-    const [company] = await db
-      .insert(companies)
-      .values({ workspaceId: workspace.id, name: "Acme" })
-      .returning();
-    const [contact] = await db
-      .insert(contacts)
-      .values({ workspaceId: workspace.id, fullName: "Ada" })
-      .returning();
+    const [company] = await db.insert(companies).values({ workspaceId: workspace.id, name: "Acme" }).returning();
+    const [contact] = await db.insert(contacts).values({ workspaceId: workspace.id, fullName: "Ada" }).returning();
 
     await expect(
       db.insert(documentParties).values({
@@ -167,7 +146,10 @@ suite("document intelligence schema", () => {
     };
     await db.insert(fieldProposals).values(values);
 
-    const replay = await db.insert(fieldProposals).values(values).catch((e) => e);
+    const replay = await db
+      .insert(fieldProposals)
+      .values(values)
+      .catch((e) => e);
     expect((replay as { cause?: { code?: string } }).cause?.code).toBe("23505");
 
     // A different field context on the same document is a new proposal.
@@ -176,10 +158,7 @@ suite("document intelligence schema", () => {
 
   it("superseding an assertion leaves the original row untouched", async () => {
     const { workspace } = await seedWorkspace("assertions");
-    const [contact] = await db
-      .insert(contacts)
-      .values({ workspaceId: workspace.id, fullName: "Ada" })
-      .returning();
+    const [contact] = await db.insert(contacts).values({ workspaceId: workspace.id, fullName: "Ada" }).returning();
 
     const [original] = await db
       .insert(reviewedAssertions)
@@ -208,16 +187,10 @@ suite("document intelligence schema", () => {
       })
       .returning();
 
-    await db
-      .update(reviewedAssertions)
-      .set({ status: "superseded" })
-      .where(eq(reviewedAssertions.id, original.id));
+    await db.update(reviewedAssertions).set({ status: "superseded" }).where(eq(reviewedAssertions.id, original.id));
 
     // History is rows: the original keeps its own value; nothing was overwritten.
-    const [before] = await db
-      .select()
-      .from(reviewedAssertions)
-      .where(eq(reviewedAssertions.id, original.id));
+    const [before] = await db.select().from(reviewedAssertions).where(eq(reviewedAssertions.id, original.id));
     expect(before.value).toEqual({ title: "Engineer" });
     expect(before.status).toBe("superseded");
     expect(before.sourceAttribution).toBe("supplied résumé v1");
