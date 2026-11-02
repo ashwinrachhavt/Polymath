@@ -168,6 +168,46 @@ suite("capture inbox", () => {
     ).rejects.toMatchObject({ code: "stale_write" });
   });
 
+  it("titles conversions from the capture's own title before the first line", async () => {
+    const auth = await seed("capture-title-preference");
+    // A capture whose stored title is the person's intent: conversion prefers
+    // it over the scraped first line of the text.
+    const titled = await commands.createCapture(auth, {
+      text: "Scraped header noise\nSecond line of the page body",
+      title: "Person's intended title",
+    });
+    const { task } = await commands.convertCaptureToTask(auth, {
+      captureId: titled.id,
+      expectedVersion: titled.version,
+    });
+    expect(task.title).toBe("Person's intended title");
+
+    // A title passed at conversion time wins over the stored one.
+    const stored = await commands.createCapture(auth, { text: "Stored first line\nBody", title: "Stored title" });
+    const { note } = await commands.convertCaptureToNote(auth, {
+      captureId: stored.id,
+      expectedVersion: stored.version,
+      title: "Conversion title",
+    });
+    const [noteArtifact] = await db
+      .select()
+      .from(artifacts)
+      .where(and(eq(artifacts.workspaceId, auth.workspaceId), eq(artifacts.id, note.id)));
+    expect(noteArtifact.title).toBe("Conversion title");
+
+    // With no title anywhere, the first line still carries.
+    const bare = await commands.createCapture(auth, { text: "Bare fallback line\nBody" });
+    const { note: bareNote } = await commands.convertCaptureToNote(auth, {
+      captureId: bare.id,
+      expectedVersion: bare.version,
+    });
+    const [bareArtifact] = await db
+      .select()
+      .from(artifacts)
+      .where(and(eq(artifacts.workspaceId, auth.workspaceId), eq(artifacts.id, bareNote.id)));
+    expect(bareArtifact.title).toBe("Bare fallback line");
+  });
+
   it("archives and restores, version-checked, and never un-converts", async () => {
     const auth = await seed("capture-archive");
     const capture = await commands.createCapture(auth, { text: "Maybe read this later" });

@@ -67,6 +67,26 @@ suite("capture to draft", () => {
     expect(audits.some((a) => a.subjectId === draft.id && a.action === "note.created")).toBe(true);
   });
 
+  it("titles the draft from the capture's own title before the first line", async () => {
+    const auth = await seed("draft-capture-title");
+    const capture = await commands.createCapture(auth, {
+      text: "Scraped header noise\nBody line",
+      title: "Dana pricing thread",
+    });
+
+    const { draft } = await commands.convertCaptureToDraft(auth, {
+      captureId: capture.id,
+      expectedVersion: capture.version,
+      template: "email",
+    });
+
+    const [artifact] = await db
+      .select()
+      .from(artifacts)
+      .where(and(eq(artifacts.workspaceId, auth.workspaceId), eq(artifacts.id, draft.id)));
+    expect(artifact.title).toBe("Email draft: Dana pricing thread");
+  });
+
   it("converts a url-only capture using the URL as material", async () => {
     const auth = await seed("draft-url");
     const capture = await commands.createCapture(auth, { text: "https://example.com/rfc-9457" });

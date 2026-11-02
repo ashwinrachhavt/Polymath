@@ -111,6 +111,28 @@ suite("home queue", () => {
     void timeless;
   });
 
+  it("titles capture cards from the capture's own title before the first line", async () => {
+    const auth = await seed("home-queue-capture-title");
+    const capture = await commands.createCapture(auth, {
+      text: "Scraped header noise\nBody line",
+      title: "Person's card title",
+    });
+    await db.insert(captureProposals).values({
+      workspaceId: auth.workspaceId,
+      captureId: capture.id,
+      kind: "note",
+      payload: {},
+      rationale: "note 0.8",
+      confidence: "0.8",
+      createdBy: auth.userId,
+      updatedBy: auth.userId,
+    });
+
+    const cards = await queue.listHomeQueue(auth.workspaceId);
+    const card = cards.find((c) => c.href.includes(capture.id));
+    expect(card?.title).toBe("Person's card title");
+  });
+
   it("never shows another workspace's proposals", async () => {
     const mine = await seed("home-queue-mine");
     const theirs = await seed("home-queue-theirs");

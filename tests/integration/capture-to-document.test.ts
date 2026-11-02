@@ -47,7 +47,13 @@ afterAll(async () => {
   await handle?.client.end();
 });
 
-async function addTextCapture(db: NonNullable<typeof holder.db>, ws: string, userId: string, text: string | null) {
+async function addTextCapture(
+  db: NonNullable<typeof holder.db>,
+  ws: string,
+  userId: string,
+  text: string | null,
+  title?: string,
+) {
   const [row] = await db
     .insert(captures)
     .values({
@@ -56,6 +62,7 @@ async function addTextCapture(db: NonNullable<typeof holder.db>, ws: string, use
       captureMode: "authored",
       rawPayload: text ? { text } : {},
       text,
+      title: title ?? null,
       createdBy: userId,
       updatedBy: userId,
     })
@@ -91,6 +98,27 @@ suite("convertCaptureToDocument", () => {
       .from(outboxEvents)
       .where(and(eq(outboxEvents.workspaceId, workspaceId), eq(outboxEvents.topic, "document.extraction_requested")));
     expect(queued).toBeTruthy();
+  });
+
+  it("prefers the conversion title, then the capture's own title, over the first line", async () => {
+    const { userId, workspaceId } = await seedWorkspace(holder.db!, `c2d-title-${Date.now()}`);
+    const auth = ownerAuth(userId, workspaceId);
+
+    // The capture's own title beats the first line of the body.
+    const titled = await addTextCapture(holder.db!, workspaceId, userId, BODY, "Captured title");
+    const viaCapture = await convertCaptureToDocument(auth, { captureId: titled.id, expectedVersion: titled.version });
+    const [captureTitled] = await holder.db!.select().from(documents).where(eq(documents.id, viaCapture.documentId!));
+    expect(captureTitled.title).toBe("Captured title");
+
+    // A title passed at conversion time beats the stored one.
+    const bare = await addTextCapture(holder.db!, workspaceId, userId, BODY);
+    const viaInput = await convertCaptureToDocument(auth, {
+      captureId: bare.id,
+      expectedVersion: bare.version,
+      title: "Conversion title",
+    });
+    const [inputTitled] = await holder.db!.select().from(documents).where(eq(documents.id, viaInput.documentId!));
+    expect(inputTitled.title).toBe("Conversion title");
   });
 
   it("feeds the existing pipeline: extraction succeeds from the bytes, zettel proposals quote it verbatim", async () => {

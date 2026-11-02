@@ -162,6 +162,24 @@ suite("capture enrichment ladder", () => {
     expect(prompt.prompt).toContain("<<<BEGIN_DOCUMENT>>>");
   });
 
+  it("never overwrites a person-supplied title with the model's suggestion", async () => {
+    generate.mockResolvedValue({
+      text: JSON.stringify({ title: "Model's suggestion", domain: "product", tags: null }),
+    });
+    const prose = Array.from(
+      { length: 12 },
+      (_, i) => `Sentence ${i} of a captured essay the owner already named, long enough for the model tier.`,
+    ).join(" ");
+    const capture = await commands.createCapture(auth, { text: prose, title: "Person's own title" });
+    await enqueueAndRun(capture.id);
+
+    const row = await getCapture(capture.id);
+    expect(row.processingState).toBe("enriched");
+    expect(row.title).toBe("Person's own title");
+    // The rest of the enrichment still lands on the capture.
+    expect(row.domain).toBe("product");
+  });
+
   it("skips to enriched when no generation provider is configured", async () => {
     const { GenerationUnconfiguredError } = await import("@/integrations/generation/provider");
     vi.mocked(generationProvider).mockImplementation(() => {
