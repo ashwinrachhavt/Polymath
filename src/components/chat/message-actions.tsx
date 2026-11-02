@@ -1,21 +1,31 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Copy, FileText, Lightbulb, MessageSquare } from "lucide-react";
+import { Check, Copy, FileText, Lightbulb, MessageSquare, Sparkles } from "lucide-react";
 import { MessageComments } from "./message-comments";
 import { MessageFeedback } from "./message-feedback";
 import { saveMessageAsIdeaAction, saveMessageAsNoteAction } from "@/app/(workspace)/polymath/[runId]/message-actions";
+import { zettelizeThreadAction } from "@/app/(workspace)/polymath/[runId]/zettel-actions";
 
 const quietButton =
   "text-muted-foreground/70 hover:bg-muted hover:text-foreground flex size-7 items-center justify-center rounded-md outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring";
 
+type ExtractScope = "message" | "last5" | "thread";
+
+const EXTRACT_SCOPES: Array<{ scope: ExtractScope; label: string }> = [
+  { scope: "message", label: "This message" },
+  { scope: "last5", label: "The last 5 messages" },
+  { scope: "thread", label: "The whole conversation" },
+];
+
 /*
  * The action toolbar under a finished assistant message: copy, comment, save
- * as note, save as idea, then like and dislike. Icons rest at a quiet muted
- * tone and come forward on hover, so the actions stay discoverable and
- * keyboard-visible (a hover-only reveal would hide them from axe and from
- * keyboard users) without shouting in the transcript. A save that fails
- * reports its error on one line under the toolbar — never a silent no-op.
+ * as note, save as idea, extract ideas, then like and dislike. Icons rest at
+ * a quiet muted tone and come forward on hover, so the actions stay
+ * discoverable and keyboard-visible (a hover-only reveal would hide them from
+ * axe and from keyboard users) without shouting in the transcript. A save or
+ * extraction that fails reports its error on one line under the toolbar —
+ * never a silent no-op.
  */
 export function MessageActions({
   runId,
@@ -32,6 +42,9 @@ export function MessageActions({
   const [copied, setCopied] = useState(false);
   const [showComments, setShowComments] = useState(false);
   const [saving, setSaving] = useState<"note" | "idea" | null>(null);
+  const [extractOpen, setExtractOpen] = useState(false);
+  const [extracting, setExtracting] = useState<ExtractScope | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function copy() {
@@ -52,6 +65,29 @@ export function MessageActions({
     const result = kind === "note" ? await saveMessageAsNoteAction(input) : await saveMessageAsIdeaAction(input);
     setSaving(null);
     if (!result.ok) setError(result.error);
+  }
+
+  async function extract(scope: ExtractScope) {
+    setExtracting(scope);
+    setError(null);
+    setNotice(null);
+    const result = await zettelizeThreadAction({
+      runId,
+      scope,
+      ...(scope === "message" ? { messageId: messageId ?? undefined } : {}),
+      idempotencyKey: crypto.randomUUID(),
+    });
+    setExtracting(null);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    const unread = result.unreadChars > 0 ? ` ${result.unreadChars.toLocaleString()} characters were not read.` : "";
+    setNotice(
+      result.proposed === 0
+        ? `No new ideas proposed.${unread}`
+        : `${result.proposed} idea${result.proposed === 1 ? "" : "s"} proposed for review.${unread}`,
+    );
   }
 
   return (
@@ -98,11 +134,46 @@ export function MessageActions({
         >
           <Lightbulb aria-hidden className="size-3.5" />
         </button>
+        <button
+          type="button"
+          aria-label={extracting ? "Extracting…" : "Extract ideas"}
+          title={extracting ? "Extracting…" : "Extract ideas"}
+          aria-expanded={extractOpen}
+          disabled={extracting !== null || saving !== null}
+          onClick={() => setExtractOpen((v) => !v)}
+          className={quietButton}
+        >
+          <Sparkles aria-hidden className="size-3.5" />
+        </button>
         <MessageFeedback runId={runId} turnId={turnId} initial={null} />
       </div>
+      {extractOpen && !extracting ? (
+        <div role="menu" aria-label="Extract ideas from" className="border-border mt-1 w-fit rounded-md border p-1">
+          {EXTRACT_SCOPES.filter((option) => option.scope !== "message" || messageId).map((option) => (
+            <button
+              key={option.scope}
+              type="button"
+              role="menuitem"
+              className="hover:bg-muted focus-visible:ring-ring block w-full rounded px-2 py-1 text-left text-xs outline-none focus-visible:ring-2"
+              onClick={() => void extract(option.scope)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {extracting ? (
+        <p role="status" className="text-muted-foreground mt-0.5 text-xs">
+          Reading the conversation…
+        </p>
+      ) : null}
       {error ? (
         <p role="alert" className="text-destructive mt-0.5 text-xs">
           {error}
+        </p>
+      ) : !error && notice ? (
+        <p role="status" className="text-muted-foreground mt-0.5 text-xs">
+          {notice}
         </p>
       ) : null}
       {messageId && showComments ? <MessageComments messageId={messageId} initialComments={[]} /> : null}

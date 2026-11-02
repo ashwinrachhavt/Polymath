@@ -59,14 +59,25 @@ export function zettelSourceText(capture: { cleanText: string | null; text: stri
 function zettelSourceWhere(auth: AuthContext, ids?: string[]) {
   // Same rule as zettelSourceText: the first of cleanText/text that is not blank.
   const hasText = sql`coalesce(nullif(trim(${captures.cleanText}), ''), nullif(trim(${captures.text}), '')) is not null`;
-  const parts: SQL[] = [eq(captures.workspaceId, auth.workspaceId), OPEN_STATES, isNull(captures.archivedAt), isNull(captures.parkedAt), hasText];
+  const parts: SQL[] = [
+    eq(captures.workspaceId, auth.workspaceId),
+    OPEN_STATES,
+    isNull(captures.archivedAt),
+    isNull(captures.parkedAt),
+    hasText,
+  ];
   if (ids?.length) parts.push(inArray(captures.id, ids));
   return and(...parts);
 }
 
 export async function listZettelSourceCaptures(auth: AuthContext, input: { ids?: string[] } = {}) {
   return db
-    .select({ id: captures.id, version: captures.version, title: captures.title, processingState: captures.processingState })
+    .select({
+      id: captures.id,
+      version: captures.version,
+      title: captures.title,
+      processingState: captures.processingState,
+    })
     .from(captures)
     .where(zettelSourceWhere(auth, input.ids))
     .orderBy(sql`${captures.createdAt} desc`)
@@ -170,12 +181,13 @@ export type ZettelGenerationDeps = {
 export async function runZettelGenerationRequested(
   event: ClaimedOutboxEvent,
   deps: ZettelGenerationDeps = {},
-): Promise<{ proposed: number }> {
+): Promise<{ proposed: number; unreadChars: number }> {
   const raw = event.payload ?? {};
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
     throw new Error(`${ZETTEL_GENERATION_TOPIC} has a malformed payload (${typeof raw}); redeploy the producer`);
   }
-  const captureId = typeof (raw as { captureId?: unknown }).captureId === "string" ? (raw as { captureId: string }).captureId : null;
+  const captureId =
+    typeof (raw as { captureId?: unknown }).captureId === "string" ? (raw as { captureId: string }).captureId : null;
   if (!captureId) throw new Error(`${ZETTEL_GENERATION_TOPIC} is missing captureId`);
   if (!deps.auth) throw new Error(`${ZETTEL_GENERATION_TOPIC} has no actor resolver`);
 
@@ -187,13 +199,14 @@ export async function runZettelGenerationRequested(
     .from(captures)
     .where(and(eq(captures.id, captureId), eq(captures.workspaceId, event.workspaceId)))
     .limit(1);
-  if (!capture || capture.archivedAt || capture.parkedAt || capture.processingState === "discarded") return { proposed: 0 };
+  if (!capture || capture.archivedAt || capture.parkedAt || capture.processingState === "discarded")
+    return { proposed: 0, unreadChars: 0 };
 
   let documentId = capture.convertedType === "document" ? capture.convertedId : null;
   if (!documentId) {
     // Converted to something the owner chose is a decision, not a failure.
-    if (capture.convertedType) return { proposed: 0 };
-    if (!zettelSourceText(capture)) return { proposed: 0 };
+    if (capture.convertedType) return { proposed: 0, unreadChars: 0 };
+    if (!zettelSourceText(capture)) return { proposed: 0, unreadChars: 0 };
     try {
       const filed = await convertCaptureToDocument(auth, { captureId: capture.id, expectedVersion: capture.version });
       documentId = filed.documentId;
@@ -216,7 +229,7 @@ export async function runZettelGenerationRequested(
       }
     }
   }
-  if (!documentId) return { proposed: 0 };
+  if (!documentId) return { proposed: 0, unreadChars: 0 };
 
   const extraction = await extractDocument(auth, { documentId });
   if (!extraction.ok) throw new Error(extraction.error);
@@ -233,15 +246,20 @@ export async function runZettelGenerationRequested(
     // The extraction pipeline proposes on its own; a second pass would pay for
     // the same document twice and stack near-duplicate rows the dedupe key
     // cannot merge (two runs quote different spans).
-    if ((existing?.n ?? 0) > 0) return { proposed: 0 };
+    if ((existing?.n ?? 0) > 0) return { proposed: 0, unreadChars: 0 };
 
     let created: Array<{ id: string }>;
+    let readReport: { readChars: number; unreadChars: number; unreadSections: number };
     try {
-      created = await proposeZettels(auth, { documentId, extractor: deps.extractor, tx });
+      ({ proposals: created, ...readReport } = await proposeZettels(auth, {
+        documentId,
+        extractor: deps.extractor,
+        tx,
+      }));
     } catch (cause) {
       // No model configured is a skip, not a failure: retrying five times cannot
       // conjure a key, and the inbox disables the control in that state anyway.
-      if (cause instanceof EmbeddingUnconfiguredError) return { proposed: 0 };
+      if (cause instanceof EmbeddingUnconfiguredError) return { proposed: 0, unreadChars: 0 };
       throw cause;
     }
 
@@ -253,11 +271,11 @@ export async function runZettelGenerationRequested(
           subjectType: "capture",
           subjectId: capture.id,
           summary: `Proposed ${created.length} zettel${created.length === 1 ? "" : "s"} for review`,
-          metadata: { documentId },
+          metadata: { documentId, ...readReport },
         },
         tx,
       );
     }
-    return { proposed: created.length };
+    return { proposed: created.length, unreadChars: readReport.unreadChars };
   });
 }

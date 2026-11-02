@@ -9,12 +9,12 @@ import { captures } from "./schema";
  * claimed run and an unpark re-queue (or the two topics against each other)
  * cannot both pay for the same work.
  *
- * Longest honest run: transcription (60s) + Jev (30s) + generation fallback
- * (30s) = 120s of provider time, so 5 minutes clears it with margin. A crashed
- * run blocks its redelivery for at most this long. A run that outlives the
- * lease is fenced out, not trusted: its writes match no row and it stops. That
- * bounds duplicate paid calls to the expiry case; it is not exactly-once
- * across expiry.
+ * Longest honest run: transcription (60s) or image OCR (50s timeout) + Jev
+ * (30s) + generation fallback (30s) = ~120-170s of provider time, so 5 minutes
+ * clears it with margin. A crashed run blocks its redelivery for at most this
+ * long. A run that outlives the lease is fenced out, not trusted: its writes
+ * match no row and it stops. That bounds duplicate paid calls to the expiry
+ * case; it is not exactly-once across expiry.
  */
 export const ENRICHMENT_LEASE_MS = 5 * 60_000;
 /** How often a run that found the lease busy looks again: short, so finished work is picked up promptly. */

@@ -133,7 +133,7 @@ suite("convertCaptureToDocument", () => {
     const extraction = await extractDocument(auth, { documentId: documentId! });
     expect(extraction.ok).toBe(true);
 
-    const created = await proposeZettels(auth, {
+    const { proposals: created } = await proposeZettels(auth, {
       documentId: documentId!,
       extractor: {
         name: "test-extractor",

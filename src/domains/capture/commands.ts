@@ -21,6 +21,7 @@ import { db } from "@/lib/db";
 import { inferCaptureMode, contentHash, workingText, type CaptureMode } from "./mode";
 import { findCaptureByUrl } from "./queries";
 import { deleteBlob, ObjectStoreUnconfiguredError, putBlob } from "@/integrations/object-store/object-store";
+import { OCR_IMAGE_MIMES } from "@/integrations/extraction/openrouter-vision";
 import type { FileValidationResult } from "@/lib/file-validation";
 import { sha256Hex } from "@/lib/hash";
 import { blobObjects } from "../audit/schema";
@@ -201,8 +202,10 @@ export async function createCapture(
  * quarantined capture carries rawPayload.quarantined and octet-stream, and
  * nothing downstream may promise its content (no extraction, no search text,
  * no preview) - the capture IS the file, its filename is the only label.
- * Verified files are likewise not extracted here: `text` stays null, so
- * search and semantic surfaces never imply the file's contents are readable.
+ * Verified files are likewise not extracted HERE - `text` starts null either
+ * way. Reading happens after the commit, on the outbox: audio is transcribed
+ * (ASH-298) and an image is read by the ladder's vision rung when the
+ * deployment opted into OCR, so storage never waits on a provider.
  */
 /** The receipt payload for a file capture - one shape so every replay and conflict check hashes the same bytes. */
 export function fileCaptureReceiptRequest(contentHash: string, filename: string) {
@@ -315,11 +318,14 @@ export async function createFileCapture(
             },
             tx,
           );
-          // Audio is promised a transcript (ASH-298): the outbox carries the
-          // wait, and the handler's unconfigured path answers honestly instead
-          // of looping. Non-audio files have no text to classify - the capture
+          // Audio is promised a transcript (ASH-298), an image a reading when
+          // the deployment opts in (OCR_PROVIDER=openrouter): the outbox
+          // carries the wait, and the handler's unconfigured path answers
+          // honestly instead of looping. The gate here is only "could these
+          // bytes ever carry text" - config is resolved at run time, not
+          // upload time. Other files have no text to classify - the capture
           // IS the file - so nothing else enqueues.
-          if (capture.kind === "voice") {
+          if (capture.kind === "voice" || OCR_IMAGE_MIMES.has(mimeType)) {
             await enqueueOutbox(tx, auth, {
               topic: CAPTURE_ENRICHMENT_TOPIC,
               payload: { captureId: capture.id },

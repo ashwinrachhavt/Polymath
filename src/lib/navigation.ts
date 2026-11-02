@@ -5,6 +5,7 @@ import {
   BookOpen,
   Briefcase,
   CalendarDays,
+  GraduationCap,
   Inbox,
   Layers,
   LayoutList,
@@ -91,6 +92,13 @@ export const destinations: Destination[] = [
     label: "Document Vault",
     purpose: "Your uploaded documents, retrievable and connected.",
     icon: BookOpen,
+    group: "polymath",
+  },
+  {
+    href: "/learn",
+    label: "Learn",
+    purpose: "Turn what you saved into what you know.",
+    icon: GraduationCap,
     group: "polymath",
   },
   {
@@ -224,8 +232,9 @@ export function additionalDestinationsIn(group: AppSlug) {
 
 export function destinationForPath(pathname: string): Destination | undefined {
   const canonical = featureRoutes[pathname] ?? pathname;
-  const exact = destinations.find((destination) => destination.href === canonical)
-    ?? featureDestinations.find((destination) => destination.href === pathname);
+  const exact =
+    destinations.find((destination) => destination.href === canonical) ??
+    featureDestinations.find((destination) => destination.href === pathname);
   if (exact) return exact;
   return destinations
     .filter((destination) => canonical.startsWith(`${destination.href}/`))
@@ -237,8 +246,7 @@ export function isBrowserPreviewPath(pathname: string) {
   // rendered from the preview store. Everything under a historic prefix
   // (/command-center, /neuralflow, /polymath), /reviews and /activity read
   // canonical records, so they never carry the preview banner (ASH-165).
-  return pathname.startsWith("/apps/")
-    || pathname === "/settings";
+  return pathname.startsWith("/apps/") || pathname === "/settings";
 }
 
 /**
