@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DocumentCitation } from "@/domains/knowledge/agent-search";
-import { numberedCitations, splitCitations } from "@/domains/knowledge/inline-citations";
+import { citedIndices, numberedCitations, splitCitations } from "@/domains/knowledge/inline-citations";
 import { answerToMarkdown } from "@/domains/knowledge/save-answer";
 
 function citation(documentId: string, start = 0, title = "Doc"): DocumentCitation {
@@ -80,5 +80,25 @@ describe("answerToMarkdown", () => {
 
   it("returns the answer alone when there are no citations", () => {
     expect(answerToMarkdown("  Just this.  ", [])).toBe("Just this.");
+  });
+});
+
+describe("citedIndices", () => {
+  const three = [citation(A, 0), citation(B, 5), citation("33333333-3333-4333-8333-333333333333", 9)];
+
+  it("returns no indices when the answer cites nothing", () => {
+    expect(citedIndices("Nothing in the library mentions that person.", three)).toEqual([]);
+  });
+
+  it("returns the single index a [[2]] marker names, 0-based", () => {
+    expect(citedIndices("The ramp holds [[2]].", three)).toEqual([1]);
+  });
+
+  it("deduplicates a repeated marker", () => {
+    expect(citedIndices("One [[1]] and again [[1]].", three)).toEqual([0]);
+  });
+
+  it("ignores a marker past the end of the array", () => {
+    expect(citedIndices("Beyond the list [[9]].", three)).toEqual([]);
   });
 });

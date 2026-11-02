@@ -17,12 +17,25 @@ import { searchChunks, searchChunksFts, type ChunkHit } from "./search";
  *
  * The workspace comes from the verified session, never from the model's
  * arguments, so a prompt cannot ask for another tenant's text.
+ *
+ * A passage below the relevance floor is not evidence, so it does not leave
+ * the domain: sub-floor hits are dropped, and a search that dropped every hit
+ * reports the reason instead of handing the model a weak list.
  */
 
 export const DOCUMENTS_SEARCH_CAPABILITY = "documents.search";
 export const AGENT_SEARCH_MAX_RESULTS = 10;
 /** A passage is capped so one result cannot flood the model's context. */
 export const AGENT_SEARCH_MAX_TEXT = 1200;
+
+/**
+ * The relevance floor on a hit's fused score, which lives on a (0, 1] scale:
+ * normalized RRF is `(K / legsRun) × Σ_legs 1/(K + rank_leg)`, so rank 0 on
+ * every leg scores 1.0. In hybrid mode 0.5 means both legs agree, or a single
+ * leg ranks the passage first; in text mode (one leg) it drops nothing an @@
+ * match already admitted. A passage below the floor is not evidence.
+ */
+export const AGENT_SEARCH_MIN_SCORE = 0.5;
 
 export type DocumentCitation = {
   documentId: string;
@@ -32,22 +45,42 @@ export type DocumentCitation = {
 };
 
 export type AgentSearchResult =
-  | { ok: true; query: string; results: DocumentCitation[]; mode: "semantic" | "text" | "hybrid" }
+  | {
+      ok: true;
+      query: string;
+      results: DocumentCitation[];
+      mode: "semantic" | "text" | "hybrid";
+      /** Present when hits came back but every one fell below the floor. */
+      reason?: "no_relevant_passages";
+    }
   | { ok: false; error: string };
 
 /** Rank 0 counts as 1/60, rank 1 as 1/61 - the same K the artifact search uses. */
 const RRF_K = 60;
 
 /**
- * Reciprocal rank fusion over the two chunk rankings. A passage both sides
- * found (the usual case for a keyword-exact answer) gets two contributions;
- * a passage only one side found still ranks on its single contribution, so a
+ * A hit with its normalized fused score on a (0, 1] scale — see
+ * `AGENT_SEARCH_MIN_SCORE` for the calibration.
+ */
+export type ScoredHit = ChunkHit & { fusedScore: number };
+
+/**
+ * Reciprocal rank fusion over the two chunk rankings, normalized by how many
+ * legs ran (`legsRun`, default: two only when both brought hits) so the two
+ * modes share one 0–1 scale: a passage both sides found at rank 0 scores 1.0.
+ * A passage only one side found still ranks on its single contribution, so a
  * miss on either leg degrades to the other's ordering, never to zero. Hits
  * carry no calibrated score across legs, which is exactly why rank-only
  * fusion works. First side wins on a shared key, keeping its span and text.
  */
-export function rrfMerge(ftsHits: ChunkHit[], vectorHits: ChunkHit[], limit: number): ChunkHit[] {
-  const rrf = (rank: number) => 1 / (RRF_K + rank);
+export function rrfMerge(
+  ftsHits: ChunkHit[],
+  vectorHits: ChunkHit[],
+  limit: number,
+  input?: { legsRun?: number },
+): ScoredHit[] {
+  const legsRun = input?.legsRun ?? (ftsHits.length && vectorHits.length ? 2 : 1);
+  const rrf = (rank: number) => RRF_K / legsRun / (RRF_K + rank);
   const scores = new Map<string, { hit: ChunkHit; score: number }>();
   const add = (hits: ChunkHit[]) =>
     hits.forEach((hit, i) => {
@@ -72,7 +105,7 @@ export function rrfMerge(ftsHits: ChunkHit[], vectorHits: ChunkHit[], limit: num
     .sort((a, b) => b.score - a.score)
     .filter((s) => (seen.has(s.hit.documentId) ? false : (seen.add(s.hit.documentId), true)))
     .slice(0, limit)
-    .map((s) => s.hit);
+    .map((s) => ({ ...s.hit, fusedScore: s.score }));
 }
 
 export async function searchDocumentsForAgent(
@@ -91,7 +124,7 @@ export async function searchDocumentsForAgent(
       if (!ids) return { ok: false, error: "project not found" };
       documentIds = ids;
     }
-    let hits: ChunkHit[];
+    let hits: ScoredHit[];
     let mode: "semantic" | "text" | "hybrid" = "semantic";
     try {
       // With a provider configured, both rankings run in parallel and fuse.
@@ -102,21 +135,26 @@ export async function searchDocumentsForAgent(
         searchChunks(auth, { query, limit, provider: input.provider, documentIds }),
         searchChunksFts(auth, { query, limit, documentIds }),
       ]);
-      hits = rrfMerge(ftsHits, vectorHits, limit);
+      hits = rrfMerge(ftsHits, vectorHits, limit, { legsRun: 2 });
       mode = "hybrid";
     } catch (cause) {
       if (!(cause instanceof EmbeddingUnconfiguredError)) throw cause;
       // No embedding key is a deployment gap, not a reason to fail closed:
       // answer from Postgres full-text over the same current extractions and
       // label the mode so the model can say how the passage was found.
-      hits = await searchChunksFts(auth, { query, limit, documentIds });
+      hits = rrfMerge(await searchChunksFts(auth, { query, limit, documentIds }), [], limit, { legsRun: 1 });
       mode = "text";
     }
+    // A passage below the floor is not evidence, so it does not leave the
+    // domain. Dropping every hit is still a successful search: the model gets
+    // an empty list plus the reason, never an error.
+    const relevant = hits.filter((h) => h.fusedScore >= AGENT_SEARCH_MIN_SCORE);
     return {
       ok: true,
       query,
       mode,
-      results: hits.map((h) => ({
+      ...(hits.length > 0 && relevant.length === 0 ? { reason: "no_relevant_passages" as const } : {}),
+      results: relevant.map((h) => ({
         documentId: h.documentId,
         title: h.title,
         text: h.text.length > AGENT_SEARCH_MAX_TEXT ? `${h.text.slice(0, AGENT_SEARCH_MAX_TEXT)}…` : h.text,

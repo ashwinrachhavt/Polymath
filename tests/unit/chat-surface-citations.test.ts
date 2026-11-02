@@ -56,6 +56,20 @@ function stateWith(citations: ChatState["citations"]): () => ChatState {
   });
 }
 
+// An answer that exists, so the strip's filter has markers to read.
+function stateWithAnswer(text: string, citations: ChatState["citations"]): () => ChatState {
+  return () => ({
+    blocks: [{ id: "assistant:turn_0:0", kind: "assistant", text, done: true }],
+    tools: [],
+    citations,
+    connection: "streaming",
+    error: null,
+    retryable: true,
+    lastFailedTurn: false,
+    runFailed: false,
+  });
+}
+
 /*
  * Regression: a resumed conversation rendered as empty. The surface streams
  * Eve, which replays only the turn in progress, so history stored in
@@ -114,7 +128,7 @@ const passage = (documentId: string, title: string, start: number) => ({
 
 describe("ChatSurface sources chip", () => {
   it("counts documents, not passages, when one document backs several citations", () => {
-    mockChatState = stateWith([
+    mockChatState = stateWithAnswer("The answer [[1]].", [
       passage("doc-a", "Cardinal handbook", 0),
       passage("doc-a", "Cardinal handbook", 120),
       passage("doc-a", "Cardinal handbook", 340),
@@ -131,7 +145,10 @@ describe("ChatSurface sources chip", () => {
   });
 
   it("lists distinct titles for several documents and keeps every passage when expanded", () => {
-    mockChatState = stateWith([
+    // All three candidates cited (the plan's two-marker example would leave
+    // Spec uncited and filtered), so the per-document counting rule is what
+    // the assertions exercise.
+    mockChatState = stateWithAnswer("Cited [[1]], [[2]], and [[3]].", [
       passage("doc-a", "Handbook", 0),
       passage("doc-a", "Handbook", 120),
       passage("doc-b", "Spec", 0),
@@ -144,5 +161,38 @@ describe("ChatSurface sources chip", () => {
     // The expanded list keeps each passage as its own row.
     expect(html).toContain("Passage text 0");
     expect(html).toContain("Passage text 120");
+  });
+});
+
+describe("ChatSurface sources truthfulness", () => {
+  it("renders no Sources strip when the answer cites nothing", () => {
+    mockChatState = stateWithAnswer("Nothing in the library mentions that person.", [passage("doc-a", "Unrelated article", 0)]);
+    const html = renderToStaticMarkup(createElement(ChatSurface, { runId: "run-1", subject: { type: "project", id: "d1" } }));
+    expect(html).not.toContain("Sources ·");
+    expect(html).not.toContain("Unrelated article");
+  });
+
+  it("renders exactly the passage a [[2]] marker names", () => {
+    mockChatState = stateWithAnswer("The ramp holds [[2]].", [
+      passage("doc-a", "First", 0),
+      passage("doc-b", "Second", 0),
+      passage("doc-c", "Third", 0),
+    ]);
+    const html = renderToStaticMarkup(createElement(ChatSurface, { runId: "run-1", subject: { type: "project", id: "d1" } }));
+    expect(html).toContain("Sources · 1");
+    expect(html).toContain("Second");
+    expect(html).not.toContain("Third");
+  });
+
+  it("renders one source for a duplicated marker", () => {
+    mockChatState = stateWithAnswer("One [[1]] and again [[1]].", [passage("doc-a", "Only", 0)]);
+    const html = renderToStaticMarkup(createElement(ChatSurface, { runId: "run-1", subject: { type: "project", id: "d1" } }));
+    expect(html).toContain("Sources · 1");
+  });
+
+  it("ignores a marker past the end of the candidate list", () => {
+    mockChatState = stateWithAnswer("Beyond the list [[9]].", [passage("doc-a", "Only", 0)]);
+    const html = renderToStaticMarkup(createElement(ChatSurface, { runId: "run-1", subject: { type: "project", id: "d1" } }));
+    expect(html).not.toContain("Sources ·");
   });
 });
