@@ -12,8 +12,7 @@
     "declarativeNetRequest"
   ],
   "host_permissions": [
-    "http://localhost:3000/*",
-    "https://axiom-jade-five.vercel.app/*"
+    "<all_urls>"
   ],
   "action": {
     "default_popup": "popup.html",

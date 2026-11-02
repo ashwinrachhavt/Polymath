@@ -33,7 +33,10 @@
   /** Ids of the dynamic rules this module owns (other rules are left alone). */
   async function ownedRuleIds() {
     var existing = await chrome.declarativeNetRequest.getDynamicRules();
-    return existing.rules
+    // Chrome ≤140 resolves { rules: [...] }; 141+ resolves the bare array.
+    // Accept both so a browser update never flips the blocker off.
+    var list = Array.isArray(existing) ? existing : (existing && existing.rules) || [];
+    return list
       .map(function (rule) {
         return rule.id;
       })
