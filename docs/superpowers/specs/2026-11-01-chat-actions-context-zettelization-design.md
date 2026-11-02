@@ -1,7 +1,7 @@
 # Chat actions, composer context, and engine-grade zettelization
 
 **Date:** 2026-11-01
-**Status:** approved design, not yet implemented
+**Status:** implemented
 **Extends:** `2026-10-30-ideas-surface-design.md` (Ideas surface) and
 `2026-10-29-polymath-zettel-sitting-design.md` (artifact-zettel lineage, acceptance boundary)
 
