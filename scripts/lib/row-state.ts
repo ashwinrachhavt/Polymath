@@ -131,6 +131,27 @@ export const GUARDED_WITHOUT_VERSION: Record<string, TableDeclaration> = {
       },
     ],
   },
+  "superagent.work_outbox_receipts": {
+    guards: [
+      {
+        kind: "app-cas",
+        detail:
+          "send-once comes from the primary key: the only insert is INSERT ... ON CONFLICT (workspace_id, id) DO NOTHING, so a queued id keeps its first message; the only update sets status='dropped' WHERE status='pending', so status never moves backwards and a sender process that already resolved the row wins",
+        evidence: "src/domains/superagent/store/repositories.ts:471-490",
+        columns: ["status"],
+      },
+    ],
+  },
+  "superagent.superagent_policies": {
+    guards: [
+      {
+        kind: "app-cas",
+        detail:
+          "the only write is a single-statement upsert: INSERT ... ON CONFLICT (workspace_id) DO UPDATE SET the full document and rule list replace, so there is no read-modify-write to race and the workspace key makes it idempotent",
+        evidence: "src/domains/superagent/store/policy.ts:62-67",
+      },
+    ],
+  },
   "knowledge.document_enrichment": {
     guards: [
       {
