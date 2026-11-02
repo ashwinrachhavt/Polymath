@@ -8,6 +8,7 @@ import { createTask } from "@/domains/work/commands";
 import { embedArtifact } from "@/domains/knowledge/embedding";
 import { createNoteInTx, syncNoteLinks } from "@/domains/knowledge/notes";
 import { intakeFile } from "@/domains/knowledge/intake";
+import { runExtractionPass } from "@/domains/knowledge/extraction";
 import {
   DRAFT_TEMPLATE_KIND,
   DRAFT_TEMPLATE_LABEL,
@@ -620,6 +621,24 @@ export async function convertCaptureToDocument(
     // the code can sit one level down.
     if (isDuplicateSourceUrl(cause)) throw new ConflictError("That article is already in your library.");
     throw cause;
+  }
+  // The intake enqueued document.extraction_requested, but no server action
+  // drains it: uploads kick their extraction pass post-response
+  // (files/route.ts after()), and without a kick here the mirror and
+  // embedding would wait for the next dispatcher pass. Run the same pass the
+  // consumer runs, best-effort - it dedupes against the pre-written reading
+  // and then mirrors, so the document is searchable the moment the inbox
+  // refreshes. A failure is recorded on the durable extraction row; the
+  // dispatcher stays the retry driver. (A null documentId cannot occur under
+  // this ok verdict, but the intake type is honest about quarantine paths.)
+  if (result.documentId) {
+    try {
+      await runExtractionPass(auth, { documentId: result.documentId });
+    } catch (cause) {
+      console.error(
+        `extraction pass after capture conversion failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+      );
+    }
   }
   return { documentId: result.documentId, fileId: result.fileId };
 }

@@ -31,7 +31,6 @@ vi.mock("@/lib/db-transaction", () => ({
 
 import { convertCaptureToDocument, createCapture, ConflictError, StaleWriteError } from "@/domains/capture/commands";
 import { extractDocument } from "@/domains/knowledge/extraction";
-import { syncDocumentToGraph } from "@/domains/knowledge/document-graph";
 import { searchDocuments } from "@/domains/knowledge/search";
 import { proposeZettels } from "@/domains/knowledge/zettels";
 
@@ -328,9 +327,15 @@ suite("convertCaptureToDocument", () => {
     const hits = await searchDocuments(auth, { query: "compound" });
     expect(hits.map((hit) => hit.id)).toContain(documentId);
 
-    // And the artifact-graph mirror picks the text up with no new plumbing.
-    const mirror = await syncDocumentToGraph(auth, documentId!);
-    expect(mirror.created).toBe(true);
+    // And the conversion's own extraction pass mirrored the reading into the
+    // search graph: the artifact appears with the document, no dispatcher
+    // drain needed. The outbox event the intake also enqueued stays pending
+    // for the consumer, whose pass dedupes against the same row.
+    const [document] = await holder
+      .db!.select({ artifactId: documents.artifactId })
+      .from(documents)
+      .where(eq(documents.id, documentId!));
+    expect(document.artifactId).toBeTruthy();
   });
 
   it("refuses a textless blob: the capture is the file, and nothing invents words", async () => {
@@ -373,22 +378,23 @@ suite("convertCaptureToDocument", () => {
     });
     expect(documentId).toBeTruthy();
 
-    // No pre-written extraction: the plain-text reader genuinely reads the
-    // markdown bytes the conversion filed, so the extractor is its name.
+    // The conversion kicks the extraction pass itself (the upload surface's
+    // post-commit behavior): the plain-text reader genuinely reads the
+    // markdown bytes the conversion filed, so the extractor is its name - no
+    // borrowed credit from the capture's reading.
     const [extraction] = await holder
       .db!.select()
       .from(documentExtractions)
       .where(eq(documentExtractions.documentId, documentId!));
-    expect(extraction).toBeUndefined();
+    expect(extraction?.extractor).toBe("plain-text@local");
+    expect(extraction?.text).toBe(BODY);
+
+    // A second pass - the dispatcher draining the intake's event - dedupes
+    // against that row instead of reading the bytes again.
     const dedup = await extractDocument(auth, { documentId: documentId! });
     expect(dedup.ok).toBe(true);
     if (!dedup.ok) return;
-    expect(dedup.deduplicated).toBe(false);
+    expect(dedup.deduplicated).toBe(true);
     expect(dedup.text).toBe(BODY);
-    const [after] = await holder
-      .db!.select()
-      .from(documentExtractions)
-      .where(eq(documentExtractions.documentId, documentId!));
-    expect(after.extractor).toBe("plain-text@local");
   });
 });
