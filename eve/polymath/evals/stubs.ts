@@ -212,6 +212,9 @@ export const STUBBED_TOOLS = {
   wiki_ingest: { response: { ok: true } },
   wiki_lint: { response: { ok: true, findings: [] } },
   wiki_read: { response: { ok: true, articles: [] } },
+  zettels_propose: {
+    response: { ok: true, proposals: [{ id: "00000000-0000-0000-0000-000000000000", duplicateOf: null }] },
+  },
 } satisfies Readonly<Record<string, ToolStubOutcome>>;
 
 /*
