@@ -10,6 +10,7 @@
 import { and, asc, eq } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import type { AcceptMode } from "../core/model";
+import { defaultPolicyConfig, type PolicyConfig, type SourcePolicy } from "../core/policy/gate";
 import { superagentPolicies, superagentPolicyRules } from "./schema";
 import type { PolicyRuleRow, PolicySourcePart, SuperagentPolicyRow } from "./schema";
 
@@ -89,4 +90,56 @@ export async function getPolicy(db: PostgresJsDatabase, workspaceId: string): Pr
     .where(eq(superagentPolicyRules.workspaceId, workspaceId))
     .orderBy(asc(superagentPolicyRules.position));
   return { policy: policyRowToDocument(row), rules };
+}
+
+/** The stored policy document's source parts, converted to the core
+ * `SourcePolicy` the gate reads. The stored document encodes each admission
+ * cell as an accept mode; the gate's vocabulary is what a message *is*
+ * ("explicit" | "inferred" | "ignore"), and the accept mode decides
+ * acceptance later, so "observe" and "auto" both admit an inferred
+ * candidate and "off" ignores. The loss is deliberate: no settings surface
+ * edits admission cells yet, and a wave-two editor should use the gate's
+ * own vocabulary.
+ */
+export function storedSourcePolicy(
+  parts: Record<
+    string,
+    { allowed?: { id: string }[]; bots?: string[]; admission?: Record<string, Record<string, string>> }
+  >,
+): Record<string, SourcePolicy> {
+  return Object.fromEntries(
+    Object.entries(parts).map(([source, part]) => [
+      source,
+      {
+        allowed: part.allowed ?? [],
+        bots: (part.bots ?? []).map((id) => ({ id })),
+        admission: Object.fromEntries(
+          Object.entries(part.admission ?? {}).map(([row, cells]) => [
+            row,
+            Object.fromEntries(
+              Object.entries(cells).map(([cell, mode]) => [cell, mode === "off" ? "ignore" : "inferred"]),
+            ),
+          ]),
+        ),
+      },
+    ]),
+  );
+}
+
+/** The stored policy document as the core's `PolicyConfig`; defaults fill an absent document. */
+export function storedPolicyConfig(stored: StoredPolicy | undefined): PolicyConfig {
+  if (!stored) return defaultPolicyConfig();
+  return {
+    paused: stored.policy.paused,
+    mode: stored.policy.acceptMode,
+    rules: stored.rules.map((row) => ({
+      id: row.id,
+      name: row.name,
+      instruction: row.instruction,
+      enabled: row.enabled,
+      position: row.position,
+    })),
+    sources: storedSourcePolicy(stored.policy.sources),
+    evalTimeoutMs: stored.policy.evalTimeoutMs,
+  } satisfies PolicyConfig;
 }

@@ -1,6 +1,13 @@
 export { StoreFlushError, createSuperagentStore } from "./repositories";
 export type { SuperagentStore } from "./repositories";
-export { getPolicy, policyRowToDocument, rulesToRows, savePolicy } from "./policy";
+export {
+  getPolicy,
+  policyRowToDocument,
+  rulesToRows,
+  savePolicy,
+  storedPolicyConfig,
+  storedSourcePolicy,
+} from "./policy";
 export type { PolicyDocument, StoredPolicy } from "./policy";
 export {
   activeThreads,
@@ -11,6 +18,7 @@ export {
   pendingReceipts,
   runsForTicket,
   ticketsForThread,
+  unavailableDecisions,
 } from "./queries";
 export {
   ticketRuns,
