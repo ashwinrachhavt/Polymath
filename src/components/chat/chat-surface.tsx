@@ -3,14 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowUp, BookOpen, ChevronDown, Copy, Check, Square } from "lucide-react";
+import { ArrowUp, BookOpen, ChevronDown, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import type { DocumentCitation } from "@/domains/knowledge/agent-search";
 import type { ChatBlock } from "@/domains/agents/stream-contract";
 import { useChatStream } from "./use-chat-stream";
 import { makePending, stillPending, type PendingMessage } from "./pending-messages";
-import { MessageFeedback } from "./message-feedback";
+import { MessageActions } from "./message-actions";
 import { ComposerPlus, mentionAt, replaceMention, type RecordReference } from "./composer-plus";
 import { ChainOfThought, type ThoughtStep } from "./chain-of-thought";
 import { AgentPanel, type AgentPanelData } from "./agent-panel";
@@ -199,16 +199,18 @@ export function ChatSurface({
   // model reads is appended after the typed words, and never belongs on screen.
   const transcript = chat.blocks
     .filter((block) => block.kind === "user" || block.kind === "assistant")
-    .map((block) => (block.kind === "user" && hasMentionContext(block.text) ? { ...block, text: stripMentionContext(block.text) } : block));
+    .map((block) =>
+      block.kind === "user" && hasMentionContext(block.text)
+        ? { ...block, text: stripMentionContext(block.text) }
+        : block,
+    );
   /*
    * The message the owner just sent but the stream has not echoed. Shown until
    * the server's own copy arrives, matched on text so the two never both render:
    * a duplicate question reads as a double send.
    */
   const optimistic =
-    carried && !transcript.some((block) => block.kind === "user" && block.text === carried)
-      ? carried
-      : null;
+    carried && !transcript.some((block) => block.kind === "user" && block.text === carried) ? carried : null;
   const userTexts = transcript.filter((block) => block.kind === "user").map((block) => block.text);
   const waiting = stillPending(pending, userTexts);
   const lastAssistantIndex = transcript.map((b) => b.kind).lastIndexOf("assistant");
@@ -232,26 +234,22 @@ export function ChatSurface({
   const steps: ThoughtStep[] = [
     ...chat.blocks
       .filter((block) => block.kind === "reasoning" && block.text.trim() !== "")
-      .map(
-        (block): ThoughtStep => ({
-          id: block.id,
-          kind: "reasoning",
-          label: block.done ? "Reasoned through the question" : "Reasoning",
-          text: block.text,
-          status: block.done ? "complete" : "running",
-        }),
-      ),
-    ...chat.tools.map(
-      (tool): ThoughtStep => ({
-        id: `tool:${tool.callId}`,
-        kind: "tool",
-        label: toolLabel(tool.label),
-        ...(tool.detail ? { detail: tool.detail } : {}),
-        status: tool.status === "running" ? "running" : tool.status === "ok" ? "complete" : "error",
-        tool: tool.label,
-        ...(tool.status !== "running" ? { records: collectRecords(tool.output) } : {}),
-      }),
-    ),
+      .map((block): ThoughtStep => ({
+        id: block.id,
+        kind: "reasoning",
+        label: block.done ? "Reasoned through the question" : "Reasoning",
+        text: block.text,
+        status: block.done ? "complete" : "running",
+      })),
+    ...chat.tools.map((tool): ThoughtStep => ({
+      id: `tool:${tool.callId}`,
+      kind: "tool",
+      label: toolLabel(tool.label),
+      ...(tool.detail ? { detail: tool.detail } : {}),
+      status: tool.status === "running" ? "running" : tool.status === "ok" ? "complete" : "error",
+      tool: tool.label,
+      ...(tool.status !== "running" ? { records: collectRecords(tool.output) } : {}),
+    })),
   ];
 
   // Keep the newest text in view as it streams, without fighting a reader who
@@ -335,10 +333,17 @@ export function ChatSurface({
     setAttachNote(`Capturing ${file.name}…`);
     const form = new FormData();
     form.set("file", file);
-    void fetch("/api/v1/captures/file", { method: "POST", headers: { "idempotency-key": crypto.randomUUID() }, body: form })
+    void fetch("/api/v1/captures/file", {
+      method: "POST",
+      headers: { "idempotency-key": crypto.randomUUID() },
+      body: form,
+    })
       .then(async (res) => {
         if (!res.ok) {
-          if (res.status === 413) { setAttachNote("That file is over the 4 MB limit."); return; }
+          if (res.status === 413) {
+            setAttachNote("That file is over the 4 MB limit.");
+            return;
+          }
           const problem = (await res.json().catch(() => null)) as { title?: string } | null;
           setAttachNote(problem?.title ?? "Could not capture the file. Try again.");
           return;
@@ -349,7 +354,10 @@ export function ChatSurface({
   }
 
   return (
-    <section className={`flex min-h-0 flex-1 flex-col overflow-hidden ${className ?? ""}`} aria-label={title ?? `Chat about this ${subject.type}`}>
+    <section
+      className={`flex min-h-0 flex-1 flex-col overflow-hidden ${className ?? ""}`}
+      aria-label={title ?? `Chat about this ${subject.type}`}
+    >
       {showHeader ? (
         <header className="flex items-center justify-between gap-3 border-b border-border pb-3">
           <div className="flex min-w-0 items-center gap-2">
@@ -377,105 +385,118 @@ export function ChatSurface({
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto py-4">
         <div className="mt-auto flex min-h-full flex-col justify-end gap-4">
-        {agent ? <AgentPanel agent={agent} /> : null}
-        {transcript.length === 0 && !optimistic && waiting.length === 0 && (!busy || emptyText) ? (
-          <p className="text-muted-foreground max-w-xl text-[13px] leading-relaxed">
-            {emptyText ??
-              `Ask a question. Answers cite the ${subject.type === "project" ? "pinned sources" : "sources"} they use.`}
-          </p>
-        ) : (
-          <div className="w-full space-y-4">
-            {chat.blocks.map((block) =>
-              block.kind === "user" ? (
-                <div key={block.id} className="bg-muted/60 ml-auto w-fit max-w-[75%] rounded-md px-2.5 py-1 text-[14px] leading-6">
-                  {inline(stripMentionContext(block.text))}
-                </div>
-              ) : block.kind === "reasoning" ? null : (
-                <div key={block.id} className="group/message prose-reading w-full font-[family-name:var(--font-reading)]">
-                  {/* A run's citations apply to its answer, so the markers in
+          {agent ? <AgentPanel agent={agent} /> : null}
+          {transcript.length === 0 && !optimistic && waiting.length === 0 && (!busy || emptyText) ? (
+            <p className="text-muted-foreground max-w-xl text-[13px] leading-relaxed">
+              {emptyText ??
+                `Ask a question. Answers cite the ${subject.type === "project" ? "pinned sources" : "sources"} they use.`}
+            </p>
+          ) : (
+            <div className="w-full space-y-4">
+              {chat.blocks.map((block) =>
+                block.kind === "user" ? (
+                  <div
+                    key={block.id}
+                    className="bg-muted/60 ml-auto w-fit max-w-[75%] rounded-md px-2.5 py-1 text-[14px] leading-6"
+                  >
+                    {inline(stripMentionContext(block.text))}
+                  </div>
+                ) : block.kind === "reasoning" ? null : (
+                  <div
+                    key={block.id}
+                    className="group/message prose-reading w-full font-[family-name:var(--font-reading)]"
+                  >
+                    {/* A run's citations apply to its answer, so the markers in
                       the prose and the list below resolve in one numbering. */}
-                  <CitedText text={block.text} citations={chat.citations} />
-                  {block.kind === "assistant" && block.done ? (
-                    <MessageToolbar runId={runId} turnId={turnIdOf(block.id)} text={block.text} />
-                  ) : null}
+                    <CitedText text={block.text} citations={chat.citations} />
+                    {block.kind === "assistant" && block.done ? (
+                      <MessageActions runId={runId} turnId={turnIdOf(block.id)} text={block.text} />
+                    ) : null}
+                  </div>
+                ),
+              )}
+              {optimistic ? (
+                <div className="bg-muted/60 ml-auto w-fit max-w-[75%] rounded-md px-2.5 py-1 text-[14px] leading-6">
+                  {optimistic}
                 </div>
-              ),
-            )}
-            {optimistic ? (
-              <div className="bg-muted/60 ml-auto w-fit max-w-[75%] rounded-md px-2.5 py-1 text-[14px] leading-6">
-                {optimistic}
-              </div>
-            ) : null}
-            {waiting.map((entry) => (
-              <div key={entry.id} className="bg-muted/60 ml-auto w-fit max-w-[75%] rounded-md px-2.5 py-1 text-[14px] leading-6 opacity-70">
-                {inline(entry.text)}
-              </div>
-            ))}
-            {/* The working, after the turn's answer: reasoning and tool calls
+              ) : null}
+              {waiting.map((entry) => (
+                <div
+                  key={entry.id}
+                  className="bg-muted/60 ml-auto w-fit max-w-[75%] rounded-md px-2.5 py-1 text-[14px] leading-6 opacity-70"
+                >
+                  {inline(entry.text)}
+                </div>
+              ))}
+              {/* The working, after the turn's answer: reasoning and tool calls
                 as one block rather than a pill per step. */}
-            <ChainOfThought steps={steps} streaming={busy} />
-          </div>
-        )}
+              <ChainOfThought steps={steps} streaming={busy} />
+            </div>
+          )}
 
-        {shownCitations.length > 0 && (
-          <details className="group mt-3 rounded-xl border border-border text-[12px]">
-            <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
-              <BookOpen aria-hidden className="size-3.5 shrink-0" />
-              {/* Citations are passages, so one document can back several. The
+          {shownCitations.length > 0 && (
+            <details className="group mt-3 rounded-xl border border-border text-[12px]">
+              <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
+                <BookOpen aria-hidden className="size-3.5 shrink-0" />
+                {/* Citations are passages, so one document can back several. The
                   chip names the documents; the count would read as "5 sources"
                   for one document. */}
-              <span className="shrink-0 font-medium text-foreground/80">
-                Sources · {new Set(shownCitations.map((citation) => citation.documentId)).size}
-              </span>
-              <span className="min-w-0 flex-1 truncate group-open:hidden">
-                {[...new Set(shownCitations.map((citation) => citation.title))].join(", ")}
-              </span>
-              <ChevronDown aria-hidden className="size-3.5 shrink-0 transition-transform group-open:rotate-180" />
-            </summary>
-            <ul className="space-y-2 border-t border-border px-3 py-2" aria-label="Citations">
-              {shownCitations.map((citation, index) => (
-                <li key={`${citation.documentId}:${citation.span.start}`} id={`citation-${index}`} className="scroll-mt-4">
-                  {/* The title opens the document at its library route, so a
-                      citation is a way into the source rather than a label. */}
-                  <Link
-                    href={`/polymath/library/${citation.documentId}`}
-                    className="font-medium underline decoration-transparent underline-offset-2 transition-colors hover:decoration-current"
+                <span className="shrink-0 font-medium text-foreground/80">
+                  Sources · {new Set(shownCitations.map((citation) => citation.documentId)).size}
+                </span>
+                <span className="min-w-0 flex-1 truncate group-open:hidden">
+                  {[...new Set(shownCitations.map((citation) => citation.title))].join(", ")}
+                </span>
+                <ChevronDown aria-hidden className="size-3.5 shrink-0 transition-transform group-open:rotate-180" />
+              </summary>
+              <ul className="space-y-2 border-t border-border px-3 py-2" aria-label="Citations">
+                {shownCitations.map((citation, index) => (
+                  <li
+                    key={`${citation.documentId}:${citation.span.start}`}
+                    id={`citation-${index}`}
+                    className="scroll-mt-4"
                   >
-                    {citation.title}
-                  </Link>
-                  {/* The passage is evidence for the answer. Chunks arrive
+                    {/* The title opens the document at its library route, so a
+                      citation is a way into the source rather than a label. */}
+                    <Link
+                      href={`/polymath/library/${citation.documentId}`}
+                      className="font-medium underline decoration-transparent underline-offset-2 transition-colors hover:decoration-current"
+                    >
+                      {citation.title}
+                    </Link>
+                    {/* The passage is evidence for the answer. Chunks arrive
                       mid-sentence, so the line is trimmed to a readable start
                       before clamping. */}
-                  <p className="line-clamp-2 text-muted-foreground">{trimPassage(citation.text)}</p>
-                </li>
-              ))}
-            </ul>
-          </details>
-        )}
+                    <p className="line-clamp-2 text-muted-foreground">{trimPassage(citation.text)}</p>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
 
-        {chat.error && (
-          <div role="status" className="mt-3 flex items-center gap-3 text-[12px] text-destructive">
-            {/* Retry guidance lives with the button that delivers it — only a
+          {chat.error && (
+            <div role="status" className="mt-3 flex items-center gap-3 text-[12px] text-destructive">
+              {/* Retry guidance lives with the button that delivers it — only a
                 surface wired for a fresh-start retry promises one. */}
-            <p>
-              {chat.error}
-              {chat.runFailed && onRunFailedRetry ? " Retry it to start a new run." : ""}
-            </p>
-            {chat.connection === "error" && chat.retryable ? (
-              <Button type="button" size="sm" variant="outline" onClick={chat.retry}>
-                Retry
-              </Button>
-            ) : null}
-            {chat.runFailed && onRunFailedRetry ? (
-              // The run is terminal — the stream-side retry (chat.retry) would
-              // only replay a closed session, so this Retry is the caller's
-              // fresh-start action instead.
-              <Button type="button" size="sm" variant="outline" onClick={onRunFailedRetry}>
-                Retry
-              </Button>
-            ) : null}
-          </div>
-        )}
+              <p>
+                {chat.error}
+                {chat.runFailed && onRunFailedRetry ? " Retry it to start a new run." : ""}
+              </p>
+              {chat.connection === "error" && chat.retryable ? (
+                <Button type="button" size="sm" variant="outline" onClick={chat.retry}>
+                  Retry
+                </Button>
+              ) : null}
+              {chat.runFailed && onRunFailedRetry ? (
+                // The run is terminal — the stream-side retry (chat.retry) would
+                // only replay a closed session, so this Retry is the caller's
+                // fresh-start action instead.
+                <Button type="button" size="sm" variant="outline" onClick={onRunFailedRetry}>
+                  Retry
+                </Button>
+              ) : null}
+            </div>
+          )}
         </div>
       </div>
 
@@ -504,90 +525,95 @@ export function ChatSurface({
           This conversation has ended.
         </p>
       ) : (
-      <form
-        className="relative rounded-xl border border-border bg-card shadow-sm transition-shadow focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/40"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void send();
-        }}
-      >
-        {/*
-         * The failure sits above the field, not on it. Absolutely positioned
-         * inside the composer it landed on the first line of what the person
-         * had just typed, which is the one line they need to reread after a
-         * send fails.
-         */}
-        {sendError && (
-          <p role="alert" className="border-b border-border px-3.5 pt-2.5 pb-2 text-[12px] text-destructive">
-            {sendError}
-          </p>
-        )}
-        <Textarea
-          aria-label={composerLabel}
-          className="composer-input max-h-48 min-h-[76px] resize-none rounded-none border-0 bg-transparent px-3.5 pt-3 pb-11 text-[15px] leading-6 shadow-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent"
-          placeholder={placeholder}
-          value={draft}
-          onChange={(event) => {
-            setDraft(event.target.value);
-            setCaret(event.target.selectionStart ?? event.target.value.length);
+        <form
+          className="relative rounded-xl border border-border bg-card shadow-sm transition-shadow focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/40"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void send();
           }}
-          onSelect={(event) => {
-            const target = event.currentTarget;
-            setCaret(target.selectionStart ?? target.value.length);
-          }}
-          onKeyDown={(event) => {
-            // Enter that confirms an IME candidate (Japanese, Chinese, Korean) is
-            // not a send.
-            if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
-              event.preventDefault();
-              void send();
-            }
-          }}
-        />
-        {/*
-         * The plus sits inside the input's frame, bottom-left, like the send
-         * button sits inside it bottom-right: the composer is one surface,
-         * not a toolbar under a box.
-         */}
-        <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-2 px-2 pb-2">
-          <div className="flex min-w-0 items-center gap-1">
-            <ComposerPlus
-              label="Add to message"
-              records={records}
-              onReference={insertReference}
-              onQueryChange={setPlusQuery}
-              onOpenChange={(open) => {
-                setPlusOpen(open);
-                if (!open) setPlusQuery("");
-              }}
-              onFile={attachFile}
-              mention={mention}
-              onMentionPick={(record) => {
-                if (!mention) return;
-                if (record.kind === "person" || record.kind === "company") {
-                  const entity: MentionEntity = { id: record.id, kind: record.kind, title: record.title, href: record.href };
-                  setMentions((current) => {
-                    if (current.some((picked) => picked.id === entity.id)) return current;
-                    return [...current, entity];
-                  });
-                }
-                setDraft((current) => replaceMention(current, mention, `@${record.title}`));
-              }}
-            />
-            <span className="px-1 truncate text-[11px] text-muted-foreground">{attachNote}</span>
+        >
+          {/*
+           * The failure sits above the field, not on it. Absolutely positioned
+           * inside the composer it landed on the first line of what the person
+           * had just typed, which is the one line they need to reread after a
+           * send fails.
+           */}
+          {sendError && (
+            <p role="alert" className="border-b border-border px-3.5 pt-2.5 pb-2 text-[12px] text-destructive">
+              {sendError}
+            </p>
+          )}
+          <Textarea
+            aria-label={composerLabel}
+            className="composer-input max-h-48 min-h-[76px] resize-none rounded-none border-0 bg-transparent px-3.5 pt-3 pb-11 text-[15px] leading-6 shadow-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent"
+            placeholder={placeholder}
+            value={draft}
+            onChange={(event) => {
+              setDraft(event.target.value);
+              setCaret(event.target.selectionStart ?? event.target.value.length);
+            }}
+            onSelect={(event) => {
+              const target = event.currentTarget;
+              setCaret(target.selectionStart ?? target.value.length);
+            }}
+            onKeyDown={(event) => {
+              // Enter that confirms an IME candidate (Japanese, Chinese, Korean) is
+              // not a send.
+              if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                event.preventDefault();
+                void send();
+              }
+            }}
+          />
+          {/*
+           * The plus sits inside the input's frame, bottom-left, like the send
+           * button sits inside it bottom-right: the composer is one surface,
+           * not a toolbar under a box.
+           */}
+          <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-2 px-2 pb-2">
+            <div className="flex min-w-0 items-center gap-1">
+              <ComposerPlus
+                label="Add to message"
+                records={records}
+                onReference={insertReference}
+                onQueryChange={setPlusQuery}
+                onOpenChange={(open) => {
+                  setPlusOpen(open);
+                  if (!open) setPlusQuery("");
+                }}
+                onFile={attachFile}
+                mention={mention}
+                onMentionPick={(record) => {
+                  if (!mention) return;
+                  if (record.kind === "person" || record.kind === "company") {
+                    const entity: MentionEntity = {
+                      id: record.id,
+                      kind: record.kind,
+                      title: record.title,
+                      href: record.href,
+                    };
+                    setMentions((current) => {
+                      if (current.some((picked) => picked.id === entity.id)) return current;
+                      return [...current, entity];
+                    });
+                  }
+                  setDraft((current) => replaceMention(current, mention, `@${record.title}`));
+                }}
+              />
+              <span className="px-1 truncate text-[11px] text-muted-foreground">{attachNote}</span>
+            </div>
+            <Button
+              type="submit"
+              size="icon"
+              aria-label={sending ? "Sending" : "Send"}
+              title={sending ? "Sending" : "Send"}
+              className="size-8 shrink-0 rounded-full"
+              disabled={!draft.trim() || sending}
+            >
+              <ArrowUp aria-hidden className="size-4" />
+            </Button>
           </div>
-          <Button
-            type="submit"
-            size="icon"
-            aria-label={sending ? "Sending" : "Send"}
-            title={sending ? "Sending" : "Send"}
-            className="size-8 shrink-0 rounded-full"
-            disabled={!draft.trim() || sending}
-          >
-            <ArrowUp aria-hidden className="size-4" />
-          </Button>
-        </div>
-      </form>
+        </form>
       )}
     </section>
   );
@@ -610,38 +636,10 @@ export function ChatCancel({ runId }: { runId: string }) {
 }
 
 /*
- * The action toolbar under a finished assistant message: copy, then like and
- * dislike. Icons rest at a quiet muted tone and come forward on hover, so the
- * actions stay discoverable and keyboard-visible (a hover-only reveal would
- * hide them from axe and from keyboard users) without shouting in the
- * transcript.
+ * The action toolbar under a finished assistant message lives in
+ * message-actions.tsx: it grows in the message-actions work, and this file
+ * must not.
  */
-function MessageToolbar({ runId, turnId, text }: { runId: string; turnId: string; text: string }) {
-  const [copied, setCopied] = useState(false);
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // A blocked clipboard is not an error the transcript should carry.
-    }
-  }
-  return (
-    <div className="mt-1 flex items-center gap-0.5">
-      <button
-        type="button"
-        aria-label={copied ? "Copied" : "Copy"}
-        title={copied ? "Copied" : "Copy"}
-        onClick={() => void copy()}
-        className="text-muted-foreground/70 hover:bg-muted hover:text-foreground flex size-7 items-center justify-center rounded-md outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        {copied ? <Check aria-hidden className="size-3.5" /> : <Copy aria-hidden className="size-3.5" />}
-      </button>
-      <MessageFeedback runId={runId} turnId={turnId} initial={null} />
-    </div>
-  );
-}
 
 /**
  * The model's visible rationale, collapsed the same way tool activity is: a
@@ -654,7 +652,9 @@ export function ThinkingPill({ text, done }: { text: string; done: boolean }) {
         <ChevronDown aria-hidden className="size-3 shrink-0 -rotate-90 transition-transform group-open:rotate-0" />
         {done ? "Thought process" : "Thinking\u2026"}
       </summary>
-      <p className="text-muted-foreground mt-1 whitespace-pre-wrap border-l border-border pl-3 text-[13px] leading-6">{text}</p>
+      <p className="text-muted-foreground mt-1 whitespace-pre-wrap border-l border-border pl-3 text-[13px] leading-6">
+        {text}
+      </p>
     </details>
   );
 }
