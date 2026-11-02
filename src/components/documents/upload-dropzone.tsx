@@ -54,8 +54,7 @@ export const TRANSIENT_FAILURE_CEILING = 20;
 const TRANSIENT_FAILURE_KINDS = new Set<RequestFailure["kind"]>(["server", "network", "timeout"]);
 
 export type PollDecision =
-  | { action: "stop"; message: string }
-  | { action: "continue"; countsToward: "rate_limit" | "transient" | null };
+  { action: "stop"; message: string } | { action: "continue"; countsToward: "rate_limit" | "transient" | null };
 
 /** Classify a failed poll: stop with the cause, retry, or retry and count it. */
 export function shouldStopPolling(failure: RequestFailure): PollDecision {
@@ -72,8 +71,7 @@ export function shouldStopPolling(failure: RequestFailure): PollDecision {
 }
 
 export type PollStep =
-  | { action: "stop"; message: string }
-  | { action: "continue"; rateLimitStreak: number; transientStreak: number };
+  { action: "stop"; message: string } | { action: "continue"; rateLimitStreak: number; transientStreak: number };
 
 /**
  * One poll's effect on the loop. A terminal cause stops. A success clears both
@@ -180,93 +178,105 @@ export function UploadDropzone({ libraryHref = "/polymath/library" }: { libraryH
 
   // The reading ring is honest only if it ends: poll the document until a
   // terminal status, then stop. A long silence is reported, not spun forever.
-  const poll = useCallback(async (id: string, documentId: string) => {
-    let throttleStreak = 0;
-    let transientStreak = 0;
-    for (let attempt = 0; attempt < 120; attempt += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      const result = await requestJson<{ extractionStatus?: string | null; extractionError?: string | null }>(
-        `/api/v1/files?documentId=${encodeURIComponent(documentId)}`,
-      );
-      // A network blip is not a verdict; a 401/403/404 is, and the person
-      // needs the cause now rather than a queue-worker guess in three minutes.
-      // A sustained run of 5xx/network/timeout stops the same way and shows
-      // that cause instead of the worker guess.
-      const step = advancePoll(result, throttleStreak, transientStreak);
-      if (step.action === "stop") {
-        patch(id, { kind: "error", message: step.message });
-        return;
-      }
-      throttleStreak = step.rateLimitStreak;
-      transientStreak = step.transientStreak;
-      if (!result.ok) continue;
-      const body = result.data;
-      if (body.extractionStatus === "succeeded") {
-        patch(id, { kind: "done", documentId });
-        router.refresh();
-        return;
-      }
-      if (body.extractionStatus === "failed") {
-        patch(id, { kind: "error", message: body.extractionError ?? "The document could not be read." });
-        return;
-      }
-    }
-    patch(id, {
-      kind: "error",
-      message: "Stored, but reading has not started. Is the queue worker running? (make queue-up)",
-    });
-  }, [patch, router]);
-
-  const upload = useCallback((entry: Entry) => {
-    const body = new FormData();
-    body.append("file", entry.file);
-    body.append("title", entry.file.name.replace(/\.[^.]+$/, "") || entry.file.name);
-
-    const xhr = new XMLHttpRequest();
-    xhrs.current.set(entry.id, xhr);
-    xhr.upload.onprogress = (event) => {
-      if (!event.lengthComputable) return;
-      patch(entry.id, { kind: "uploading", percent: Math.round((event.loaded / event.total) * 100) });
-    };
-    xhr.onload = () => {
-      xhrs.current.delete(entry.id);
-      type UploadResponse = { documentId?: string; fileStatus?: string; title?: string };
-      let payload: UploadResponse | null = null;
-      try {
-        payload = JSON.parse(xhr.responseText) as UploadResponse;
-      } catch {
-        payload = null;
-      }
-      if (xhr.status >= 200 && xhr.status < 300) {
-        if (payload?.fileStatus === "quarantined") {
-          patch(entry.id, { kind: "error", message: "Kept, but its type could not be identified, so no document was created." });
+  const poll = useCallback(
+    async (id: string, documentId: string) => {
+      let throttleStreak = 0;
+      let transientStreak = 0;
+      for (let attempt = 0; attempt < 120; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        const result = await requestJson<{ extractionStatus?: string | null; extractionError?: string | null }>(
+          `/api/v1/files?documentId=${encodeURIComponent(documentId)}`,
+        );
+        // A network blip is not a verdict; a 401/403/404 is, and the person
+        // needs the cause now rather than a queue-worker guess in three minutes.
+        // A sustained run of 5xx/network/timeout stops the same way and shows
+        // that cause instead of the worker guess.
+        const step = advancePoll(result, throttleStreak, transientStreak);
+        if (step.action === "stop") {
+          patch(id, { kind: "error", message: step.message });
           return;
         }
-        if (payload?.documentId) {
-          patch(entry.id, { kind: "reading" });
-          void poll(entry.id, payload.documentId);
+        throttleStreak = step.rateLimitStreak;
+        transientStreak = step.transientStreak;
+        if (!result.ok) continue;
+        const body = result.data;
+        if (body.extractionStatus === "succeeded") {
+          patch(id, { kind: "done", documentId });
+          router.refresh();
+          return;
+        }
+        if (body.extractionStatus === "failed") {
+          patch(id, { kind: "error", message: body.extractionError ?? "The document could not be read." });
           return;
         }
       }
-      patch(entry.id, { kind: "error", message: payload?.title ?? `Upload failed (${xhr.status}).` });
-    };
-    xhr.onerror = () => {
-      xhrs.current.delete(entry.id);
-      patch(entry.id, { kind: "error", message: "Network error." });
-    };
-    xhr.open("POST", "/api/v1/files");
-    xhr.setRequestHeader("Idempotency-Key", crypto.randomUUID());
-    xhr.send(body);
-  }, [patch, poll]);
+      patch(id, {
+        kind: "error",
+        message: "Stored, but reading has not started. Is the queue worker running? (make queue-up)",
+      });
+    },
+    [patch, router],
+  );
 
-  const addFiles = useCallback((files: FileList | File[]) => {
-    const next = Array.from(files)
-      .filter((file) => file.size > 0)
-      .map((file) => ({ id: crypto.randomUUID(), file, phase: { kind: "uploading", percent: 0 } as FilePhase }));
-    if (!next.length) return;
-    setEntries((current) => [...current, ...next]);
-    for (const entry of next) upload(entry);
-  }, [upload]);
+  const upload = useCallback(
+    (entry: Entry) => {
+      const body = new FormData();
+      body.append("file", entry.file);
+      body.append("title", entry.file.name.replace(/\.[^.]+$/, "") || entry.file.name);
+
+      const xhr = new XMLHttpRequest();
+      xhrs.current.set(entry.id, xhr);
+      xhr.upload.onprogress = (event) => {
+        if (!event.lengthComputable) return;
+        patch(entry.id, { kind: "uploading", percent: Math.round((event.loaded / event.total) * 100) });
+      };
+      xhr.onload = () => {
+        xhrs.current.delete(entry.id);
+        type UploadResponse = { documentId?: string; fileStatus?: string; title?: string };
+        let payload: UploadResponse | null = null;
+        try {
+          payload = JSON.parse(xhr.responseText) as UploadResponse;
+        } catch {
+          payload = null;
+        }
+        if (xhr.status >= 200 && xhr.status < 300) {
+          if (payload?.fileStatus === "quarantined") {
+            patch(entry.id, {
+              kind: "error",
+              message: "Kept, but its type could not be identified, so no document was created.",
+            });
+            return;
+          }
+          if (payload?.documentId) {
+            patch(entry.id, { kind: "reading" });
+            void poll(entry.id, payload.documentId);
+            return;
+          }
+        }
+        patch(entry.id, { kind: "error", message: payload?.title ?? `Upload failed (${xhr.status}).` });
+      };
+      xhr.onerror = () => {
+        xhrs.current.delete(entry.id);
+        patch(entry.id, { kind: "error", message: "Network error." });
+      };
+      xhr.open("POST", "/api/v1/files");
+      xhr.setRequestHeader("Idempotency-Key", crypto.randomUUID());
+      xhr.send(body);
+    },
+    [patch, poll],
+  );
+
+  const addFiles = useCallback(
+    (files: FileList | File[]) => {
+      const next = Array.from(files)
+        .filter((file) => file.size > 0)
+        .map((file) => ({ id: crypto.randomUUID(), file, phase: { kind: "uploading", percent: 0 } as FilePhase }));
+      if (!next.length) return;
+      setEntries((current) => [...current, ...next]);
+      for (const entry of next) upload(entry);
+    },
+    [upload],
+  );
 
   const dismiss = (id: string) => {
     xhrs.current.get(id)?.abort();
@@ -325,9 +335,17 @@ export function UploadDropzone({ libraryHref = "/polymath/library" }: { libraryH
         </span>
         <div>
           <p className="text-[13px] font-medium">Choose files or drag &amp; drop them here</p>
-          <p className="text-muted-foreground mt-1 text-xs">PDF, PNG and JPEG, up to {MAX_UPLOAD_LABEL} each. Stored as originals, then read.</p>
+          <p className="text-muted-foreground mt-1 text-xs">
+            PDF, PNG and JPEG, up to {MAX_UPLOAD_LABEL} each. Stored as originals, then read.
+          </p>
         </div>
-        <Button type="button" variant="outline" onClick={() => inputRef.current?.click()} aria-describedby={liveId} disabled={busy}>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => inputRef.current?.click()}
+          aria-describedby={liveId}
+          disabled={busy}
+        >
           {busy ? "Working…" : "Browse files"}
         </Button>
       </div>
@@ -345,7 +363,9 @@ export function UploadDropzone({ libraryHref = "/polymath/library" }: { libraryH
                     indeterminate={entry.phase.kind === "reading"}
                     done={entry.phase.kind === "done"}
                   />
-                  <span className="absolute"><PhaseIcon phase={entry.phase} /></span>
+                  <span className="absolute">
+                    <PhaseIcon phase={entry.phase} />
+                  </span>
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[13px] font-medium">{entry.file.name}</p>
@@ -361,7 +381,9 @@ export function UploadDropzone({ libraryHref = "/polymath/library" }: { libraryH
                 {entry.phase.kind === "done" ? (
                   <Badge variant="outline">Read</Badge>
                 ) : entry.phase.kind === "error" ? (
-                  <Badge variant="outline" className="border-destructive/40 text-destructive">Failed</Badge>
+                  <Badge variant="outline" className="border-destructive/40 text-destructive">
+                    Failed
+                  </Badge>
                 ) : null}
                 {documentId ? (
                   <Button type="button" variant="ghost" size="sm" onClick={() => void toggleText(documentId)}>
@@ -387,16 +409,24 @@ export function UploadDropzone({ libraryHref = "/polymath/library" }: { libraryH
           <div className="mb-3 flex items-center gap-2">
             <FileText aria-hidden className="text-muted-foreground size-4" />
             <h3 className="text-[13px] font-medium">Extracted text</h3>
-            <Badge variant="outline" className="ml-auto">Extracted by Polymath</Badge>
+            <Badge variant="outline" className="ml-auto">
+              Extracted by Polymath
+            </Badge>
           </div>
           {openPending ? (
-            <p role="status" className="text-muted-foreground text-xs">Loading the extracted text…</p>
+            <p role="status" className="text-muted-foreground text-xs">
+              Loading the extracted text…
+            </p>
           ) : openError ? (
-            <p role="alert" className="text-[13px] text-destructive">{openError}</p>
+            <p role="alert" className="text-[13px] text-destructive">
+              {openError}
+            </p>
           ) : openBody ? (
             <div className="max-h-72 overflow-y-auto whitespace-pre-wrap break-words rounded-md bg-muted/40 p-3 text-[13px] leading-relaxed">
               {openBody}
-              <p className="text-muted-foreground mt-2 text-xs">First 1,200 characters. The full text is in the library reader.</p>
+              <p className="text-muted-foreground mt-2 text-xs">
+                First 1,200 characters. The full text is in the library reader.
+              </p>
             </div>
           ) : (
             <p className="text-muted-foreground text-xs">No readable text was extracted from this document.</p>
