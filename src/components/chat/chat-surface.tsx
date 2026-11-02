@@ -20,6 +20,7 @@ import { collectRecords } from "./record-links";
 import { fetchMentionContext } from "@/app/(workspace)/polymath/mention-actions";
 import { resolveMentionPayload, stripMentionContext, hasMentionContext, type MentionEntity } from "./mention-context";
 import { CitedText } from "./cited-text";
+import { citedIndices } from "@/domains/knowledge/inline-citations";
 import { inline } from "@/components/markdown-inline";
 
 /**
@@ -213,6 +214,11 @@ export function ChatSurface({
   const lastAssistantIndex = transcript.map((b) => b.kind).lastIndexOf("assistant");
 
   const lastText = transcript[lastAssistantIndex]?.text;
+
+  // The strip renders the passages the answer actually cites; the uncited
+  // candidates stay in the tool pill.
+  const cited = new Set(citedIndices(lastText ?? "", chat.citations));
+  const shownCitations = chat.citations.filter((_, index) => cited.has(index));
 
   /*
    * The chain of thought for the current turn: every reasoning block and tool
@@ -411,7 +417,7 @@ export function ChatSurface({
           </div>
         )}
 
-        {chat.citations.length > 0 && (
+        {shownCitations.length > 0 && (
           <details className="group mt-3 rounded-xl border border-border text-[12px]">
             <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
               <BookOpen aria-hidden className="size-3.5 shrink-0" />
@@ -419,15 +425,15 @@ export function ChatSurface({
                   chip names the documents; the count would read as "5 sources"
                   for one document. */}
               <span className="shrink-0 font-medium text-foreground/80">
-                Sources · {new Set(chat.citations.map((citation) => citation.documentId)).size}
+                Sources · {new Set(shownCitations.map((citation) => citation.documentId)).size}
               </span>
               <span className="min-w-0 flex-1 truncate group-open:hidden">
-                {[...new Set(chat.citations.map((citation) => citation.title))].join(", ")}
+                {[...new Set(shownCitations.map((citation) => citation.title))].join(", ")}
               </span>
               <ChevronDown aria-hidden className="size-3.5 shrink-0 transition-transform group-open:rotate-180" />
             </summary>
             <ul className="space-y-2 border-t border-border px-3 py-2" aria-label="Citations">
-              {chat.citations.map((citation, index) => (
+              {shownCitations.map((citation, index) => (
                 <li key={`${citation.documentId}:${citation.span.start}`} id={`citation-${index}`} className="scroll-mt-4">
                   {/* The title opens the document at its library route, so a
                       citation is a way into the source rather than a label. */}
