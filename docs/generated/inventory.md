@@ -31,7 +31,15 @@ Migrations: 101 files, highest `0274_superagent_store`.
 
 ## Tests
 
+<<<<<<< HEAD
 501 `.test.ts` and 44 `.spec.ts` files (unit: 299, integration: 199, e2e: 44).
+=======
+<<<<<<< HEAD
+500 `.test.ts` and 44 `.spec.ts` files (unit: 298, integration: 199, e2e: 44).
+=======
+496 `.test.ts` and 44 `.spec.ts` files (unit: 296, integration: 197, e2e: 44).
+>>>>>>> 69820d62 (test(superagent): store integration specs)
+>>>>>>> 9215ddf8 (test(superagent): store integration specs)
 ## Domains
 
 24 folders; 19 own tables.
@@ -220,8 +228,8 @@ No tables: `conversations`, `home`, `import`, `notifications`, `supervisor`.
 | `superagent` | `ticket_runs` | versioned |
 | `superagent` | `work_subscriptions` | append-only |
 | `superagent` | `work_effects` | append-only |
-| `superagent` | `work_outbox_receipts` | **DEFECT** |
-| `superagent` | `superagent_policies` | **DEFECT** |
+| `superagent` | `work_outbox_receipts` | app-cas |
+| `superagent` | `superagent_policies` | app-cas |
 | `superagent` | `superagent_policy_rules` | append-only |
 | `work` | `spaces` | versioned |
 | `work` | `projects` | versioned |
@@ -338,8 +346,3 @@ Declared audit-only (observation events; no consumer by design):
 - `role.defined`
 - `role.revised`
 - `role.unassigned`
-
-## Defects found by this generator
-
-- superagent.work_outbox_receipts is mutable with no version column and no declared guard
-- superagent.superagent_policies is mutable with no version column and no declared guard
