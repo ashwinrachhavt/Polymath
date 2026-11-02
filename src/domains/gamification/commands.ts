@@ -258,6 +258,51 @@ export async function recordDailyQuartz(tx: TxDrizzle, auth: AuthContext, taskId
   return true;
 }
 
+/** The learning_reviewed definition, provisioned lazily with the donor's value. */
+const LEARNING_REVIEWED = { key: "learning_reviewed", label: "Learning review", points: 10 };
+
+/**
+ * Called from learning attempt completion, inside the same transaction. The
+ * learning twin of recordDailyQuartz: the definition is provisioned lazily
+ * with the donor's value (10 points), the idempotency key names the attempt
+ * (`quiz_attempt:<id>`), and a replayed award is a silent skip, never a game
+ * error. Returns whether this call earned the stone.
+ */
+export async function recordLearningReview(
+  tx: TxDrizzle,
+  auth: AuthContext,
+  input: { subjectId: string; idempotencyKey: string },
+): Promise<boolean> {
+  const definition = await ensureDefinition(tx, auth, {
+    ...LEARNING_REVIEWED,
+    kind: "points",
+    description: "Completed a learning review.",
+  });
+  if (!definition || !definition.active) return false;
+
+  const [entry] = await tx
+    .insert(rewardLedger)
+    .values({
+      workspaceId: auth.workspaceId,
+      rewardDefinitionId: definition.id,
+      userId: auth.userId,
+      reason: "learning_reviewed",
+      subjectType: "quiz_attempt",
+      subjectId: input.subjectId,
+      points: definition.points,
+      idempotencyKey: input.idempotencyKey,
+    })
+    .onConflictDoNothing({ target: [rewardLedger.workspaceId, rewardLedger.idempotencyKey] })
+    .returning();
+  if (!entry) return false;
+  await recordAudit(
+    auth,
+    { action: "reward.awarded", subjectType: "reward_ledger", subjectId: entry.id, summary: `Learning stone earned (${LEARNING_REVIEWED.label})` },
+    tx,
+  );
+  return true;
+}
+
 /** Stones and claims, derived from the ledger at read time. */
 export async function shardState(auth: AuthContext): Promise<{ stones: number; claimed: number; claimable: number }> {
   const { db } = await import("@/lib/db");

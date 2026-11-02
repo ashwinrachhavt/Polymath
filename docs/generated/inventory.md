@@ -27,14 +27,14 @@ dependent, so `inventory:check` behaves the same on a laptop and in CI.
 | `vitest` | ^5.0.5 |
 | `@playwright/test` | ^1.64.1 |
 
-Migrations: 96 files, highest `0269_drop_retired_tables`.
+Migrations: 97 files, highest `0270_learning_quizzes`.
 
 ## Tests
 
-451 `.test.ts` and 43 `.spec.ts` files (unit: 268, integration: 181, e2e: 43).
+454 `.test.ts` and 43 `.spec.ts` files (unit: 270, integration: 182, e2e: 43).
 ## Domains
 
-22 folders; 17 own tables.
+23 folders; 18 own tables.
 
 | Domain | Tables |
 | --- | ---: |
@@ -51,6 +51,7 @@ Migrations: 96 files, highest `0269_drop_retired_tables`.
 | `identity` | 18 |
 | `integrations` | 7 |
 | `knowledge` | 46 |
+| `learning` | 3 |
 | `opportunities` | 5 |
 | `skills` | 1 |
 | `spending` | 4 |
@@ -195,6 +196,9 @@ No tables: `conversations`, `home`, `import`, `notifications`, `supervisor`.
 | `knowledge` | `statement_imports` | versioned |
 | `knowledge` | `statement_transactions` | append-only |
 | `knowledge` | `transaction_category_rules` | versioned |
+| `learning` | `quizzes` | versioned |
+| `learning` | `quiz_questions` | append-only |
+| `learning` | `quiz_attempts` | append-only |
 | `opportunities` | `opportunities` | versioned |
 | `opportunities` | `opportunity_stage_history` | append-only |
 | `opportunities` | `opportunity_extensions` | versioned |
@@ -216,7 +220,7 @@ No tables: `conversations`, `home`, `import`, `notifications`, `supervisor`.
 | `work` | `saved_views` | versioned |
 | `work` | `briefing_seeds` | versioned |
 
-Totals: 90 versioned, 58 append-only, 5 versionless but guarded (each declared with its guard and its file in `scripts/lib/row-state.ts`).
+Totals: 91 versioned, 60 append-only, 5 versionless but guarded (each declared with its guard and its file in `scripts/lib/row-state.ts`).
 
 ## Route handlers
 
