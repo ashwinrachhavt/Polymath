@@ -96,41 +96,105 @@ export const DEFAULT_ALLOWED_TOOLS = [
   // AI changes to a saved artifact arrive as reviewable revision proposals,
   // never silent edits. Same prepare-risk class as tasks.create.
   "artifacts.revise",
+  // Ideas proposed from run material arrive as reviewable zettel proposals,
+  // never silent idea writes. Same prepare-risk class as tasks.create: the
+  // owner's accept is the only path that creates an idea artifact.
+  "zettels.propose",
   // Composio Instant tools (spec #316): derived capability names from the
   // generated catalog, granted to default profiles for the same reason as the
   // generic reads above. Regenerate with: pnpm exec tsx scripts/sync-instant-catalog.ts
   // (execute-time gates: policy snapshot, no_auth re-check, deny-by-default
   // read-only classification, withQuota — see instant-tools.ts).
-    "instant.composio.composio_ask_oracle", "instant.composio.composio_check_active_connection", "instant.composio.composio_check_active_connections",
-    "instant.composio.composio_create_plan", "instant.composio.composio_enable_trigger", "instant.composio.composio_execute_agent",
-    "instant.composio.composio_execute_tool", "instant.composio.composio_get_dependency_graph", "instant.composio.composio_get_required_parameters",
-    "instant.composio.composio_get_response_schema", "instant.composio.composio_initiate_connection", "instant.composio.composio_list_toolkits",
-    "instant.composio.composio_list_triggers", "instant.composio.composio_manage_connection", "instant.composio.composio_manage_connections",
-    "instant.composio.composio_multi_execute_tool", "instant.composio.composio_remote_bash_tool", "instant.composio.composio_remote_workbench",
-    "instant.composio.composio_retrieve_toolkits", "instant.composio.composio_search_agent", "instant.composio.composio_search_tools",
-    "instant.composio.composio_wait_for_connection", "instant.composio.composio_wait_for_connections", "instant.composio.composio_get_tool_schemas",
-    "instant.composio_search.composio_search_duck_duck_go_search", "instant.composio_search.composio_search_event_search", "instant.composio_search.composio_search_exa_answer",
-    "instant.composio_search.composio_search_exa_similarlink", "instant.composio_search.composio_search_finance_search", "instant.composio_search.composio_search_google_maps_search",
-    "instant.composio_search.composio_search_image_search", "instant.composio_search.composio_search_news_search", "instant.composio_search.composio_search_scholar_search",
-    "instant.composio_search.composio_search_search", "instant.composio_search.composio_search_shopping_search", "instant.composio_search.composio_search_tavily_search",
-    "instant.composio_search.composio_search_trends_search", "instant.hackernews.hackernews_get_frontpage", "instant.hackernews.hackernews_get_item_with_id",
-    "instant.hackernews.hackernews_get_latest_posts", "instant.hackernews.hackernews_get_todays_posts", "instant.hackernews.hackernews_get_user",
-    "instant.hackernews.hackernews_search_posts", "instant.weathermap.weathermap_weather", "instant.text_to_pdf.text_to_pdf_convert_text_to_pdf",
-    "instant.browser_tool.browser_tool_copy_selected_text", "instant.browser_tool.browser_tool_drag_and_drop", "instant.browser_tool.browser_tool_fetch_webpage",
-    "instant.browser_tool.browser_tool_get_clipboard", "instant.browser_tool.browser_tool_keyboard_shortcut", "instant.browser_tool.browser_tool_mouse_click",
-    "instant.browser_tool.browser_tool_mouse_double_click", "instant.browser_tool.browser_tool_mouse_down", "instant.browser_tool.browser_tool_mouse_move",
-    "instant.browser_tool.browser_tool_mouse_up", "instant.browser_tool.browser_tool_navigate", "instant.browser_tool.browser_tool_paste_text",
-    "instant.browser_tool.browser_tool_perform_web_task", "instant.browser_tool.browser_tool_screenshot_webpage", "instant.browser_tool.browser_tool_scroll",
-    "instant.browser_tool.browser_tool_set_clipboard", "instant.browser_tool.browser_tool_take_screenshot", "instant.browser_tool.browser_tool_type_text",
-    "instant.entelligence.entelligence_add_a_new_repository", "instant.entelligence.entelligence_interact_with_the_repository_agent", "instant.bench.bench_sleep",
-    "instant.cve_now_mcp.cve_now_mcp_check_stack", "instant.cve_now_mcp.cve_now_mcp_get_vulnerability", "instant.cve_now_mcp.cve_now_mcp_list_feed",
-    "instant.gleif.gleif_export_lei_records", "instant.gleif.gleif_get_autocompletions", "instant.gleif.gleif_get_fund_or_branch_relationship",
-    "instant.gleif.gleif_get_fuzzy_completions", "instant.gleif.gleif_get_lei_issuer_for_record", "instant.gleif.gleif_get_lei_record",
-    "instant.gleif.gleif_get_parent_information", "instant.gleif.gleif_get_reference_item", "instant.gleif.gleif_get_related_lei_record",
-    "instant.gleif.gleif_get_successor_entity", "instant.gleif.gleif_list_child_entities", "instant.gleif.gleif_list_child_relationships",
-    "instant.gleif.gleif_list_fund_or_branch_entities", "instant.gleif.gleif_list_fund_or_branch_relationships", "instant.gleif.gleif_list_lei_field_modifications",
-    "instant.gleif.gleif_list_lei_isins", "instant.gleif.gleif_list_lei_issuer_jurisdictions", "instant.gleif.gleif_list_reference_data",
-    "instant.gleif.gleif_list_registration_agents", "instant.gleif.gleif_list_successor_entities", "instant.gleif.gleif_search_lei_records",
+  "instant.composio.composio_ask_oracle",
+  "instant.composio.composio_check_active_connection",
+  "instant.composio.composio_check_active_connections",
+  "instant.composio.composio_create_plan",
+  "instant.composio.composio_enable_trigger",
+  "instant.composio.composio_execute_agent",
+  "instant.composio.composio_execute_tool",
+  "instant.composio.composio_get_dependency_graph",
+  "instant.composio.composio_get_required_parameters",
+  "instant.composio.composio_get_response_schema",
+  "instant.composio.composio_initiate_connection",
+  "instant.composio.composio_list_toolkits",
+  "instant.composio.composio_list_triggers",
+  "instant.composio.composio_manage_connection",
+  "instant.composio.composio_manage_connections",
+  "instant.composio.composio_multi_execute_tool",
+  "instant.composio.composio_remote_bash_tool",
+  "instant.composio.composio_remote_workbench",
+  "instant.composio.composio_retrieve_toolkits",
+  "instant.composio.composio_search_agent",
+  "instant.composio.composio_search_tools",
+  "instant.composio.composio_wait_for_connection",
+  "instant.composio.composio_wait_for_connections",
+  "instant.composio.composio_get_tool_schemas",
+  "instant.composio_search.composio_search_duck_duck_go_search",
+  "instant.composio_search.composio_search_event_search",
+  "instant.composio_search.composio_search_exa_answer",
+  "instant.composio_search.composio_search_exa_similarlink",
+  "instant.composio_search.composio_search_finance_search",
+  "instant.composio_search.composio_search_google_maps_search",
+  "instant.composio_search.composio_search_image_search",
+  "instant.composio_search.composio_search_news_search",
+  "instant.composio_search.composio_search_scholar_search",
+  "instant.composio_search.composio_search_search",
+  "instant.composio_search.composio_search_shopping_search",
+  "instant.composio_search.composio_search_tavily_search",
+  "instant.composio_search.composio_search_trends_search",
+  "instant.hackernews.hackernews_get_frontpage",
+  "instant.hackernews.hackernews_get_item_with_id",
+  "instant.hackernews.hackernews_get_latest_posts",
+  "instant.hackernews.hackernews_get_todays_posts",
+  "instant.hackernews.hackernews_get_user",
+  "instant.hackernews.hackernews_search_posts",
+  "instant.weathermap.weathermap_weather",
+  "instant.text_to_pdf.text_to_pdf_convert_text_to_pdf",
+  "instant.browser_tool.browser_tool_copy_selected_text",
+  "instant.browser_tool.browser_tool_drag_and_drop",
+  "instant.browser_tool.browser_tool_fetch_webpage",
+  "instant.browser_tool.browser_tool_get_clipboard",
+  "instant.browser_tool.browser_tool_keyboard_shortcut",
+  "instant.browser_tool.browser_tool_mouse_click",
+  "instant.browser_tool.browser_tool_mouse_double_click",
+  "instant.browser_tool.browser_tool_mouse_down",
+  "instant.browser_tool.browser_tool_mouse_move",
+  "instant.browser_tool.browser_tool_mouse_up",
+  "instant.browser_tool.browser_tool_navigate",
+  "instant.browser_tool.browser_tool_paste_text",
+  "instant.browser_tool.browser_tool_perform_web_task",
+  "instant.browser_tool.browser_tool_screenshot_webpage",
+  "instant.browser_tool.browser_tool_scroll",
+  "instant.browser_tool.browser_tool_set_clipboard",
+  "instant.browser_tool.browser_tool_take_screenshot",
+  "instant.browser_tool.browser_tool_type_text",
+  "instant.entelligence.entelligence_add_a_new_repository",
+  "instant.entelligence.entelligence_interact_with_the_repository_agent",
+  "instant.bench.bench_sleep",
+  "instant.cve_now_mcp.cve_now_mcp_check_stack",
+  "instant.cve_now_mcp.cve_now_mcp_get_vulnerability",
+  "instant.cve_now_mcp.cve_now_mcp_list_feed",
+  "instant.gleif.gleif_export_lei_records",
+  "instant.gleif.gleif_get_autocompletions",
+  "instant.gleif.gleif_get_fund_or_branch_relationship",
+  "instant.gleif.gleif_get_fuzzy_completions",
+  "instant.gleif.gleif_get_lei_issuer_for_record",
+  "instant.gleif.gleif_get_lei_record",
+  "instant.gleif.gleif_get_parent_information",
+  "instant.gleif.gleif_get_reference_item",
+  "instant.gleif.gleif_get_related_lei_record",
+  "instant.gleif.gleif_get_successor_entity",
+  "instant.gleif.gleif_list_child_entities",
+  "instant.gleif.gleif_list_child_relationships",
+  "instant.gleif.gleif_list_fund_or_branch_entities",
+  "instant.gleif.gleif_list_fund_or_branch_relationships",
+  "instant.gleif.gleif_list_lei_field_modifications",
+  "instant.gleif.gleif_list_lei_isins",
+  "instant.gleif.gleif_list_lei_issuer_jurisdictions",
+  "instant.gleif.gleif_list_reference_data",
+  "instant.gleif.gleif_list_registration_agents",
+  "instant.gleif.gleif_list_successor_entities",
+  "instant.gleif.gleif_search_lei_records",
 ];
 
 export async function ensureProfile(workspaceId: string, name = "polymath") {
@@ -148,7 +212,9 @@ export async function ensureProfile(workspaceId: string, name = "polymath") {
     [existing] = await db
       .select({ id: agentProfiles.id, allowedTools: agentProfiles.allowedTools })
       .from(agentProfiles)
-      .where(and(eq(agentProfiles.workspaceId, workspaceId), sql`${agentProfiles.metadata} ->> 'renamedFrom' = 'alfred'`))
+      .where(
+        and(eq(agentProfiles.workspaceId, workspaceId), sql`${agentProfiles.metadata} ->> 'renamedFrom' = 'alfred'`),
+      )
       .limit(1);
   }
   if (!existing) {
@@ -223,10 +289,10 @@ export async function ensureProfile(workspaceId: string, name = "polymath") {
       "hubspot.contacts.read",
       "stripe.payments.read",
       "notion.read",
-  "notion.page.read",
-  "linkedin.profile.read",
-  "instagram.profile.read",
-  "instagram.media.read",
+      "notion.page.read",
+      "linkedin.profile.read",
+      "instagram.profile.read",
+      "instagram.media.read",
       "notebook.open",
       // Prepare-risk proposal writes gained with the tasks_propose tool;
       // without this, existing profiles would fail closed on every call.
@@ -242,40 +308,103 @@ export async function ensureProfile(workspaceId: string, name = "polymath") {
       // list is regenerated with: pnpm exec tsx scripts/sync-instant-catalog.ts
       // (execute-time gates: policy snapshot, no_auth re-check, deny-by-default
       // read-only classification, withQuota — see instant-tools.ts).
-    "instant.composio.composio_ask_oracle", "instant.composio.composio_check_active_connection", "instant.composio.composio_check_active_connections",
-    "instant.composio.composio_create_plan", "instant.composio.composio_enable_trigger", "instant.composio.composio_execute_agent",
-    "instant.composio.composio_execute_tool", "instant.composio.composio_get_dependency_graph", "instant.composio.composio_get_required_parameters",
-    "instant.composio.composio_get_response_schema", "instant.composio.composio_initiate_connection", "instant.composio.composio_list_toolkits",
-    "instant.composio.composio_list_triggers", "instant.composio.composio_manage_connection", "instant.composio.composio_manage_connections",
-    "instant.composio.composio_multi_execute_tool", "instant.composio.composio_remote_bash_tool", "instant.composio.composio_remote_workbench",
-    "instant.composio.composio_retrieve_toolkits", "instant.composio.composio_search_agent", "instant.composio.composio_search_tools",
-    "instant.composio.composio_wait_for_connection", "instant.composio.composio_wait_for_connections", "instant.composio.composio_get_tool_schemas",
-    "instant.composio_search.composio_search_duck_duck_go_search", "instant.composio_search.composio_search_event_search", "instant.composio_search.composio_search_exa_answer",
-    "instant.composio_search.composio_search_exa_similarlink", "instant.composio_search.composio_search_finance_search", "instant.composio_search.composio_search_google_maps_search",
-    "instant.composio_search.composio_search_image_search", "instant.composio_search.composio_search_news_search", "instant.composio_search.composio_search_scholar_search",
-    "instant.composio_search.composio_search_search", "instant.composio_search.composio_search_shopping_search", "instant.composio_search.composio_search_tavily_search",
-    "instant.composio_search.composio_search_trends_search", "instant.hackernews.hackernews_get_frontpage", "instant.hackernews.hackernews_get_item_with_id",
-    "instant.hackernews.hackernews_get_latest_posts", "instant.hackernews.hackernews_get_todays_posts", "instant.hackernews.hackernews_get_user",
-    "instant.hackernews.hackernews_search_posts", "instant.weathermap.weathermap_weather", "instant.text_to_pdf.text_to_pdf_convert_text_to_pdf",
-    "instant.browser_tool.browser_tool_copy_selected_text", "instant.browser_tool.browser_tool_drag_and_drop", "instant.browser_tool.browser_tool_fetch_webpage",
-    "instant.browser_tool.browser_tool_get_clipboard", "instant.browser_tool.browser_tool_keyboard_shortcut", "instant.browser_tool.browser_tool_mouse_click",
-    "instant.browser_tool.browser_tool_mouse_double_click", "instant.browser_tool.browser_tool_mouse_down", "instant.browser_tool.browser_tool_mouse_move",
-    "instant.browser_tool.browser_tool_mouse_up", "instant.browser_tool.browser_tool_navigate", "instant.browser_tool.browser_tool_paste_text",
-    "instant.browser_tool.browser_tool_perform_web_task", "instant.browser_tool.browser_tool_screenshot_webpage", "instant.browser_tool.browser_tool_scroll",
-    "instant.browser_tool.browser_tool_set_clipboard", "instant.browser_tool.browser_tool_take_screenshot", "instant.browser_tool.browser_tool_type_text",
-    "instant.entelligence.entelligence_add_a_new_repository", "instant.entelligence.entelligence_interact_with_the_repository_agent", "instant.bench.bench_sleep",
-    "instant.cve_now_mcp.cve_now_mcp_check_stack", "instant.cve_now_mcp.cve_now_mcp_get_vulnerability", "instant.cve_now_mcp.cve_now_mcp_list_feed",
-    "instant.gleif.gleif_export_lei_records", "instant.gleif.gleif_get_autocompletions", "instant.gleif.gleif_get_fund_or_branch_relationship",
-    "instant.gleif.gleif_get_fuzzy_completions", "instant.gleif.gleif_get_lei_issuer_for_record", "instant.gleif.gleif_get_lei_record",
-    "instant.gleif.gleif_get_parent_information", "instant.gleif.gleif_get_reference_item", "instant.gleif.gleif_get_related_lei_record",
-    "instant.gleif.gleif_get_successor_entity", "instant.gleif.gleif_list_child_entities", "instant.gleif.gleif_list_child_relationships",
-    "instant.gleif.gleif_list_fund_or_branch_entities", "instant.gleif.gleif_list_fund_or_branch_relationships", "instant.gleif.gleif_list_lei_field_modifications",
-    "instant.gleif.gleif_list_lei_isins", "instant.gleif.gleif_list_lei_issuer_jurisdictions", "instant.gleif.gleif_list_reference_data",
-    "instant.gleif.gleif_list_registration_agents", "instant.gleif.gleif_list_successor_entities", "instant.gleif.gleif_search_lei_records",
+      "instant.composio.composio_ask_oracle",
+      "instant.composio.composio_check_active_connection",
+      "instant.composio.composio_check_active_connections",
+      "instant.composio.composio_create_plan",
+      "instant.composio.composio_enable_trigger",
+      "instant.composio.composio_execute_agent",
+      "instant.composio.composio_execute_tool",
+      "instant.composio.composio_get_dependency_graph",
+      "instant.composio.composio_get_required_parameters",
+      "instant.composio.composio_get_response_schema",
+      "instant.composio.composio_initiate_connection",
+      "instant.composio.composio_list_toolkits",
+      "instant.composio.composio_list_triggers",
+      "instant.composio.composio_manage_connection",
+      "instant.composio.composio_manage_connections",
+      "instant.composio.composio_multi_execute_tool",
+      "instant.composio.composio_remote_bash_tool",
+      "instant.composio.composio_remote_workbench",
+      "instant.composio.composio_retrieve_toolkits",
+      "instant.composio.composio_search_agent",
+      "instant.composio.composio_search_tools",
+      "instant.composio.composio_wait_for_connection",
+      "instant.composio.composio_wait_for_connections",
+      "instant.composio.composio_get_tool_schemas",
+      "instant.composio_search.composio_search_duck_duck_go_search",
+      "instant.composio_search.composio_search_event_search",
+      "instant.composio_search.composio_search_exa_answer",
+      "instant.composio_search.composio_search_exa_similarlink",
+      "instant.composio_search.composio_search_finance_search",
+      "instant.composio_search.composio_search_google_maps_search",
+      "instant.composio_search.composio_search_image_search",
+      "instant.composio_search.composio_search_news_search",
+      "instant.composio_search.composio_search_scholar_search",
+      "instant.composio_search.composio_search_search",
+      "instant.composio_search.composio_search_shopping_search",
+      "instant.composio_search.composio_search_tavily_search",
+      "instant.composio_search.composio_search_trends_search",
+      "instant.hackernews.hackernews_get_frontpage",
+      "instant.hackernews.hackernews_get_item_with_id",
+      "instant.hackernews.hackernews_get_latest_posts",
+      "instant.hackernews.hackernews_get_todays_posts",
+      "instant.hackernews.hackernews_get_user",
+      "instant.hackernews.hackernews_search_posts",
+      "instant.weathermap.weathermap_weather",
+      "instant.text_to_pdf.text_to_pdf_convert_text_to_pdf",
+      "instant.browser_tool.browser_tool_copy_selected_text",
+      "instant.browser_tool.browser_tool_drag_and_drop",
+      "instant.browser_tool.browser_tool_fetch_webpage",
+      "instant.browser_tool.browser_tool_get_clipboard",
+      "instant.browser_tool.browser_tool_keyboard_shortcut",
+      "instant.browser_tool.browser_tool_mouse_click",
+      "instant.browser_tool.browser_tool_mouse_double_click",
+      "instant.browser_tool.browser_tool_mouse_down",
+      "instant.browser_tool.browser_tool_mouse_move",
+      "instant.browser_tool.browser_tool_mouse_up",
+      "instant.browser_tool.browser_tool_navigate",
+      "instant.browser_tool.browser_tool_paste_text",
+      "instant.browser_tool.browser_tool_perform_web_task",
+      "instant.browser_tool.browser_tool_screenshot_webpage",
+      "instant.browser_tool.browser_tool_scroll",
+      "instant.browser_tool.browser_tool_set_clipboard",
+      "instant.browser_tool.browser_tool_take_screenshot",
+      "instant.browser_tool.browser_tool_type_text",
+      "instant.entelligence.entelligence_add_a_new_repository",
+      "instant.entelligence.entelligence_interact_with_the_repository_agent",
+      "instant.bench.bench_sleep",
+      "instant.cve_now_mcp.cve_now_mcp_check_stack",
+      "instant.cve_now_mcp.cve_now_mcp_get_vulnerability",
+      "instant.cve_now_mcp.cve_now_mcp_list_feed",
+      "instant.gleif.gleif_export_lei_records",
+      "instant.gleif.gleif_get_autocompletions",
+      "instant.gleif.gleif_get_fund_or_branch_relationship",
+      "instant.gleif.gleif_get_fuzzy_completions",
+      "instant.gleif.gleif_get_lei_issuer_for_record",
+      "instant.gleif.gleif_get_lei_record",
+      "instant.gleif.gleif_get_parent_information",
+      "instant.gleif.gleif_get_reference_item",
+      "instant.gleif.gleif_get_related_lei_record",
+      "instant.gleif.gleif_get_successor_entity",
+      "instant.gleif.gleif_list_child_entities",
+      "instant.gleif.gleif_list_child_relationships",
+      "instant.gleif.gleif_list_fund_or_branch_entities",
+      "instant.gleif.gleif_list_fund_or_branch_relationships",
+      "instant.gleif.gleif_list_lei_field_modifications",
+      "instant.gleif.gleif_list_lei_isins",
+      "instant.gleif.gleif_list_lei_issuer_jurisdictions",
+      "instant.gleif.gleif_list_reference_data",
+      "instant.gleif.gleif_list_registration_agents",
+      "instant.gleif.gleif_list_successor_entities",
+      "instant.gleif.gleif_search_lei_records",
     ];
     const missing = gained.filter((t) => !tools.includes(t));
     if (missing.length) {
-      await db.update(agentProfiles).set({ allowedTools: [...tools, ...missing] }).where(eq(agentProfiles.id, existing.id));
+      await db
+        .update(agentProfiles)
+        .set({ allowedTools: [...tools, ...missing] })
+        .where(eq(agentProfiles.id, existing.id));
     }
     return existing.id;
   }
@@ -429,9 +558,15 @@ export async function updateDefaultProfileBrief(
   input: { description?: string; instructions?: string; expectedVersion: number },
 ): Promise<ProfileBriefResult> {
   const description = (input.description ?? "").trim();
-  if (description.length > BRIEF_LIMITS.description) return { ok: false, kind: "validation", error: `Keep the description under ${BRIEF_LIMITS.description} characters.` };
+  if (description.length > BRIEF_LIMITS.description)
+    return {
+      ok: false,
+      kind: "validation",
+      error: `Keep the description under ${BRIEF_LIMITS.description} characters.`,
+    };
   const instructions = (input.instructions ?? "").trim();
-  if (instructions.length > BRIEF_LIMITS.instructions) return { ok: false, kind: "validation", error: `Keep the brief under ${BRIEF_LIMITS.instructions} characters.` };
+  if (instructions.length > BRIEF_LIMITS.instructions)
+    return { ok: false, kind: "validation", error: `Keep the brief under ${BRIEF_LIMITS.instructions} characters.` };
 
   return withTransaction(async (tx) => {
     const [current] = await tx
@@ -450,12 +585,24 @@ export async function updateDefaultProfileBrief(
     // No row: the version moved under us - the caller's view is stale.
     if (!updated) return { ok: false, kind: "conflict" } as const;
 
-    await recordAudit(auth, {
-      action: "agent_profile.brief_saved",
-      subjectType: "agent_profile",
-      subjectId: updated.id,
-      summary: `Assistant brief saved: ${updated.description ? "description set" : "description retired"}, ${updated.instructions ? "brief set" : "brief retired"}`,
-    }, tx);
-    return { ok: true, profile: { name: updated.name, description: updated.description, instructions: updated.instructions, version: updated.version } } as const;
+    await recordAudit(
+      auth,
+      {
+        action: "agent_profile.brief_saved",
+        subjectType: "agent_profile",
+        subjectId: updated.id,
+        summary: `Assistant brief saved: ${updated.description ? "description set" : "description retired"}, ${updated.instructions ? "brief set" : "brief retired"}`,
+      },
+      tx,
+    );
+    return {
+      ok: true,
+      profile: {
+        name: updated.name,
+        description: updated.description,
+        instructions: updated.instructions,
+        version: updated.version,
+      },
+    } as const;
   });
 }
