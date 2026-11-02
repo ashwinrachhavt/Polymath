@@ -20,7 +20,13 @@ Launch is done when the app is reachable, signed in, and past the first-run gate
    - `POLYMATH_DEV_AUTH=1`, which skips Clerk sign-in and resolves a fixed `dev-user` owner (`src/lib/clerk.ts`). It stands down when `NODE_ENV=production`, so it cannot open a deployment.
    - `EVE_BRIDGE_SECRET` and `EVE_GATEWAY_SECRET`, locally minted. Without them `POST /api/v1/runs` answers 503 `agent_bridge_unavailable`.
 
-   The file is gitignored. On a fresh sandbox, write these keys before anything else.
+   The file is gitignored. On a fresh sandbox, write these keys before anything else. Then load it into the current shell and fail fast if the connection string is missing:
+
+   ```sh
+   set -a; . ./.env; set +a; : "${DATABASE_URL:?DATABASE_URL is required}"
+   ```
+
+   Every later `psql "$DATABASE_URL"` in this skill assumes that load. Without it, psql falls back to its default database instead of the app database.
 
 2. Confirm Postgres is up. `pg_isready -h 127.0.0.1 -p 5432` must report `accepting connections`.
 
@@ -55,10 +61,10 @@ Launch is done when the app is reachable, signed in, and past the first-run gate
 5. Start the server in its own tmux session:
 
    ```sh
-   tmux new-session -d -s polymath-dev 'pnpm dev'
+   tmux new-session -d -s polymath-dev 'pnpm exec next dev'
    ```
 
-   `pnpm dev` runs `next dev` on port 3000. The first request to a route pays its compile, so give the readiness check time.
+   `pnpm dev` wraps `next dev` and also spawns the Eve bridge child. Eve needs Node 24 or newer and this sandbox runs Node 20, so the child exits and takes `pnpm dev` with it (`eve requires Node.js >=24`). `pnpm exec next dev` starts the app alone, which is what the UI journeys need. Journeys that call the Eve bridge (`POST /api/v1/runs`) need a Node 24 shell running `pnpm dev`. The first request to a route pays its compile, so give the readiness check time.
 
 6. Poll for readiness:
 
@@ -70,7 +76,7 @@ Launch is done when the app is reachable, signed in, and past the first-run gate
 
 ## Doctor
 
-One read-only pass answers "is this instance worth driving?" Run it first whenever anything looks off.
+One read-only pass answers "is this instance worth driving?" Run it first whenever anything looks off, from a shell that has loaded `.env` (Launch step 1): an unset `DATABASE_URL` sends psql to its default database.
 
 ```sh
 pg_isready -h 127.0.0.1 -p 5432
@@ -85,6 +91,7 @@ Read the results:
 
 - Postgres not accepting connections: start Postgres, then run Launch step 3.
 - No `polymath-dev` session in `tmux ls`: the server died. Read the tail with `tmux capture-pane -t polymath-dev -p | tail -40` before restarting.
+- The port is owned by a `next-server` process but no `polymath-dev` session exists: an orphan from an earlier session. Kill that pid, then launch your own; a fresh server on the same port fails while it is held.
 - Public table count near zero: the QA database is not migrated. Run `pnpm db:migrate`.
 - No `dev-user` row: run the stamp block from Launch step 4. Without it the first-run gate redirects every journey to `/onboarding`.
 - `grep` count 0: dev auth is off and screens hit Clerk. Fix `.env`, then restart the server from the repo root so Next reads it.
