@@ -1,11 +1,11 @@
 import { cacheLife, cacheTag } from "next/cache";
-import { getActiveFocusSession, getLastTaskHandoff, listFocusHistory } from "@/domains/focus/queries";
 import {
-  getTaskDetail,
-  listTasksDueBetween,
-  listWorkPage,
-  listWorkRows,
-} from "@/domains/work/queries";
+  getActiveFocusSession,
+  getLastTaskHandoff,
+  listFocusBlocklist,
+  listFocusHistory,
+} from "@/domains/focus/queries";
+import { getTaskDetail, listTasksDueBetween, listWorkPage, listWorkRows } from "@/domains/work/queries";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { focusTag, tasksTag } from "@/lib/cache-tags";
 
@@ -67,4 +67,11 @@ export async function listFocusHistoryForPage(auth: AuthContext, limit?: number,
   cacheLife("default");
   cacheTag(focusTag(auth));
   return listFocusHistory(auth, limit, taskId);
+}
+
+export async function listFocusBlocklistForPage(auth: AuthContext) {
+  "use cache";
+  cacheLife("default");
+  cacheTag(focusTag(auth));
+  return listFocusBlocklist(auth);
 }

@@ -1,7 +1,17 @@
 import type { WorkspaceState } from "@/components/workspace/types";
 import type { AppSlug } from "@/lib/navigation";
 
-export type Beat = { key: string; label: string; app: AppSlug; count: number; unit: string; reason: string; href: string; action: string; needsYou: boolean };
+export type Beat = {
+  key: string;
+  label: string;
+  app: AppSlug;
+  count: number;
+  unit: string;
+  reason: string;
+  href: string;
+  action: string;
+  needsYou: boolean;
+};
 
 export function loopBeats(state: WorkspaceState, today: string): Beat[] {
   const unprocessed = state.captures.filter((capture) => capture.status === "UNPROCESSED").length;
@@ -15,19 +25,80 @@ export function loopBeats(state: WorkspaceState, today: string): Beat[] {
   const focusTask = focus ? state.tasks.find((task) => task.id === focus.taskId) : undefined;
 
   return [
-    { key: "capture", label: "Capture", app: "command-center", count: capturedToday, unit: capturedToday === 1 ? "item today" : "items today",
-      reason: "Anything that arrives lands in one inbox, original kept.", href: "/command-center/inbox", action: "Open inbox", needsYou: false },
-    { key: "clarify", label: "Clarify", app: "command-center", count: unprocessed, unit: "to clarify",
-      reason: unprocessed ? "Turn each into a task, a note, or let it go." : "Nothing is waiting. Your inbox is clear.", href: "/command-center/inbox", action: unprocessed ? "Clarify now" : "View inbox", needsYou: unprocessed > 0 },
-    { key: "commit", label: "Commit", app: "command-center", count: committedToday, unit: "committed today",
-      reason: committedToday ? "Work you have taken on for today." : `${open.length} open commitments. Move one to Ready when you take it on.`, href: "/neuralflow/work?view=today", action: committedToday ? "See today" : "Open work", needsYou: committedToday === 0 && open.length > 0 },
-    { key: "focus", label: "Focus", app: "neuralflow", count: focus ? 1 : ready, unit: focus ? `session ${focus.status}` : "ready to work",
-      reason: focus ? `Return to ${focusTask?.title ?? "your session"}.` : ready ? "Pick one, start an interval, earn a stone." : "Move a task to Ready when you choose to work on it.",
-      href: "/neuralflow/work?view=today", action: focus ? "Return to session" : "Start focus", needsYou: !!focus || ready > 0 },
-    { key: "review", label: "Review", app: "command-center", count: pending, unit: "awaiting you",
-      reason: pending ? "Nothing leaves Polymath until you approve the exact revision." : "No proposals are waiting for a decision.", href: "/reviews", action: pending ? "Review proposals" : "Open reviews", needsYou: pending > 0 },
-    { key: "learn", label: "Learn", app: "polymath", count: state.rewards.length, unit: state.rewards.length === 1 ? "stone earned" : "stones earned",
-      reason: `${notes} notes and ideas you can think with. Stones remember the work that earned them.`, href: "/apps/neuralflow/rewards", action: "See your stones", needsYou: false },
+    {
+      key: "capture",
+      label: "Capture",
+      app: "command-center",
+      count: capturedToday,
+      unit: capturedToday === 1 ? "item today" : "items today",
+      reason: "Anything that arrives lands in one inbox, original kept.",
+      href: "/command-center/inbox",
+      action: "Open inbox",
+      needsYou: false,
+    },
+    {
+      key: "clarify",
+      label: "Clarify",
+      app: "command-center",
+      count: unprocessed,
+      unit: "to clarify",
+      reason: unprocessed ? "Turn each into a task, a note, or let it go." : "Nothing is waiting. Your inbox is clear.",
+      href: "/command-center/inbox",
+      action: unprocessed ? "Clarify now" : "View inbox",
+      needsYou: unprocessed > 0,
+    },
+    {
+      key: "commit",
+      label: "Commit",
+      app: "command-center",
+      count: committedToday,
+      unit: "committed today",
+      reason: committedToday
+        ? "Work you have taken on for today."
+        : `${open.length} open commitments. Move one to Ready when you take it on.`,
+      href: "/neuralflow/work?view=today",
+      action: committedToday ? "See today" : "Open work",
+      needsYou: committedToday === 0 && open.length > 0,
+    },
+    {
+      key: "focus",
+      label: "Focus",
+      app: "neuralflow",
+      count: focus ? 1 : ready,
+      unit: focus ? `session ${focus.status}` : "ready to work",
+      reason: focus
+        ? `Return to ${focusTask?.title ?? "your session"}.`
+        : ready
+          ? "Pick one, start an interval, earn a stone."
+          : "Move a task to Ready when you choose to work on it.",
+      href: "/neuralflow/focus",
+      action: focus ? "Return to session" : "Start focus",
+      needsYou: !!focus || ready > 0,
+    },
+    {
+      key: "review",
+      label: "Review",
+      app: "command-center",
+      count: pending,
+      unit: "awaiting you",
+      reason: pending
+        ? "Nothing leaves Polymath until you approve the exact revision."
+        : "No proposals are waiting for a decision.",
+      href: "/reviews",
+      action: pending ? "Review proposals" : "Open reviews",
+      needsYou: pending > 0,
+    },
+    {
+      key: "learn",
+      label: "Learn",
+      app: "polymath",
+      count: state.rewards.length,
+      unit: state.rewards.length === 1 ? "stone earned" : "stones earned",
+      reason: `${notes} notes and ideas you can think with. Stones remember the work that earned them.`,
+      href: "/apps/neuralflow/rewards",
+      action: "See your stones",
+      needsYou: false,
+    },
   ];
 }
 
