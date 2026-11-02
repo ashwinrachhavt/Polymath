@@ -1,6 +1,7 @@
 import { defineAgent, defineDynamic } from "eve";
 import { createOpenAI } from "@ai-sdk/openai";
 import { geminiFetch } from "./lib/gemini-openai";
+import { headroomEnabled, headroomFetch } from "../../../src/integrations/headroom/client";
 // Relative, not "@/...": eve bundles from its own package root (see hooks/bridge.ts).
 import { DEFAULT_MODEL_ID, modelById } from "../../../src/domains/agents/models";
 
@@ -73,12 +74,23 @@ function polymathModel(runModel?: string | null) {
   }
 
   // Gemini's OpenAI-compatible surface needs the streaming repair; the other
-  // providers are OpenAI-shaped already.
+  // providers are OpenAI-shaped already. Headroom rides the same fetch seam
+  // (spec PR-3): env-gated, fail-open compression of the request payload.
+  // With HEADROOM_BASE_URL unset, headroomFetch() IS the global fetch — the
+  // gemini branch is then the exact pre-Headroom construction (geminiFetch's
+  // default base) and the non-gemini branch adds no fetch option at all.
+  const headroom = headroomFetch();
   const provider = createOpenAI({
     apiKey,
     baseURL: entry.baseUrl,
     name: entry.provider,
-    ...(entry.provider === "gemini" ? { fetch: geminiFetch() } : {}),
+    ...(entry.provider === "gemini"
+      ? // Repairs land first, compression last: signatures must ride on the
+        // final payload, and the compressor must see repaired chunks.
+        { fetch: geminiFetch(headroom) }
+      : headroomEnabled()
+        ? { fetch: headroom }
+        : {}),
   });
   return provider.chat(entry.id);
 }
