@@ -318,6 +318,30 @@ describe("ChatAccumulator", () => {
     expect(acc.list()).toHaveLength(1);
   });
 
+  it("keeps a paired message id when a replayed block replaces the seeded one", () => {
+    // The run page pairs stored message ids onto the seeded blocks. Eve
+    // replays the session from the start on every connect, and a replayed
+    // `block` frame carries no message id — dropping the pair would hide the
+    // comment control seconds after it rendered. The block id is the identity
+    // proof: same id is the same message, so the pairing survives the replace.
+    const acc = new ChatAccumulator();
+    acc.apply({
+      type: "snapshot",
+      runId: RUN,
+      cursor: 0,
+      blocks: [{ id: "assistant:turn_0:0", kind: "assistant", text: "Answer.", done: true, messageId: "m1" }],
+    });
+    acc.apply({
+      type: "block",
+      runId: RUN,
+      blockId: "assistant:turn_0:0",
+      text: "Answer.",
+      finishReason: "stop",
+      cursor: 1,
+    });
+    expect(acc.list()[0]?.messageId).toBe("m1");
+  });
+
   it("keeps reasoning out of the visible reply", () => {
     const acc = new ChatAccumulator();
     acc.apply({ type: "delta", runId: RUN, blockId: "reasoning:t:0", text: "thinking", cursor: 0 });

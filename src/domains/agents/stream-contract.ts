@@ -86,6 +86,13 @@ export type ChatBlock = {
   kind: "assistant" | "reasoning" | "user";
   text: string;
   done: boolean;
+  /**
+   * The mirrored `messages.id` this block renders, when the stored mirror is
+   * count-parity with the rendered events (plan Task 8). Null — not guessed —
+   * whenever the two lists disagree; a null hides the comment control rather
+   * than risk attaching a comment to the wrong message.
+   */
+  messageId?: string | null;
 };
 
 /**
@@ -201,7 +208,13 @@ function blockIdFor(data: Record<string, unknown>, kind: "assistant" | "reasonin
 }
 
 /** One stored message, reduced to what a block needs. */
-export type StoredMessage = { sequence: number; role: "user" | "assistant"; text: string; turnId?: string | null };
+export type StoredMessage = {
+  sequence: number;
+  role: "user" | "assistant";
+  text: string;
+  turnId?: string | null;
+  messageId?: string | null;
+};
 
 /**
  * The transcript Polymath has already stored, as chat blocks.
@@ -236,10 +249,17 @@ export function threadBlocks(messages: StoredMessage[]): ChatBlock[] {
         kind: "assistant",
         text: message.text,
         done: true,
+        messageId: message.messageId ?? null,
       });
       continue;
     }
-    blocks.push({ id: `user:stored:${message.sequence}`, kind: "user", text: message.text, done: true });
+    blocks.push({
+      id: `user:stored:${message.sequence}`,
+      kind: "user",
+      text: message.text,
+      done: true,
+      messageId: message.messageId ?? null,
+    });
   }
   return blocks;
 }
@@ -422,12 +442,17 @@ export class ChatAccumulator {
       return;
     }
     if (frame.type === "block") {
-      // Authoritative: replaces whatever deltas accumulated.
+      // Authoritative: replaces whatever deltas accumulated. A replayed block
+      // carries no message id, but the block id is the identity proof — same
+      // id is the same message — so the pair the page seeded survives the
+      // replace instead of hiding the comment control after every reconnect.
+      const pairedMessageId = this.blocks.get(frame.blockId)?.messageId ?? null;
       this.blocks.set(frame.blockId, {
         id: frame.blockId,
         kind: this.kindOf(frame.blockId),
         text: frame.text,
         done: true,
+        messageId: pairedMessageId,
       });
       return;
     }

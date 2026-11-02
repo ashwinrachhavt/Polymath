@@ -13,7 +13,7 @@ import { MessageFeedback } from "@/components/chat/message-feedback";
 import { getAuthContext } from "@/lib/auth";
 import { timeAgo } from "@/lib/time";
 import { displayTitle } from "@/lib/display-text";
-import { getRun, getRunUsage, listRecentRuns, type RunUsage } from "@/domains/agents/queries";
+import { getRun, getRunUsage, listRecentRuns, listRunMessageIds, type RunUsage } from "@/domains/agents/queries";
 import { getOpenQuestion, getRunAgent, listRunPendingProposals } from "@/domains/agents/run-context";
 import { getRunReviews } from "@/domains/agents/run-reviews";
 import { modelById } from "@/domains/agents/models";
@@ -65,19 +65,21 @@ async function ConversationSurface({ runId }: { runId: string }) {
   // Missing and other-workspace are the same answer on purpose (see getRun).
   if (!run) notFound();
 
-  const [history, threads, drafts, usage, reviews, agent, openQuestion, pendingProposals] = await Promise.all([
-    // The history menu is the same conversation list the idle home renders
-    // (history.ts feeds both), so it excludes onboarding runs for the same
-    // reason: machinery the person never typed is not a conversation.
-    listRecentRuns(auth.workspaceId, 50, { excludeOnboarding: true }),
-    listThreads(auth.workspaceId, [run.id]),
-    draftsForRuns(auth, [run.id]),
-    getRunUsage(auth.workspaceId, run.id),
-    getRunReviews(auth.workspaceId, run.id),
-    getRunAgent(auth.workspaceId, run.id),
-    getOpenQuestion(auth.workspaceId, run.id),
-    listRunPendingProposals(auth.workspaceId, run.id),
-  ]);
+  const [history, threads, drafts, usage, reviews, agent, openQuestion, pendingProposals, messageIds] =
+    await Promise.all([
+      // The history menu is the same conversation list the idle home renders
+      // (history.ts feeds both), so it excludes onboarding runs for the same
+      // reason: machinery the person never typed is not a conversation.
+      listRecentRuns(auth.workspaceId, 50, { excludeOnboarding: true }),
+      listThreads(auth.workspaceId, [run.id]),
+      draftsForRuns(auth, [run.id]),
+      getRunUsage(auth.workspaceId, run.id),
+      getRunReviews(auth.workspaceId, run.id),
+      getRunAgent(auth.workspaceId, run.id),
+      getOpenQuestion(auth.workspaceId, run.id),
+      listRunPendingProposals(auth.workspaceId, run.id),
+      listRunMessageIds(auth.workspaceId, run.id),
+    ]);
   const historyGroups = groupHistory(
     history.map((row): HistoryRow => ({
       id: row.id,
@@ -95,6 +97,27 @@ async function ConversationSurface({ runId }: { runId: string }) {
       ? { ...entry, text: stripMentionContext(entry.text) }
       : entry,
   );
+  /*
+   * Pair rendered blocks to stored messages by index, and only when the
+   * counts match (plan Task 8): the Zoe bridge mirrors rendered messages
+   * into `messages`, but a guarded mirror can lag or fail, and a mismatched
+   * pairing would attach a comment to the wrong message. threadBlocks skips
+   * empty texts, so the pairing runs over the same rendered subsequence the
+   * block list will show; a null messageId hides the comment control rather
+   * than guess.
+   */
+  const stored = visibleThread.flatMap((entry) =>
+    entry.kind === "user" || entry.kind === "assistant"
+      ? [{ sequence: entry.sequence, role: entry.kind, text: entry.text, turnId: entry.turnId ?? null }]
+      : [],
+  );
+  const rendered = stored.filter((message) => message.text.length > 0);
+  const pairedIds = messageIds.length === rendered.length ? messageIds : null;
+  let nextId = 0;
+  const pairedStored = stored.map((message) => {
+    if (!pairedIds || message.text.length === 0) return { ...message, messageId: null };
+    return { ...message, messageId: pairedIds[nextId++] ?? null };
+  });
   const unavailable = eveBridgeUnavailableReason();
   // Mirrors the server's own terminal set: a run that has not finished may still
   // produce events, so it streams; anything else is history.
@@ -188,13 +211,7 @@ async function ConversationSurface({ runId }: { runId: string }) {
             <ChatSurface
               runId={run.id}
               subject={{ type: "artifact", id: run.id }}
-              initial={threadBlocks(
-                visibleThread.flatMap((entry) =>
-                  entry.kind === "user" || entry.kind === "assistant"
-                    ? [{ sequence: entry.sequence, role: entry.kind, text: entry.text, turnId: entry.turnId ?? null }]
-                    : [],
-                ),
-              )}
+              initial={threadBlocks(pairedStored)}
               placeholder="Reply to continue…"
               composerLabel="Follow-up message"
               emptyText="This conversation has no messages yet."

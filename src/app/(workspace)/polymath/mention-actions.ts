@@ -1,9 +1,14 @@
 "use server";
 
 import { z } from "zod";
+import { and, eq, inArray } from "drizzle-orm";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 import { getCompanyDetail, getContactDetail } from "@/domains/crm/queries";
+import { db } from "@/lib/db";
+import { artifactLinks, artifactVersions, artifacts } from "@/domains/knowledge/schema";
+import { RELATION_LABELS, RELATION_TYPES } from "@/domains/knowledge/relations";
+import { ideaContextPayload } from "./idea-context";
 
 /*
  * The mention context read. A message that names a person or company with
@@ -14,7 +19,7 @@ import { getCompanyDetail, getContactDetail } from "@/domains/crm/queries";
  */
 
 const requested = z.object({
-  kind: z.enum(["person", "company"]),
+  kind: z.enum(["person", "company", "zettel"]),
   id: z.string().uuid(),
 });
 
@@ -24,6 +29,38 @@ export async function fetchMentionContext(raw: unknown): Promise<Record<string, 
 
   const auth = await getAuthContext();
   requireRole(auth, "member");
+
+  if (parsed.data.kind === "zettel") {
+    // The idea chip carries the idea itself: the claim text from the
+    // current version, its free tags, and up to five labelled edges. Read
+    // only, scoped to the workspace like every other branch.
+    const [idea] = await db
+      .select({ title: artifacts.title, plainText: artifactVersions.plainText, tags: artifacts.tags })
+      .from(artifacts)
+      .innerJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
+      .where(and(eq(artifacts.id, parsed.data.id), eq(artifacts.workspaceId, auth.workspaceId)));
+    if (!idea) return null;
+    const links = await db
+      .select({ label: artifactLinks.label, linkType: artifactLinks.linkType })
+      .from(artifactLinks)
+      .where(
+        and(
+          eq(artifactLinks.artifactId, parsed.data.id),
+          eq(artifactLinks.workspaceId, auth.workspaceId),
+          inArray(artifactLinks.linkType, [...RELATION_TYPES]),
+        ),
+      )
+      .limit(5);
+    return ideaContextPayload({
+      title: idea.title,
+      claim: idea.plainText ?? "",
+      tags: Array.isArray(idea.tags) ? (idea.tags as string[]) : [],
+      links: links.map((link) => ({
+        title: link.label ?? "",
+        relation: RELATION_LABELS[link.linkType] ?? link.linkType,
+      })),
+    });
+  }
 
   if (parsed.data.kind === "person") {
     const detail = await getContactDetail(auth, { contactId: parsed.data.id });
@@ -36,7 +73,9 @@ export async function fetchMentionContext(raw: unknown): Promise<Record<string, 
       relationshipStatus: detail.contact.relationshipStatus,
       notes: detail.contact.notes,
       companies: detail.companies.map((link) => ({ name: link.name, title: link.title, isCurrent: link.isCurrent })),
-      recentObservations: detail.observations.slice(0, 5).map((observation) => ({ body: observation.body, at: observation.observedAt })),
+      recentObservations: detail.observations
+        .slice(0, 5)
+        .map((observation) => ({ body: observation.body, at: observation.observedAt })),
       openFollowUps: detail.followUps
         .filter((followUp) => followUp.status === "open")
         .map((followUp) => ({ note: followUp.note, dueAt: followUp.dueAt })),
@@ -50,6 +89,10 @@ export async function fetchMentionContext(raw: unknown): Promise<Record<string, 
     name: detail.company.name,
     domain: detail.company.domain,
     description: detail.company.description,
-    people: detail.contacts.map((contact) => ({ name: contact.fullName, title: contact.title, isCurrent: contact.isCurrent })),
+    people: detail.contacts.map((contact) => ({
+      name: contact.fullName,
+      title: contact.title,
+      isCurrent: contact.isCurrent,
+    })),
   };
 }
