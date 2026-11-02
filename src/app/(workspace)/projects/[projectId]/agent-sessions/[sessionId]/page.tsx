@@ -1,7 +1,10 @@
 import Link from "next/link";
+import { connection } from "next/server";
+import { Suspense } from "react";
 
 import { getProjectDetail } from "@/domains/knowledge/projects";
 import { cwdMatchesProjectRoot } from "@/lib/agent-artifacts/cwd-match";
+import { Skeleton } from "@/components/ui/skeleton";
 import { getAuthContext } from "@/lib/auth";
 import { SessionBriefPanel } from "@/components/polymath/workbench/session-brief-panel";
 import { buildSessionBrief } from "@/domains/agents/session-brief";
@@ -25,12 +28,26 @@ const AGENT_SOURCE_LABEL: Record<string, string> = {
  * reads exactly like a missing one, because the address is not a global
  * namespace, it is this project's record.
  */
-export default async function AgentSessionPage({
-  params,
-}: {
-  params: Promise<{ projectId: string; sessionId: string }>;
-}) {
+
+/*
+ * The params promise is read inside the boundary, not above it — awaiting it
+ * in the page body opts the route out of instant navigation (see the project
+ * page). The Suspense shell is also what lets the Cache Components prerender
+ * defer the request-scoped reads below instead of erroring on them.
+ */
+export default function AgentSessionPage({ params }: { params: Promise<{ projectId: string; sessionId: string }> }) {
+  return (
+    <Suspense fallback={<Skeleton className="m-6 h-64 w-full" />}>
+      <AgentSessionRoute params={params} />
+    </Suspense>
+  );
+}
+
+async function AgentSessionRoute({ params }: { params: Promise<{ projectId: string; sessionId: string }> }) {
   const { projectId, sessionId } = await params;
+  // Cache Components: request-scoped reads (auth cookies, uncached session
+  // rows) need the dynamic escape hatch, same as the project surface.
+  await connection();
   const auth = await getAuthContext();
 
   const project = await getProjectDetail(auth, projectId);
