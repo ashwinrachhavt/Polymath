@@ -70,7 +70,7 @@ suite("proposeZettels from an artifact (real Postgres)", () => {
         { title: "Invented", claim: "Not in the body.", quote: "this sentence is not in the artifact anywhere at all" },
       ],
     };
-    const rows = await proposeZettels(auth, { sourceArtifactId: artifact.id, extractor });
+    const { proposals: rows } = await proposeZettels(auth, { sourceArtifactId: artifact.id, extractor });
 
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
@@ -85,7 +85,7 @@ suite("proposeZettels from an artifact (real Postgres)", () => {
     // A second identical run collides on the partial index, so the repeat
     // stacks nothing (the NULL-distinctness guarantee on the artifact path).
     const again = await proposeZettels(auth, { sourceArtifactId: artifact.id, extractor });
-    expect(again).toHaveLength(0);
+    expect(again.proposals).toHaveLength(0);
   });
 
   it("refuses a source with no readable body", async () => {
@@ -142,7 +142,9 @@ suite("proposeZettels from an artifact (real Postgres)", () => {
       name: "fake@1",
       extract: async () => [{ title: "Monthly rent", claim: "Rent is $1,200 a month.", quote: Q1 }],
     };
-    const [proposal] = await proposeZettels(auth, { sourceArtifactId: artifact.id, extractor });
+    const {
+      proposals: [proposal],
+    } = await proposeZettels(auth, { sourceArtifactId: artifact.id, extractor });
 
     const accepted = await acceptZettel(auth, { proposalId: proposal.id });
     const [card] = await db

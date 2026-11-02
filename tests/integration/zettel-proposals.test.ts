@@ -99,7 +99,7 @@ suite("proposeZettels (real Postgres)", () => {
   it("proposes title, one claim, verbatim span and document id", async () => {
     const auth = await workspace();
     const doc = await seed(auth);
-    const rows = await proposeZettels(auth, {
+    const { proposals: rows } = await proposeZettels(auth, {
       documentId: doc.id,
       extractor: extractor([
         { title: "Monthly rent", claim: "Rent is $1,200 a month.", quote: Q1 },
@@ -121,7 +121,7 @@ suite("proposeZettels (real Postgres)", () => {
   it("drops invented quotes, empty fields and short quotes", async () => {
     const auth = await workspace();
     const doc = await seed(auth);
-    const rows = await proposeZettels(auth, {
+    const { proposals: rows } = await proposeZettels(auth, {
       documentId: doc.id,
       extractor: extractor([
         { title: "Invented", claim: "x", quote: "The tenant may keep a dragon in the flat." },
@@ -136,7 +136,9 @@ suite("proposeZettels (real Postgres)", () => {
   it("a concurrent double-submit still creates exactly one artifact set (§11)", async () => {
     const auth = await workspace();
     const doc = await seed(auth);
-    const [p] = await proposeZettels(auth, {
+    const {
+      proposals: [p],
+    } = await proposeZettels(auth, {
       documentId: doc.id,
       extractor: extractor([{ title: "Rent", claim: "c", quote: Q1 }]),
     });
@@ -161,7 +163,7 @@ suite("proposeZettels (real Postgres)", () => {
   it("keeps negation verbatim: a paraphrase that drops the 'not' never lands (§11)", async () => {
     const auth = await workspace();
     const doc = await seed(auth);
-    const rows = await proposeZettels(auth, {
+    const { proposals: rows } = await proposeZettels(auth, {
       documentId: doc.id,
       extractor: extractor([
         { title: "Pets allowed", claim: "Pets are allowed.", quote: "Pets are allowed without written consent." },
@@ -180,9 +182,11 @@ suite("proposeZettels (real Postgres)", () => {
     const auth = await workspace();
     const doc = await seed(auth);
     const ex = extractor([{ title: "Rent", claim: "c", quote: Q1 }]);
-    const [first] = await proposeZettels(auth, { documentId: doc.id, extractor: ex });
+    const {
+      proposals: [first],
+    } = await proposeZettels(auth, { documentId: doc.id, extractor: ex });
     await rejectZettel(auth, { proposalId: first.id });
-    expect(await proposeZettels(auth, { documentId: doc.id, extractor: ex })).toHaveLength(0);
+    expect((await proposeZettels(auth, { documentId: doc.id, extractor: ex })).proposals).toHaveLength(0);
     const all = await listZettelProposals(auth, doc.id);
     expect(all).toHaveLength(1);
     expect(all[0].status).toBe("rejected");
@@ -203,13 +207,15 @@ suite("proposeZettels (real Postgres)", () => {
 
   it("caps proposals per document", async () => {
     const auth = await workspace();
-    const sentences = Array.from({ length: 12 }, (_, i) => `Clause number ${i} states a distinct obligation.`);
+    // The flat per-source bound is 20 (was 8 before the chunked pipeline): a
+    // single-section source keeps everything up to the cap without a merge.
+    const sentences = Array.from({ length: 25 }, (_, i) => `Clause number ${i} states a distinct obligation.`);
     const doc = await seed(auth, sentences.join(" "));
-    const rows = await proposeZettels(auth, {
+    const { proposals: rows } = await proposeZettels(auth, {
       documentId: doc.id,
       extractor: extractor(sentences.map((q, i) => ({ title: `T${i}`, claim: "c", quote: q }))),
     });
-    expect(rows).toHaveLength(8);
+    expect(rows).toHaveLength(20);
   });
 });
 
@@ -217,7 +223,9 @@ suite("accept and reject (real Postgres)", () => {
   async function one() {
     const auth = await workspace();
     const doc = await seed(auth);
-    const [p] = await proposeZettels(auth, {
+    const {
+      proposals: [p],
+    } = await proposeZettels(auth, {
       documentId: doc.id,
       extractor: extractor([{ title: "Monthly rent", claim: "Rent is $1,200 a month.", quote: Q1 }]),
     });
@@ -281,7 +289,7 @@ suite("accept and reject (real Postgres)", () => {
           documentId: id,
           extractor: extractor([{ title: "Monthly rent", claim: "c", quote: Q1 }]),
         })
-      )[0];
+      ).proposals[0];
     const a = await acceptZettel(auth, { proposalId: (await mk(d1.id)).id });
     const b = await acceptZettel(auth, { proposalId: (await mk(d2.id)).id });
     expect(b.conceptId).toBe(a.conceptId);

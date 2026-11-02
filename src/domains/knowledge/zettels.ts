@@ -5,7 +5,10 @@ import { db } from "@/lib/db";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { escapeLike } from "@/lib/list-params";
 import { currentExtractionIdSubquery } from "./versions";
-import { defaultZettelExtractor, type ZettelCandidate, type ZettelExtractor } from "@/integrations/zettels/extractor";
+import { mergeCandidates, type SectionCandidate } from "./zettel-merge";
+import { ZETTEL_MERGE_MAX_PER_SOURCE, splitSections } from "./zettel-chunking";
+import { defaultZettelExtractor, type ZettelExtractor } from "@/integrations/zettels/extractor";
+import { generationProvider } from "@/integrations/generation/provider";
 import { embedArtifact } from "./embedding";
 import {
   artifactLinks,
@@ -39,7 +42,7 @@ import {
  * structured provenance underneath it.
  */
 
-export const MAX_ZETTELS_PER_DOCUMENT = 8;
+export const ZETTEL_MAX_PER_SOURCE = ZETTEL_MERGE_MAX_PER_SOURCE;
 const MAX_TITLE = 120;
 const MAX_CLAIM = 400;
 
@@ -140,62 +143,109 @@ function zettelOrigin(source: ResolvedZettelSource): { path: "doc" | "artifact";
   throw new Error("resolved source names neither a document nor an artifact");
 }
 
-export async function proposeZettels(auth: AuthContext, input: ZettelSourceInput) {
+/** What one proposal pass produced: the rows, and an honest read report. */
+export type ZettelProposalResult = {
+  proposals: Array<Awaited<ReturnType<typeof insertProposal>>>;
+  readChars: number;
+  unreadChars: number;
+  unreadSections: number;
+};
+
+async function insertProposal(
+  conn: Pick<TxDrizzle, "insert">,
+  params: {
+    auth: AuthContext;
+    fromDocument: boolean;
+    origin: { path: "doc" | "artifact"; id: string };
+    extractionId: string | null;
+    candidate: SectionCandidate;
+    proposer: string;
+  },
+) {
+  const { auth, fromDocument, origin, extractionId, candidate: z, proposer } = params;
+  const [row] = await conn
+    .insert(zettelProposals)
+    .values({
+      workspaceId: auth.workspaceId,
+      ...(fromDocument ? { documentId: origin.id, extractionId } : { sourceArtifactId: origin.id }),
+      title: z.title,
+      claim: z.claim,
+      quote: z.quote,
+      spanStart: z.start,
+      spanEnd: z.end,
+      dedupeKey: zettelDedupeKey(origin.path, origin.id, z.start, z.end),
+      proposer,
+      createdBy: auth.userId,
+      updatedBy: auth.userId,
+    })
+    .onConflictDoNothing(
+      fromDocument
+        ? { target: [zettelProposals.documentId, zettelProposals.dedupeKey] }
+        : {
+            target: [zettelProposals.sourceArtifactId, zettelProposals.dedupeKey],
+            where: sql`source_artifact_id is not null`,
+          },
+    )
+    .returning();
+  return row;
+}
+
+export async function proposeZettels(auth: AuthContext, input: ZettelSourceInput): Promise<ZettelProposalResult> {
   const conn = input.tx ?? db;
   const source = await resolveZettelSource(auth, input, conn);
   const origin = zettelOrigin(source);
   const fromDocument = origin.path === "doc";
 
   const extractor = input.extractor ?? defaultZettelExtractor(auth.workspaceId);
-  const candidates = await extractor.extract(source.text);
 
-  const accepted: Array<ZettelCandidate & { start: number; end: number }> = [];
-  for (const c of candidates) {
-    const title = c.title?.trim();
-    const claim = c.claim?.trim();
-    if (!title || !claim || typeof c.quote !== "string") continue;
-    const span = locate(source.text, c.quote);
-    if (!span) continue; // not a verbatim passage: no evidence, no proposal
-    accepted.push({
-      title: title.slice(0, MAX_TITLE),
-      claim: claim.slice(0, MAX_CLAIM),
-      quote: c.quote.trim(),
-      ...span,
+  // The source is read in bounded sections; a section is never truncated by
+  // the extractor's input cap, and anything past the section cap is counted,
+  // not dropped.
+  const { sections, readChars, unreadChars, unreadSections } = splitSections(source.text);
+
+  const survivors: SectionCandidate[] = [];
+  for (const [sectionIndex, section] of sections.entries()) {
+    const candidates = await extractor.extract(section.text);
+    for (const c of candidates) {
+      const title = c.title?.trim();
+      const claim = c.claim?.trim();
+      if (!title || !claim || typeof c.quote !== "string") continue;
+      // Located in the SECTION, then re-based onto the source, so the stored
+      // span indexes the text the resolver read.
+      const span = locate(section.text, c.quote);
+      if (!span) continue; // not a verbatim passage: no evidence, no proposal
+      survivors.push({
+        title: title.slice(0, MAX_TITLE),
+        claim: claim.slice(0, MAX_CLAIM),
+        quote: c.quote.trim(),
+        start: span.start + section.start,
+        end: span.end + section.start,
+        sectionIndex,
+      });
+    }
+  }
+
+  // One bounded merge over titles and claims only; quotes never reach the
+  // model. It consolidates the candidates of a CHUNKED source; a source that
+  // fit one section is the extractor's own single call, capped flat below.
+  let merged = survivors;
+  if (sections.length > 1 && survivors.length > 1) {
+    merged = await mergeCandidates(survivors, { provider: generationProvider() });
+  }
+
+  const proposals = [];
+  for (const z of merged.slice(0, ZETTEL_MAX_PER_SOURCE)) {
+    const row = await insertProposal(conn, {
+      auth,
+      fromDocument,
+      origin,
+      extractionId: source.extractionId,
+      candidate: z,
+      proposer: extractor.name,
     });
-    if (accepted.length >= MAX_ZETTELS_PER_DOCUMENT) break;
+    if (row) proposals.push(row);
   }
-
-  const created = [];
-  for (const z of accepted) {
-    const [row] = await conn
-      .insert(zettelProposals)
-      .values({
-        workspaceId: auth.workspaceId,
-        ...(fromDocument
-          ? { documentId: origin.id, extractionId: source.extractionId }
-          : { sourceArtifactId: origin.id }),
-        title: z.title,
-        claim: z.claim,
-        quote: z.quote,
-        spanStart: z.start,
-        spanEnd: z.end,
-        dedupeKey: zettelDedupeKey(origin.path, origin.id, z.start, z.end),
-        proposer: extractor.name,
-        createdBy: auth.userId,
-        updatedBy: auth.userId,
-      })
-      .onConflictDoNothing(
-        fromDocument
-          ? { target: [zettelProposals.documentId, zettelProposals.dedupeKey] }
-          : {
-              target: [zettelProposals.sourceArtifactId, zettelProposals.dedupeKey],
-              where: sql`source_artifact_id is not null`,
-            },
-      )
-      .returning();
-    if (row) created.push(row);
-  }
-  return created;
+  return { proposals, readChars, unreadChars, unreadSections };
 }
 
 /** Proposals for one document, oldest first, scoped to the workspace. */
