@@ -284,7 +284,9 @@ async function enrichLeased(
     .slice(0, MAX_TAGS);
   await ownedUpdate(token, captureId, {
     ...base,
-    title: parsed.title?.trim() || null,
+    // A title already on the capture is person-supplied (capture/schema.ts):
+    // the model may suggest one only into the empty slot, never overwrite.
+    ...(capture.title?.trim() ? {} : { title: parsed.title?.trim() || null }),
     domain: parsed.domain?.toLowerCase().trim() || null,
     tags: tags && tags.length > 0 ? tags : null,
     processingState: "enriched",
