@@ -21,11 +21,7 @@ import { sendFollowUp } from "@/domains/agents/thread";
 
 type Result = { ok: true } | { ok: false; message: string };
 
-export async function answerRunQuestion(input: {
-  runId: string;
-  questionId: string;
-  answer: string;
-}): Promise<Result> {
+export async function answerRunQuestion(input: { runId: string; questionId: string; answer: string }): Promise<Result> {
   const parsed = z
     .object({
       runId: z.string().uuid(),
@@ -67,5 +63,35 @@ export async function answerRunQuestion(input: {
   }
 
   revalidatePath(`/polymath/${parsed.data.runId}`);
+  return { ok: true };
+}
+
+/*
+ * Dismissing a question the owner declines to answer. It mirrors the answer
+ * guard — conditional on the row still being open — but nothing resumes the
+ * run: the run stays waiting_input and reads as a parked turn in the triage
+ * panel. The owner writes on the run surface when they want it to continue.
+ */
+export async function dismissQuestionAction(input: { questionId: string }): Promise<Result> {
+  const parsed = z.object({ questionId: z.string().uuid() }).safeParse(input);
+  if (!parsed.success) return { ok: false, message: "That question is no longer open." };
+
+  const auth = await getAuthContext();
+  requireRole(auth, "member");
+
+  const [closed] = await db
+    .update(agentQuestions)
+    .set({ state: "dismissed", updatedAt: new Date() })
+    .where(
+      and(
+        eq(agentQuestions.id, parsed.data.questionId),
+        eq(agentQuestions.workspaceId, auth.workspaceId),
+        eq(agentQuestions.state, "open"),
+      ),
+    )
+    .returning({ id: agentQuestions.id, runId: agentQuestions.runId });
+  if (!closed) return { ok: false, message: "That question is no longer open." };
+
+  revalidatePath(`/polymath/${closed.runId}`);
   return { ok: true };
 }
