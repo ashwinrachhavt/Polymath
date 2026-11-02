@@ -1,10 +1,10 @@
-import { and, count, desc, eq, gte, ilike, inArray, isNull, ne, or, sql, type SQL } from "drizzle-orm";
+import { and, count, desc, eq, gte, ilike, inArray, isNull, notLike, or, sql, type SQL } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { escapeLike } from "@/lib/list-params";
-// Onboarding's own module owns the objective constant; importing it here is
+// Onboarding's own module owns the machinery markers; importing them here is
 // cycle-free (nothing in onboarding's graph reads this module).
-import { ONBOARDING_OBJECTIVE } from "./onboarding";
+import { ONBOARDING_OBJECTIVE_PREFIX } from "./onboarding";
 import { agentProfiles, agentRuns, runEvents, toolCalls } from "./schema";
 
 /*
@@ -16,9 +16,18 @@ import { agentProfiles, agentRuns, runEvents, toolCalls } from "./schema";
 export async function getRunBySessionRef(
   sessionRef: string,
   workspaceId: string,
-): Promise<(Pick<typeof agentRuns.$inferSelect, "id" | "policySnapshot" | "state"> & Partial<Pick<typeof agentRuns.$inferSelect, "subjects">>) | null> {
+): Promise<
+  | (Pick<typeof agentRuns.$inferSelect, "id" | "policySnapshot" | "state"> &
+      Partial<Pick<typeof agentRuns.$inferSelect, "subjects">>)
+  | null
+> {
   const runs = await db
-    .select({ id: agentRuns.id, policySnapshot: agentRuns.policySnapshot, state: agentRuns.state, subjects: agentRuns.subjects })
+    .select({
+      id: agentRuns.id,
+      policySnapshot: agentRuns.policySnapshot,
+      state: agentRuns.state,
+      subjects: agentRuns.subjects,
+    })
     .from(agentRuns)
     .where(and(eq(agentRuns.sessionRef, sessionRef), eq(agentRuns.workspaceId, workspaceId)))
     .limit(2);
@@ -51,7 +60,15 @@ export async function listRecentRuns(
         // Discarded runs are retired: hidden from conversation surfaces,
         // still present for audit.
         isNull(agentRuns.discardedAt),
-        options.excludeOnboarding ? ne(agentRuns.objective, ONBOARDING_OBJECTIVE) : undefined,
+        options.excludeOnboarding
+          ? // Prefix, not the exact current script: the script's text has
+            // changed before (the default agent's name rides in its last
+            // line), so equality leaked every run written by an earlier
+            // revision — the F4 residual row. Only startOnboardingRun writes
+            // this header; a conversation's objective is the person's own
+            // words.
+            notLike(agentRuns.objective, `${ONBOARDING_OBJECTIVE_PREFIX}%`)
+          : undefined,
       ),
     )
     .orderBy(desc(agentRuns.createdAt))
@@ -179,8 +196,15 @@ export async function getUsageLedger(workspaceId: string, days: number, limit = 
   `);
   // db.execute returns timestamptz as text; startedAt is coerced below.
   const ledger = rows as unknown as {
-    run_id: string; objective: string; state: string; started_at: string | null;
-    usd: string | null; priced_events: number; usage_events: number; input_tokens: number; output_tokens: number;
+    run_id: string;
+    objective: string;
+    state: string;
+    started_at: string | null;
+    usd: string | null;
+    priced_events: number;
+    usage_events: number;
+    input_tokens: number;
+    output_tokens: number;
   }[];
   let totalUsd: string | null = null;
   let unpricedRuns = 0;
@@ -256,12 +280,14 @@ export async function listDocumentSearchResults(workspaceId: string, runIds: str
   const rows = await db
     .select({ runId: toolCalls.runId, result: toolCalls.result })
     .from(toolCalls)
-    .where(and(
-      eq(toolCalls.workspaceId, workspaceId),
-      inArray(toolCalls.runId, runIds),
-      inArray(toolCalls.toolName, DOCUMENT_SEARCH_TOOLS),
-      eq(toolCalls.ok, true),
-    ))
+    .where(
+      and(
+        eq(toolCalls.workspaceId, workspaceId),
+        inArray(toolCalls.runId, runIds),
+        inArray(toolCalls.toolName, DOCUMENT_SEARCH_TOOLS),
+        eq(toolCalls.ok, true),
+      ),
+    )
     .orderBy(toolCalls.createdAt);
   const byRun = new Map<string, unknown[]>();
   for (const row of rows) byRun.set(row.runId, [...(byRun.get(row.runId) ?? []), row.result]);
@@ -378,12 +404,7 @@ export async function listRunsForSkill(workspaceId: string, skillId: string, lim
       createdAt: agentRuns.createdAt,
     })
     .from(agentRuns)
-    .where(
-      and(
-        eq(agentRuns.workspaceId, workspaceId),
-        sql`${agentRuns.policySnapshot}->'skill'->>'id' = ${skillId}`,
-      ),
-    )
+    .where(and(eq(agentRuns.workspaceId, workspaceId), sql`${agentRuns.policySnapshot}->'skill'->>'id' = ${skillId}`))
     .orderBy(desc(agentRuns.createdAt), desc(agentRuns.id))
     .limit(limit);
 }
