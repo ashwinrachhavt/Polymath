@@ -286,6 +286,10 @@ async function enqueueCapture(msg) {
       url: (msg.url || "").trim(),
       title: (msg.title || "").trim(),
       mode: msg.mode || null,
+      // Extraction metadata from the content script (raw_markdown + quality
+      // grade) travels with the entry and out in its delivery body.
+      raw_markdown: msg.raw_markdown || null,
+      quality: msg.quality || null,
       history: msg.history || null,
       destination: await currentDestination(),
     },
@@ -443,6 +447,10 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
           title: source.title,
           // The replacement is the same arrival mode as the capture it rescues.
           mode: source.mode || null,
+          // The rescue keeps the extraction work: the text is the same
+          // selection, only the deduping URL is stripped.
+          raw_markdown: source.raw_markdown || null,
+          quality: source.quality || null,
           history: source.history,
           destination: await currentDestination(),
         },

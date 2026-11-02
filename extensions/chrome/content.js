@@ -406,6 +406,11 @@
         url: location.href,
         title: document.title,
         content: extracted.raw_text,
+        // The extraction work the page already paid for: the server keeps
+        // the formatted markdown and its grade as capture provenance
+        // instead of this surviving only as the toast's quality label.
+        raw_markdown: extracted.raw_markdown,
+        quality: extracted.quality,
         history: {
           title: `[Page] ${document.title}`,
           url: location.href,
