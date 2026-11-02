@@ -32,8 +32,7 @@ export type DocumentSearchInput = {
 };
 
 /** Literal-substring LIKE pattern: the owner's `%` means a percent, not a wildcard. */
-const likeContains = (s: string) =>
-  `%${s.replace(/[\\%_]/g, "\\$&")}%`;
+const likeContains = (s: string) => `%${s.replace(/[\\%_]/g, "\\$&")}%`;
 
 /** Any extraction row for this document whose text matches the query. */
 const textMatch = (query: string): SQL =>
@@ -47,21 +46,12 @@ const partyMatch = (column: SQL): SQL =>
   sql`exists (select 1 from document_parties where document_parties.document_id = ${documents.id} and ${column})`;
 
 export async function searchDocuments(auth: AuthContext, input: DocumentSearchInput = {}) {
-  const conditions = [
-    eq(documents.workspaceId, auth.workspaceId),
-    isNull(documents.archivedAt),
-  ];
+  const conditions = [eq(documents.workspaceId, auth.workspaceId), isNull(documents.archivedAt)];
 
   const query = input.query?.trim();
   if (query) {
     const like = likeContains(query);
-    conditions.push(
-      or(
-        textMatch(query),
-        sql`${documents.title} ilike ${like}`,
-        sql`${files.filename} ilike ${like}`,
-      )!,
-    );
+    conditions.push(or(textMatch(query), sql`${documents.title} ilike ${like}`, sql`${files.filename} ilike ${like}`)!);
   }
 
   const f = input.filters ?? {};
@@ -89,23 +79,43 @@ export async function searchDocuments(auth: AuthContext, input: DocumentSearchIn
       )`
     : sql<string | null>`null`;
 
+  // Relevance when a query is present: the FTS rank of the document's CURRENT
+  // extraction - the same extraction the snippet reads - so a document that
+  // matches the query harder outranks a newer one that barely matches.
+  // Title/filename-only fallback matches (no extraction hit) score 0 and fall
+  // behind, newest first. Without a query nothing is rankable, so recency
+  // answers alone.
+  const rank = query
+    ? sql<number>`coalesce((select ts_rank(to_tsvector('english', coalesce(de.text, '')), plainto_tsquery('english', ${query}))
+        from document_extractions de
+        where de.document_id = ${documents.id} and de.status = 'succeeded'
+          and de.id::text = ${currentExtractionSql("id")}
+          and to_tsvector('english', coalesce(de.text, '')) @@ plainto_tsquery('english', ${query})), 0)`
+    : sql<number>`0`;
+
   // One query, no joins that could duplicate a document with several extraction
   // versions: status comes from a correlated latest-extraction subquery.
-  return db
-    .select({
-      id: documents.id,
-      title: documents.title,
-      snippet,
-      filename: files.filename,
-      extractionStatus: sql<string | null>`${currentExtractionSql("status")}`,
-      createdAt: documents.createdAt,
-    })
-    .from(documents)
-    .leftJoin(files, eq(files.id, documents.fileId))
-    .where(and(...conditions))
-    .orderBy(desc(documents.createdAt))
-    .limit(limit)
-    .offset(offset);
+  return (
+    db
+      .select({
+        id: documents.id,
+        title: documents.title,
+        snippet,
+        filename: files.filename,
+        extractionStatus: sql<string | null>`${currentExtractionSql("status")}`,
+        createdAt: documents.createdAt,
+        rank,
+      })
+      .from(documents)
+      .leftJoin(files, eq(files.id, documents.fileId))
+      .where(and(...conditions))
+      // Relevance first, recency as the tiebreaker (see the rank note above). A
+      // plain 0 cannot join ORDER BY - postgres reads an integer there as a
+      // select-list ordinal - so without a query recency answers alone.
+      .orderBy(...(query ? [desc(rank), desc(documents.createdAt)] : [desc(documents.createdAt)]))
+      .limit(limit)
+      .offset(offset)
+  );
 }
 
 /*
@@ -196,19 +206,21 @@ export async function searchChunks(
     .from(embeddings)
     .innerJoin(documentExtractions, eq(documentExtractions.id, embeddings.ownerId))
     .innerJoin(documents, eq(documents.id, documentExtractions.documentId))
-    .where(and(
-      eq(embeddings.workspaceId, auth.workspaceId),
-      eq(documentExtractions.workspaceId, auth.workspaceId),
-      eq(documents.workspaceId, auth.workspaceId),
-      eq(embeddings.ownerType, EMBEDDING_OWNER_TYPE),
-      eq(embeddings.model, provider.model),
-      isNull(documents.archivedAt),
-      input.documentIds ? inArray(documents.id, input.documentIds) : undefined,
-      eq(documentExtractions.status, "succeeded"),
-      // The current version answers; a restored older version answers, and a
-      // superseded newer one stays silent (versions.ts owns "current").
-      sql`${documentExtractions.id}::text = ${currentExtractionSql("id")}`,
-    ))
+    .where(
+      and(
+        eq(embeddings.workspaceId, auth.workspaceId),
+        eq(documentExtractions.workspaceId, auth.workspaceId),
+        eq(documents.workspaceId, auth.workspaceId),
+        eq(embeddings.ownerType, EMBEDDING_OWNER_TYPE),
+        eq(embeddings.model, provider.model),
+        isNull(documents.archivedAt),
+        input.documentIds ? inArray(documents.id, input.documentIds) : undefined,
+        eq(documentExtractions.status, "succeeded"),
+        // The current version answers; a restored older version answers, and a
+        // superseded newer one stays silent (versions.ts owns "current").
+        sql`${documentExtractions.id}::text = ${currentExtractionSql("id")}`,
+      ),
+    )
     .orderBy(distance)
     .limit(limit);
 
@@ -256,16 +268,18 @@ export async function searchChunksFts(
     })
     .from(documentExtractions)
     .innerJoin(documents, eq(documents.id, documentExtractions.documentId))
-    .where(and(
-      eq(documentExtractions.workspaceId, auth.workspaceId),
-      eq(documents.workspaceId, auth.workspaceId),
-      isNull(documents.archivedAt),
-      input.documentIds ? inArray(documents.id, input.documentIds) : undefined,
-      eq(documentExtractions.status, "succeeded"),
-      // Same current-version rule as searchChunks (versions.ts owns "current").
-      sql`${documentExtractions.id}::text = ${currentExtractionSql("id")}`,
-      sql`${tsVector} @@ ${tsQuery}`,
-    ))
+    .where(
+      and(
+        eq(documentExtractions.workspaceId, auth.workspaceId),
+        eq(documents.workspaceId, auth.workspaceId),
+        isNull(documents.archivedAt),
+        input.documentIds ? inArray(documents.id, input.documentIds) : undefined,
+        eq(documentExtractions.status, "succeeded"),
+        // Same current-version rule as searchChunks (versions.ts owns "current").
+        sql`${documentExtractions.id}::text = ${currentExtractionSql("id")}`,
+        sql`${tsVector} @@ ${tsQuery}`,
+      ),
+    )
     .orderBy(desc(rank))
     .limit(limit);
 
@@ -273,16 +287,18 @@ export async function searchChunksFts(
     const text = r.text ?? "";
     if (!text) return [];
     const { start, end } = passageWindow(text, query);
-    return [{
-      documentId: r.documentId,
-      title: r.title,
-      extractionId: r.extractionId,
-      chunkIndex: 0,
-      text: text.slice(start, end),
-      span: { start, end, page: null },
-      // ts_rank is higher-is-better; ChunkHit.distance is lower-is-closer.
-      distance: 1 / (1 + Number(r.rank)),
-    }];
+    return [
+      {
+        documentId: r.documentId,
+        title: r.title,
+        extractionId: r.extractionId,
+        chunkIndex: 0,
+        text: text.slice(start, end),
+        span: { start, end, page: null },
+        // ts_rank is higher-is-better; ChunkHit.distance is lower-is-closer.
+        distance: 1 / (1 + Number(r.rank)),
+      },
+    ];
   });
 }
 
@@ -296,7 +312,10 @@ export const FTS_PASSAGE_RADIUS = 600;
  * embedding-chunk spans.
  */
 export function passageWindow(text: string, query: string, radius = FTS_PASSAGE_RADIUS) {
-  const terms = query.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 2);
+  const terms = query
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((t) => t.length > 2);
   const lower = text.toLowerCase();
   let at = -1;
   for (const term of terms) {
