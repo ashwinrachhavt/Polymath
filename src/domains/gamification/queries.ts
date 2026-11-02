@@ -11,7 +11,14 @@ import { rewardDefinitions, rewardLedger } from "./schema";
 
 export type RewardsOverview = {
   definitions: Array<typeof rewardDefinitions.$inferSelect>;
-  ledger: Array<typeof rewardLedger.$inferSelect & { definitionKey: string; definitionLabel: string; definitionKind: string; definitionThreshold: number }>;
+  ledger: Array<
+    typeof rewardLedger.$inferSelect & {
+      definitionKey: string;
+      definitionLabel: string;
+      definitionKind: string;
+      definitionThreshold: number;
+    }
+  >;
   /** Sum of ledger points - the score is a derivation, not a record. */
   totalPoints: number;
   /** Distinct workspace-local days with at least one ledger entry. */
@@ -64,9 +71,11 @@ export async function getRewardsOverview(auth: AuthContext): Promise<RewardsOver
     total_points: 0,
     active_days: 0,
   };
+  // Reversal rows (subject_type 'reward_ledger') reference the award they
+  // undo and never count as stones - a reversed award buys no shard credit.
   const shardRows = await db.execute(sql`
     select
-      count(*) filter (where d.key <> 'shard')::int as stones,
+      count(*) filter (where d.key <> 'shard' and l.subject_type is distinct from 'reward_ledger')::int as stones,
       count(*) filter (where d.key = 'shard')::int as claimed
     from reward_ledger l
     join reward_definitions d on d.id = l.reward_definition_id
@@ -96,7 +105,10 @@ export function pickRewardAnnouncement(
   now: Date,
 ): (RewardsOverview["ledger"][number] & { milestone: boolean }) | null {
   const entry = ledger.find(
-    (row) => row.points > 0 && row.reason !== "adjustment" && now.getTime() - row.createdAt.getTime() <= ANNOUNCEMENT_WINDOW_MS,
+    (row) =>
+      row.points > 0 &&
+      row.reason !== "adjustment" &&
+      now.getTime() - row.createdAt.getTime() <= ANNOUNCEMENT_WINDOW_MS,
   );
   if (!entry) return null;
   return { ...entry, milestone: entry.definitionKind === "badge" || entry.definitionThreshold > 1 };

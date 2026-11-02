@@ -139,6 +139,15 @@ test("a focus session starts from the task's Focus action on Work, and no stone 
   await expect(page.getByText("Paused", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Resume", exact: true }).click();
   await expect(page.getByText("Focusing", { exact: true })).toBeVisible();
+  // Pause again before finishing: a finish banks the open stretch, and the
+  // point rule rounds any positive banked time up to a full unit (spec §5).
+  // The premise of the final assertion - the flow earns nothing - holds only
+  // for a finish with nothing banked, which is exactly what a paused finish
+  // is ("from paused, nothing is open"). Without this, the seconds between
+  // Resume and Finish decide the test: fast runners bank zero, slow ones
+  // bank one second and pay a full unit - a timing flake, not an award bug.
+  await page.getByRole("button", { name: "Pause", exact: true }).click();
+  await expect(page.getByText("Paused", { exact: true })).toBeVisible();
   // A task-linked finish records the handoff against the task.
   await page.getByLabel("What changed? (saved against the task)").fill("Drafted the outline");
   await page.getByLabel("Next step (where you resume)").fill("Section two");

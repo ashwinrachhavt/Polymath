@@ -38,7 +38,10 @@ async function setup(label: string) {
 }
 const key = () => crypto.randomUUID();
 const reopenAudits = (id: string) =>
-  db.select().from(auditEvents).where(and(eq(auditEvents.subjectId, id), eq(auditEvents.action, "task.reopened")));
+  db
+    .select()
+    .from(auditEvents)
+    .where(and(eq(auditEvents.subjectId, id), eq(auditEvents.action, "task.reopened")));
 
 suite("reopenTask - undo for terminal transitions", () => {
   it("reopens a completed task and records the previous status and undone edges", async () => {
@@ -59,7 +62,12 @@ suite("reopenTask - undo for terminal transitions", () => {
     const { id: blocker } = await work.createOwnerTask(a, { title: "Gate" });
     const { id: blocked } = await work.createOwnerTask(a, { title: "Behind" });
     await cmd.addDependency(a, { taskId: blocker, otherTaskId: blocked, kind: "blocks", idempotencyKey: key() });
-    await cmd.updateTask(a, { taskId: blocker, expectedVersion: 1, idempotencyKey: key(), patch: { status: "cancelled" } });
+    await cmd.updateTask(a, {
+      taskId: blocker,
+      expectedVersion: 1,
+      idempotencyKey: key(),
+      patch: { status: "cancelled" },
+    });
     expect((await queries.getTaskDetail(a, blocked))?.blockedBy).toHaveLength(0);
     const result = await work.reopenTask(a, { taskId: blocker, expectedVersion: 2 });
     expect(result).toEqual({ id: blocker, from: "cancelled", skippedChangedEdges: 0 });
@@ -77,7 +85,11 @@ suite("reopenTask - undo for terminal transitions", () => {
     const { id: blocked } = await work.createOwnerTask(a, { title: "Linked later" });
     await cmd.addDependency(a, { taskId: blocker, otherTaskId: blocked, kind: "blocks", idempotencyKey: key() });
     expect((await queries.getTaskDetail(a, blocked))?.blockedBy).toHaveLength(0);
-    expect(await work.reopenTask(a, { taskId: blocker, expectedVersion: 2 })).toEqual({ id: blocker, from: "done", skippedChangedEdges: 0 });
+    expect(await work.reopenTask(a, { taskId: blocker, expectedVersion: 2 })).toEqual({
+      id: blocker,
+      from: "done",
+      skippedChangedEdges: 0,
+    });
     const [edge] = await db.select().from(taskDependencies).where(eq(taskDependencies.workspaceId, workspaceId));
     expect(edge.resolvedAt).not.toBeNull();
     expect((await queries.getTaskDetail(a, blocked))?.blockedBy).toHaveLength(0);
@@ -93,7 +105,11 @@ suite("reopenTask - undo for terminal transitions", () => {
     await work.completeTask(a, { taskId: blocker }); // settles the early edge
     const { id: late } = await work.createOwnerTask(a, { title: "Late edge" });
     await cmd.addDependency(a, { taskId: blocker, otherTaskId: late, kind: "blocks", idempotencyKey: key() }); // resolved by insert rule
-    expect(await work.reopenTask(a, { taskId: blocker, expectedVersion: 2 })).toEqual({ id: blocker, from: "done", skippedChangedEdges: 0 });
+    expect(await work.reopenTask(a, { taskId: blocker, expectedVersion: 2 })).toEqual({
+      id: blocker,
+      from: "done",
+      skippedChangedEdges: 0,
+    });
     expect((await queries.getTaskDetail(a, early))?.blockedBy).toHaveLength(1); // un-settled
     expect((await queries.getTaskDetail(a, late))?.blockedBy).toHaveLength(0); // untouched
     const edges = await db.select().from(taskDependencies).where(eq(taskDependencies.workspaceId, workspaceId));
@@ -109,8 +125,17 @@ suite("reopenTask - undo for terminal transitions", () => {
     // The detail form always sends its status: editing a done task's title
     // re-sends status "done". That re-save is not a transition and must not
     // overwrite the attribution with an empty set.
-    await cmd.updateTask(a, { taskId: blocker, expectedVersion: 2, idempotencyKey: key(), patch: { title: "Gate (renamed)", status: "done" } });
-    expect(await work.reopenTask(a, { taskId: blocker, expectedVersion: 3 })).toEqual({ id: blocker, from: "done", skippedChangedEdges: 0 });
+    await cmd.updateTask(a, {
+      taskId: blocker,
+      expectedVersion: 2,
+      idempotencyKey: key(),
+      patch: { title: "Gate (renamed)", status: "done" },
+    });
+    expect(await work.reopenTask(a, { taskId: blocker, expectedVersion: 3 })).toEqual({
+      id: blocker,
+      from: "done",
+      skippedChangedEdges: 0,
+    });
     expect((await queries.getTaskDetail(a, blocked))?.blockedBy).toHaveLength(1);
   });
 
@@ -140,7 +165,9 @@ suite("reopenTask - undo for terminal transitions", () => {
     // resolve/edit bumps the edge version). The recorded token no longer
     // matches, so the reopen must refuse that edge rather than undo a
     // resolution it cannot attribute to its own transition.
-    await db.execute(sql`update task_dependencies set resolved_at = now(), version = version + 1 where workspace_id = ${workspaceId}`);
+    await db.execute(
+      sql`update task_dependencies set resolved_at = now(), version = version + 1 where workspace_id = ${workspaceId}`,
+    );
     const result = await work.reopenTask(a, { taskId: blocker, expectedVersion: 2 });
     expect(result).toEqual({ id: blocker, from: "done", skippedChangedEdges: 1 });
     const [edge] = await db.select().from(taskDependencies).where(eq(taskDependencies.workspaceId, workspaceId));
@@ -195,11 +222,15 @@ suite("reopenTask - undo for terminal transitions", () => {
     expect(stonesAfterFirst).toBe(1);
 
     // Reopening itself writes no ledger row: scoped undo, not history edits.
-    expect(await work.reopenTask(a, { taskId: blocker, expectedVersion: 2 })).toEqual({ id: blocker, from: "done", skippedChangedEdges: 0 });
+    expect(await work.reopenTask(a, { taskId: blocker, expectedVersion: 2 })).toEqual({
+      id: blocker,
+      from: "done",
+      skippedChangedEdges: 0,
+    });
     expect(await ledgerCount()).toBe(stonesAfterFirst);
 
     const second = await work.completeTask(a, { taskId: blocker });
-    expect(second?.quartzEarned).toBe(false); // quartz:YYYY-MM-DD key already spent today
+    expect(second?.quartzEarned).toBe(false); // the user-scoped quartz key already spent today
     expect(await ledgerCount()).toBe(stonesAfterFirst);
     expect((await queries.getTaskDetail(a, blocked))?.blockedBy).toHaveLength(0);
     const [row] = await db.select().from(tasks).where(eq(tasks.id, blocker));
@@ -213,8 +244,12 @@ suite("reopenTask - undo for terminal transitions", () => {
     const first = await work.completeTask(a, { taskId: id });
     expect(first?.quartzEarned).toBe(true);
     // Simulate the first stone having been earned on an earlier day: the
-    // daily idempotency key is quartz:YYYY-MM-DD, so rename it to a past day.
-    await db.update(rewardLedger).set({ idempotencyKey: "quartz:2000-01-01" }).where(eq(rewardLedger.workspaceId, workspaceId));
+    // daily idempotency key is quartz:<userId>:<day>, so rename it to a past
+    // day for this user.
+    await db
+      .update(rewardLedger)
+      .set({ idempotencyKey: "quartz:" + a.userId + ":2000-01-01" })
+      .where(eq(rewardLedger.workspaceId, workspaceId));
     await work.reopenTask(a, { taskId: id, expectedVersion: 2 });
     const second = await work.completeTask(a, { taskId: id });
     // The stone belongs to the DAY's first completion, not the task's first

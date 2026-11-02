@@ -51,6 +51,9 @@ export function levelForPoints(points: number): number {
 /** The level the mastery stone waits for (spec §5: diamond at level 5). */
 export const DIAMOND_LEVEL = 5;
 
+/** Spec §6: a definition can never price a jackpot - points are bounded. */
+export const REWARD_DEFINITION_POINTS_MAX = 10000;
+
 /** The consistency stone's streak length (spec §5: topaz at 7 consecutive earning days). */
 export const TOPAZ_STREAK_DAYS = 7;
 
@@ -60,6 +63,26 @@ export const SAPPHIRE_DEEP_MINIMUM_MINUTES = 45;
 /** The priorities that count as a high-priority link (spec §5: ruby). */
 export type TaskPriority = (typeof taskPriority.enumValues)[number];
 export const RUBY_HIGH_PRIORITIES: TaskPriority[] = ["high", "urgent"];
+
+/*
+ * Spec §6 anti-gaming: the farmable stones stop paying. Focus pays per
+ * session, so a script that starts-and-finishes sessions all day would farm
+ * it without a cap; learning pays per sitting, so re-taking a known quiz
+ * would. The caps are per user per day, counted over the points-bearing
+ * award rows, and enforced in the award's own transaction.
+ */
+export const FOCUS_DAILY_CAP = 12;
+export const LEARNING_DAILY_CAP = 1;
+
+/**
+ * Spec §6: a learning sitting pays only when at least two thirds of it
+ * graded correct. Pure so the command and the tests share one gate; grading
+ * itself is always the server's (completeQuizAttempt re-grades from the
+ * persisted questions), so a client cannot talk its way past this.
+ */
+export function learningGateMet(correctCount: number, totalCount: number): boolean {
+  return totalCount > 0 && correctCount * 3 >= totalCount * 2;
+}
 
 /** A day as the ledger writes it: YYYY-MM-DD in the workspace's timezone. */
 const DAY_MS = 24 * 60 * 60 * 1000;

@@ -144,6 +144,8 @@ export async function completeQuizAttempt(
     const stoneEarned = await recordLearningReview(tx, auth, {
       subjectId: attempt.id,
       idempotencyKey: `quiz_attempt:${attempt.id}`,
+      correctCount: graded.correctCount,
+      totalCount: graded.totalCount,
     });
     // Spec §5: the emerald is the gated learning stone - every answer
     // correct, graded by the server. A dontKnow answer never grades

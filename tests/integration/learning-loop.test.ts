@@ -185,26 +185,21 @@ suite("learning loop", () => {
     expect(questions).not.toBeNull();
     expect(questions!.questions).toHaveLength(3);
 
-    // One correct, one honest gap, one wrong: the server's grading decides
-    // the score - the client never sends one.
+    // Two correct, one wrong: the server's grading decides the score - the
+    // client never sends one. Two of three clears the §6 score gate (a
+    // sitting below two-thirds correct earns nothing).
     const answers = questions!.questions.map((q, i) =>
-      i === 0
-        ? { questionId: q.id, selectedValue: q.answerValue, dontKnow: false }
-        : i === 1
-          ? { questionId: q.id, selectedValue: null, dontKnow: true }
-          : {
-              questionId: q.id,
-              selectedValue: q.choices.find((c) => c.value !== q.answerValue)!.value,
-              dontKnow: false,
-            },
+      i === 2
+        ? { questionId: q.id, selectedValue: q.choices.find((c) => c.value !== q.answerValue)!.value, dontKnow: false }
+        : { questionId: q.id, selectedValue: q.answerValue, dontKnow: false },
     );
     const idempotencyKey = `attempt-${crypto.randomUUID()}`;
     const first = await commands.completeQuizAttempt(auth, { quizId, answers, idempotencyKey });
-    expect(first).toMatchObject({ correctCount: 1, totalCount: 3, stoneEarned: true, replayed: false });
+    expect(first).toMatchObject({ correctCount: 2, totalCount: 3, stoneEarned: true, replayed: false });
 
     const attempts = await db.select().from(quizAttempts).where(eq(quizAttempts.workspaceId, auth.workspaceId));
     expect(attempts).toHaveLength(1);
-    expect(attempts[0].correctCount).toBe(1);
+    expect(attempts[0].correctCount).toBe(2);
     expect(attempts[0].totalCount).toBe(3);
 
     const ledger = await db.select().from(rewardLedger).where(eq(rewardLedger.workspaceId, auth.workspaceId));
@@ -228,7 +223,7 @@ suite("learning loop", () => {
 
     // A lost response replayed: the attempt already happened, no second stone.
     const replay = await commands.completeQuizAttempt(auth, { quizId, answers, idempotencyKey });
-    expect(replay).toMatchObject({ attemptId: first.attemptId, correctCount: 1, stoneEarned: false, replayed: true });
+    expect(replay).toMatchObject({ attemptId: first.attemptId, correctCount: 2, stoneEarned: false, replayed: true });
     expect(await db.select().from(quizAttempts).where(eq(quizAttempts.workspaceId, auth.workspaceId))).toHaveLength(1);
     expect(await db.select().from(rewardLedger).where(eq(rewardLedger.workspaceId, auth.workspaceId))).toHaveLength(1);
   });
