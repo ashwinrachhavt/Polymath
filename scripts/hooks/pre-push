@@ -14,8 +14,21 @@ command -v pnpm >/dev/null 2>&1 || PNPM="corepack pnpm"
 
 $PNPM lint && $PNPM typecheck
 
+# Rebuild the scratch db before the suite: the db-backed suites share one
+# database, and a long-lived one drifts — rows accumulate, the schema falls
+# behind the migration journal, and non-truncating seeds collide on re-run
+# (36 failing files on a second consecutive push; flagged in PR #444's body).
+# CI always runs against a freshly migrated database, so resetting here is
+# what makes this gate's green mean the same thing. Skipped with a warning
+# when psql is missing, matching the exotic-install status quo.
+if command -v psql >/dev/null 2>&1; then
+  sh scripts/reset-test-db.sh || exit 1
+else
+  echo "pre-push: psql not found; running the suite without the scratch-db reset" >&2
+fi
+
 # Vitest runs last so a lint or type failure stops before paying for it.
 # Measured 91s locally (2200 passing, 274 files); with lint and typecheck the
-# whole gate is ~3 min per push. Build, e2e and the postgres-backed integration
-# suites stay in CI — those describe.skip without a database anyway.
+# whole gate is ~3 min per push. Build and e2e stay in CI; the postgres-backed
+# suites run here, against the scratch db the reset above just rebuilt.
 $PNPM test
