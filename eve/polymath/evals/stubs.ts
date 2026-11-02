@@ -33,11 +33,7 @@ import type { ToolStubOutcome } from "eve/evals";
  * does not. `quietStubs()` is what keeps tools from reaching real providers;
  * `tests/unit/eval-stub-coverage.test.ts` holds that line.
  */
-export const ALLOWED_EVAL_ENV = [
-  "GEMINI_API_KEY",
-  "GEMINI_AGENT_MODEL",
-  "OPENAI_API_KEY",
-] as const;
+export const ALLOWED_EVAL_ENV = ["GEMINI_API_KEY", "GEMINI_AGENT_MODEL", "OPENAI_API_KEY"] as const;
 
 function isCredentialShaped(key: string): boolean {
   return (
@@ -87,9 +83,7 @@ export class EvalEnvironmentViolation extends Error {
  * variables (PATH, HOME, ...) are not credentials and pass. Called at import
  * time by every eval module, so a misconfigured eval fails before a turn starts.
  */
-export function assertEvalEnvironment(
-  env: Readonly<Record<string, string | undefined>> = process.env,
-): void {
+export function assertEvalEnvironment(env: Readonly<Record<string, string | undefined>> = process.env): void {
   for (const key of Object.keys(env)) {
     if (
       !(ALLOWED_EVAL_ENV as readonly string[]).includes(key) &&
@@ -118,20 +112,65 @@ function isSet(value: string | undefined): boolean {
  * and the real tool would run — the failure this file exists to prevent.
  */
 export const STUBBED_TOOLS = {
-  artifacts_propose_revision: { response: { ok: true, proposalId: "00000000-0000-0000-0000-000000000000", deduplicated: false, status: "awaiting review" } },
+  artifacts_propose_revision: {
+    response: {
+      ok: true,
+      proposalId: "00000000-0000-0000-0000-000000000000",
+      deduplicated: false,
+      status: "awaiting review",
+    },
+  },
   // ASH-282: the read returns an empty calendar, the write only ever proposes.
-  calendar_conflicts: { response: { ok: true, windowStart: "", windowEnd: "", timezone: "UTC", conflicts: [], notices: [] } },
-  calendar_conflict_propose: { response: { ok: true, proposalId: "00000000-0000-0000-0000-000000000000", deduplicated: false, status: "awaiting owner approval" } },
+  calendar_conflicts: {
+    response: { ok: true, windowStart: "", windowEnd: "", timezone: "UTC", conflicts: [], notices: [] },
+  },
+  calendar_conflict_propose: {
+    response: {
+      ok: true,
+      proposalId: "00000000-0000-0000-0000-000000000000",
+      deduplicated: false,
+      status: "awaiting owner approval",
+    },
+  },
   documents_search: { response: { ok: true, query: "", results: [] } },
   // ASH-279 / ASH-283: both only ever propose, so the stub is the "queued"
   // shape and an eval can never reach Notion or spend a generation call.
-  meeting_debrief: { response: { ok: true, status: "awaiting review", proposed: 0, taskProposalIds: [], noteProposalIds: [], followUpProposalIds: [], deduplicated: 0 } },
+  meeting_debrief: {
+    response: {
+      ok: true,
+      status: "awaiting review",
+      proposed: 0,
+      taskProposalIds: [],
+      noteProposalIds: [],
+      followUpProposalIds: [],
+      deduplicated: 0,
+    },
+  },
   // ASH-285: only ever drafts a proposal note, so the stub is the "drafted"
   // shape and an eval can never reach Linear or spend a generation call.
-  linear_issue_propose: { response: { ok: true, status: "drafted", artifactId: "00000000-0000-0000-0000-000000000000", title: "Linear issue: stub", generated: false, outcome: "created" } },
+  linear_issue_propose: {
+    response: {
+      ok: true,
+      status: "drafted",
+      artifactId: "00000000-0000-0000-0000-000000000000",
+      title: "Linear issue: stub",
+      generated: false,
+      outcome: "created",
+    },
+  },
   // ASH-284: decision-only triage proposal; the stub can never reach GitHub.
-  github_triage_propose: { response: { ok: true, status: "proposed", proposalId: "00000000-0000-0000-0000-000000000000", deduplicated: false } },
-  notion_propose_update: { response: { ok: true, proposalId: "00000000-0000-0000-0000-000000000000", deduplicated: false, contentHash: "", status: "awaiting review" } },
+  github_triage_propose: {
+    response: { ok: true, status: "proposed", proposalId: "00000000-0000-0000-0000-000000000000", deduplicated: false },
+  },
+  notion_propose_update: {
+    response: {
+      ok: true,
+      proposalId: "00000000-0000-0000-0000-000000000000",
+      deduplicated: false,
+      contentHash: "",
+      status: "awaiting review",
+    },
+  },
   // ASH-287: proposes only, so the stub is the queued outcome.
   crm_propose_contacts: { response: { ok: true, status: "awaiting review", proposed: [], skipped: [] } },
   notebook_open: { response: { ok: true, notebook: null } },
@@ -141,8 +180,23 @@ export const STUBBED_TOOLS = {
   // ASH-306 / ASH-293: reads and one-hop expansion, both with an empty graph
   // so an eval asserts the tool was called, not what the live library holds.
   records_browse: { response: { ok: true, kind: "task", query: null, total: 0, records: [] } },
-  research_deepen: { response: { ok: true, seed: null, added: [], candidates: [], budget: { hopsUsed: 0, hopsRemaining: 8, hopsMax: 8, callsUsed: 0, callsMax: null } } },
-  tasks_propose: { response: { ok: true, proposalId: "00000000-0000-0000-0000-000000000000", deduplicated: false, status: "awaiting review" } },
+  research_deepen: {
+    response: {
+      ok: true,
+      seed: null,
+      added: [],
+      candidates: [],
+      budget: { hopsUsed: 0, hopsRemaining: 8, hopsMax: 8, callsUsed: 0, callsMax: null },
+    },
+  },
+  tasks_propose: {
+    response: {
+      ok: true,
+      proposalId: "00000000-0000-0000-0000-000000000000",
+      deduplicated: false,
+      status: "awaiting review",
+    },
+  },
   tasks_read: { response: { ok: true, tasks: [] } },
   tasks_recent: { response: { ok: true, tasks: [], days: 7 } },
   web_fetch: { response: { ok: true, text: "" } },
@@ -150,6 +204,9 @@ export const STUBBED_TOOLS = {
   wiki_ingest: { response: { ok: true } },
   wiki_lint: { response: { ok: true, findings: [] } },
   wiki_read: { response: { ok: true, articles: [] } },
+  zettels_propose: {
+    response: { ok: true, proposals: [{ id: "00000000-0000-0000-0000-000000000000", duplicateOf: null }] },
+  },
 } satisfies Readonly<Record<string, ToolStubOutcome>>;
 
 /*
