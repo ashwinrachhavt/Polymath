@@ -3,7 +3,12 @@
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { acceptFieldProposal, deferFieldProposal, partyAttribute, rejectFieldProposal } from "@/domains/knowledge/fields";
+import {
+  acceptFieldProposal,
+  deferFieldProposal,
+  partyAttribute,
+  rejectFieldProposal,
+} from "@/domains/knowledge/fields";
 import { acceptAssertions, acceptParty, type PartyDecision } from "@/domains/knowledge/parties";
 import { acceptObligation, rejectObligation } from "@/domains/knowledge/obligations";
 import { captureUrl } from "@/domains/knowledge/capture-url";
@@ -11,7 +16,11 @@ import { createFolder, FolderError } from "@/domains/knowledge/folders";
 import { acceptZettel, proposeZettels, rejectZettel } from "@/domains/knowledge/zettels";
 import { EmbeddingUnconfiguredError } from "@/integrations/embeddings/provider";
 import { applyTitle } from "@/domains/knowledge/naming";
-import { acceptClassification, rejectClassification, StaleWriteError as ClassificationStaleWriteError } from "@/domains/knowledge/classify";
+import {
+  acceptClassification,
+  rejectClassification,
+  StaleWriteError as ClassificationStaleWriteError,
+} from "@/domains/knowledge/classify";
 import { documentParties, fieldProposals } from "@/domains/knowledge/schema";
 import { getAuthContext, type AuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
@@ -88,7 +97,9 @@ const partyDecision: z.ZodType<PartyDecision> = z.discriminatedUnion("action", [
   z.object({ action: z.literal("match"), contactId: uuid.optional(), companyId: uuid.optional() }),
   z.object({
     action: z.literal("create"),
-    contact: z.object({ fullName: z.string().trim().min(1).max(300), primaryEmail: z.string().email().optional() }).optional(),
+    contact: z
+      .object({ fullName: z.string().trim().min(1).max(300), primaryEmail: z.string().email().optional() })
+      .optional(),
     company: z.object({ name: z.string().trim().min(1).max(300), domain: z.string().max(253).optional() }).optional(),
   }),
   z.object({ action: z.literal("reject") }),
@@ -100,10 +111,7 @@ const partyDecision: z.ZodType<PartyDecision> = z.discriminatedUnion("action", [
  * DM-spec §6 acceptance and lands with corpus data.
  */
 
-export async function acceptField(
-  fieldProposalId: string,
-  acceptedValue?: string | null,
-): Promise<{ ok: true }> {
+export async function acceptField(fieldProposalId: string, acceptedValue?: string | null): Promise<{ ok: true }> {
   const parsed = z
     .object({
       fieldProposalId: uuid,
@@ -147,19 +155,14 @@ export async function deferField(fieldProposalId: string): Promise<{ ok: true }>
  * are written to the assertion ledger for that record. Fields of another
  * party, or document-level facts like the total, never land on it.
  */
-export async function acceptPartyDecision(
-  partyId: string,
-  decision: PartyDecision,
-): Promise<{ ok: true }> {
+export async function acceptPartyDecision(partyId: string, decision: PartyDecision): Promise<{ ok: true }> {
   const parsed = z.object({ partyId: uuid, decision: partyDecision }).parse({ partyId, decision });
   const auth = await authorize();
 
   const [party] = await db
     .select({ id: documentParties.id, documentId: documentParties.documentId, partyRole: documentParties.partyRole })
     .from(documentParties)
-    .where(
-      and(eq(documentParties.id, parsed.partyId), eq(documentParties.workspaceId, auth.workspaceId)),
-    )
+    .where(and(eq(documentParties.id, parsed.partyId), eq(documentParties.workspaceId, auth.workspaceId)))
     .limit(1);
   if (!party) throw new Error("party not found in workspace");
 
@@ -210,10 +213,7 @@ export async function acceptPartyDecision(
 }
 
 /** Accept or reject one obligation; acceptance creates the task inside the domain. */
-export async function acceptDocumentObligation(
-  obligationId: string,
-  dueAt?: string,
-): Promise<{ ok: true }> {
+export async function acceptDocumentObligation(obligationId: string, dueAt?: string): Promise<{ ok: true }> {
   const parsed = z
     .object({ obligationId: uuid, dueAt: z.string().min(1).optional() })
     .parse({ obligationId, dueAt: dueAt || undefined });
@@ -269,10 +269,7 @@ export async function applyTitleAction(
   }
 }
 
-export async function acceptClassificationAction(
-  proposalId: string,
-  expectedVersion: number,
-): Promise<{ ok: true }> {
+export async function acceptClassificationAction(proposalId: string, expectedVersion: number): Promise<{ ok: true }> {
   const parsed = z
     .object({ proposalId: uuid, expectedVersion: z.number().int().positive() })
     .parse({ proposalId, expectedVersion });
@@ -287,10 +284,7 @@ export async function acceptClassificationAction(
   }
 }
 
-export async function rejectClassificationAction(
-  proposalId: string,
-  expectedVersion: number,
-): Promise<{ ok: true }> {
+export async function rejectClassificationAction(proposalId: string, expectedVersion: number): Promise<{ ok: true }> {
   const parsed = z
     .object({ proposalId: uuid, expectedVersion: z.number().int().positive() })
     .parse({ proposalId, expectedVersion });
@@ -330,9 +324,9 @@ export async function proposeZettelsAction(documentId: string): Promise<{ ok: tr
   const id = uuid.parse(documentId);
   const auth = await authorize();
   try {
-    const created = await proposeZettels(auth, { documentId: id });
+    const { proposals } = await proposeZettels(auth, { documentId: id });
     revalidate();
-    return { ok: true, created: created.length };
+    return { ok: true, created: proposals.length };
   } catch (cause) {
     if (cause instanceof EmbeddingUnconfiguredError) {
       throw new Error("Zettel proposals need OPENROUTER_API_KEY to be set.");

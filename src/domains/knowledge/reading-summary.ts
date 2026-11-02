@@ -53,9 +53,15 @@ export function verifyReadingSummary(
   let droppedClaims = 0;
   for (const c of raw.keyClaims) {
     const claim = c.claim?.trim();
-    if (!claim || typeof c.quote !== "string") { droppedClaims++; continue; }
+    if (!claim || typeof c.quote !== "string") {
+      droppedClaims++;
+      continue;
+    }
     const span = locateQuote(text, c.quote);
-    if (!span) { droppedClaims++; continue; }
+    if (!span) {
+      droppedClaims++;
+      continue;
+    }
     keyClaims.push({ claim: claim.slice(0, MAX_CLAIM_CHARS), quote: c.quote.trim(), ...span });
     if (keyClaims.length >= MAX_SUMMARY_CLAIMS) break;
   }
@@ -72,14 +78,17 @@ async function loadCurrentExtraction(auth: AuthContext, documentId: string) {
     .select({ id: documentExtractions.id, text: documentExtractions.text, title: documents.title })
     .from(documentExtractions)
     .innerJoin(documents, eq(documents.id, documentExtractions.documentId))
-    .where(and(
-      eq(documentExtractions.documentId, documentId),
-      eq(documentExtractions.workspaceId, auth.workspaceId),
-      eq(documentExtractions.status, "succeeded"),
-      eq(documentExtractions.id, sql`(${currentExtractionIdSubquery()})`),
-    ))
+    .where(
+      and(
+        eq(documentExtractions.documentId, documentId),
+        eq(documentExtractions.workspaceId, auth.workspaceId),
+        eq(documentExtractions.status, "succeeded"),
+        eq(documentExtractions.id, sql`(${currentExtractionIdSubquery()})`),
+      ),
+    )
     .limit(1);
-  if (!row?.text) throw new ReadingSummaryError("document_not_found", "No such document, or it has no succeeded extraction.");
+  if (!row?.text)
+    throw new ReadingSummaryError("document_not_found", "No such document, or it has no succeeded extraction.");
   return { id: row.id, text: row.text, title: row.title };
 }
 
@@ -180,7 +189,7 @@ export async function acceptReadingSummary(
           quote: c.quote,
           spanStart: c.start,
           spanEnd: c.end,
-          dedupeKey: zettelDedupeKey(document.id, c.start, c.end),
+          dedupeKey: zettelDedupeKey("doc", document.id, c.start, c.end),
           proposer: input.proposer,
           createdBy: auth.userId,
           updatedBy: auth.userId,
