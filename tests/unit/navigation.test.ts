@@ -29,7 +29,9 @@ describe("navigation", () => {
         expect(destination.href).toMatch(/^\/(apps\/)?(command-center|neuralflow|polymath)\//);
       }
     }
-    expect(additionalDestinationsIn("neuralflow").some((destination) => destination.label === "Stone collection")).toBe(true);
+    expect(additionalDestinationsIn("neuralflow").some((destination) => destination.label === "Stone collection")).toBe(
+      true,
+    );
   });
 
   it("does not label live routes as disconnected browser previews", () => {
@@ -62,7 +64,9 @@ describe("navigation", () => {
 
   it("attributes every destination to a historic prefix or shared", () => {
     for (const destination of destinations) {
-      expect(destination.group === "shared" || ["command-center", "neuralflow", "polymath"].includes(destination.group)).toBe(true);
+      expect(
+        destination.group === "shared" || ["command-center", "neuralflow", "polymath"].includes(destination.group),
+      ).toBe(true);
     }
   });
 
@@ -94,7 +98,7 @@ describe("navigation", () => {
    * keep their donor labels, only the rail governs.
    */
 
-  it("rails exactly the eighteen destinations in order", () => {
+  it("rails exactly the nineteen destinations in order", () => {
     // Conversations left the rail when its threads moved into the Assistant;
     // the route still resolves (old links keep working) but it is no longer a
     // destination. Today left when Briefing was removed: its outcomes and day
@@ -104,9 +108,25 @@ describe("navigation", () => {
     // Ideas arrived as its own top-level surface, taking the zettel, card and
     // area routes that used to hide under the vault prefix.
     expect(destinations.map((destination) => destination.label)).toEqual([
-      "Polymath", "Inbox", "Work", "Notes", "Ideas", "Document Vault", "Notebook",
-      "Artifacts", "Skills", "People", "Companies", "Connectors",
-      "Day", "Shut down", "Reviews", "Activity", "Spending", "Settings",
+      "Polymath",
+      "Inbox",
+      "Work",
+      "Notes",
+      "Ideas",
+      "Document Vault",
+      "Learn",
+      "Notebook",
+      "Artifacts",
+      "Skills",
+      "People",
+      "Companies",
+      "Connectors",
+      "Day",
+      "Shut down",
+      "Reviews",
+      "Activity",
+      "Spending",
+      "Settings",
     ]);
   });
 });

@@ -43,7 +43,7 @@ export interface QuizGenerator {
   generate(extractionText: string): Promise<{ questions: GeneratedQuestion[] }>;
 }
 
-export const QUIZ_PROMPT_VERSION = "learn-quiz@1";
+export const QUIZ_PROMPT_VERSION = "learn-quiz@3";
 
 const MAX_INPUT_CHARS = 12_000;
 
@@ -67,14 +67,18 @@ const response = z.object({
 });
 
 const SYSTEM = `You write a short quiz over a document so a reader can check what they learned. Return JSON with exactly this shape: {"questions":[{"prompt","choices":[{"value","label"}],"answerValue","explanation","quote"}]}.
+The user message is the document text, and it is your ONLY source. You may recognize the text from training - do not answer from memory anyway: every fact, every question, and every quote must come from the text you were given, exactly as printed there. If a question would need a part of the document that is not present in the text you received, drop it.
 "prompt": one question answerable ONLY from the document - never a question about the document itself.
 "choices": one correct option plus 2 to 4 wrong options. Each "label" is a bare claim - no justification inside an option; the reasoning belongs in "explanation". Write the correct claim first, then build each wrong option by mutating it from one specific, believable misconception, keeping the same sentence skeleton, length, and register, so the correct answer never leaks by format. Never "all of the above", never "none of the above". "value" is a short stable id for the option, unique within the question.
 "answerValue": the correct option's "value", exactly.
 "explanation": why the correct claim is true and the tempting wrong ones are not. Required.
-"quote": the passage from the document, copied VERBATIM, that grounds the question. If no passage supports a question, drop the question.
+"quote": a contiguous span of the provided text, copied character-for-character as printed there (punctuation, capitalization, spelling - including odd spacing or fragments from the source). Never reconstruct it from memory, never tidy it, never splice non-adjacent sentences. Keep it to one sentence, at most about 30 words. If no passage in the provided text supports a question, drop the question.
 3 to 6 questions. Never invent a fact, a quote, or a question to fill the shape. ${untrustedDataClauseJsonSafe("article")}`;
 
-function fromGeneration(provider: GenerationProvider, run: (input: { system: string; prompt: string }) => Promise<{ text: string }>): QuizGenerator {
+function fromGeneration(
+  provider: GenerationProvider,
+  run: (input: { system: string; prompt: string }) => Promise<{ text: string }>,
+): QuizGenerator {
   return {
     name: provider.name,
     async generate(text) {
