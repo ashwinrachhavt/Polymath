@@ -70,6 +70,17 @@ function runGit(repoPath: string, args: string[]): Promise<string> {
   });
 }
 
+// The diff is binary data, not text: a utf8 decode would silently corrupt the
+// stored patch and its hash for any file whose bytes are not valid UTF-8.
+function runGitBuffer(repoPath: string, args: string[]): Promise<Buffer> {
+  return new Promise((resolvePromise, reject) => {
+    execFile("git", ["-C", repoPath, ...args], { encoding: "buffer", maxBuffer: 64 * 1024 * 1024 }, (error, stdout, stderr) => {
+      if (error) reject(new Error(`git ${args.join(" ")} failed: ${stderr.toString().trim() || error.message}`));
+      else resolvePromise(stdout);
+    });
+  });
+}
+
 const MAX_BRIEF_COMMITS = 50;
 const MAX_BRIEF_PATHS = 200;
 
@@ -81,8 +92,9 @@ const MAX_BRIEF_PATHS = 200;
  */
 export async function collectGitState(input: { repoPath: string; baseSha: string }): Promise<GitCaptureState> {
   const repoPath = resolve(input.repoPath);
+  let baseSha: string;
   try {
-    await runGit(repoPath, ["rev-parse", "--verify", `${input.baseSha}^{commit}`]);
+    baseSha = (await runGit(repoPath, ["rev-parse", "--verify", `${input.baseSha}^{commit}`])).trim();
   } catch {
     throw new CaptureError("bad_base", `Base ${input.baseSha} does not resolve to a commit in ${repoPath}`);
   }
@@ -91,19 +103,21 @@ export async function collectGitState(input: { repoPath: string; baseSha: string
   if (status.trim() !== "") {
     throw new CaptureError("dirty_tree", `Working tree at ${repoPath} is not clean; commit or stash before capture`);
   }
-  const diffText = await runGit(repoPath, ["diff", "--binary", input.baseSha, headSha]);
-  if (diffText === "") {
-    throw new CaptureError("empty_diff", `No diff between ${input.baseSha} and ${headSha}; nothing to capture`);
+  // --no-textconv: a textconv driver would archive the converted rendering
+  // instead of the actual bytes, and identical conversions could read as an
+  // empty diff.
+  const diffBytes: Uint8Array = await runGitBuffer(repoPath, ["diff", "--binary", "--no-textconv", baseSha, headSha]);
+  if (diffBytes.length === 0) {
+    throw new CaptureError("empty_diff", `No diff between ${baseSha} and ${headSha}; nothing to capture`);
   }
-  const diffBytes = new TextEncoder().encode(diffText);
   if (diffBytes.byteLength > MAX_UPLOAD_BYTES) {
     throw new CaptureError("diff_too_large", `Diff is ${diffBytes.byteLength} bytes, over the ${MAX_UPLOAD_BYTES}-byte blob limit`);
   }
-  const changedPaths = (await runGit(repoPath, ["diff", "--name-status", input.baseSha, headSha]))
+  const changedPaths = (await runGit(repoPath, ["diff", "--name-status", baseSha, headSha]))
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line !== "");
-  const commitSubjects = (await runGit(repoPath, ["log", "--format=%H%x09%s", `${input.baseSha}..${headSha}`]))
+  const commitSubjects = (await runGit(repoPath, ["log", "--format=%H%x09%s", `${baseSha}..${headSha}`]))
     .split("\n")
     .filter((line) => line.trim() !== "")
     .map((line) => {
@@ -111,7 +125,7 @@ export async function collectGitState(input: { repoPath: string; baseSha: string
       return { sha, subject: subject ?? "" };
     });
   const remote = (await runGit(repoPath, ["remote", "get-url", "origin"]).catch(() => "")).trim();
-  return { repoPath, repoUrl: remote || `file://${repoPath}`, baseSha: input.baseSha, headSha, diffBytes, changedPaths, commitSubjects };
+  return { repoPath, repoUrl: remote || `file://${repoPath}`, baseSha, headSha, diffBytes, changedPaths, commitSubjects };
 }
 
 const testResultEntry = z.object({

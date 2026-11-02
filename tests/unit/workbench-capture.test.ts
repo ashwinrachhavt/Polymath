@@ -90,6 +90,23 @@ describe("workbench capture-core", () => {
     });
   });
 
+  it("preserves non-UTF-8 diff bytes exactly and resolves the base ref to a commit", async () => {
+    const fixture = makeFixtureRepo();
+    // Latin-1 bytes are not valid UTF-8: a utf8 round-trip would corrupt them.
+    writeFileSync(join(fixture.repoPath, "latin.txt"), Buffer.from("caf\u00e9\n", "latin1"));
+    git(fixture.repoPath, "add", ".");
+    git(fixture.repoPath, "commit", "-m", "non-utf8 content");
+
+    const state = await collectGitState({ repoPath: fixture.repoPath, baseSha: fixture.baseSha.slice(0, 10) });
+    // A ref expression (short sha, branch name) is not a stable endpoint: the
+    // record must carry the full resolved commit SHA.
+    expect(state.baseSha).toBe(fixture.baseSha);
+
+    const raw = execFileSync("git", ["-C", fixture.repoPath, "diff", "--binary", "--no-textconv", fixture.baseSha, "HEAD"], { encoding: "buffer" });
+    expect(raw.includes(0xe9)).toBe(true);
+    expect(Buffer.from(state.diffBytes).equals(raw)).toBe(true);
+  });
+
   it("parses the provided test-results file in both shapes and stamps missing runAt", () => {
     const capturedAt = "2026-11-02T00:00:00.000Z";
     const bare = parseTestResults(JSON.stringify([{ name: "auth login", ok: true }]), capturedAt);
