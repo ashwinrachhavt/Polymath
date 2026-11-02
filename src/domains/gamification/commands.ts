@@ -1,9 +1,29 @@
 import { and, eq, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
+import type { FocusStrictness } from "@/domains/focus/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { withTransaction } from "@/lib/db-transaction";
 import { isUniqueViolation } from "@/lib/pg-errors";
-import { rewardDefinitions, rewardLedger } from "./schema";
+import {
+  DIAMOND_LEVEL,
+  DIAMOND_RULE,
+  EMERALD_RULE,
+  FOCUS_RULE,
+  GARNET_RULE,
+  RUBY_HIGH_PRIORITIES,
+  RUBY_RULE,
+  SAPPHIRE_DEEP_MINIMUM_MINUTES,
+  SAPPHIRE_RULE,
+  TOPAZ_RULE,
+  TOPAZ_STREAK_DAYS,
+  QUARTZ_RULE,
+  focusPointsForSession,
+  levelForPoints,
+  streakFromDays,
+  type RuleText,
+  type TaskPriority,
+} from "./rules";
+import { rewardDefinitions, rewardLedger, userProgress } from "./schema";
 
 /*
  * Reward definition management and the ledger's single write path
@@ -58,7 +78,12 @@ export async function createRewardDefinition(auth: AuthContext, input: RewardDef
         .returning();
       await recordAudit(
         auth,
-        { action: "reward_definition.created", subjectType: "reward_definition", subjectId: definition.id, summary: `Reward defined: ${definition.key}` },
+        {
+          action: "reward_definition.created",
+          subjectType: "reward_definition",
+          subjectId: definition.id,
+          summary: `Reward defined: ${definition.key}`,
+        },
         tx,
       );
       return definition;
@@ -103,7 +128,12 @@ export async function updateRewardDefinition(
     }
     await recordAudit(
       auth,
-      { action: "reward_definition.updated", subjectType: "reward_definition", subjectId: updated.id, summary: `Reward updated: ${updated.key}` },
+      {
+        action: "reward_definition.updated",
+        subjectType: "reward_definition",
+        subjectId: updated.id,
+        summary: `Reward updated: ${updated.key}`,
+      },
       tx,
     );
     return updated;
@@ -119,7 +149,8 @@ export async function awardReward(
   auth: AuthContext,
   input: {
     definitionKey: string;
-    reason: "outcome_completed" | "focus_completed" | "task_completed" | "review_decided" | "weekly_review" | "adjustment";
+    reason:
+      "outcome_completed" | "focus_completed" | "task_completed" | "review_decided" | "weekly_review" | "adjustment";
     idempotencyKey: string;
     subjectType?: string | null;
     subjectId?: string | null;
@@ -150,7 +181,12 @@ export async function awardReward(
         .returning();
       await recordAudit(
         auth,
-        { action: "reward.awarded", subjectType: "reward_ledger", subjectId: entry.id, summary: `Reward earned: ${definition.key} (${input.reason})` },
+        {
+          action: "reward.awarded",
+          subjectType: "reward_ledger",
+          subjectId: entry.id,
+          summary: `Reward earned: ${definition.key} (${input.reason})`,
+        },
         tx,
       );
       return entry;
@@ -182,7 +218,7 @@ export async function awardReward(
 
 export const STONES_PER_SHARD = 5;
 
-const QUARTZ = { key: "quartz", label: "Quartz", points: 10 };
+const QUARTZ = { ...QUARTZ_RULE, points: 10 };
 const SHARD = { key: "shard", label: "Shard", points: 0 };
 
 type TxDrizzle = Parameters<Parameters<typeof withTransaction>[0]>[0];
@@ -219,7 +255,12 @@ async function ensureDefinition(
  * Called from task completion, inside the same transaction. Never throws for
  * game reasons: a disabled definition or an already-awarded day simply skips.
  */
-export async function recordDailyQuartz(tx: TxDrizzle, auth: AuthContext, taskId: string, note?: string): Promise<boolean> {
+export async function recordDailyQuartz(
+  tx: TxDrizzle,
+  auth: AuthContext,
+  taskId: string,
+  note?: string,
+): Promise<boolean> {
   const rows = await tx.execute(sql`
     select to_char(timezone(coalesce(
       (select timezone from user_preferences where workspace_id = ${auth.workspaceId} and user_id = ${auth.userId} limit 1),
@@ -230,7 +271,6 @@ export async function recordDailyQuartz(tx: TxDrizzle, auth: AuthContext, taskId
   const definition = await ensureDefinition(tx, auth, {
     ...QUARTZ,
     kind: "points",
-    description: "First completed task of the day.",
   });
   if (!definition || !definition.active) return false;
 
@@ -297,10 +337,252 @@ export async function recordLearningReview(
   if (!entry) return false;
   await recordAudit(
     auth,
-    { action: "reward.awarded", subjectType: "reward_ledger", subjectId: entry.id, summary: `Learning stone earned (${LEARNING_REVIEWED.label})` },
+    {
+      action: "reward.awarded",
+      subjectType: "reward_ledger",
+      subjectId: entry.id,
+      summary: `Learning stone earned (${LEARNING_REVIEWED.label})`,
+    },
     tx,
   );
   return true;
+}
+
+/*
+ * Spec §5: focus pays on the finish. Points are earned per session, not per
+ * day: whole 10-minute units of banked focus, multiplied by how strictly the
+ * session was held. The idempotency key names the session, so a replayed
+ * finish is a silent skip, and the definition carries no static price - the
+ * ledger row's points are the computed award.
+ */
+export type FocusRewardSession = {
+  id: string;
+  accumulatedSeconds: number;
+  strictness: FocusStrictness;
+  /** The linked task's priority, when the finisher touched one; null otherwise. */
+  linkedTaskPriority: TaskPriority | null;
+  /** Whether this user has ever let a session go - the recovery stone's premise. */
+  followedAbandon: boolean;
+};
+
+/**
+ * Called from finishFocusSession, inside the finish's own transaction. Never
+ * throws for game reasons: a disabled definition, a replayed finish, or a
+ * session with no banked time simply skips. Returns whether this call wrote
+ * the award.
+ */
+export async function recordFocusReward(
+  tx: TxDrizzle,
+  auth: AuthContext,
+  session: FocusRewardSession,
+): Promise<boolean> {
+  const points = focusPointsForSession(session.accumulatedSeconds, session.strictness);
+  if (points <= 0) return false;
+
+  const definition = await ensureDefinition(tx, auth, { ...FOCUS_RULE, kind: "points", points: 0 });
+  if (!definition || !definition.active) return false;
+
+  const [entry] = await tx
+    .insert(rewardLedger)
+    .values({
+      workspaceId: auth.workspaceId,
+      rewardDefinitionId: definition.id,
+      userId: auth.userId,
+      reason: "focus_completed",
+      subjectType: "focus_session",
+      subjectId: session.id,
+      points,
+      idempotencyKey: `focus:${session.id}`,
+    })
+    .onConflictDoNothing({ target: [rewardLedger.workspaceId, rewardLedger.idempotencyKey] })
+    .returning();
+  if (!entry) return false;
+  await recordAudit(
+    auth,
+    {
+      action: "reward.awarded",
+      subjectType: "reward_ledger",
+      subjectId: entry.id,
+      summary: `Focus earned (${points} pts, ${session.strictness})`,
+    },
+    tx,
+  );
+
+  // Session-scoped stones (spec §5), each a first-time collectible keyed to
+  // the user: sapphire holds a deep session to its 45-minute floor, ruby
+  // links the finish to a high-priority task, garnet follows a let-go.
+  if (session.strictness === "deep" && session.accumulatedSeconds >= SAPPHIRE_DEEP_MINIMUM_MINUTES * 60) {
+    await recordStoneOnce(tx, auth, SAPPHIRE_RULE, {
+      reason: "focus_completed",
+      subjectType: "focus_session",
+      subjectId: session.id,
+    });
+  }
+  if (session.linkedTaskPriority !== null && RUBY_HIGH_PRIORITIES.includes(session.linkedTaskPriority)) {
+    await recordStoneOnce(tx, auth, RUBY_RULE, {
+      reason: "focus_completed",
+      subjectType: "focus_session",
+      subjectId: session.id,
+    });
+  }
+  if (session.followedAbandon) {
+    await recordStoneOnce(tx, auth, GARNET_RULE, {
+      reason: "focus_completed",
+      subjectType: "focus_session",
+      subjectId: session.id,
+    });
+  }
+
+  // The progress cache moves in the same transaction: total points are the
+  // ledger's own sum, streaks come from its distinct earning days in the
+  // workspace's timezone (today's award is already in the set), so the cache
+  // can only ever be as right as the rows it summarizes - there is no second
+  // place for the truth to live.
+  const progress = await ledgerProgress(tx, auth);
+  const streak = streakFromDays(progress.days, progress.today);
+  if (streak.current >= TOPAZ_STREAK_DAYS) {
+    await recordStoneOnce(tx, auth, TOPAZ_RULE, {
+      reason: "focus_completed",
+      subjectType: "focus_session",
+      subjectId: session.id,
+    });
+  }
+  if (levelForPoints(progress.totalPoints) >= DIAMOND_LEVEL) {
+    await recordStoneOnce(tx, auth, DIAMOND_RULE, {
+      reason: "focus_completed",
+      subjectType: "focus_session",
+      subjectId: session.id,
+    });
+  }
+  await upsertUserProgress(tx, auth, {
+    totalPoints: progress.totalPoints,
+    currentStreakDays: streak.current,
+    longestStreakDays: streak.longest,
+    lastActiveOn: progress.days.length > 0 ? progress.days[progress.days.length - 1] : null,
+  });
+  return true;
+}
+
+/*
+ * The stones are first-time collectibles: one ledger row per user, ever,
+ * keyed `<stone>:<userId>`. The definition row materializes lazily on first
+ * fire, carrying the rule's own words - the text the durable page renders.
+ * A stone never announces points (its row is worth zero); it marks that a
+ * threshold was met.
+ */
+type StoneTrigger = { reason: "focus_completed" | "learning_reviewed"; subjectType: string; subjectId: string | null };
+
+async function recordStoneOnce(
+  tx: TxDrizzle,
+  auth: AuthContext,
+  stone: RuleText,
+  trigger: StoneTrigger,
+): Promise<boolean> {
+  const definition = await ensureDefinition(tx, auth, { ...stone, kind: "collectible", points: 0 });
+  if (!definition || !definition.active) return false;
+
+  const [entry] = await tx
+    .insert(rewardLedger)
+    .values({
+      workspaceId: auth.workspaceId,
+      rewardDefinitionId: definition.id,
+      userId: auth.userId,
+      reason: trigger.reason,
+      subjectType: trigger.subjectType,
+      subjectId: trigger.subjectId,
+      points: 0,
+      idempotencyKey: `${stone.key}:${auth.userId}`,
+    })
+    .onConflictDoNothing({ target: [rewardLedger.workspaceId, rewardLedger.idempotencyKey] })
+    .returning();
+  if (!entry) return false;
+  await recordAudit(
+    auth,
+    {
+      action: "reward.awarded",
+      subjectType: "reward_ledger",
+      subjectId: entry.id,
+      summary: `Stone earned: ${stone.label}`,
+    },
+    tx,
+  );
+  return true;
+}
+
+/**
+ * Spec §5: the emerald is the gated learning stone - a perfect,
+ * server-graded sitting earns it, once per user. Grading has already run in
+ * completeQuizAttempt, and a dontKnow answer never grades correct, so a
+ * perfect sitting answered every question honestly.
+ */
+export async function recordEmerald(tx: TxDrizzle, auth: AuthContext, attemptId: string): Promise<boolean> {
+  return recordStoneOnce(tx, auth, EMERALD_RULE, {
+    reason: "learning_reviewed",
+    subjectType: "quiz_attempt",
+    subjectId: attemptId,
+  });
+}
+
+/*
+ * The ledger, summarized for user_progress: one query for the user's point
+ * total, their distinct earning days, and today's date in the workspace's
+ * timezone - the same convention recordDailyQuartz uses to pick the day a
+ * reward belongs to.
+ */
+async function ledgerProgress(
+  tx: TxDrizzle,
+  auth: AuthContext,
+): Promise<{ totalPoints: number; days: string[]; today: string }> {
+  const rows = await tx.execute(sql`
+    with prefs as (
+      select coalesce((select timezone from user_preferences where workspace_id = ${auth.workspaceId} and user_id = ${auth.userId} limit 1), 'UTC') as tz
+    )
+    select
+      coalesce(sum(points), 0)::int as total_points,
+      coalesce(array_agg(distinct day order by day), '{}') as days,
+      to_char(timezone((select tz from prefs), now()), 'YYYY-MM-DD') as today
+    from (
+      select points, to_char(timezone((select tz from prefs), created_at), 'YYYY-MM-DD') as day
+      from reward_ledger
+      where workspace_id = ${auth.workspaceId} and user_id = ${auth.userId}
+    ) t
+  `);
+  // drizzle's execute returns an untyped record bag; this query has exactly
+  // one row with three named columns.
+  const row = (rows as unknown as Array<{ total_points: number; days: string[]; today: string }>)[0];
+  return { totalPoints: row.total_points, days: row.days, today: row.today };
+}
+
+/** The only writer of user_progress: an upsert keyed to the (workspace, user) pair. */
+async function upsertUserProgress(
+  tx: TxDrizzle,
+  auth: AuthContext,
+  input: { totalPoints: number; currentStreakDays: number; longestStreakDays: number; lastActiveOn: string | null },
+): Promise<void> {
+  await tx
+    .insert(userProgress)
+    .values({
+      workspaceId: auth.workspaceId,
+      userId: auth.userId,
+      totalPoints: input.totalPoints,
+      currentStreakDays: input.currentStreakDays,
+      longestStreakDays: input.longestStreakDays,
+      lastActiveOn: input.lastActiveOn,
+      createdBy: auth.userId,
+      updatedBy: auth.userId,
+    })
+    .onConflictDoUpdate({
+      target: [userProgress.workspaceId, userProgress.userId],
+      set: {
+        totalPoints: input.totalPoints,
+        currentStreakDays: input.currentStreakDays,
+        longestStreakDays: input.longestStreakDays,
+        lastActiveOn: input.lastActiveOn,
+        version: sql`${userProgress.version} + 1`,
+        updatedAt: new Date(),
+        updatedBy: auth.userId,
+      },
+    });
 }
 
 /** Stones and claims, derived from the ledger at read time. */
@@ -339,7 +621,9 @@ export async function claimShard(auth: AuthContext) {
     const row = (rows as unknown as Array<{ stones: number; claimed: number }>)[0] ?? { stones: 0, claimed: 0 };
     const claimable = Math.floor(row.stones / STONES_PER_SHARD) - row.claimed;
     if (claimable < 1) {
-      throw new ConflictError(`No shard to claim yet - ${STONES_PER_SHARD - (row.stones % STONES_PER_SHARD)} more stone(s) to the next one.`);
+      throw new ConflictError(
+        `No shard to claim yet - ${STONES_PER_SHARD - (row.stones % STONES_PER_SHARD)} more stone(s) to the next one.`,
+      );
     }
 
     try {
@@ -358,7 +642,12 @@ export async function claimShard(auth: AuthContext) {
         .returning();
       await recordAudit(
         auth,
-        { action: "reward.shard_claimed", subjectType: "reward_ledger", subjectId: entry.id, summary: `Shard claimed (${row.claimed + 1})` },
+        {
+          action: "reward.shard_claimed",
+          subjectType: "reward_ledger",
+          subjectId: entry.id,
+          summary: `Shard claimed (${row.claimed + 1})`,
+        },
         tx,
       );
       return entry;

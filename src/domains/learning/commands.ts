@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
-import { recordLearningReview } from "@/domains/gamification/commands";
+import { recordEmerald, recordLearningReview } from "@/domains/gamification/commands";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
@@ -56,10 +56,11 @@ function validateAnswers(
     }
     seen.add(a.questionId);
     const question = byId.get(a.questionId);
-    if (!question) throw new QuizAttemptError("invalid_answers", "This answer names a question that is not part of the quiz.");
+    if (!question)
+      throw new QuizAttemptError("invalid_answers", "This answer names a question that is not part of the quiz.");
     if (a.dontKnow) {
       if (a.selectedValue !== null) {
-        throw new QuizAttemptError("invalid_answers", "An \"I don't know\" answer carries no selection.");
+        throw new QuizAttemptError("invalid_answers", 'An "I don\'t know" answer carries no selection.');
       }
       continue;
     }
@@ -116,20 +117,41 @@ export async function completeQuizAttempt(
       // stone; a mismatched quiz or user behind the same key is a client bug
       // worth naming, not folding.
       const [existing] = await tx
-        .select({ id: quizAttempts.id, quizId: quizAttempts.quizId, userId: quizAttempts.userId, correctCount: quizAttempts.correctCount, totalCount: quizAttempts.totalCount })
+        .select({
+          id: quizAttempts.id,
+          quizId: quizAttempts.quizId,
+          userId: quizAttempts.userId,
+          correctCount: quizAttempts.correctCount,
+          totalCount: quizAttempts.totalCount,
+        })
         .from(quizAttempts)
-        .where(and(eq(quizAttempts.workspaceId, auth.workspaceId), eq(quizAttempts.idempotencyKey, input.idempotencyKey)))
+        .where(
+          and(eq(quizAttempts.workspaceId, auth.workspaceId), eq(quizAttempts.idempotencyKey, input.idempotencyKey)),
+        )
         .limit(1);
       if (!existing || existing.quizId !== quiz.id || existing.userId !== auth.userId) {
         throw new QuizAttemptError("attempt_conflict", "This attempt key already recorded a different sitting.");
       }
-      return { attemptId: existing.id, correctCount: existing.correctCount, totalCount: existing.totalCount, stoneEarned: false, replayed: true };
+      return {
+        attemptId: existing.id,
+        correctCount: existing.correctCount,
+        totalCount: existing.totalCount,
+        stoneEarned: false,
+        replayed: true,
+      };
     }
 
     const stoneEarned = await recordLearningReview(tx, auth, {
       subjectId: attempt.id,
       idempotencyKey: `quiz_attempt:${attempt.id}`,
     });
+    // Spec §5: the emerald is the gated learning stone - every answer
+    // correct, graded by the server. A dontKnow answer never grades
+    // correct, so a perfect sitting answered every question honestly.
+    const emeraldEarned =
+      graded.totalCount > 0 && graded.correctCount === graded.totalCount
+        ? await recordEmerald(tx, auth, attempt.id)
+        : false;
 
     await recordAudit(
       auth,
@@ -138,11 +160,23 @@ export async function completeQuizAttempt(
         subjectType: "quiz_attempt",
         subjectId: attempt.id,
         summary: `Completed a quiz: ${graded.correctCount}/${graded.totalCount} correct`,
-        metadata: { quizId: quiz.id, correctCount: graded.correctCount, totalCount: graded.totalCount, stoneEarned },
+        metadata: {
+          quizId: quiz.id,
+          correctCount: graded.correctCount,
+          totalCount: graded.totalCount,
+          stoneEarned,
+          emeraldEarned,
+        },
       },
       tx,
     );
 
-    return { attemptId: attempt.id, correctCount: graded.correctCount, totalCount: graded.totalCount, stoneEarned, replayed: false };
+    return {
+      attemptId: attempt.id,
+      correctCount: graded.correctCount,
+      totalCount: graded.totalCount,
+      stoneEarned,
+      replayed: false,
+    };
   });
 }
