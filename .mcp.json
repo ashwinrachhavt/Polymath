@@ -2,13 +2,7 @@
   "mcpServers": {
     "serena": {
       "command": "/Users/ashwin/.local/bin/serena",
-      "args": [
-        "start-mcp-server",
-        "--context",
-        "claude-code",
-        "--project",
-        "/Users/ashwin/Projects/axiom"
-      ],
+      "args": ["start-mcp-server", "--context", "claude-code", "--project", "/Users/ashwin/Projects/axiom"],
       "env": {
         "MCP_TIMEOUT": "60000"
       }
@@ -32,11 +26,13 @@
     "code-index": {
       "type": "stdio",
       "command": "uvx",
-      "args": [
-        "--from",
-        "code-index-mcp",
-        "code-index-mcp"
-      ],
+      "args": ["--from", "code-index-mcp", "code-index-mcp"],
+      "env": {}
+    },
+    "headroom": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["--from", "headroom-ai[mcp]", "headroom", "mcp", "serve"],
       "env": {}
     }
   }
