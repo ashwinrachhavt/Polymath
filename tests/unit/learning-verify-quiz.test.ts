@@ -93,6 +93,40 @@ describe("verifyQuiz", () => {
     expect(evidence.quote).toBe(TEXT.slice(30, 80));
   });
 
+  it("trims an oversized quote and keeps the offsets describing the stored quote", () => {
+    const longText = "A ".repeat(300) + "The lease ends when the tenant dies.";
+    const longQuote = longText.slice(0, 500);
+    const out = verifyQuiz(longText, [question({ quote: longQuote })]);
+    expect(out.droppedQuestions).toBe(0);
+    const evidence = out.questions[0].evidence;
+    expect(evidence.quote.length).toBeLessThanOrEqual(400);
+    expect(longText.slice(evidence.startOffset, evidence.endOffset)).toBe(evidence.quote);
+  });
+
+  it("drops a question whose distinct choice values would collide after the value cap", () => {
+    const prefix = "v".repeat(60);
+    const colliding = question({
+      quote: "The deposit is held in escrow.",
+      choices: [
+        { value: `${prefix}one`, label: "One." },
+        { value: `${prefix}two`, label: "Two." },
+      ],
+      answerValue: `${prefix}one`,
+    });
+    expect(verifyQuiz(TEXT, [colliding]).droppedQuestions).toBe(1);
+    const atCap = question({
+      quote: "The deposit is held in escrow.",
+      choices: [
+        { value: prefix, label: "One." },
+        { value: "falls", label: "Two." },
+      ],
+      answerValue: prefix,
+    });
+    const out = verifyQuiz(TEXT, [atCap]);
+    expect(out.droppedQuestions).toBe(0);
+    expect(out.questions[0].choices[0].value).toBe(prefix);
+  });
+
   it("exposes the minimum count the domain enforces", () => {
     expect(MIN_QUIZ_QUESTIONS).toBe(3);
   });

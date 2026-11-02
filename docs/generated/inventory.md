@@ -27,7 +27,7 @@ dependent, so `inventory:check` behaves the same on a laptop and in CI.
 | `vitest` | ^5.0.5 |
 | `@playwright/test` | ^1.64.1 |
 
-Migrations: 96 files, highest `0269_drop_retired_tables`.
+Migrations: 97 files, highest `0270_learning_quizzes`.
 
 ## Tests
 

@@ -673,6 +673,12 @@
       "when": 1793687280000,
       "tag": "0269_drop_retired_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 270,
+      "version": "7",
+      "when": 1793687340000,
+      "tag": "0270_learning_quizzes"
     }
   ]
 }

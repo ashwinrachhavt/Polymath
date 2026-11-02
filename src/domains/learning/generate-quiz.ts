@@ -34,6 +34,7 @@ export const MAX_QUIZ_QUESTIONS = 6;
 const MAX_PROMPT_CHARS = 300;
 const MAX_CHOICE_LABEL_CHARS = 200;
 const MAX_CHOICE_VALUE_CHARS = 60;
+const MAX_EVIDENCE_QUOTE_CHARS = 400;
 const MAX_EXPLANATION_CHARS = 800;
 const MAX_QUIZ_TITLE_CHARS = 200;
 const MAX_ERROR_CHARS = 500;
@@ -88,7 +89,15 @@ export function verifyQuiz(text: string, raw: GeneratedQuestion[]): VerifiedQuiz
       choices.length > 5 ||
       values.size !== choices.length ||
       !values.has(answerValue) ||
-      choices.some((c) => !c.label?.trim() || !c.value?.trim())
+      choices.some(
+        (c) =>
+          !c.label?.trim() ||
+          !c.value?.trim() ||
+          // Truncating values could collide distinct choices into one
+          // value and corrupt value-keyed grading - over-long values are
+          // dropped, never repaired.
+          c.value.trim().length > MAX_CHOICE_VALUE_CHARS,
+      )
     ) {
       droppedQuestions++;
       continue;
@@ -98,15 +107,22 @@ export function verifyQuiz(text: string, raw: GeneratedQuestion[]): VerifiedQuiz
       droppedQuestions++;
       continue;
     }
+    const storedQuote = quote.slice(0, MAX_EVIDENCE_QUOTE_CHARS);
     questions.push({
       prompt: prompt.slice(0, MAX_PROMPT_CHARS),
       choices: choices.map((c) => ({
-        value: c.value.trim().slice(0, MAX_CHOICE_VALUE_CHARS),
+        value: c.value.trim(),
         label: c.label.trim().slice(0, MAX_CHOICE_LABEL_CHARS),
       })),
-      answerValue: answerValue.slice(0, MAX_CHOICE_VALUE_CHARS),
+      answerValue,
       explanation: explanation.slice(0, MAX_EXPLANATION_CHARS),
-      evidence: { quote: quote.slice(0, 400), startOffset: span.start, endOffset: span.end },
+      evidence: {
+        quote: storedQuote,
+        startOffset: span.start,
+        // The offsets must describe the stored quote, not the model's
+        // original: slicing the text by them has to return the quote.
+        endOffset: span.start + storedQuote.length,
+      },
     });
     if (questions.length >= MAX_QUIZ_QUESTIONS) break;
   }
