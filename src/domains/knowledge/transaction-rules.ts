@@ -25,7 +25,7 @@ export class TransactionNotFoundError extends Error {
   }
 }
 
-export class UnknownCategoryError extends Error {
+class UnknownCategoryError extends Error {
   constructor(readonly category: string) {
     super(`"${category}" is not a category.`);
     this.name = "UnknownCategoryError";
@@ -41,10 +41,7 @@ export async function listOwnerRules(auth: AuthContext): Promise<OwnerRule[]> {
     .select({ merchantKey: transactionCategoryRules.merchantKey, category: transactionCategoryRules.category })
     .from(transactionCategoryRules)
     .where(
-      and(
-        eq(transactionCategoryRules.workspaceId, auth.workspaceId),
-        isNull(transactionCategoryRules.archivedAt),
-      ),
+      and(eq(transactionCategoryRules.workspaceId, auth.workspaceId), isNull(transactionCategoryRules.archivedAt)),
     );
   return rows.filter((row): row is OwnerRule => isCategory(row.category));
 }

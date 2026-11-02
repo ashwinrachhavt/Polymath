@@ -12,7 +12,7 @@ import { EmbeddingUnconfiguredError } from "@/integrations/embeddings/provider";
  * providers plug in anything that satisfies WikiSummarizer.
  */
 
-export type WikiSummary = {
+type WikiSummary = {
   title: string;
   /** One line, shown on topic hubs and the master index. */
   summary: string;

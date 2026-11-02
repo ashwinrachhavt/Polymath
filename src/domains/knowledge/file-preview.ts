@@ -12,8 +12,16 @@ import { documentExtractions } from "./schema";
  * append-only sources, so the pane can never say something the record does not.
  */
 
-export type PreviewActivity = { key: string; at: string; kind: string; summary: string };
-export type PreviewVersion = { extractionId: string; at: string; status: string; reader: string | null; hash: string; error: string | null; current: boolean };
+type PreviewActivity = { key: string; at: string; kind: string; summary: string };
+type PreviewVersion = {
+  extractionId: string;
+  at: string;
+  status: string;
+  reader: string | null;
+  hash: string;
+  error: string | null;
+  current: boolean;
+};
 
 export type DocumentPreview = {
   review: DocumentReview;
@@ -30,7 +38,13 @@ export async function getDocumentText(auth: AuthContext, documentId: string): Pr
   const [row] = await db
     .select({ text: documentExtractions.text })
     .from(documentExtractions)
-    .where(and(eq(documentExtractions.documentId, documentId), eq(documentExtractions.workspaceId, auth.workspaceId), eq(documentExtractions.status, "succeeded")))
+    .where(
+      and(
+        eq(documentExtractions.documentId, documentId),
+        eq(documentExtractions.workspaceId, auth.workspaceId),
+        eq(documentExtractions.status, "succeeded"),
+      ),
+    )
     .orderBy(desc(documentExtractions.createdAt))
     .limit(1);
   return row?.text?.trim() ?? null;
@@ -46,7 +60,13 @@ export async function getDocumentPreview(auth: AuthContext, documentId: string):
     db
       .select({ text: documentExtractions.text })
       .from(documentExtractions)
-      .where(and(eq(documentExtractions.documentId, documentId), eq(documentExtractions.workspaceId, auth.workspaceId), eq(documentExtractions.status, "succeeded")))
+      .where(
+        and(
+          eq(documentExtractions.documentId, documentId),
+          eq(documentExtractions.workspaceId, auth.workspaceId),
+          eq(documentExtractions.status, "succeeded"),
+        ),
+      )
       .orderBy(desc(documentExtractions.createdAt))
       .limit(1),
   ]);
@@ -55,7 +75,12 @@ export async function getDocumentPreview(auth: AuthContext, documentId: string):
   return {
     review,
     excerpt: text ? text.slice(0, EXCERPT_CHARS) : null,
-    activity: activity.map((a, i) => ({ key: `${a.kind}-${i}-${a.at.toISOString()}`, at: a.at.toISOString(), kind: a.kind, summary: a.summary })),
+    activity: activity.map((a, i) => ({
+      key: `${a.kind}-${i}-${a.at.toISOString()}`,
+      at: a.at.toISOString(),
+      kind: a.kind,
+      summary: a.summary,
+    })),
     versions: versions.map((v) => ({
       extractionId: v.extractionId,
       at: v.createdAt.toISOString(),

@@ -18,16 +18,17 @@ export const JEV_QUESTIONS_VERSION = "jev-q2";
 
 /* ---- Capture triage (enrichment Tier 2) ---- */
 
-export const CAPTURE_COMMITMENT: JevNoulQuestion = {
+const CAPTURE_COMMITMENT: JevNoulQuestion = {
   type: "noul",
   instructions: "Does this capture record a commitment the person owes someone - something with an implied done-by?",
   criteria: {
     true: "A task, promise, request, deadline, or follow-up the owner is expected to complete; includes requests others made of them.",
-    false: "Information, ideas, or receipts with nothing for the owner to do; a commitment owed BY someone else without an owner action.",
+    false:
+      "Information, ideas, or receipts with nothing for the owner to do; a commitment owed BY someone else without an owner action.",
   },
 };
 
-export const CAPTURE_CONTACT: JevNoulQuestion = {
+const CAPTURE_CONTACT: JevNoulQuestion = {
   type: "noul",
   // Wording refined from the ticket's draft ("contact details or an
   // introduction"): the vendor rule forbids or-joined conditions, and no
@@ -39,7 +40,7 @@ export const CAPTURE_CONTACT: JevNoulQuestion = {
   },
 };
 
-export const CAPTURE_REFERENCE: JevNoulQuestion = {
+const CAPTURE_REFERENCE: JevNoulQuestion = {
   type: "noul",
   instructions: "Is this a reference worth filing to read later - not a commitment, not a person?",
   criteria: {
@@ -48,7 +49,7 @@ export const CAPTURE_REFERENCE: JevNoulQuestion = {
   },
 };
 
-export const CAPTURE_WORTHLESS: JevNoulQuestion = {
+const CAPTURE_WORTHLESS: JevNoulQuestion = {
   type: "noul",
   instructions: "Is this capture worthless - spam, duplicate noise, or an accident?",
   criteria: {
@@ -57,7 +58,7 @@ export const CAPTURE_WORTHLESS: JevNoulQuestion = {
   },
 };
 
-export const CAPTURE_PROJECT: JevNoulQuestion = {
+const CAPTURE_PROJECT: JevNoulQuestion = {
   type: "noul",
   instructions: "Does anything in this capture name a specific existing project of the owner's?",
   criteria: {
@@ -67,7 +68,9 @@ export const CAPTURE_PROJECT: JevNoulQuestion = {
 };
 
 /** The domain Choice's options are the seeded L1 taxonomy slugs; descriptions are the seed's selection criteria. */
-export function captureDomainQuestion(domains: ReadonlyArray<{ slug: string; description: string | null }>): JevChoiceQuestion {
+function captureDomainQuestion(
+  domains: ReadonlyArray<{ slug: string; description: string | null }>,
+): JevChoiceQuestion {
   return {
     type: "choice",
     instructions: "Which knowledge domain does this capture belong to? Answer only when one option clearly fits.",
@@ -76,7 +79,9 @@ export function captureDomainQuestion(domains: ReadonlyArray<{ slug: string; des
 }
 
 /** The bundled capture question set: every judgment the triage truth table reads, in one paid request. */
-export function captureQuestions(domains: ReadonlyArray<{ slug: string; description: string | null }>): Record<string, import("./client").JevQuestion> {
+export function captureQuestions(
+  domains: ReadonlyArray<{ slug: string; description: string | null }>,
+): Record<string, import("./client").JevQuestion> {
   return {
     commitment: CAPTURE_COMMITMENT,
     contact: CAPTURE_CONTACT,
@@ -89,7 +94,7 @@ export function captureQuestions(domains: ReadonlyArray<{ slug: string; descript
 
 /* ---- Document classification (extraction dual proposer) ---- */
 
-export function documentTypeQuestion(documentTypes: readonly string[]): JevChoiceQuestion {
+function documentTypeQuestion(documentTypes: readonly string[]): JevChoiceQuestion {
   return {
     type: "choice",
     instructions: "What kind of document is this? Answer only when one option clearly fits.",
@@ -97,7 +102,7 @@ export function documentTypeQuestion(documentTypes: readonly string[]): JevChoic
   };
 }
 
-export const DOCUMENT_TYPE_FITS: JevNoulQuestion = {
+const DOCUMENT_TYPE_FITS: JevNoulQuestion = {
   type: "noul",
   instructions: "Is this document any of the listed business document types at all?",
   criteria: {

@@ -15,7 +15,7 @@ import { documents, documentExtractions, embeddings, files, reviewedAssertions }
  * the chunks the embedding pass wrote. It returns spans, not whole documents.
  */
 
-export type DocumentSearchFilters = {
+type DocumentSearchFilters = {
   contactId?: string;
   companyId?: string;
   titleContains?: string;
@@ -302,7 +302,7 @@ export async function searchChunksFts(
   });
 }
 
-export const FTS_PASSAGE_RADIUS = 600;
+const FTS_PASSAGE_RADIUS = 600;
 
 /*
  * The passage an FTS hit returns: a window around the earliest query term

@@ -10,7 +10,7 @@ import { openAICompatibleProvider } from "./openai-compatible";
  * resolveProviderConfig(id, env).
  */
 
-export type ProviderCatalogEntry = {
+type ProviderCatalogEntry = {
   baseUrl: string;
   /** Env vars checked in order for the API key; the first set one wins. */
   apiKeyEnv: readonly string[];
@@ -21,7 +21,7 @@ export type ProviderCatalogEntry = {
   streamUsage?: boolean;
 };
 
-export const PROVIDER_CATALOG: Record<string, ProviderCatalogEntry> = {
+const PROVIDER_CATALOG: Record<string, ProviderCatalogEntry> = {
   mercury: {
     // Inception Labs' Mercury suite, designed in (owner directive 2026-11-02):
     // mercury-3 is the chat default and the assessor profile's; mercury-voice is

@@ -16,9 +16,9 @@ import { captures } from "./schema";
  * match no row and it stops. That bounds duplicate paid calls to the expiry
  * case; it is not exactly-once across expiry.
  */
-export const ENRICHMENT_LEASE_MS = 5 * 60_000;
+const ENRICHMENT_LEASE_MS = 5 * 60_000;
 /** How often a run that found the lease busy looks again: short, so finished work is picked up promptly. */
-export const BUSY_RECHECK_MS = 30_000;
+const BUSY_RECHECK_MS = 30_000;
 
 export const RELEASE = { enrichmentLeaseToken: null, enrichmentLeaseUntil: null } as const;
 

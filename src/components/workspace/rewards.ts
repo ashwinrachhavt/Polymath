@@ -7,7 +7,6 @@ import type { WorkspaceState } from "./types";
  */
 
 export type FocusRecord = { id: string; taskId: string; minutes: number; earnedAt: string; day: string };
-export const stonesPerShard = 5;
 
 function localDay(iso: string) {
   const date = new Date(iso);
@@ -26,7 +25,15 @@ export function focusRecords(rewards: WorkspaceState["rewards"]): FocusRecord[] 
     const parts = reward.sessionId.split(":");
     if (parts.length !== 5 || parts[0] !== "neuralflow-focus") return [];
     const minutes = Number(parts[3]);
-    return [{ id: reward.id, taskId: parts[1], minutes: Number.isFinite(minutes) ? minutes : 0, earnedAt: reward.earnedAt, day: localDay(reward.earnedAt) }];
+    return [
+      {
+        id: reward.id,
+        taskId: parts[1],
+        minutes: Number.isFinite(minutes) ? minutes : 0,
+        earnedAt: reward.earnedAt,
+        day: localDay(reward.earnedAt),
+      },
+    ];
   });
 }
 
@@ -45,7 +52,10 @@ export function focusStreak(rewards: WorkspaceState["rewards"], today: string) {
   };
   let current = 0;
   let cursor = days.has(today) ? today : shift(today, -1);
-  while (days.has(cursor)) { current += 1; cursor = shift(cursor, -1); }
+  while (days.has(cursor)) {
+    current += 1;
+    cursor = shift(cursor, -1);
+  }
   const ordered = [...days].sort();
   let longest = 1;
   let run = 1;
@@ -54,16 +64,6 @@ export function focusStreak(rewards: WorkspaceState["rewards"], today: string) {
     longest = Math.max(longest, run);
   }
   return { current, longest };
-}
-
-/*
- * Shards are a deterministic accounting of stones, not a second currency with
- * its own state: five recorded stones fuse into one shard, and the remainder
- * stays visible so the total always reconciles with the ledger length.
- */
-export function shardLedger(rewards: WorkspaceState["rewards"]) {
-  const shards = Math.floor(rewards.length / stonesPerShard);
-  return { shards, remainder: rewards.length % stonesPerShard, toNextShard: rewards.length % stonesPerShard === 0 ? stonesPerShard : stonesPerShard - (rewards.length % stonesPerShard) };
 }
 
 export function minutesByDay(rewards: WorkspaceState["rewards"], from: string, through: string) {

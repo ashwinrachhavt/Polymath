@@ -13,8 +13,7 @@
  * is diagnosable without re-running anything.
  */
 
-export const STRUCTURES = ["prose", "code", "list", "url", "contact", "log", "empty"] as const;
-export type Structure = (typeof STRUCTURES)[number];
+type Structure = "prose" | "code" | "list" | "url" | "contact" | "log" | "empty";
 
 export type Tier1Result = {
   structure: Structure;
@@ -81,10 +80,11 @@ export function classifyStructure(cleanText: string): Tier1Result {
 
   // A contact block: enough labeled identity fields on their own lines.
   if (lines.length <= 12) {
-    const contactFields = lines.filter((l) =>
-      /(^|\s)(phone|tel|mobile|email|e-mail|address|linkedin|github|handle)\s*[:\-–]/i.test(l) ||
-      /[\w.+-]+@[\w-]+\.[\w.]+/.test(l) ||
-      /^\+?[\d\s().-]{7,}$/.test(l),
+    const contactFields = lines.filter(
+      (l) =>
+        /(^|\s)(phone|tel|mobile|email|e-mail|address|linkedin|github|handle)\s*[:\-–]/i.test(l) ||
+        /[\w.+-]+@[\w-]+\.[\w.]+/.test(l) ||
+        /^\+?[\d\s().-]{7,}$/.test(l),
     ).length;
     if (contactFields >= 2) {
       return { structure: "contact", signals: [`${contactFields} contact fields`] };

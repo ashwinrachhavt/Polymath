@@ -59,13 +59,6 @@ export function citedIndices(answer: string, citations: DocumentCitation[]): num
 }
 
 /**
- * The prompt fragment that teaches the model the marker convention. Kept here
- * so the parser and the instruction cannot drift.
- */
-export const CITATION_INSTRUCTION =
-  "Cite the sources you use inline as [[n]], where n is the source's number in the list you were given. Put the marker at the end of the sentence it supports. Do not invent a number that is not in the list.";
-
-/**
  * A citation list with one entry per document, in first-seen order, so the
  * numbers in an answer stay stable when the same document is cited twice.
  */

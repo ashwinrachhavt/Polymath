@@ -13,7 +13,7 @@ import { join, relative } from "node:path";
  * green build.
  */
 
-export type RowState = "versioned" | "append-only" | "mutable-unversioned";
+type RowState = "versioned" | "append-only" | "mutable-unversioned";
 
 /*
  * A guard is one mechanism, not a table's whole story. Tables routinely have
@@ -22,7 +22,7 @@ export type RowState = "versioned" | "append-only" | "mutable-unversioned";
  * Collapsing that to a single label overstates whichever mechanism got named and
  * lets someone delete the others believing the trigger covers them.
  */
-export type GuardKind = "atomic-counter" | "app-cas" | "trigger-immutable" | "lease";
+type GuardKind = "atomic-counter" | "app-cas" | "trigger-immutable" | "lease";
 
 export type Guard = {
   kind: GuardKind;
@@ -204,7 +204,7 @@ export const VERSIONED_WITH_TRIGGER_INVARIANT: Record<string, TableDeclaration> 
   },
 };
 
-export function classifyRowState(body: string): RowState {
+function classifyRowState(body: string): RowState {
   const versioned = body.includes("...mutable") || /\bversion:\s*(integer|int)/.test(body);
   if (versioned) return "versioned";
   const mutable = /\b(updated_at|updatedAt|archived_at|archivedAt)\b/.test(body);

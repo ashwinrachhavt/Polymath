@@ -27,7 +27,7 @@ export type CaptureTriageAnswers = {
   domain: { choice: string; topProbability: number } | null;
 };
 
-export type CaptureTriageProposal = {
+type CaptureTriageProposal = {
   kind: "task" | "contact" | "note" | "discard";
   payload: Record<string, unknown>;
   rationale: string;
@@ -46,9 +46,7 @@ const inBand = (p: number) => p > TRIAGE_NO && p < TRIAGE_YES;
 
 export function triageCapture(answers: CaptureTriageAnswers): CaptureTriage {
   const domainSlug =
-    answers.domain && answers.domain.topProbability >= DOMAIN_MIN_TOP_PROBABILITY
-      ? answers.domain.choice
-      : null;
+    answers.domain && answers.domain.topProbability >= DOMAIN_MIN_TOP_PROBABILITY ? answers.domain.choice : null;
   const domainNote = domainSlug ? `; domain ${domainSlug}` : "";
   const gating = (judgment: string, p: number) => `${judgment} ${pct(p)}${domainNote}`;
 
@@ -93,8 +91,9 @@ export function triageCapture(answers: CaptureTriageAnswers): CaptureTriage {
   } else {
     // Every judgment said no, or something sat in the 0.3-0.7 review band:
     // file as a note flagged for review, never an auto-applied label.
-    const banded = [answers.commitment, answers.contact, answers.reference, answers.worthless, answers.project]
-      .some(inBand);
+    const banded = [answers.commitment, answers.contact, answers.reference, answers.worthless, answers.project].some(
+      inBand,
+    );
     proposal = {
       kind: "note",
       payload: { review: true },

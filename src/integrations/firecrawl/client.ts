@@ -19,13 +19,6 @@ export type FirecrawlScrapeResult = {
   error: string | null;
 };
 
-export type FirecrawlCrawlResult = {
-  jobId: string;
-  status: string;
-  pages: Array<{ url: string; markdown: string; title: string | null }>;
-  error: string | null;
-};
-
 export class FirecrawlError extends Error {
   constructor(message: string) {
     super(message);
@@ -34,7 +27,7 @@ export class FirecrawlError extends Error {
 }
 
 /** One call never hangs a run. Crawl polling is bounded by the same budget. */
-export const FIRECRAWL_TIMEOUT_MS = 20_000;
+const FIRECRAWL_TIMEOUT_MS = 20_000;
 
 type FirecrawlConfig = { baseUrl: string; apiKey: string | null };
 
@@ -91,7 +84,7 @@ type CrawlBody = {
   error?: string;
 };
 
-export type CrawlPage = { url: string; markdown: string; title: string | null };
+type CrawlPage = { url: string; markdown: string; title: string | null };
 
 export type CrawlPollResult = {
   status: string;
@@ -121,7 +114,12 @@ export async function submitCrawl(
   const submission = await fetch(`${cfg.baseUrl}/v1/crawl`, {
     method: "POST",
     headers: headers(cfg),
-    body: JSON.stringify({ url, limit: opts.limit ?? 10, maxDepth: opts.maxDepth ?? 1, scrapeOptions: { formats: ["markdown"], onlyMainContent: true } }),
+    body: JSON.stringify({
+      url,
+      limit: opts.limit ?? 10,
+      maxDepth: opts.maxDepth ?? 1,
+      scrapeOptions: { formats: ["markdown"], onlyMainContent: true },
+    }),
     signal: AbortSignal.timeout(FIRECRAWL_TIMEOUT_MS),
   });
   if (!submission.ok) throw new FirecrawlError(`Firecrawl crawl returned ${submission.status}`);

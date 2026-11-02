@@ -25,7 +25,7 @@ import type { AgentSource, ParsedSession, ScanErrorKind } from "./types";
 export type AgentArtifactRoots = { "claude-code": string; codex: string };
 
 /** Per-scan caps, stated in the re-spec review; overridable for tests. */
-export type ScanLimits = {
+type ScanLimits = {
   /** Session files processed per scan, across both sources. */
   maxSessionFiles: number;
   /** Per-transcript byte ceiling; larger files are skipped, not truncated. */
@@ -34,7 +34,7 @@ export type ScanLimits = {
   maxTotalBytes: number;
 };
 
-export const SCAN_LIMITS: ScanLimits = {
+const SCAN_LIMITS: ScanLimits = {
   maxSessionFiles: 500,
   maxFileBytes: 64 * 1024 * 1024,
   maxTotalBytes: 512 * 1024 * 1024,
@@ -62,14 +62,14 @@ export function defaultRoots(): AgentArtifactRoots {
   return roots;
 }
 
-export type SkippedFile = {
+type SkippedFile = {
   source: AgentSource;
   path: string;
   kind: ScanErrorKind;
   reason: string;
 };
 
-export type UnavailableSource = {
+type UnavailableSource = {
   source: AgentSource;
   kind: ScanErrorKind;
   message: string;

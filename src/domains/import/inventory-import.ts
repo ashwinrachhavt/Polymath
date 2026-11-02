@@ -143,7 +143,13 @@ async function upsertPeople(
   const points = await tx
     .select({ value: contactPoints.value, personId: contactPoints.personId })
     .from(contactPoints)
-    .where(and(eq(contactPoints.workspaceId, auth.workspaceId), eq(contactPoints.kind, "email"), isNull(contactPoints.archivedAt)));
+    .where(
+      and(
+        eq(contactPoints.workspaceId, auth.workspaceId),
+        eq(contactPoints.kind, "email"),
+        isNull(contactPoints.archivedAt),
+      ),
+    );
   const byEmail = new Map<string, string>();
   for (const point of points) if (point.personId) byEmail.set(key(point.value), point.personId);
 
@@ -257,7 +263,9 @@ async function upsertLinear(
     const [existingProject] = await tx
       .select({ id: projects.id })
       .from(projects)
-      .where(and(eq(projects.workspaceId, auth.workspaceId), eq(projects.name, project.name), isNull(projects.archivedAt)))
+      .where(
+        and(eq(projects.workspaceId, auth.workspaceId), eq(projects.name, project.name), isNull(projects.archivedAt)),
+      )
       .limit(1);
     if (existingProject) {
       projectId = existingProject.id;
@@ -315,7 +323,9 @@ async function upsertNotion(
     .from(sources)
     .where(and(eq(sources.workspaceId, auth.workspaceId), eq(sources.kind, "notion-row"), isNull(sources.archivedAt)));
   const known = new Set(
-    existing.map((row) => `${key(row.title ?? "")}|${(row.metadata as { recordIndex?: number } | null)?.recordIndex ?? ""}`),
+    existing.map(
+      (row) => `${key(row.title ?? "")}|${(row.metadata as { recordIndex?: number } | null)?.recordIndex ?? ""}`,
+    ),
   );
 
   const rows = [
@@ -402,14 +412,13 @@ async function upsertCorrespondence(
     const person = byName.get(key(message.sender));
     void personIds;
     const email = person?.email ? key(person.email) : null;
-    const contactId =
-      (email ? contactByEmail.get(email) : undefined) ?? contactByName.get(key(message.sender)) ?? null;
+    const contactId = (email ? contactByEmail.get(email) : undefined) ?? contactByName.get(key(message.sender)) ?? null;
 
     const senderEmail = message.sender_email ?? person?.email ?? null;
     await tx.insert(correspondence).values({
       workspaceId: auth.workspaceId,
       contactId,
-      companyId: message.organization ? companyByName.get(key(message.organization)) ?? null : null,
+      companyId: message.organization ? (companyByName.get(key(message.organization)) ?? null) : null,
       direction: "inbound",
       channel: "email",
       subject: message.subject,
@@ -499,7 +508,7 @@ async function upsertCalendar(
  * zone, so the offset is derived rather than assumed; a DST boundary inside the
  * range is not modelled, which is why both endpoints are converted separately.
  */
-export function localToUtc(local: string, timeZone: string): Date {
+function localToUtc(local: string, timeZone: string): Date {
   const asUtc = Date.parse(`${local.replace(" ", "T")}Z`);
   const offset = zoneOffsetMinutes(new Date(asUtc), timeZone);
   return new Date(asUtc - offset * 60_000);

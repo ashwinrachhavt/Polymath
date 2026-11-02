@@ -21,9 +21,9 @@ import { drizzleQuotaStore, withQuota, type QuotaStore } from "@/integrations/pr
  * route.
  */
 
-export type ReadingSummaryClaim = { claim: string; quote: string };
+type ReadingSummaryClaim = { claim: string; quote: string };
 
-export type ReadingSummary = {
+type ReadingSummary = {
   /** One short paragraph. */
   summary: string;
   keyClaims: ReadingSummaryClaim[];
@@ -50,7 +50,10 @@ const SYSTEM = `You summarize a document for a reader deciding what it is worth.
 "openQuestions": what the document leaves unresolved or invites the reader to check, as questions. At most 5; an empty list is an honest answer.
 Never invent a claim, a quote, or a question to fill the shape. ${untrustedDataClauseJsonSafe("document")}`;
 
-function fromGeneration(provider: GenerationProvider, run: (input: { system: string; prompt: string }) => Promise<{ text: string }>): ReadingSummarizer {
+function fromGeneration(
+  provider: GenerationProvider,
+  run: (input: { system: string; prompt: string }) => Promise<{ text: string }>,
+): ReadingSummarizer {
   return {
     name: provider.name,
     async summarize(text) {

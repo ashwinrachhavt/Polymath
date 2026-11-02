@@ -5,11 +5,11 @@
  * wildcard. Add an origin here when a packed extension gets a stable ID.
  */
 
-const ALLOWED_ORIGINS = [process.env.NEXT_PUBLIC_APP_URL, "http://localhost:3000"].filter(
-  (origin): origin is string => Boolean(origin),
+const ALLOWED_ORIGINS = [process.env.NEXT_PUBLIC_APP_URL, "http://localhost:3000"].filter((origin): origin is string =>
+  Boolean(origin),
 );
 
-export function corsHeaders(origin: string | null): Record<string, string> {
+function corsHeaders(origin: string | null): Record<string, string> {
   if (!origin || !ALLOWED_ORIGINS.includes(origin)) return {};
   return {
     "Access-Control-Allow-Origin": origin,

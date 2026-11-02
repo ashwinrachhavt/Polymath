@@ -48,7 +48,7 @@ import {
  * structured provenance underneath it.
  */
 
-export const ZETTEL_MAX_PER_SOURCE = ZETTEL_MERGE_MAX_PER_SOURCE;
+const ZETTEL_MAX_PER_SOURCE = ZETTEL_MERGE_MAX_PER_SOURCE;
 const MAX_TITLE = 120;
 const MAX_CLAIM = 400;
 
@@ -64,7 +64,7 @@ export function isDuplicateDistance(distance: number): boolean {
   return distance <= ZETTEL_DUPLICATE_MAX_DISTANCE;
 }
 
-export type DuplicateHit = { artifactId: string; title: string; distance: number };
+type DuplicateHit = { artifactId: string; title: string; distance: number };
 
 /**
  * The one accepted idea this claim would duplicate, nearest first, or null.
@@ -72,7 +72,7 @@ export type DuplicateHit = { artifactId: string; title: string; distance: number
  * through so a caller can degrade), then reads the corpus once. `conn`
  * lets the proposal pass run the lookup inside its own transaction.
  */
-export async function findDuplicateIdea(
+async function findDuplicateIdea(
   auth: AuthContext,
   claim: string,
   options: { provider?: EmbeddingProvider; excludeArtifactId?: string; conn?: Pick<TxDrizzle, "execute"> } = {},
@@ -110,7 +110,7 @@ export type ZettelSourceInput =
   | { documentId: string; extractor?: ZettelExtractor; tx?: TxDrizzle }
   | { sourceArtifactId: string; extractor?: ZettelExtractor; tx?: TxDrizzle };
 
-export type ResolvedZettelSource = {
+type ResolvedZettelSource = {
   text: string;
   documentId: string | null;
   extractionId: string | null;
@@ -124,7 +124,7 @@ export type ResolvedZettelSource = {
  * always used; the artifact branch reads the artifact's current version body,
  * so a conversation mined for ideas proposes against exactly what it shows.
  */
-export async function resolveZettelSource(
+async function resolveZettelSource(
   auth: AuthContext,
   input: ZettelSourceInput,
   conn: Pick<TxDrizzle, "select">,

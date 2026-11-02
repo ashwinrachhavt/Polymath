@@ -14,7 +14,7 @@ import { artifactLinks, artifacts, documents } from "./schema";
  * canvas like every other card, and the reader marks it by reading the edges.
  */
 
-export const MAX_PASSAGE_CHARS = 2000;
+const MAX_PASSAGE_CHARS = 2000;
 
 export class PassageError extends Error {
   constructor(message: string) {
@@ -39,7 +39,13 @@ export async function savePassageAsZettel(
   const [doc] = await db
     .select({ id: documents.id, title: documents.title })
     .from(documents)
-    .where(and(eq(documents.id, input.documentId), eq(documents.workspaceId, auth.workspaceId), isNull(documents.archivedAt)))
+    .where(
+      and(
+        eq(documents.id, input.documentId),
+        eq(documents.workspaceId, auth.workspaceId),
+        isNull(documents.archivedAt),
+      ),
+    )
     .limit(1);
   if (!doc) throw new PassageError("That document is no longer available.");
 
@@ -49,7 +55,15 @@ export async function savePassageAsZettel(
   if (same) return { artifactId: same.artifactId, created: false };
 
   const comment = input.comment?.trim();
-  const text = [quote.split("\n").map((l) => `> ${l}`).join("\n"), comment].filter(Boolean).join("\n\n");
+  const text = [
+    quote
+      .split("\n")
+      .map((l) => `> ${l}`)
+      .join("\n"),
+    comment,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
   const created = await withTransaction(async (tx) => {
     const card = await createNoteInTx(tx, auth, {
       title: passageTitle(quote),

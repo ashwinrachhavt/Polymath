@@ -12,13 +12,14 @@ import { RELATIONSHIP_STATUS_LABELS } from "@/domains/crm/status";
 
 const TONES = {
   neutral: "border-border bg-muted text-muted-foreground",
-  positive: "border-[color-mix(in_oklab,#346538_25%,transparent)] bg-[#EDF3EC] text-[#346538] dark:bg-[#1d2a1c] dark:text-[#9dc49e] dark:border-[#2c3f2b]",
+  positive:
+    "border-[color-mix(in_oklab,#346538_25%,transparent)] bg-[#EDF3EC] text-[#346538] dark:bg-[#1d2a1c] dark:text-[#9dc49e] dark:border-[#2c3f2b]",
   warm: "border-[color-mix(in_oklab,#956400_25%,transparent)] bg-[#FBF3DB] text-[#956400] dark:bg-[#2e2814] dark:text-[#d8c07c] dark:border-[#453b1c]",
 } as const;
 
-export type PillTone = keyof typeof TONES;
+type PillTone = keyof typeof TONES;
 
-export function StatusPill({
+function StatusPill({
   tone = "neutral",
   children,
   className,
