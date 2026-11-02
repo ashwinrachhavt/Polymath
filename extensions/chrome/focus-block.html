@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Focus is active — Polymath</title>
+    <link rel="stylesheet" href="focus-block.css" />
+  </head>
+  <body>
+    <main class="ghost-card" role="main" aria-live="polite">
+      <svg class="ghost-glyph" viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+        <path
+          d="M32 6c-12.7 0-21 9.4-21 21.5V52a3 3 0 0 0 5.2 2.05c1.5-1.6 3.9-1.6 5.4 0 1.5 1.6 3.9 1.6 5.4 0 1.5-1.6 3.9-1.6 5.4 0 1.5 1.6 3.9 1.6 5.4 0 1.5-1.6 3.9-1.6 5.4 0A3 3 0 0 0 53 52V27.5C53 15.4 44.7 6 32 6Z"
+          class="ghost-body"
+        />
+        <circle cx="25" cy="28" r="3.2" class="ghost-eye" />
+        <circle cx="39" cy="28" r="3.2" class="ghost-eye" />
+      </svg>
+
+      <h1 class="ghost-title">Focus is active</h1>
+
+      <p class="ghost-subject" id="focus-subject" hidden></p>
+
+      <p class="ghost-remaining" id="focus-remaining" hidden></p>
+
+      <p class="ghost-explain" id="focus-explain">
+        Sites on your blocklist are held while a session runs.
+      </p>
+
+      <a class="ghost-link" id="focus-link" href="#" hidden>Open Focus Mode</a>
+
+      <p class="ghost-status" id="focus-status"></p>
+    </main>
+
+    <script src="focus-core.js"></script>
+    <script src="focus-block.js"></script>
+  </body>
+</html>

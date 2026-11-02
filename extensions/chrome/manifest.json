@@ -1,18 +1,18 @@
 {
   "manifest_version": 3,
   "name": "Polymath - Capture",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Capture text, pages, and notes directly into your Polymath inbox from any webpage.",
   "permissions": [
     "storage",
     "activeTab",
     "scripting",
     "sidePanel",
-    "alarms"
+    "alarms",
+    "declarativeNetRequest"
   ],
   "host_permissions": [
-    "http://localhost:3000/*",
-    "https://axiom-jade-five.vercel.app/*"
+    "<all_urls>"
   ],
   "action": {
     "default_popup": "popup.html",
@@ -70,7 +70,11 @@
         "dashboard.js",
         "sidepanel.html",
         "sidepanel.css",
-        "sidepanel.js"
+        "sidepanel.js",
+        "focus-block.html",
+        "focus-block.css",
+        "focus-block.js",
+        "focus-core.js"
       ],
       "matches": [
         "<all_urls>"

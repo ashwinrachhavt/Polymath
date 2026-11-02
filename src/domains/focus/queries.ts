@@ -2,8 +2,8 @@ import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, or, sql } from "dri
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { tasks } from "@/domains/work/schema";
-import { focusBlocklist, focusSessions } from "./schema";
-import { elapsedSecondsAt } from "./strictness";
+import { focusBlocklist, focusSessions, type FocusStrictness } from "./schema";
+import { elapsedSecondsAt, remainingSecondsAt } from "./strictness";
 
 /*
  * Read queries for the focus surface (ASH-137 A09). Elapsed time is derived
@@ -46,15 +46,26 @@ export async function getActiveFocusSession(auth: AuthContext): Promise<FocusSes
  * Same scoping and liveness rule as getActiveFocusSession, so the dock can
  * never disagree with the session the Work page controls.
  */
-export async function getLiveFocusDock(
-  auth: AuthContext,
-): Promise<{ id: string; state: "running" | "paused"; title: string } | null> {
+export async function getLiveFocusDock(auth: AuthContext): Promise<{
+  id: string;
+  state: "running" | "paused";
+  title: string;
+  /** Spec §1 tier; the extension's interstitial phrases itself by tier. */
+  strictness: FocusStrictness;
+  /** Server-computed plan remainder; null when the session set no plan. */
+  remainingSeconds: number | null;
+} | null> {
   const [row] = await db
     .select({
       id: focusSessions.id,
       state: focusSessions.state,
       subject: focusSessions.subject,
       taskTitle: tasks.title,
+      strictness: focusSessions.strictness,
+      plannedMinutes: focusSessions.plannedMinutes,
+      accumulatedSeconds: focusSessions.accumulatedSeconds,
+      lastResumedAt: focusSessions.lastResumedAt,
+      startedAt: focusSessions.startedAt,
     })
     .from(focusSessions)
     .leftJoin(tasks, and(eq(tasks.id, focusSessions.taskId), eq(tasks.workspaceId, focusSessions.workspaceId)))
@@ -68,7 +79,20 @@ export async function getLiveFocusDock(
     )
     .limit(1);
   if (!row || (row.state !== "running" && row.state !== "paused")) return null;
-  return { id: row.id, state: row.state, title: row.taskTitle ?? row.subject ?? "Focus session" };
+  const clock = {
+    state: row.state,
+    plannedMinutes: row.plannedMinutes,
+    accumulatedSeconds: row.accumulatedSeconds,
+    lastResumedAt: row.lastResumedAt,
+    startedAt: row.startedAt,
+  };
+  return {
+    id: row.id,
+    state: row.state,
+    title: row.taskTitle ?? row.subject ?? "Focus session",
+    strictness: row.strictness,
+    remainingSeconds: remainingSecondsAt(clock, new Date()),
+  };
 }
 
 /** Closed sessions, newest first. */

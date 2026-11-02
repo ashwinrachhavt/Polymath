@@ -37,6 +37,16 @@ export function elapsedSecondsAt(session: ClockFields, now: Date): number {
 }
 
 /**
+ * Seconds left on the plan at `now`; null when the session set no planned
+ * time. Deep-tier interstitials read this to state what holds and until
+ * when — the same authoritative-clock rule as elapsedSecondsAt.
+ */
+export function remainingSecondsAt(session: ClockFields & { plannedMinutes: number | null }, now: Date): number | null {
+  if (session.plannedMinutes == null) return null;
+  return Math.max(0, session.plannedMinutes * 60 - elapsedSecondsAt(session, now));
+}
+
+/**
  * When the live pause began. In state 'paused' the last interruption entry is
  * always the pause's own: only the pause transition moves a started session
  * into paused, and it appends exactly one entry; nothing else appends while

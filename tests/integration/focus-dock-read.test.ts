@@ -54,9 +54,18 @@ suite("focus dock read", () => {
 
   it("names a running session by its task, then paused, then null once finished", async () => {
     const { auth, workspaceId } = await workspace("task");
-    const [task] = await db.insert(tasks).values({ workspaceId, title: "Draft the Q4 memo", rank: "m", status: "ready" }).returning();
+    const [task] = await db
+      .insert(tasks)
+      .values({ workspaceId, title: "Draft the Q4 memo", rank: "m", status: "ready" })
+      .returning();
     const session = await commands.startFocusSession(auth, { taskId: task.id });
-    expect(await queries.getLiveFocusDock(auth)).toEqual({ id: session.id, state: "running", title: "Draft the Q4 memo" });
+    expect(await queries.getLiveFocusDock(auth)).toEqual({
+      id: session.id,
+      state: "running",
+      title: "Draft the Q4 memo",
+      strictness: "normal",
+      remainingSeconds: null,
+    });
 
     const paused = await commands.pauseFocusSession(auth, { sessionId: session.id, expectedVersion: session.version });
     expect(await queries.getLiveFocusDock(auth)).toMatchObject({ id: session.id, state: "paused" });
@@ -71,6 +80,17 @@ suite("focus dock read", () => {
     expect(await queries.getLiveFocusDock(auth)).toMatchObject({ title: "Think about pricing" });
     await commands.abandonFocusSession(auth, { sessionId: session.id, expectedVersion: session.version });
     expect(await queries.getLiveFocusDock(auth)).toBeNull();
+  });
+
+  it("carries the tier and the server-computed plan remainder for the extension interstitial", async () => {
+    const { auth } = await workspace("remaining");
+    await commands.startFocusSession(auth, { subject: "Deep block", plannedMinutes: 30, strictness: "deep" });
+    const dock = await queries.getLiveFocusDock(auth);
+    expect(dock).toMatchObject({ title: "Deep block", strictness: "deep", state: "running" });
+    // The remainder runs on the server clock, so it can only be a touch under
+    // the full 30 minutes by the time the read lands.
+    expect(dock?.remainingSeconds).toBeGreaterThan(1790);
+    expect(dock?.remainingSeconds).toBeLessThanOrEqual(1800);
   });
 
   it("never shows another workspace's session", async () => {
