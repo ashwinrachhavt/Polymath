@@ -162,6 +162,9 @@ const NATIVE_TOOLS = [
   "web.search",
   "web.fetch",
   "artifacts.revise",
+  // Task 24: proposes review-queue zettel ideas from run material; the
+  // implementation lives in this repo, so no catalog row.
+  "zettels.propose",
   // ASH-283: Notion writes are proposal-only capabilities with a local
   // executor in the actions domain, not gateway-toolkit capabilities.
   "notion.page.append",

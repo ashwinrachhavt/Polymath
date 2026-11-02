@@ -5,7 +5,7 @@ import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import type { FileValidationResult } from "@/lib/file-validation";
 import { sha256Hex } from "@/lib/hash";
 import { auditEvents, blobObjects, outboxEvents } from "../audit/schema";
-import { documents, files } from "./schema";
+import { documentExtractions, documents, files } from "./schema";
 
 /*
  * The one place bytes become a file and a document. The upload route and URL
@@ -30,6 +30,15 @@ export type IntakeInput = {
   folderId?: string | null;
   /** Attach the file to this existing document row (a URL document whose first fetch failed) instead of inserting one. */
   documentId?: string;
+  /**
+   * A reading the bytes already carry: a converted capture's OCR text. Intake
+   * records it as the document's succeeded extraction - naming the reader that
+   * produced it, not a fresh parse of the markdown copy - and the extraction
+   * consumer dedupes against it (a succeeded extraction for the same content
+   * hash is never re-read), so proposals, embeddings, and the graph mirror run
+   * off this text with no new plumbing.
+   */
+  preExtracted?: { text: string; extractor: string };
   /** Runs inside the same transaction, after the rows exist. */
   inTransaction?: (tx: TxDrizzle, rows: { documentId: string | null; fileId: string }) => Promise<void>;
 };
@@ -61,20 +70,22 @@ export async function intakeFile(auth: AuthContext, input: IntakeInput): Promise
     // blob row; the document attach below then throws
     // DocumentAlreadyHasFileError and the loser's file row rolls back.
     const blob =
-      (await tx
-        .insert(blobObjects)
-        .values({
-          workspaceId: auth.workspaceId,
-          storageKey: stored.storageKey,
-          contentHash: stored.contentHash,
-          sizeBytes: stored.sizeBytes,
-          mimeType,
-          retentionClass: "standard",
-          createdBy: auth.userId,
-          updatedBy: auth.userId,
-        })
-        .onConflictDoNothing({ target: blobObjects.storageKey })
-        .returning({ id: blobObjects.id }))[0] ??
+      (
+        await tx
+          .insert(blobObjects)
+          .values({
+            workspaceId: auth.workspaceId,
+            storageKey: stored.storageKey,
+            contentHash: stored.contentHash,
+            sizeBytes: stored.sizeBytes,
+            mimeType,
+            retentionClass: "standard",
+            createdBy: auth.userId,
+            updatedBy: auth.userId,
+          })
+          .onConflictDoNothing({ target: blobObjects.storageKey })
+          .returning({ id: blobObjects.id })
+      )[0] ??
       (
         await tx
           .select({ id: blobObjects.id })
@@ -104,11 +115,13 @@ export async function intakeFile(auth: AuthContext, input: IntakeInput): Promise
         const [attached] = await tx
           .update(documents)
           .set({ fileId: fileRow.id, mimeType, title: input.title, updatedBy: auth.userId, updatedAt: new Date() })
-          .where(and(
-            eq(documents.id, input.documentId),
-            eq(documents.workspaceId, auth.workspaceId),
-            isNull(documents.fileId),
-          ))
+          .where(
+            and(
+              eq(documents.id, input.documentId),
+              eq(documents.workspaceId, auth.workspaceId),
+              isNull(documents.fileId),
+            ),
+          )
           .returning({ id: documents.id });
         if (!attached) throw new DocumentAlreadyHasFileError();
         documentId = attached.id;
@@ -129,6 +142,23 @@ export async function intakeFile(auth: AuthContext, input: IntakeInput): Promise
         documentId = doc.id;
       }
 
+      // The reading IS the extraction: recorded before the event enqueues, so
+      // the consumer's claim dedupes against this row and every downstream
+      // pass (proposals, embedding, graph mirror) reads the text exactly as it
+      // would off a provider's result. One span covers the text - a reading
+      // has no pages behind it.
+      if (input.preExtracted && documentId) {
+        await tx.insert(documentExtractions).values({
+          workspaceId: auth.workspaceId,
+          documentId,
+          contentHash: stored.contentHash,
+          status: "succeeded",
+          text: input.preExtracted.text,
+          spans: [{ page: 1, start: 0, end: input.preExtracted.text.length }],
+          extractor: input.preExtracted.extractor,
+        });
+      }
+
       // Intake succeeds independently of AI enrichment; a consumer picks this
       // up and runs extraction. Nothing here calls a model.
       await tx.insert(outboxEvents).values({
@@ -143,9 +173,12 @@ export async function intakeFile(auth: AuthContext, input: IntakeInput): Promise
       actorId: auth.userId,
       actorKind: "user",
       action: input.verdict.ok
-        ? input.origin === "url" || input.origin === "capture" ? "file.captured"
-          : input.origin === "crawl" ? "file.crawled"
-            : input.origin === "youtube" ? "file.transcribed"
+        ? input.origin === "url" || input.origin === "capture"
+          ? "file.captured"
+          : input.origin === "crawl"
+            ? "file.crawled"
+            : input.origin === "youtube"
+              ? "file.transcribed"
               : "file.uploaded"
         : "file.quarantined",
       subjectType: input.verdict.ok ? "document" : "file",

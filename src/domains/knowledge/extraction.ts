@@ -16,7 +16,9 @@ import type {
 import { readBlob } from "@/integrations/object-store/object-store";
 import { blobObjects } from "../audit/schema";
 import { embedExtraction } from "./embedding";
+import { DocumentNotFoundError, syncDocumentToGraph } from "./document-graph";
 import { advanceDocumentEnrichment } from "./enrichment";
+import { markDerivedIdeasStale } from "./staleness";
 import { proposeFromText, RULES_PROPOSER } from "./field-rules";
 import { flagConflicts, proposeFields } from "./fields";
 import { proposeObligationsFromDocument } from "./obligations";
@@ -96,11 +98,13 @@ export async function extractDocument(
     .select({ contentHash: blobObjects.contentHash, storageKey: blobObjects.storageKey })
     .from(files)
     .innerJoin(blobObjects, eq(blobObjects.id, files.blobId))
-    .where(and(
-      eq(files.id, document.fileId),
-      eq(files.workspaceId, auth.workspaceId),
-      eq(blobObjects.workspaceId, auth.workspaceId),
-    ))
+    .where(
+      and(
+        eq(files.id, document.fileId),
+        eq(files.workspaceId, auth.workspaceId),
+        eq(blobObjects.workspaceId, auth.workspaceId),
+      ),
+    )
     .limit(1);
   if (!blob) return { ok: false, error: "file has no stored blob", extractionId: null };
   const contentHash = blob.contentHash;
@@ -137,17 +141,18 @@ export async function extractDocument(
   );
   // `error` is left as is: the failure that made this a retry stays visible
   // until the retry succeeds, and its attempt row keeps it either way.
-  const [retried] = created ? [] : await db
-    .update(documentExtractions)
-    .set({ status: "pending", claimedAt: sql`now()`, claimedBy })
-    .where(and(
-      scope,
-      or(
-        eq(documentExtractions.status, "failed"),
-        and(eq(documentExtractions.status, "pending"), leaseExpired),
-      ),
-    ))
-    .returning({ id: documentExtractions.id });
+  const [retried] = created
+    ? []
+    : await db
+        .update(documentExtractions)
+        .set({ status: "pending", claimedAt: sql`now()`, claimedBy })
+        .where(
+          and(
+            scope,
+            or(eq(documentExtractions.status, "failed"), and(eq(documentExtractions.status, "pending"), leaseExpired)),
+          ),
+        )
+        .returning({ id: documentExtractions.id });
   const claim = created ?? retried;
   if (!claim) {
     const [existing] = await db
@@ -180,9 +185,10 @@ export async function extractDocument(
     return {
       ok: false,
       extractionId: existing?.id ?? null,
-      error: existing?.status === "pending"
-        ? "Extraction is already in progress. Refresh to see its result."
-        : existing?.error ?? "Extraction has not succeeded.",
+      error:
+        existing?.status === "pending"
+          ? "Extraction is already in progress. Refresh to see its result."
+          : (existing?.error ?? "Extraction has not succeeded."),
     };
   }
 
@@ -195,9 +201,7 @@ export async function extractDocument(
     // falls back to the in-process text-layer reader, so a text PDF still
     // reads when docling is down or LlamaParse is out of credits. Images and
     // non-PDF binaries keep the provider verdict — the floor cannot read them.
-    const primary = document.mimeType?.startsWith("text/")
-      ? createPlainTextProvider()
-      : await extractionProvider();
+    const primary = document.mimeType?.startsWith("text/") ? createPlainTextProvider() : await extractionProvider();
     const bytes = await readBlob(blob.storageKey);
     result = await primary.extract({
       bytes,
@@ -230,14 +234,16 @@ export async function extractDocument(
   } catch (cause) {
     // Setup/storage/transport exceptions must release the retry claim too. Keep
     // provider credentials out of the durable error; the boundary handles cause.
-    await db.update(documentExtractions)
+    await db
+      .update(documentExtractions)
       .set({ status: "failed", error: "Extraction could not complete. Check the provider and retry." })
       .where(and(mine, eq(documentExtractions.status, "pending")));
     await closeAttempt(attempt, "failed", "Extraction could not complete. Check the provider and retry.");
     throw cause;
   }
 
-  const [row] = await db.update(documentExtractions)
+  const [row] = await db
+    .update(documentExtractions)
     .set({
       status: result.ok ? "succeeded" : "failed",
       text: result.ok ? result.text : null,
@@ -270,7 +276,24 @@ export async function extractDocument(
   await embedAfterText(auth, row.id, null);
   await enrichAfterText(auth, input.documentId);
   await statementAfterText(auth, input.documentId);
+  await stalenessAfterText(auth, input.documentId);
   return { ok: true, extractionId: row.id, text: result.text, deduplicated: false, proposals };
+}
+
+/*
+ * Ideas decomposed from a document just went stale: the source's text was
+ * replaced, so the quotes they cite may no longer exist there. The stamp is
+ * best-effort and logged, like the embed pass — the extraction already
+ * committed and is valid on its own.
+ */
+async function stalenessAfterText(auth: AuthContext, documentId: string): Promise<void> {
+  try {
+    await markDerivedIdeasStale(auth, { documentId });
+  } catch (cause) {
+    console.error(
+      `staleness pass threw for document ${documentId}: ${cause instanceof Error ? cause.message : String(cause)}`,
+    );
+  }
 }
 
 /**
@@ -283,7 +306,9 @@ async function embedAfterText(auth: AuthContext, extractionId: string, embeddedA
   try {
     await embedExtraction(auth, { extractionId });
   } catch (cause) {
-    console.error(`embedding pass threw for extraction ${extractionId}: ${cause instanceof Error ? cause.message : String(cause)}`);
+    console.error(
+      `embedding pass threw for extraction ${extractionId}: ${cause instanceof Error ? cause.message : String(cause)}`,
+    );
   }
 }
 
@@ -298,7 +323,9 @@ async function statementAfterText(auth: AuthContext, documentId: string): Promis
   try {
     await maybeImportStatement(auth, documentId);
   } catch (cause) {
-    console.error(`statement detection threw for document ${documentId}: ${cause instanceof Error ? cause.message : String(cause)}`);
+    console.error(
+      `statement detection threw for document ${documentId}: ${cause instanceof Error ? cause.message : String(cause)}`,
+    );
   }
 }
 
@@ -312,7 +339,9 @@ async function enrichAfterText(auth: AuthContext, documentId: string): Promise<v
   try {
     await advanceDocumentEnrichment(auth, { documentId });
   } catch (cause) {
-    console.error(`enrichment pass threw for document ${documentId}: ${cause instanceof Error ? cause.message : String(cause)}`);
+    console.error(
+      `enrichment pass threw for document ${documentId}: ${cause instanceof Error ? cause.message : String(cause)}`,
+    );
   }
 }
 
@@ -324,13 +353,14 @@ type Attempt = { id: string };
  * abandoned with its error left to say why. Rows are only ever added or closed.
  */
 async function openAttempt(auth: AuthContext, extractionId: string, claimedBy: string): Promise<Attempt> {
-  await db.update(documentExtractionAttempts)
+  await db
+    .update(documentExtractionAttempts)
     .set({ finishedAt: sql`now()`, outcome: "abandoned", error: "Lease expired before the extraction finished." })
-    .where(and(
-      eq(documentExtractionAttempts.extractionId, extractionId),
-      isNull(documentExtractionAttempts.finishedAt),
-    ));
-  const [row] = await db.insert(documentExtractionAttempts)
+    .where(
+      and(eq(documentExtractionAttempts.extractionId, extractionId), isNull(documentExtractionAttempts.finishedAt)),
+    );
+  const [row] = await db
+    .insert(documentExtractionAttempts)
     .values({
       workspaceId: auth.workspaceId,
       extractionId,
@@ -346,7 +376,8 @@ async function closeAttempt(
   outcome: "succeeded" | "failed" | "abandoned",
   error: string | null,
 ): Promise<void> {
-  await db.update(documentExtractionAttempts)
+  await db
+    .update(documentExtractionAttempts)
     .set({ finishedAt: sql`now()`, outcome, error })
     .where(and(eq(documentExtractionAttempts.id, attempt.id), isNull(documentExtractionAttempts.finishedAt)));
 }
@@ -380,18 +411,20 @@ async function runProposalPass(
   const [claim] = await db
     .update(documentExtractions)
     .set({ proposalStatus: "pending", proposalError: null, proposalClaimedAt: new Date() })
-    .where(and(
-      thisRow,
-      eq(documentExtractions.status, "succeeded"),
-      or(
-        isNull(documentExtractions.proposalStatus),
-        eq(documentExtractions.proposalStatus, "failed"),
-        and(
-          eq(documentExtractions.proposalStatus, "pending"),
-          lt(documentExtractions.proposalClaimedAt, sql`now() - ${PROPOSAL_CLAIM_TTL}::interval`),
+    .where(
+      and(
+        thisRow,
+        eq(documentExtractions.status, "succeeded"),
+        or(
+          isNull(documentExtractions.proposalStatus),
+          eq(documentExtractions.proposalStatus, "failed"),
+          and(
+            eq(documentExtractions.proposalStatus, "pending"),
+            lt(documentExtractions.proposalClaimedAt, sql`now() - ${PROPOSAL_CLAIM_TTL}::interval`),
+          ),
         ),
       ),
-    ))
+    )
     .returning({ id: documentExtractions.id });
   if (!claim) {
     const [current] = await db
@@ -412,7 +445,7 @@ async function runProposalPass(
   // ASH-133 item 2: provider field names alias to the canonical vocabulary at
   // this boundary, so obligation rules and the totals check read the same
   // names the rules proposer emits.
-  const fields = (useProvider ? input.providerFields ?? [] : rules.fields).map((field) => ({
+  const fields = (useProvider ? (input.providerFields ?? []) : rules.fields).map((field) => ({
     ...field,
     fieldName: canonicalFieldName(field.fieldName),
   }));
@@ -448,7 +481,8 @@ async function runProposalPass(
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : String(cause);
     console.error(`proposal pass failed for document ${input.documentId}: ${message}`);
-    await db.update(documentExtractions)
+    await db
+      .update(documentExtractions)
       .set({
         proposalStatus: "failed",
         proposalError: "Fields could not be proposed from the extracted text. Retry to try again.",
@@ -457,11 +491,41 @@ async function runProposalPass(
     return "failed";
   }
 
-  await db.update(documentExtractions)
+  await db
+    .update(documentExtractions)
     .set({
       proposalStatus: "succeeded",
       proposer: useProvider ? (input.extractor ?? null) : RULES_PROPOSER,
     })
     .where(and(thisRow, eq(documentExtractions.proposalStatus, "pending")));
   return "succeeded";
+}
+
+/**
+ * One full extraction pass: read the document, then mirror it into the search
+ * graph. The outbox consumer runs exactly this for every
+ * document.extraction_requested; a surface that just created a document calls
+ * the same pass so the reading becomes searchable without waiting for the
+ * next dispatcher drain. Redelivery-safe either way: the extraction ledger
+ * dedupes the read, and the mirror syncs idempotently.
+ */
+export async function runExtractionPass(
+  auth: AuthContext,
+  input: { documentId: string },
+): Promise<ExtractDocumentResult> {
+  const result = await extractDocument(auth, input);
+  // A provider failure is recorded on the extraction row; throwing lets the
+  // outbox redelivery retry it and a direct caller's catch observe it.
+  if (!result.ok) throw new Error(result.error);
+  // Mirror the source into the search index. A failure throws too: redelivery
+  // dedupes the extraction and retries the mirror, so a source never stays
+  // invisible because one sync attempt failed. A document that vanished
+  // mid-flight has no mirror to write.
+  try {
+    await syncDocumentToGraph(auth, input.documentId);
+  } catch (cause) {
+    if (cause instanceof DocumentNotFoundError) return result;
+    throw cause;
+  }
+  return result;
 }

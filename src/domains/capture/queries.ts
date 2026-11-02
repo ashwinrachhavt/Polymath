@@ -3,6 +3,7 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { escapeLike } from "@/lib/list-params";
 import { captureProposals, captures } from "./schema";
+import { auditEvents } from "../audit/schema";
 
 /*
  * Inbox reads over the canonical captures table (ASH-137 A02). The original
@@ -166,6 +167,31 @@ export async function getCapture(auth: AuthContext, id: string) {
     .where(and(eq(captures.workspaceId, auth.workspaceId), eq(captures.id, id)))
     .limit(1);
   return row ?? null;
+}
+
+/**
+ * The reader the OCR rung recorded for this capture's bytes, from its
+ * `capture.extracted` audit row - the durable provenance of a file capture's
+ * text. Null when nothing read the bytes: text the owner typed or a voice
+ * transcript carries no vision provenance, and files like any text capture.
+ */
+export async function findCaptureReadingExtractor(auth: AuthContext, captureId: string): Promise<string | null> {
+  const [event] = await db
+    .select({ metadata: auditEvents.metadata })
+    .from(auditEvents)
+    .where(
+      and(
+        eq(auditEvents.workspaceId, auth.workspaceId),
+        eq(auditEvents.subjectType, "capture"),
+        eq(auditEvents.subjectId, captureId),
+        eq(auditEvents.action, "capture.extracted"),
+      ),
+    )
+    .orderBy(desc(auditEvents.createdAt))
+    .limit(1);
+  // Audit metadata crosses a storage boundary: a non-string extractor is no extractor.
+  const extractor = (event?.metadata as { extractor?: unknown } | null)?.extractor;
+  return typeof extractor === "string" && extractor.trim() ? extractor.trim() : null;
 }
 
 /** One count per inbox filter tab, in one round trip. */

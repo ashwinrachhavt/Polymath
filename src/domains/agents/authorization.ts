@@ -96,8 +96,16 @@ export const TOOL_OPERATION_REGISTRY: Record<string, ToolOperationSpec> = {
     effectClass: "internal_write",
     note: "Persists task/note/follow-up proposals in the review queue; creates no tasks.",
   },
-  "web.search": { capability: "integration.use", effectClass: "read", note: "Egress: query terms leave the workspace." },
-  "web.fetch": { capability: "integration.use", effectClass: "read", note: "Egress: the fetched URL leaves the workspace." },
+  "web.search": {
+    capability: "integration.use",
+    effectClass: "read",
+    note: "Egress: query terms leave the workspace.",
+  },
+  "web.fetch": {
+    capability: "integration.use",
+    effectClass: "read",
+    note: "Egress: the fetched URL leaves the workspace.",
+  },
   /*
    * The provider gateway's Gmail reads, keyed by the capability names the
    * gateway dispatches on. They were absent while the gateway did not dispatch,
@@ -146,6 +154,17 @@ export const TOOL_OPERATION_REGISTRY: Record<string, ToolOperationSpec> = {
     capability: "action.prepare",
     effectClass: "internal_write",
     note: "Persists a CRM contact proposal in the review queue; approval creates local contact/company/correspondence rows only.",
+  },
+  /*
+   * Proposing ideas from run material persists zettel-proposal rows the owner
+   * reviews, so this is an internal write under action.prepare - not a read.
+   * No idea artifact is created and nothing leaves the workspace: the owner's
+   * accept is the only path that creates one.
+   */
+  "zettels.propose": {
+    capability: "action.prepare",
+    effectClass: "internal_write",
+    note: "Persists zettel proposals in the review queue; never creates idea artifacts.",
   },
   /*
    * ASH-282: proposing a calendar move persists a review card, so this is an
@@ -210,8 +229,7 @@ export type ToolInvocationRequest = {
 };
 
 export type AuthorizationDecision =
-  | { allowed: true; requiresApproval: boolean }
-  | { allowed: false; reasons: string[] };
+  { allowed: true; requiresApproval: boolean } | { allowed: false; reasons: string[] };
 
 export function authorizeToolInvocation(
   grant: GrantForAuthorization,
