@@ -48,17 +48,43 @@ suite("capture to draft", () => {
     expect(converted.convertedType).toBe("draft:email");
     expect(converted.convertedId).toBe(draft.id);
 
-    const [artifact] = await db.select().from(artifacts).where(and(eq(artifacts.workspaceId, auth.workspaceId), eq(artifacts.id, draft.id)));
+    const [artifact] = await db
+      .select()
+      .from(artifacts)
+      .where(and(eq(artifacts.workspaceId, auth.workspaceId), eq(artifacts.id, draft.id)));
     expect(artifact.kind).toBe("note");
     expect(artifact.title).toBe("Email draft: Ask Dana for the Q3 pricing sign-off");
 
-    const [version] = await db.select().from(artifactVersions).where(eq(artifactVersions.id, artifact.currentVersionId!));
+    const [version] = await db
+      .select()
+      .from(artifactVersions)
+      .where(eq(artifactVersions.id, artifact.currentVersionId!));
     expect(version.plainText).toContain("**Subject:** Ask Dana for the Q3 pricing sign-off");
     expect(version.plainText).toContain("> Ask Dana for the Q3 pricing sign-off");
 
     const audits = await db.select().from(auditEvents).where(eq(auditEvents.workspaceId, auth.workspaceId));
     expect(audits.some((a) => a.subjectId === capture.id && a.action === "capture.converted")).toBe(true);
     expect(audits.some((a) => a.subjectId === draft.id && a.action === "note.created")).toBe(true);
+  });
+
+  it("titles the draft from the capture's own title before the first line", async () => {
+    const auth = await seed("draft-capture-title");
+    const capture = await commands.createCapture(auth, {
+      text: "Scraped header noise\nBody line",
+      title: "Dana pricing thread",
+    });
+
+    const { draft } = await commands.convertCaptureToDraft(auth, {
+      captureId: capture.id,
+      expectedVersion: capture.version,
+      template: "email",
+    });
+
+    const [artifact] = await db
+      .select()
+      .from(artifacts)
+      .where(and(eq(artifacts.workspaceId, auth.workspaceId), eq(artifacts.id, draft.id)));
+    expect(artifact.title).toBe("Email draft: Dana pricing thread");
   });
 
   it("converts a url-only capture using the URL as material", async () => {
@@ -71,14 +97,21 @@ suite("capture to draft", () => {
     });
     const [artifact] = await db.select().from(artifacts).where(eq(artifacts.id, draft.id));
     expect(artifact.kind).toBe("note");
-    const [version] = await db.select().from(artifactVersions).where(eq(artifactVersions.id, artifact.currentVersionId!));
+    const [version] = await db
+      .select()
+      .from(artifactVersions)
+      .where(eq(artifactVersions.id, artifact.currentVersionId!));
     expect(version.plainText).toContain("> https://example.com/rfc-9457");
   });
 
   it("refuses a second conversion and a stale version", async () => {
     const auth = await seed("draft-guards");
     const capture = await commands.createCapture(auth, { text: "Guard rail probe" });
-    await commands.convertCaptureToDraft(auth, { captureId: capture.id, expectedVersion: capture.version, template: "product-spec" });
+    await commands.convertCaptureToDraft(auth, {
+      captureId: capture.id,
+      expectedVersion: capture.version,
+      template: "product-spec",
+    });
     const [now] = await db.select().from(captures).where(eq(captures.id, capture.id));
     await expect(
       commands.convertCaptureToDraft(auth, { captureId: capture.id, expectedVersion: now.version, template: "email" }),
@@ -86,7 +119,11 @@ suite("capture to draft", () => {
 
     const fresh = await commands.createCapture(auth, { text: "Stale probe" });
     await expect(
-      commands.convertCaptureToDraft(auth, { captureId: fresh.id, expectedVersion: fresh.version + 1, template: "email" }),
+      commands.convertCaptureToDraft(auth, {
+        captureId: fresh.id,
+        expectedVersion: fresh.version + 1,
+        template: "email",
+      }),
     ).rejects.toMatchObject({ code: "stale_write" });
   });
 
@@ -95,7 +132,11 @@ suite("capture to draft", () => {
     const foreign = await seed("draft-tenant-b");
     const capture = await commands.createCapture(mine, { text: "Tenant probe" });
     await expect(
-      commands.convertCaptureToDraft(foreign, { captureId: capture.id, expectedVersion: capture.version, template: "email" }),
+      commands.convertCaptureToDraft(foreign, {
+        captureId: capture.id,
+        expectedVersion: capture.version,
+        template: "email",
+      }),
     ).rejects.toMatchObject({ code: "stale_write" });
     const [still] = await db.select().from(captures).where(eq(captures.id, capture.id));
     expect(still.processingState).toBe("unprocessed");

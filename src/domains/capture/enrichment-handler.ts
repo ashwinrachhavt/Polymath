@@ -284,7 +284,9 @@ async function enrichLeased(
     .slice(0, MAX_TAGS);
   await ownedUpdate(token, captureId, {
     ...base,
-    title: parsed.title?.trim() || null,
+    // A title already on the capture is person-supplied (capture/schema.ts):
+    // the model may suggest one only into the empty slot, never overwrite.
+    ...(capture.title?.trim() ? {} : { title: parsed.title?.trim() || null }),
     domain: parsed.domain?.toLowerCase().trim() || null,
     tags: tags && tags.length > 0 ? tags : null,
     processingState: "enriched",
@@ -295,17 +297,14 @@ async function enrichLeased(
 
 const noul = (answer: JevAnswer | undefined): number => (answer && answer.type === "noul" ? answer.noul : Number.NaN);
 
-type JevTriage =
-  | { outcome: "handled"; skipped: null }
-  | { outcome: "fallback"; skipped: string | null };
+type JevTriage = { outcome: "handled"; skipped: null } | { outcome: "fallback"; skipped: string | null };
 
 /**
  * Why the paid tier did not run, in the owner's words, or null when it was
  * never in question. Only an exhausted allowance is stated: a disabled or
  * unconfigured provider is the deployment's shape, not news about this capture.
  */
-const ALLOWANCE_SKIPPED =
-  "Enriched without the paid classification tier: its allowance for this period is used up.";
+const ALLOWANCE_SKIPPED = "Enriched without the paid classification tier: its allowance for this period is used up.";
 
 /**
  * One bundled Jev judgment pass over the capture. Returns "handled" when the
@@ -344,7 +343,9 @@ async function tryJevTriage(
       description: taxonomyNodes.description,
     })
     .from(taxonomyNodes)
-    .where(and(eq(taxonomyNodes.workspaceId, workspaceId), eq(taxonomyNodes.level, 1), isNull(taxonomyNodes.archivedAt)));
+    .where(
+      and(eq(taxonomyNodes.workspaceId, workspaceId), eq(taxonomyNodes.level, 1), isNull(taxonomyNodes.archivedAt)),
+    );
 
   const state = JSON.stringify({
     title: capture.title ?? undefined,

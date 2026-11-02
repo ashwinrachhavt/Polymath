@@ -35,7 +35,10 @@ async function seed(slug: string) {
   return ownerAuth(userId, workspaceId);
 }
 
-async function seedActionProposal(auth: { workspaceId: string; userId: string }, input: { title: string; riskClass: "prepare" | "external_write" | "sensitive_write"; expiresAt?: Date }) {
+async function seedActionProposal(
+  auth: { workspaceId: string; userId: string },
+  input: { title: string; riskClass: "prepare" | "external_write" | "sensitive_write"; expiresAt?: Date },
+) {
   const [proposal] = await db
     .insert(actionProposals)
     .values({
@@ -88,15 +91,46 @@ suite("home queue", () => {
     });
 
     const cards = await queue.listHomeQueue(auth.workspaceId);
-    expect(cards.map((c) => c.title)).toEqual(["Send the roadmap email", "Archive old threads", "Renew the passport before the trip"]);
+    expect(cards.map((c) => c.title)).toEqual([
+      "Send the roadmap email",
+      "Archive old threads",
+      "Renew the passport before the trip",
+    ]);
     expect(cards[0].origin).toBe("agent");
     expect(cards[2].origin).toBe("capture");
     // One-tap decide binds: agent cards carry revision + CAS version, capture cards their kind.
-    expect(cards[0].decision).toEqual({ kind: "agent", revisionId: expiring.revision.id, version: expiring.proposal.version, expired: false });
+    expect(cards[0].decision).toEqual({
+      kind: "agent",
+      revisionId: expiring.revision.id,
+      version: expiring.proposal.version,
+      expired: false,
+    });
     expect(cards[2].decision).toEqual({ kind: "capture" });
     expect(cards[2].effect).toBe("Becomes a task.");
     expect(cards[2].href).toContain(capture.id);
     void timeless;
+  });
+
+  it("titles capture cards from the capture's own title before the first line", async () => {
+    const auth = await seed("home-queue-capture-title");
+    const capture = await commands.createCapture(auth, {
+      text: "Scraped header noise\nBody line",
+      title: "Person's card title",
+    });
+    await db.insert(captureProposals).values({
+      workspaceId: auth.workspaceId,
+      captureId: capture.id,
+      kind: "note",
+      payload: {},
+      rationale: "note 0.8",
+      confidence: "0.8",
+      createdBy: auth.userId,
+      updatedBy: auth.userId,
+    });
+
+    const cards = await queue.listHomeQueue(auth.workspaceId);
+    const card = cards.find((c) => c.href.includes(capture.id));
+    expect(card?.title).toBe("Person's card title");
   });
 
   it("never shows another workspace's proposals", async () => {
@@ -110,7 +144,10 @@ suite("home queue", () => {
   it("decided proposals leave the queue", async () => {
     const auth = await seed("home-queue-decided");
     const { proposal } = await seedActionProposal(auth, { title: "Done thing", riskClass: "prepare" });
-    await db.update(actionProposals).set({ status: "rejected", updatedAt: new Date(), updatedBy: auth.userId }).where(eq(actionProposals.id, proposal.id));
+    await db
+      .update(actionProposals)
+      .set({ status: "rejected", updatedAt: new Date(), updatedBy: auth.userId })
+      .where(eq(actionProposals.id, proposal.id));
     const cards = await queue.listHomeQueue(auth.workspaceId);
     expect(cards.map((c) => c.title)).not.toContain("Done thing");
   });
