@@ -1,6 +1,6 @@
 {
-  "id": "85b83b7a-e9ca-4250-87ca-f90cc47984ab",
-  "prevId": "aab87429-cb2d-4bc3-bb43-a7fdf7d6fffe",
+  "id": "16120a0e-b9bb-4ef8-b253-b7cc1fae89bc",
+  "prevId": "85b83b7a-e9ca-4250-87ca-f90cc47984ab",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -27689,6 +27689,24 @@
           "notNull": true,
           "default": "'pending'"
         },
+        "lease_owner": {
+          "name": "lease_owner",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lease_token": {
+          "name": "lease_token",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lease_expires_at": {
+          "name": "lease_expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "sent_at": {
           "name": "sent_at",
           "type": "timestamp with time zone",
@@ -27734,6 +27752,22 @@
           ],
           "isUnique": false,
           "where": "\"work_outbox_receipts\".\"status\" = 'pending'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "work_outbox_receipts_lease_expiry_idx": {
+          "name": "work_outbox_receipts_lease_expiry_idx",
+          "columns": [
+            {
+              "expression": "lease_expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"work_outbox_receipts\".\"lease_owner\" is not null and \"work_outbox_receipts\".\"status\" = 'pending'",
           "concurrently": false,
           "method": "btree",
           "with": {}

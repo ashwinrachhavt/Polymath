@@ -6,6 +6,7 @@ import { outboxHandlers } from "@/domains/audit/outbox-handlers";
 import { syncAllGmailSenders } from "@/domains/crm/sender-sync";
 import { InstantTools } from "@/domains/integrations/instant-tools";
 import { composioTransport } from "@/domains/integrations/transport";
+import { effectHandlers, runSuperagentDispatch } from "@/domains/superagent/effects";
 import { reapStaleReservations } from "@/integrations/providers/quota";
 import { problemResponse } from "@/lib/problems";
 
@@ -59,6 +60,14 @@ async function drain(): Promise<Response> {
   try {
     const recovered = await recoverStrandedOutbox(client);
     const result = await dispatchPendingOutbox(client, outboxHandlers(), { workerId: `cron:${crypto.randomUUID()}` });
+    // The superagent domain's drain rides the same tick: sweepers first, then
+    // the effects pass (whose reply handlers send the reply lane). Kinds
+    // without a consumer yet park without failure — the free plan's daily
+    // cron cannot be relied on for latency, which is why the inline
+    // post-commit drain is the primary trigger.
+    const superagent = await runSuperagentDispatch(client, effectHandlers({ rawClient: client }), {
+      workerId: `cron:${crypto.randomUUID()}`,
+    });
     // After the drain: a send that just went UNKNOWN is too young to reconcile,
     // and the row it left is why this runs at all.
     const reconciliation = await reconcileUnknownAttempts({ transport: composioTransport });
@@ -91,7 +100,15 @@ async function drain(): Promise<Response> {
     } catch (cause) {
       quotaReap = { error: cause instanceof Error ? cause.message : "unknown error" };
     }
-    return Response.json({ recovered: recovered.length, ...result, reconciled: reconciliation.reconciled, instantSync, senderSync, quotaReap });
+    return Response.json({
+      recovered: recovered.length,
+      ...result,
+      superagent,
+      reconciled: reconciliation.reconciled,
+      instantSync,
+      senderSync,
+      quotaReap,
+    });
   } finally {
     await client.end({ timeout: 5 });
   }
