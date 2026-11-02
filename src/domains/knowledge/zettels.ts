@@ -1,12 +1,21 @@
 import { and, asc, count, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { auditEvents } from "@/domains/audit/schema";
 import { db } from "@/lib/db";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { escapeLike } from "@/lib/list-params";
 import { currentExtractionIdSubquery } from "./versions";
-import { defaultZettelExtractor, type ZettelCandidate, type ZettelExtractor } from "@/integrations/zettels/extractor";
-import { embedArtifact } from "./embedding";
+import { mergeCandidates, type SectionCandidate } from "./zettel-merge";
+import { ZETTEL_MERGE_MAX_PER_SOURCE, splitSections } from "./zettel-chunking";
+import { defaultZettelExtractor, type ZettelExtractor } from "@/integrations/zettels/extractor";
+import { generationProvider } from "@/integrations/generation/provider";
+import {
+  EmbeddingUnconfiguredError,
+  embeddingProvider,
+  type EmbeddingProvider,
+} from "@/integrations/embeddings/provider";
+import { embedArtifact, vectorLiteral } from "./embedding";
 import {
   artifactLinks,
   artifactVersions,
@@ -39,40 +48,108 @@ import {
  * structured provenance underneath it.
  */
 
-export const MAX_ZETTELS_PER_DOCUMENT = 8;
+export const ZETTEL_MAX_PER_SOURCE = ZETTEL_MERGE_MAX_PER_SOURCE;
 const MAX_TITLE = 120;
 const MAX_CLAIM = 400;
 
-/** Same shape as obligationDedupeKey: kind, document, then what makes this one distinct (its span). */
-export function zettelDedupeKey(documentId: string, spanStart: number, spanEnd: number) {
-  return `zettel:${documentId}:${spanStart}-${spanEnd}`;
+/*
+ * A candidate claim within this cosine distance of an accepted idea is its
+ * twin. Calibrated far tighter than the related-neighbour threshold, so a
+ * proposal is flagged only when accepting it would mint a near-duplicate.
+ * Flags never auto-merge: the owner decides.
+ */
+export const ZETTEL_DUPLICATE_MAX_DISTANCE = 0.15;
+
+export function isDuplicateDistance(distance: number): boolean {
+  return distance <= ZETTEL_DUPLICATE_MAX_DISTANCE;
 }
 
-/** Locate a quote in the text, tolerating only whitespace differences at the edges. */
-function locate(text: string, quote: string): { start: number; end: number } | null {
-  const q = quote.trim();
-  if (q.length < 12) return null;
-  const start = text.indexOf(q);
-  return start === -1 ? null : { start, end: start + q.length };
-}
+export type DuplicateHit = { artifactId: string; title: string; distance: number };
 
-export async function proposeZettels(
+/**
+ * The one accepted idea this claim would duplicate, nearest first, or null.
+ * Embeds the claim with the provider (EmbeddingUnconfiguredError throws
+ * through so a caller can degrade), then reads the corpus once. `conn`
+ * lets the proposal pass run the lookup inside its own transaction.
+ */
+export async function findDuplicateIdea(
   auth: AuthContext,
-  input: {
-    documentId: string;
-    extractor?: ZettelExtractor;
-    /**
-     * Run the reads and inserts in the caller's transaction, so a caller that
-     * writes its own audit row can commit that row with the proposals it
-     * describes. Defaults to the shared client, which is what the per-document
-     * pass has always used.
-     */
-    tx?: TxDrizzle;
-  },
-) {
-  const conn = input.tx ?? db;
+  claim: string,
+  options: { provider?: EmbeddingProvider; excludeArtifactId?: string; conn?: Pick<TxDrizzle, "execute"> } = {},
+): Promise<DuplicateHit | null> {
+  const provider = options.provider ?? embeddingProvider();
+  const [vector] = await provider.embed([claim]);
+  const conn = options.conn ?? db;
+  const literal = vectorLiteral(vector);
+  const result = await conn.execute(sql`
+    select a.id, a.title, min(e.embedding <=> ${literal}::vector) as distance
+    from embeddings e
+    join artifacts a on a.id = e.owner_id
+    where e.workspace_id = ${auth.workspaceId}
+      and e.owner_type = 'artifact'
+      and e.model = ${provider.model}
+      and a.kind = 'zettel'
+      and a.archived_at is null
+      ${options.excludeArtifactId ? sql`and a.id <> ${options.excludeArtifactId}` : sql``}
+    group by a.id, a.title
+    having min(e.embedding <=> ${literal}::vector) <= ${ZETTEL_DUPLICATE_MAX_DISTANCE}
+    order by distance asc
+    limit 1
+  `);
+  const rows = result as unknown as Array<{ id: string; title: string; distance: number | string }>;
+  const [hit] = rows;
+  return hit ? { artifactId: hit.id, title: hit.title, distance: Number(hit.distance) } : null;
+}
+
+/** Same shape as obligationDedupeKey: kind, source, then what makes this one distinct (its span). */
+export function zettelDedupeKey(prefix: "doc" | "artifact", sourceId: string, spanStart: number, spanEnd: number) {
+  return `zettel:${prefix}:${sourceId}:${spanStart}-${spanEnd}`;
+}
+
+export type ZettelSourceInput =
+  | { documentId: string; extractor?: ZettelExtractor; tx?: TxDrizzle }
+  | { sourceArtifactId: string; extractor?: ZettelExtractor; tx?: TxDrizzle };
+
+export type ResolvedZettelSource = {
+  text: string;
+  documentId: string | null;
+  extractionId: string | null;
+  sourceArtifactId: string | null;
+  title: string;
+};
+
+/**
+ * The text a proposal pass reads, from whichever source the input names. The
+ * document branch is the succeeded-extraction lookup the per-document pass has
+ * always used; the artifact branch reads the artifact's current version body,
+ * so a conversation mined for ideas proposes against exactly what it shows.
+ */
+export async function resolveZettelSource(
+  auth: AuthContext,
+  input: ZettelSourceInput,
+  conn: Pick<TxDrizzle, "select">,
+): Promise<ResolvedZettelSource> {
+  if ("sourceArtifactId" in input) {
+    const [artifact] = await conn
+      .select({ id: artifacts.id, title: artifacts.title, text: artifactVersions.plainText })
+      .from(artifacts)
+      .leftJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
+      .where(and(eq(artifacts.id, input.sourceArtifactId), eq(artifacts.workspaceId, auth.workspaceId)))
+      .limit(1);
+    if (!artifact?.text?.trim()) throw new Error("artifact has no readable text");
+    return {
+      text: artifact.text,
+      documentId: null,
+      extractionId: null,
+      sourceArtifactId: artifact.id,
+      title: artifact.title,
+    };
+  }
+
+  // Ownership first, exactly as the per-document pass always reported it: a
+  // document outside the workspace is "not found", whatever its extraction state.
   const [document] = await conn
-    .select({ id: documents.id })
+    .select({ id: documents.id, title: documents.title })
     .from(documents)
     .where(and(eq(documents.id, input.documentId), eq(documents.workspaceId, auth.workspaceId)))
     .limit(1);
@@ -93,58 +170,190 @@ export async function proposeZettels(
     )
     .limit(1);
   if (!extraction?.text) throw new Error("document has no succeeded extraction");
-
-  const extractor = input.extractor ?? defaultZettelExtractor(auth.workspaceId);
-  const candidates = await extractor.extract(extraction.text);
-
-  const accepted: Array<ZettelCandidate & { start: number; end: number }> = [];
-  for (const c of candidates) {
-    const title = c.title?.trim();
-    const claim = c.claim?.trim();
-    if (!title || !claim || typeof c.quote !== "string") continue;
-    const span = locate(extraction.text, c.quote);
-    if (!span) continue; // not a verbatim passage: no evidence, no proposal
-    accepted.push({
-      title: title.slice(0, MAX_TITLE),
-      claim: claim.slice(0, MAX_CLAIM),
-      quote: c.quote.trim(),
-      ...span,
-    });
-    if (accepted.length >= MAX_ZETTELS_PER_DOCUMENT) break;
-  }
-
-  const created = [];
-  for (const z of accepted) {
-    const [row] = await conn
-      .insert(zettelProposals)
-      .values({
-        workspaceId: auth.workspaceId,
-        documentId: input.documentId,
-        extractionId: extraction.id,
-        title: z.title,
-        claim: z.claim,
-        quote: z.quote,
-        spanStart: z.start,
-        spanEnd: z.end,
-        dedupeKey: zettelDedupeKey(input.documentId, z.start, z.end),
-        proposer: extractor.name,
-        createdBy: auth.userId,
-        updatedBy: auth.userId,
-      })
-      .onConflictDoNothing({ target: [zettelProposals.documentId, zettelProposals.dedupeKey] })
-      .returning();
-    if (row) created.push(row);
-  }
-  return created;
+  return {
+    text: extraction.text,
+    documentId: document.id,
+    extractionId: extraction.id,
+    sourceArtifactId: null,
+    title: document.title,
+  };
+}
+/** Locate a quote in the text, tolerating only whitespace differences at the edges. */
+function locate(text: string, quote: string): { start: number; end: number } | null {
+  const q = quote.trim();
+  if (q.length < 12) return null;
+  const start = text.indexOf(q);
+  return start === -1 ? null : { start, end: start + q.length };
 }
 
-/** Proposals for one document, oldest first, scoped to the workspace. */
+/**
+ * Which single origin a resolved source names. The plan's resolved-source
+ * shape carries both ids as nullable, so the narrowing lives here instead of
+ * a type assertion at the insert: a source naming neither is a bug and stops
+ * the pass loudly.
+ */
+function zettelOrigin(source: ResolvedZettelSource): { path: "doc" | "artifact"; id: string } {
+  if (source.documentId) return { path: "doc", id: source.documentId };
+  if (source.sourceArtifactId) return { path: "artifact", id: source.sourceArtifactId };
+  throw new Error("resolved source names neither a document nor an artifact");
+}
+
+/** What one proposal pass produced: the rows, and an honest read report. */
+export type ZettelProposalResult = {
+  proposals: Array<Awaited<ReturnType<typeof insertProposal>>>;
+  readChars: number;
+  unreadChars: number;
+  unreadSections: number;
+};
+
+async function insertProposal(
+  conn: Pick<TxDrizzle, "insert">,
+  params: {
+    auth: AuthContext;
+    fromDocument: boolean;
+    origin: { path: "doc" | "artifact"; id: string };
+    extractionId: string | null;
+    candidate: SectionCandidate;
+    proposer: string;
+    duplicateOfArtifactId: string | null;
+  },
+) {
+  const { auth, fromDocument, origin, extractionId, candidate: z, proposer, duplicateOfArtifactId } = params;
+  const [row] = await conn
+    .insert(zettelProposals)
+    .values({
+      workspaceId: auth.workspaceId,
+      ...(fromDocument ? { documentId: origin.id, extractionId } : { sourceArtifactId: origin.id }),
+      title: z.title,
+      claim: z.claim,
+      quote: z.quote,
+      spanStart: z.start,
+      spanEnd: z.end,
+      dedupeKey: zettelDedupeKey(origin.path, origin.id, z.start, z.end),
+      proposer,
+      duplicateOfArtifactId,
+      createdBy: auth.userId,
+      updatedBy: auth.userId,
+    })
+    .onConflictDoNothing(
+      fromDocument
+        ? { target: [zettelProposals.documentId, zettelProposals.dedupeKey] }
+        : {
+            target: [zettelProposals.sourceArtifactId, zettelProposals.dedupeKey],
+            where: sql`source_artifact_id is not null`,
+          },
+    )
+    .returning();
+  return row;
+}
+
+export async function proposeZettels(auth: AuthContext, input: ZettelSourceInput): Promise<ZettelProposalResult> {
+  const conn = input.tx ?? db;
+  const source = await resolveZettelSource(auth, input, conn);
+  const origin = zettelOrigin(source);
+  const fromDocument = origin.path === "doc";
+
+  const extractor = input.extractor ?? defaultZettelExtractor(auth.workspaceId);
+
+  // The source is read in bounded sections; a section is never truncated by
+  // the extractor's input cap, and anything past the section cap is counted,
+  // not dropped.
+  const { sections, readChars, unreadChars, unreadSections } = splitSections(source.text);
+
+  const survivors: SectionCandidate[] = [];
+  for (const [sectionIndex, section] of sections.entries()) {
+    const candidates = await extractor.extract(section.text);
+    for (const c of candidates) {
+      const title = c.title?.trim();
+      const claim = c.claim?.trim();
+      if (!title || !claim || typeof c.quote !== "string") continue;
+      // Located in the SECTION, then re-based onto the source, so the stored
+      // span indexes the text the resolver read.
+      const span = locate(section.text, c.quote);
+      if (!span) continue; // not a verbatim passage: no evidence, no proposal
+      survivors.push({
+        title: title.slice(0, MAX_TITLE),
+        claim: claim.slice(0, MAX_CLAIM),
+        quote: c.quote.trim(),
+        start: span.start + section.start,
+        end: span.end + section.start,
+        sectionIndex,
+      });
+    }
+  }
+
+  // One bounded merge over titles and claims only; quotes never reach the
+  // model. It consolidates the candidates of a CHUNKED source; a source that
+  // fit one section is the extractor's own single call, capped flat below.
+  let merged = survivors;
+  if (sections.length > 1 && survivors.length > 1) {
+    merged = await mergeCandidates(survivors, { provider: generationProvider() });
+  }
+
+  const proposals = [];
+  let dedupDegraded = false;
+  for (const z of merged.slice(0, ZETTEL_MAX_PER_SOURCE)) {
+    // Corpus-aware dedup flags twins; it decides nothing. Without an embedding
+    // provider the pass degrades to unflagged proposals rather than failing —
+    // a missing key must not block reading a document.
+    let duplicateOfArtifactId: string | null = null;
+    if (!dedupDegraded) {
+      try {
+        const hit = await findDuplicateIdea(auth, z.claim, { conn });
+        duplicateOfArtifactId = hit?.artifactId ?? null;
+      } catch (cause) {
+        if (!(cause instanceof EmbeddingUnconfiguredError)) throw cause;
+        dedupDegraded = true;
+        console.warn("[zettels] corpus dedup skipped: no embedding provider configured");
+      }
+    }
+    const row = await insertProposal(conn, {
+      auth,
+      fromDocument,
+      origin,
+      extractionId: source.extractionId,
+      candidate: z,
+      proposer: extractor.name,
+      duplicateOfArtifactId,
+    });
+    if (row) proposals.push(row);
+  }
+  return { proposals, readChars, unreadChars, unreadSections };
+}
+
+/** Proposals for one document with their duplicate flags and the pass's read report. */
 export async function listZettelProposals(auth: AuthContext, documentId: string) {
-  return db
-    .select()
+  const flagged = alias(artifacts, "flagged_idea");
+  const proposals = await db
+    .select({
+      proposal: zettelProposals,
+      duplicateOf: { id: flagged.id, title: flagged.title },
+    })
     .from(zettelProposals)
+    .leftJoin(flagged, eq(flagged.id, zettelProposals.duplicateOfArtifactId))
     .where(and(eq(zettelProposals.documentId, documentId), eq(zettelProposals.workspaceId, auth.workspaceId)))
     .orderBy(zettelProposals.spanStart);
+  // The read report travels with the audit row the pass wrote, so the review
+  // page can say what was not read even after the proposal rows are settled.
+  const [audit] = await db
+    .select({ metadata: auditEvents.metadata })
+    .from(auditEvents)
+    .where(
+      and(
+        eq(auditEvents.workspaceId, auth.workspaceId),
+        eq(auditEvents.action, "capture.zettels_proposed"),
+        sql`${auditEvents.metadata}->>'documentId' = ${documentId}`,
+      ),
+    )
+    .orderBy(desc(auditEvents.createdAt))
+    .limit(1);
+  const counts = (audit?.metadata ?? {}) as { readChars?: number; unreadChars?: number; unreadSections?: number };
+  return {
+    proposals: proposals.map((row) => ({ ...row.proposal, duplicateOf: row.duplicateOf?.id ? row.duplicateOf : null })),
+    readChars: counts.readChars ?? 0,
+    unreadChars: counts.unreadChars ?? 0,
+    unreadSections: counts.unreadSections ?? 0,
+  };
 }
 
 /**
@@ -173,40 +382,69 @@ export async function acceptZettel(auth: AuthContext, input: { proposalId: strin
       )
       .returning();
     if (!proposal) throw new Error("zettel not found or already decided");
-    if (!proposal.documentId) throw new Error("proposal is not document-sourced");
-
-    const [doc] = await tx
-      .select({ fileId: documents.fileId, title: documents.title })
-      .from(documents)
-      .where(and(eq(documents.id, proposal.documentId), eq(documents.workspaceId, auth.workspaceId)))
-      .limit(1);
-    if (!doc) throw new Error("document not found in workspace");
-
-    // The evidence points at a source row for the document's file; make it once.
+    /*
+     * Provenance splits by source. A document-sourced proposal keeps the
+     * extraction-span evidence it always had (a sources row and a
+     * claim_evidence row). An artifact-sourced one has no extraction, so its
+     * evidence is the verbatim quote carried on the card and its source edge
+     * points at the artifact itself.
+     */
     let sourceId: string | undefined;
-    if (doc.fileId) {
-      const [existing] = await tx
-        .select({ id: sources.id })
-        .from(sources)
-        .where(
-          and(eq(sources.workspaceId, auth.workspaceId), eq(sources.fileId, doc.fileId), eq(sources.kind, "document")),
-        )
+    let sourceLabel: string;
+    let edgeTargetType: "document" | "artifact";
+    let edgeTargetId: string;
+    if (proposal.documentId) {
+      const [doc] = await tx
+        .select({ fileId: documents.fileId, title: documents.title })
+        .from(documents)
+        .where(and(eq(documents.id, proposal.documentId), eq(documents.workspaceId, auth.workspaceId)))
         .limit(1);
-      sourceId = existing?.id;
-    }
-    if (!sourceId) {
-      const [created] = await tx
-        .insert(sources)
-        .values({
-          workspaceId: auth.workspaceId,
-          kind: "document",
-          title: doc.title,
-          fileId: doc.fileId,
-          createdBy: auth.userId,
-          updatedBy: auth.userId,
-        })
-        .returning({ id: sources.id });
-      sourceId = created.id;
+      if (!doc) throw new Error("document not found in workspace");
+      sourceLabel = doc.title;
+      edgeTargetType = "document";
+      edgeTargetId = proposal.documentId;
+
+      // The evidence points at a source row for the document's file; make it once.
+      if (doc.fileId) {
+        const [existing] = await tx
+          .select({ id: sources.id })
+          .from(sources)
+          .where(
+            and(
+              eq(sources.workspaceId, auth.workspaceId),
+              eq(sources.fileId, doc.fileId),
+              eq(sources.kind, "document"),
+            ),
+          )
+          .limit(1);
+        sourceId = existing?.id;
+      }
+      if (!sourceId) {
+        const [created] = await tx
+          .insert(sources)
+          .values({
+            workspaceId: auth.workspaceId,
+            kind: "document",
+            title: doc.title,
+            fileId: doc.fileId,
+            createdBy: auth.userId,
+            updatedBy: auth.userId,
+          })
+          .returning({ id: sources.id });
+        sourceId = created.id;
+      }
+    } else if (proposal.sourceArtifactId) {
+      const [sourceArtifact] = await tx
+        .select({ title: artifacts.title })
+        .from(artifacts)
+        .where(and(eq(artifacts.id, proposal.sourceArtifactId), eq(artifacts.workspaceId, auth.workspaceId)))
+        .limit(1);
+      if (!sourceArtifact) throw new Error("source artifact not found in workspace");
+      sourceLabel = sourceArtifact.title;
+      edgeTargetType = "artifact";
+      edgeTargetId = proposal.sourceArtifactId;
+    } else {
+      throw new Error("proposal names no source");
     }
 
     await tx
@@ -244,15 +482,17 @@ export async function acceptZettel(auth: AuthContext, input: { proposalId: strin
         updatedBy: auth.userId,
       })
       .returning({ id: claims.id });
-    await tx.insert(claimEvidence).values({
-      workspaceId: auth.workspaceId,
-      claimId: claim.id,
-      sourceId,
-      extractionId: proposal.extractionId,
-      quote: proposal.quote,
-      startOffset: proposal.spanStart,
-      endOffset: proposal.spanEnd,
-    });
+    if (sourceId) {
+      await tx.insert(claimEvidence).values({
+        workspaceId: auth.workspaceId,
+        claimId: claim.id,
+        sourceId,
+        extractionId: proposal.extractionId,
+        quote: proposal.quote,
+        startOffset: proposal.spanStart,
+        endOffset: proposal.spanEnd,
+      });
+    }
     // The zettel card: one artifact, version 1, carrying the claim as its
     // body and the verbatim quote as its evidence block. [[Title]] links in
     // the claim resolve on the next note-link sync like any note's.
@@ -293,10 +533,10 @@ export async function acceptZettel(auth: AuthContext, input: { proposalId: strin
     await tx.insert(artifactLinks).values({
       workspaceId: auth.workspaceId,
       artifactId: card.id,
-      targetType: "document",
-      targetId: proposal.documentId,
+      targetType: edgeTargetType,
+      targetId: edgeTargetId,
       linkType: "source",
-      label: doc.title,
+      label: sourceLabel,
       context: proposal.quote,
     });
     await tx
@@ -311,7 +551,13 @@ export async function acceptZettel(auth: AuthContext, input: { proposalId: strin
       subjectType: "zettel_proposal",
       subjectId: proposal.id,
       summary: `Accepted zettel "${proposal.title}"`,
-      metadata: { conceptId: concept.id, claimId: claim.id, documentId: proposal.documentId, artifactId: card.id },
+      metadata: {
+        conceptId: concept.id,
+        claimId: claim.id,
+        documentId: proposal.documentId,
+        sourceArtifactId: proposal.sourceArtifactId,
+        artifactId: card.id,
+      },
     });
     return { conceptId: concept.id, claimId: claim.id, artifactId: card.id };
   }).then(async (value) => {

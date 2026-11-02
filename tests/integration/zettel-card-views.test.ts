@@ -16,7 +16,11 @@ const handle = makeTestDb();
 const suite = handle ? describe : describe.skip;
 const holder: { db: ReturnType<typeof drizzle> | undefined } = { db: undefined };
 const extract = vi.hoisted(() => ({ extract: vi.fn<() => Promise<ExtractionResult>>() }));
-vi.mock("@/lib/db", () => ({ get db() { return holder.db; } }));
+vi.mock("@/lib/db", () => ({
+  get db() {
+    return holder.db;
+  },
+}));
 vi.mock("@/lib/db-transaction", () => ({
   get withTransaction() {
     return (fn: Parameters<typeof import("@/lib/db-transaction").withTransaction>[0]) =>
@@ -24,7 +28,9 @@ vi.mock("@/lib/db-transaction", () => ({
   },
 }));
 vi.mock("@/integrations/extraction/docling-docker", () => ({ createDoclingDockerProvider: () => extract }));
-vi.mock("@/integrations/object-store/object-store", () => ({ readBlob: vi.fn(async () => new Uint8Array([37, 80, 68, 70])) }));
+vi.mock("@/integrations/object-store/object-store", () => ({
+  readBlob: vi.fn(async () => new Uint8Array([37, 80, 68, 70])),
+}));
 
 import { extractDocument } from "@/domains/knowledge/extraction";
 import { createNote, setNoteTags } from "@/domains/knowledge/notes";
@@ -34,11 +40,13 @@ import { artifactLinks } from "@/domains/knowledge/schema";
 import { db } from "@/lib/db";
 import type { ZettelExtractor } from "@/integrations/zettels/extractor";
 
-const TEXT = "The tenant pays monthly rent of twelve hundred dollars. The landlord keeps the security deposit until move out. Pets are not allowed without written consent.";
+const TEXT =
+  "The tenant pays monthly rent of twelve hundred dollars. The landlord keeps the security deposit until move out. Pets are not allowed without written consent.";
 const Q1 = "The tenant pays monthly rent of twelve hundred dollars.";
 const Q2 = "The landlord keeps the security deposit until move out.";
 const extractor = (cands: Array<{ title: string; claim: string; quote: string }>): ZettelExtractor => ({
-  name: "fake@1", extract: async () => cands,
+  name: "fake@1",
+  extract: async () => cands,
 });
 
 // Regression: generation keys unset for the whole suite. With the shell's
@@ -50,16 +58,46 @@ beforeAll(() => {
   vi.stubEnv("GEMINI_API_KEY", "");
   vi.stubEnv("OPENAI_API_KEY", "");
 });
-afterAll(async () => { vi.unstubAllEnvs(); await handle?.client.end(); });
-beforeEach(() => { vi.clearAllMocks(); vi.stubEnv("DOCLING_SERVE_URL", "http://docling.fixture"); });
+afterAll(async () => {
+  vi.unstubAllEnvs();
+  await handle?.client.end();
+});
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.stubEnv("DOCLING_SERVE_URL", "http://docling.fixture");
+});
 
-const workspace = async () => ({ ...await seedWorkspace(holder.db!, `zv-${crypto.randomUUID()}`), role: "owner" as const });
+const workspace = async () => ({
+  ...(await seedWorkspace(holder.db!, `zv-${crypto.randomUUID()}`)),
+  role: "owner" as const,
+});
 async function seedDoc(auth: { workspaceId: string; userId: string; role: "owner" }) {
   const db = holder.db!;
-  const [blob] = await db.insert(blobObjects).values({ workspaceId: auth.workspaceId, storageKey: `private/${crypto.randomUUID()}`, contentHash: crypto.randomUUID(), sizeBytes: 4, mimeType: "application/pdf" }).returning();
-  const [file] = await db.insert(files).values({ workspaceId: auth.workspaceId, blobId: blob.id, filename: "lease.pdf" }).returning();
-  const [doc] = await db.insert(documents).values({ workspaceId: auth.workspaceId, title: "lease", fileId: file.id, mimeType: "application/pdf" }).returning();
-  extract.extract.mockResolvedValueOnce({ ok: true, text: TEXT, spans: [{ page: 1, start: 0, end: TEXT.length }], pageCount: 1, extractor: "fixture@1" });
+  const [blob] = await db
+    .insert(blobObjects)
+    .values({
+      workspaceId: auth.workspaceId,
+      storageKey: `private/${crypto.randomUUID()}`,
+      contentHash: crypto.randomUUID(),
+      sizeBytes: 4,
+      mimeType: "application/pdf",
+    })
+    .returning();
+  const [file] = await db
+    .insert(files)
+    .values({ workspaceId: auth.workspaceId, blobId: blob.id, filename: "lease.pdf" })
+    .returning();
+  const [doc] = await db
+    .insert(documents)
+    .values({ workspaceId: auth.workspaceId, title: "lease", fileId: file.id, mimeType: "application/pdf" })
+    .returning();
+  extract.extract.mockResolvedValueOnce({
+    ok: true,
+    text: TEXT,
+    spans: [{ page: 1, start: 0, end: TEXT.length }],
+    pageCount: 1,
+    extractor: "fixture@1",
+  });
   const r = await extractDocument(auth, { documentId: doc.id });
   if (!r.ok) throw new Error("seed failed");
   return doc;
@@ -69,7 +107,9 @@ suite("zettel card views (real Postgres)", () => {
   it("lists accepted cards with their source document, excerpt and tags", async () => {
     const auth = await workspace();
     const doc = await seedDoc(auth);
-    const [p1, p2] = await proposeZettels(auth, {
+    const {
+      proposals: [p1, p2],
+    } = await proposeZettels(auth, {
       documentId: doc.id,
       extractor: extractor([
         { title: "Monthly rent", claim: "Rent is $1,200 a month.", quote: Q1 },
@@ -94,7 +134,9 @@ suite("zettel card views (real Postgres)", () => {
   it("filters by query and by tag", async () => {
     const auth = await workspace();
     const doc = await seedDoc(auth);
-    const [p1, p2] = await proposeZettels(auth, {
+    const {
+      proposals: [p1, p2],
+    } = await proposeZettels(auth, {
       documentId: doc.id,
       extractor: extractor([
         { title: "Monthly rent", claim: "Rent is $1,200 a month.", quote: Q1 },
@@ -103,7 +145,12 @@ suite("zettel card views (real Postgres)", () => {
     });
     const a = await acceptZettel(auth, { proposalId: p1.id });
     await acceptZettel(auth, { proposalId: p2.id });
-    await setNoteTags(auth, { artifactId: a.artifactId, expectedVersion: 1, tags: ["Lease"], idempotencyKey: crypto.randomUUID() });
+    await setNoteTags(auth, {
+      artifactId: a.artifactId,
+      expectedVersion: 1,
+      tags: ["Lease"],
+      idempotencyKey: crypto.randomUUID(),
+    });
 
     const byQuery = await pageZettelCards(auth, { query: "deposit", limit: 10, offset: 0 });
     expect(byQuery.items.map((c) => c.title)).toEqual(["Deposit"]);
@@ -119,14 +166,23 @@ suite("zettel card views (real Postgres)", () => {
   it("carries pending suggested links in the metadata projection, excluding dismissed", async () => {
     const auth = await workspace();
     const doc = await seedDoc(auth);
-    const [proposal] = await proposeZettels(auth, {
+    const {
+      proposals: [proposal],
+    } = await proposeZettels(auth, {
       documentId: doc.id,
       extractor: extractor([{ title: "Linked card", claim: "Cards relate.", quote: Q1 }]),
     });
     const accepted = await acceptZettel(auth, { proposalId: proposal.id });
     const other = await createNote(auth, { title: "Other card", idempotencyKey: crypto.randomUUID(), kind: "zettel" });
     await db.insert(artifactLinks).values([
-      { workspaceId: auth.workspaceId, artifactId: accepted.artifactId, targetType: "note", targetId: other.id, linkType: "semantic", label: "Other card" },
+      {
+        workspaceId: auth.workspaceId,
+        artifactId: accepted.artifactId,
+        targetType: "note",
+        targetId: other.id,
+        linkType: "semantic",
+        label: "Other card",
+      },
     ]);
     const page = await pageZettelCards(auth, { limit: 10, offset: 0 });
     const card = page.items.find((c) => c.id === accepted.artifactId);

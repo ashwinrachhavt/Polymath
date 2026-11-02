@@ -26,10 +26,19 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
   redirect: vi.fn(),
 }));
-vi.mock("@/domains/knowledge/zettels", () => ({ listZettelProposals: vi.fn(async () => []) }));
+vi.mock("@/domains/knowledge/zettels", () => ({
+  listZettelProposals: vi.fn(async () => ({ proposals: [], readChars: 0, unreadChars: 0, unreadSections: 0 })),
+}));
 vi.mock("@/domains/conversations/queries", () => ({ listConversations: vi.fn(async () => []) }));
-vi.mock("@/domains/knowledge/projects", () => ({ listProjects: vi.fn(async () => []), projectDocumentIds: vi.fn(async () => []), getProjectDetail: vi.fn(async () => null) }));
-vi.mock("@/domains/knowledge/studio", () => ({ draftsForRuns: vi.fn(async () => new Map()), getDraftDetail: vi.fn(async () => null) }));
+vi.mock("@/domains/knowledge/projects", () => ({
+  listProjects: vi.fn(async () => []),
+  projectDocumentIds: vi.fn(async () => []),
+  getProjectDetail: vi.fn(async () => null),
+}));
+vi.mock("@/domains/knowledge/studio", () => ({
+  draftsForRuns: vi.fn(async () => new Map()),
+  getDraftDetail: vi.fn(async () => null),
+}));
 vi.mock("@/domains/knowledge/parties", () => ({ resolvePartyCandidates: vi.fn(async () => []) }));
 vi.mock("@/domains/knowledge/search", () => ({ searchDocuments: vi.fn(async () => []) }));
 vi.mock("@/domains/knowledge/vault-queries", () => ({ getVaultDocuments: vi.fn(async () => []) }));
@@ -49,7 +58,10 @@ vi.mock("@/domains/agents/queries", async (importOriginal) => ({
   // the page without a database, so the read is stubbed like its neighbours.
   getProfileModelPolicy: vi.fn(async () => null),
 }));
-vi.mock("@/domains/agents/thread", () => ({ listThreads: vi.fn(async () => new Map()), isFinished: (s: string) => ["succeeded", "failed", "cancelled"].includes(s) }));
+vi.mock("@/domains/agents/thread", () => ({
+  listThreads: vi.fn(async () => new Map()),
+  isFinished: (s: string) => ["succeeded", "failed", "cancelled"].includes(s),
+}));
 vi.mock("@/domains/agents/eve-driver", () => ({ eveBridgeUnavailableReason: vi.fn() }));
 // The onboarding gate is a real database read on the page; these tests render
 // the page without a database, so it is stubbed like its neighbours.
@@ -59,10 +71,19 @@ vi.mock("@/domains/agents/onboarding", () => ({ isWorkspaceOnboarded: vi.fn(asyn
 vi.mock("@/domains/skills/queries", () => ({ listSkills: vi.fn(async () => []) }));
 
 const document = {
-  id: "doc-fixture", title: "Existing document", filename: "fixture.pdf", mimeType: "application/pdf", createdAt: new Date(),
+  id: "doc-fixture",
+  title: "Existing document",
+  filename: "fixture.pdf",
+  mimeType: "application/pdf",
+  createdAt: new Date(),
   extractionStatus: "succeeded",
-        extractionCreatedAt: null, proposalStatus: "succeeded", undecidedProposals: 0, partyNames: [],
-  sourceUrl: null, kind: "file" as const, fetchedAt: null,
+  extractionCreatedAt: null,
+  proposalStatus: "succeeded",
+  undecidedProposals: 0,
+  partyNames: [],
+  sourceUrl: null,
+  kind: "file" as const,
+  fetchedAt: null,
 };
 beforeEach(() => {
   vi.clearAllMocks();
@@ -89,11 +110,18 @@ describe("live Alfred route functionality", () => {
     expect(empty.match(/aria-label="New"/g)).toHaveLength(1);
     vi.mocked(getVaultDocuments).mockResolvedValue([
       {
-        id: "doc-fixture", title: "Existing document", filename: "fixture.pdf",
-        mimeType: "application/pdf", kind: "file" as const,
-        reviewKey: "filed", undecidedProposals: 0,
+        id: "doc-fixture",
+        title: "Existing document",
+        filename: "fixture.pdf",
+        mimeType: "application/pdf",
+        kind: "file" as const,
+        reviewKey: "filed",
+        undecidedProposals: 0,
         sourceUrl: null,
-        updatedAt: new Date().toISOString(), sizeBytes: 1200, pageCount: 2, docType: null,
+        updatedAt: new Date().toISOString(),
+        sizeBytes: 1200,
+        pageCount: 2,
+        docType: null,
         href: "/polymath/knowledge?doc=doc-fixture",
       },
     ]);
@@ -107,11 +135,19 @@ describe("live Alfred route functionality", () => {
   it("says Needs review in the vault, not the review pipeline's field vocabulary", async () => {
     vi.mocked(getVaultDocuments).mockResolvedValue([
       {
-        id: "doc-review", title: "Statement", filename: "statement.pdf",
-        mimeType: "application/pdf", kind: "file" as const,
-        reviewKey: "fields_not_proposed", undecidedProposals: 0,
-        sourceUrl: null, updatedAt: new Date().toISOString(), sizeBytes: 1200, pageCount: 2,
-        docType: "statement", href: "/polymath/knowledge?doc=doc-review",
+        id: "doc-review",
+        title: "Statement",
+        filename: "statement.pdf",
+        mimeType: "application/pdf",
+        kind: "file" as const,
+        reviewKey: "fields_not_proposed",
+        undecidedProposals: 0,
+        sourceUrl: null,
+        updatedAt: new Date().toISOString(),
+        sizeBytes: 1200,
+        pageCount: 2,
+        docType: "statement",
+        href: "/polymath/knowledge?doc=doc-review",
       },
     ]);
     const html = await knowledge();
@@ -123,11 +159,18 @@ describe("live Alfred route functionality", () => {
   it("presents a captured URL as a web page, not a file row", async () => {
     vi.mocked(getVaultDocuments).mockResolvedValue([
       {
-        id: "page-fixture", title: "Ashwin Rachha", filename: null,
-        mimeType: "text/markdown", kind: "web_page" as const,
-        reviewKey: "filed", undecidedProposals: 0,
+        id: "page-fixture",
+        title: "Ashwin Rachha",
+        filename: null,
+        mimeType: "text/markdown",
+        kind: "web_page" as const,
+        reviewKey: "filed",
+        undecidedProposals: 0,
         sourceUrl: "https://ashwinrachha.com/",
-        updatedAt: new Date().toISOString(), sizeBytes: null, pageCount: null, docType: null,
+        updatedAt: new Date().toISOString(),
+        sizeBytes: null,
+        pageCount: null,
+        docType: null,
         href: "/polymath/knowledge?doc=page-fixture",
       },
     ]);
@@ -138,9 +181,26 @@ describe("live Alfred route functionality", () => {
 
   it("keeps upload available while reviewing an existing document", async () => {
     vi.mocked(getDocumentReview).mockResolvedValue({
-      document: { id: document.id, title: document.title, docType: null, mimeType: document.mimeType, version: 1, sourceUrl: null },
-      extraction: { id: "extraction", status: "succeeded", contentHash: "fixture", error: null, proposalStatus: "succeeded", proposalError: null, proposer: "text-rules@1" },
-      fieldProposals: [], parties: [], obligations: [],
+      document: {
+        id: document.id,
+        title: document.title,
+        docType: null,
+        mimeType: document.mimeType,
+        version: 1,
+        sourceUrl: null,
+      },
+      extraction: {
+        id: "extraction",
+        status: "succeeded",
+        contentHash: "fixture",
+        error: null,
+        proposalStatus: "succeeded",
+        proposalError: null,
+        proposer: "text-rules@1",
+      },
+      fieldProposals: [],
+      parties: [],
+      obligations: [],
     });
     const html = await knowledge(document.id);
     expect(html).toContain("Back to vault");
@@ -192,8 +252,24 @@ describe("live Alfred route functionality", () => {
   it("lists recent runs as plain rows: objective and time, no status vocabulary", async () => {
     vi.mocked(eveBridgeUnavailableReason).mockReturnValue(null);
     vi.mocked(listRecentRuns).mockResolvedValue([
-      { id: "run-waiting", state: "waiting_approval", objective: "Draft the renewal letter", model: "m", summary: null, error: null, createdAt: new Date() },
-      { id: "run-done", state: "succeeded", objective: "Reconcile the invoices", model: "m", summary: "Done.", error: null, createdAt: new Date() },
+      {
+        id: "run-waiting",
+        state: "waiting_approval",
+        objective: "Draft the renewal letter",
+        model: "m",
+        summary: null,
+        error: null,
+        createdAt: new Date(),
+      },
+      {
+        id: "run-done",
+        state: "succeeded",
+        objective: "Reconcile the invoices",
+        model: "m",
+        summary: "Done.",
+        error: null,
+        createdAt: new Date(),
+      },
     ] as never);
     const html = renderToStaticMarkup(await PolymathSurface());
     expect(html).toContain('href="/polymath/run-waiting"');
@@ -211,7 +287,6 @@ describe("live Alfred route functionality", () => {
     expect(html).not.toContain("Assistant:");
     expect(html).not.toContain("Done.");
   });
-
 });
 
 async function projects() {
@@ -228,7 +303,15 @@ describe("live projects screen", () => {
 
   it("lists projects with titles in the sections", async () => {
     vi.mocked(listProjects).mockResolvedValue([
-      { id: "d1", title: "Rental papers", emoji: null, description: null, pinnedAt: null, updatedAt: new Date(), documentCount: 2 },
+      {
+        id: "d1",
+        title: "Rental papers",
+        emoji: null,
+        description: null,
+        pinnedAt: null,
+        updatedAt: new Date(),
+        documentCount: 2,
+      },
     ] as never);
     const html = await projects();
     expect(html).toContain("Rental papers");
