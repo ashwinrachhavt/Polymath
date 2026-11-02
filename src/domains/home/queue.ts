@@ -88,31 +88,43 @@ export async function listHomeQueue(workspaceId: string): Promise<HomeQueueCard[
       })
       .from(captureProposals)
       .innerJoin(captures, eq(captures.id, captureProposals.captureId))
-      .where(and(eq(captureProposals.workspaceId, workspaceId), eq(captureProposals.status, "pending"), isNull(captures.parkedAt)))
+      .where(
+        and(
+          eq(captureProposals.workspaceId, workspaceId),
+          eq(captureProposals.status, "pending"),
+          isNull(captures.parkedAt),
+        ),
+      )
       .orderBy(desc(captureProposals.createdAt))
       .limit(HOME_QUEUE_LIMIT),
   ]);
 
   const cards: HomeQueueCard[] = [
-    ...actions.filter((row) => row.latestRevision !== null).map((row) => ({
-      origin: "agent" as const,
-      id: row.id,
-      title: row.title,
-      effect: row.expectedEffect,
-      reason: `Proposed by ${row.capability}`,
-      riskClass: row.riskClass,
-      expiresAt: row.expiresAt,
-      createdAt: row.createdAt,
-      href: `/reviews?proposal=${row.id}`,
-      decision: {
-        kind: "agent" as const,
-        revisionId: row.latestRevision!.id,
-        version: row.version,
-        expired: row.expiresAt !== null && row.expiresAt.getTime() < Date.now(),
-      },
-    })),
+    ...actions
+      .filter((row) => row.latestRevision !== null)
+      .map((row) => ({
+        origin: "agent" as const,
+        id: row.id,
+        title: row.title,
+        effect: row.expectedEffect,
+        reason: `Proposed by ${row.capability}`,
+        riskClass: row.riskClass,
+        expiresAt: row.expiresAt,
+        createdAt: row.createdAt,
+        href: `/reviews?proposal=${row.id}`,
+        decision: {
+          kind: "agent" as const,
+          revisionId: row.latestRevision!.id,
+          version: row.version,
+          expired: row.expiresAt !== null && row.expiresAt.getTime() < Date.now(),
+        },
+      })),
     ...captureRows.map((row) => {
-      const firstLine = (row.captureText ?? "").split("\n").map((line) => line.trim()).find(Boolean) ?? "Captured item";
+      const firstLine =
+        (row.captureText ?? "")
+          .split("\n")
+          .map((line) => line.trim())
+          .find(Boolean) ?? "Captured item";
       const confidence = row.confidence ? ` (${Math.round(Number(row.confidence) * 100)}% sure)` : "";
       return {
         origin: "capture" as const,
@@ -145,4 +157,3 @@ function effectOfCaptureProposal(kind: string): string {
       return `Becomes a ${kind}.`;
   }
 }
-

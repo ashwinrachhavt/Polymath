@@ -35,7 +35,10 @@ async function seed(slug: string) {
   return ownerAuth(userId, workspaceId);
 }
 
-async function seedActionProposal(auth: { workspaceId: string; userId: string }, input: { title: string; riskClass: "prepare" | "external_write" | "sensitive_write"; expiresAt?: Date }) {
+async function seedActionProposal(
+  auth: { workspaceId: string; userId: string },
+  input: { title: string; riskClass: "prepare" | "external_write" | "sensitive_write"; expiresAt?: Date },
+) {
   const [proposal] = await db
     .insert(actionProposals)
     .values({
@@ -88,11 +91,20 @@ suite("home queue", () => {
     });
 
     const cards = await queue.listHomeQueue(auth.workspaceId);
-    expect(cards.map((c) => c.title)).toEqual(["Send the roadmap email", "Archive old threads", "Renew the passport before the trip"]);
+    expect(cards.map((c) => c.title)).toEqual([
+      "Send the roadmap email",
+      "Archive old threads",
+      "Renew the passport before the trip",
+    ]);
     expect(cards[0].origin).toBe("agent");
     expect(cards[2].origin).toBe("capture");
     // One-tap decide binds: agent cards carry revision + CAS version, capture cards their kind.
-    expect(cards[0].decision).toEqual({ kind: "agent", revisionId: expiring.revision.id, version: expiring.proposal.version, expired: false });
+    expect(cards[0].decision).toEqual({
+      kind: "agent",
+      revisionId: expiring.revision.id,
+      version: expiring.proposal.version,
+      expired: false,
+    });
     expect(cards[2].decision).toEqual({ kind: "capture" });
     expect(cards[2].effect).toBe("Becomes a task.");
     expect(cards[2].href).toContain(capture.id);
@@ -110,7 +122,10 @@ suite("home queue", () => {
   it("decided proposals leave the queue", async () => {
     const auth = await seed("home-queue-decided");
     const { proposal } = await seedActionProposal(auth, { title: "Done thing", riskClass: "prepare" });
-    await db.update(actionProposals).set({ status: "rejected", updatedAt: new Date(), updatedBy: auth.userId }).where(eq(actionProposals.id, proposal.id));
+    await db
+      .update(actionProposals)
+      .set({ status: "rejected", updatedAt: new Date(), updatedBy: auth.userId })
+      .where(eq(actionProposals.id, proposal.id));
     const cards = await queue.listHomeQueue(auth.workspaceId);
     expect(cards.map((c) => c.title)).not.toContain("Done thing");
   });

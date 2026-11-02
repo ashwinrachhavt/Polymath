@@ -110,9 +110,16 @@ suite("capture inbox", () => {
     const auth = await seed("capture-note");
     // An existing note to link to: the capture body names it in [[...]].
     const { createNote } = await import("@/domains/knowledge/notes");
-    const target = await createNote(auth, { title: "Atomic notes", content: { format: "markdown", text: "One idea per note." }, plainText: "One idea per note.", idempotencyKey: crypto.randomUUID() });
+    const target = await createNote(auth, {
+      title: "Atomic notes",
+      content: { format: "markdown", text: "One idea per note." },
+      plainText: "One idea per note.",
+      idempotencyKey: crypto.randomUUID(),
+    });
 
-    const capture = await commands.createCapture(auth, { text: "Zettelkasten is a web of [[Atomic notes]] - links are the thinking" });
+    const capture = await commands.createCapture(auth, {
+      text: "Zettelkasten is a web of [[Atomic notes]] - links are the thinking",
+    });
     const { note, capture: converted } = await commands.convertCaptureToNote(auth, {
       captureId: capture.id,
       expectedVersion: capture.version,
@@ -124,22 +131,34 @@ suite("capture inbox", () => {
 
     // The note landed as a normal notebook artifact: kind note, version 1 is
     // the capture text, title from the first line.
-    const [artifact] = await db.select().from(artifacts).where(and(eq(artifacts.id, note.id), eq(artifacts.workspaceId, auth.workspaceId)));
+    const [artifact] = await db
+      .select()
+      .from(artifacts)
+      .where(and(eq(artifacts.id, note.id), eq(artifacts.workspaceId, auth.workspaceId)));
     expect(artifact.kind).toBe("note");
     expect(artifact.status).not.toBe("inbox");
     expect(artifact.title).toContain("Zettelkasten");
-    const [version] = await db.select().from(artifactVersions).where(eq(artifactVersions.id, artifact.currentVersionId!));
+    const [version] = await db
+      .select()
+      .from(artifactVersions)
+      .where(eq(artifactVersions.id, artifact.currentVersionId!));
     expect(version.plainText).toBe(capture.text);
 
     // The wiki link resolved in the same commit.
-    const links = await db.select().from(artifactLinks).where(and(eq(artifactLinks.workspaceId, auth.workspaceId), eq(artifactLinks.artifactId, note.id)));
+    const links = await db
+      .select()
+      .from(artifactLinks)
+      .where(and(eq(artifactLinks.workspaceId, auth.workspaceId), eq(artifactLinks.artifactId, note.id)));
     expect(links.map((l) => l.targetId)).toContain(target.id);
 
     // Converting again is a conflict, never a second note.
     await expect(
       commands.convertCaptureToNote(auth, { captureId: capture.id, expectedVersion: converted.version }),
     ).rejects.toMatchObject({ code: "conflict" });
-    const stillOne = await db.select().from(artifacts).where(and(eq(artifacts.workspaceId, auth.workspaceId), eq(artifacts.kind, "note")));
+    const stillOne = await db
+      .select()
+      .from(artifacts)
+      .where(and(eq(artifacts.workspaceId, auth.workspaceId), eq(artifacts.kind, "note")));
     expect(stillOne.filter((a) => a.title.includes("Zettelkasten")).length).toBe(1);
 
     // A wrong version on an open capture is the stale-write path.
@@ -204,8 +223,18 @@ suite("capture inbox", () => {
 
     // The same key replays the first result instead of a second write.
     const key = crypto.randomUUID();
-    const a = await commands.updateCaptureText(auth, { captureId: capture.id, expectedVersion: edited.version, text: "First", idempotencyKey: key });
-    const b = await commands.updateCaptureText(auth, { captureId: capture.id, expectedVersion: edited.version, text: "First", idempotencyKey: key });
+    const a = await commands.updateCaptureText(auth, {
+      captureId: capture.id,
+      expectedVersion: edited.version,
+      text: "First",
+      idempotencyKey: key,
+    });
+    const b = await commands.updateCaptureText(auth, {
+      captureId: capture.id,
+      expectedVersion: edited.version,
+      text: "First",
+      idempotencyKey: key,
+    });
     expect(b.version).toBe(a.version);
     expect((await queries.getCapture(auth, capture.id))?.version).toBe(a.version);
   });
@@ -213,9 +242,16 @@ suite("capture inbox", () => {
   it("refuses to edit a converted, emptied or stale capture", async () => {
     const auth = await seed("capture-edit-refuse");
     const capture = await commands.createCapture(auth, { text: "Turn me into work" });
-    const converted = await commands.convertCaptureToTask(auth, { captureId: capture.id, expectedVersion: capture.version });
+    const converted = await commands.convertCaptureToTask(auth, {
+      captureId: capture.id,
+      expectedVersion: capture.version,
+    });
     await expect(
-      commands.updateCaptureText(auth, { captureId: capture.id, expectedVersion: converted.capture.version, text: "Rewritten" }),
+      commands.updateCaptureText(auth, {
+        captureId: capture.id,
+        expectedVersion: converted.capture.version,
+        text: "Rewritten",
+      }),
     ).rejects.toMatchObject({ code: "conflict" });
 
     const open = await commands.createCapture(auth, { text: "Still open" });
@@ -245,7 +281,11 @@ suite("capture inbox", () => {
     const converted = await commands.createCapture(auth, { text: "Going to work" });
     await commands.convertCaptureToTask(auth, { captureId: converted.id, expectedVersion: converted.version });
     const discardable = await commands.createCapture(auth, { text: "Going away" });
-    await commands.setCaptureState(auth, { captureId: discardable.id, expectedVersion: discardable.version, state: "discarded" });
+    await commands.setCaptureState(auth, {
+      captureId: discardable.id,
+      expectedVersion: discardable.version,
+      state: "discarded",
+    });
     void open;
 
     const tabs = await queries.countInboxTabs(auth);
@@ -253,7 +293,9 @@ suite("capture inbox", () => {
     expect(tabs.converted).toBe(1);
     expect(tabs.discarded).toBe(1);
     expect(tabs.all).toBe(4);
-    expect((await queries.searchCaptures(auth, { filter: "converted", limit: 10, offset: 0 })).total).toBe(tabs.converted);
+    expect((await queries.searchCaptures(auth, { filter: "converted", limit: 10, offset: 0 })).total).toBe(
+      tabs.converted,
+    );
     expect((await queries.searchCaptures(auth, { filter: "all", limit: 10, offset: 0 })).total).toBe(tabs.all);
   });
 });
