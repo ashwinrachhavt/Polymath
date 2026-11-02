@@ -45,6 +45,14 @@ export interface ExecutorHost {
   flush(): Promise<void>;
   auth(): Promise<AuthContext>;
   config: ExecutorConfig;
+  /**
+   * The Policy's accept mode at launch time. The launch freezes it into the
+   * run's policy snapshot beside the ticket's Mandate strength, so every
+   * reader of the run sees what the worker was authorized under without a
+   * parallel table (spec §4; the mandate's policyVersion lets a reader check
+   * whether the mode has since changed).
+   */
+  acceptMode(): "off" | "observe" | "auto";
 }
 
 export interface SuperagentExecutor extends Executor {
@@ -185,6 +193,9 @@ export function createSuperagentExecutor(host: ExecutorHost): SuperagentExecutor
         objective: launchObjective(ticket, triggerOf),
         profileName: host.config.profileName,
         estimateUsd: host.config.estimateUsd,
+        // The run's authorization facts: the Mandate strength is frozen on the
+        // ticket by its accept; the accept mode is the policy at launch time.
+        admission: { strength: ticket.mandate.strength, acceptMode: host.acceptMode() },
       });
     } catch (cause) {
       reportFailed(host, ticketId, `Launch failed: ${cause instanceof Error ? cause.message : String(cause)}`);

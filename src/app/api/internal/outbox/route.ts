@@ -3,7 +3,8 @@ import { timingSafeEqual } from "node:crypto";
 import { dispatchPendingOutbox, recoverStrandedOutbox } from "@/domains/audit/outbox";
 import { outboxHandlers } from "@/domains/audit/outbox-handlers";
 import { problemResponse } from "@/lib/problems";
-import { effectHandlers, runSuperagentDispatch } from "@/domains/superagent/effects";
+import { superagentEffectHandlers, sweepSuperagentWorkspaces } from "@/domains/superagent/wiring";
+import { runSuperagentDispatch } from "@/domains/superagent/effects";
 
 /*
  * POST /api/internal/outbox - one dispatcher pass (ASH-134 Q03). Off unless
@@ -27,11 +28,15 @@ export async function POST(request: Request) {
   try {
     const recovered = await recoverStrandedOutbox(client);
     const result = await dispatchPendingOutbox(client, outboxHandlers(), { workerId: `route:${crypto.randomUUID()}` });
-    // The superagent domain's effects and reply lane drain in the same pass:
-    // the sweepers release leases from dead workers first, then handlers run.
-    // Kinds without a consumer yet park without failure, so a wave that lands
-    // before its consumer never turns intent into errors.
-    const superagent = await runSuperagentDispatch(client, effectHandlers({ rawClient: client }), {
+    // The superagent domain's effects and reply lane drain in the same pass.
+    // The sweep first: the engine's serverless tick (start due evals — the
+    // step that enqueues the assessment effects this pass then claims) plus
+    // the ticket-run observer. The wiring's handler map adds the assessor's
+    // and executor's consumers (and the chat sink for the reply lane); kinds
+    // without a consumer park without failure, so a wave that lands before
+    // its consumer never turns intent into errors.
+    await sweepSuperagentWorkspaces();
+    const superagent = await runSuperagentDispatch(client, await superagentEffectHandlers(), {
       workerId: `route:${crypto.randomUUID()}`,
     });
     return Response.json({ recovered: recovered.length, ...result, superagent });

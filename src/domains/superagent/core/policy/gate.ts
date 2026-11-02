@@ -18,7 +18,7 @@ export interface PolicyRule {
 }
 
 /** A sender or bot listed on a Source: matched case-insensitively by id, so lists hold the display name. */
-export interface AllowedActor {
+interface AllowedActor {
   id: string;
   name?: string;
 }
@@ -55,20 +55,20 @@ export const defaultPolicyConfig = (): PolicyConfig => ({
 });
 
 /** Case-insensitive sender match: lists hold the name the Source displays, triggers carry the id it saw. */
-export const sameName = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase();
+const sameName = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase();
 
 /** `actor` in the Source's allowed list, which decides who may originate work on that Source. */
-export const allowedSender = (config: PolicyConfig, actor: ActorRef): AllowedActor | undefined =>
+const allowedSender = (config: PolicyConfig, actor: ActorRef): AllowedActor | undefined =>
   config.sources[actor.source]?.allowed.find((entry) => sameName(entry.id, actor.id));
 
 /** `actor` in the Source's bot list, whose messages are admitted as inferred candidates at most. */
-export const listedBot = (config: PolicyConfig, actor: ActorRef): AllowedActor | undefined =>
+const listedBot = (config: PolicyConfig, actor: ActorRef): AllowedActor | undefined =>
   config.sources[actor.source]?.bots.find((entry) => sameName(entry.id, actor.id));
 
 const senderName = (entry: AllowedActor): string => entry.name || entry.id;
 
 /** Literal gate-reason codes (`reasons.ts`: gates may emit their own); the panel translates them. */
-export const GATE_REASONS = {
+const GATE_REASONS = {
   /** A non-human sender that is no listed bot and has an id. */
   notHuman: "not_human",
   /** The receiving scope's cell, or the accept mode, admits nothing here. */
@@ -93,7 +93,7 @@ const canonicalJson = (value: unknown): string => {
 };
 
 /** Revision of the version scheme itself; bump it when the hashed payload's shape changes, invalidating every stored version at once. */
-export const POLICY_REVISION = "mandate-v3";
+const POLICY_REVISION = "mandate-v3";
 
 /** Hash over the rules, the accept mode, and each Source's part (docs/002 §Policy version). */
 export const policyVersion = (config: PolicyConfig): string =>
