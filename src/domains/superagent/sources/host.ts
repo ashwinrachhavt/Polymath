@@ -30,7 +30,7 @@ export interface SourceState {
  * Where the chat channel's writes go. The effects wiring implements it over the run's durable event stream: the reply
  * must reach live tabs through the existing ChatFrame proxy and survive a reload. No other transport exists or is added.
  */
-export interface ChatStreamSink {
+interface ChatStreamSink {
   /**
    * @returns `'sent'` once written durably, `'gone'` when the conversation can never receive it — never both.
    * @throws when delivery failed but may succeed on a later retry; the Outbox doubles its retry from 5s to 300s.
