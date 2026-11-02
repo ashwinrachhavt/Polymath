@@ -1,15 +1,5 @@
 import { sql } from "drizzle-orm";
-import {
-  index,
-  integer,
-  jsonb,
-  pgEnum,
-  pgTable,
-  text,
-  timestamp,
-  uniqueIndex,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { index, integer, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { mutable, primaryId, tenantId } from "../../db/columns";
 import { tasks } from "../work/schema";
 
@@ -27,6 +17,14 @@ export const focusSessionState = pgEnum("focus_session_state", [
   "abandoned",
 ]);
 
+/*
+ * Spec §1: how strictly the server holds a live session. Normal behaves as
+ * always; timeout caps breaks; deep holds until the planned time is up. The
+ * tier is the contract - add a value, never repurpose one.
+ */
+export const focusStrictness = pgEnum("focus_strictness", ["normal", "timeout", "deep"]);
+export type FocusStrictness = (typeof focusStrictness.enumValues)[number];
+
 export const focusSessions = pgTable(
   "focus_sessions",
   {
@@ -36,6 +34,12 @@ export const focusSessions = pgTable(
     /** What the owner is focusing on, when it is not a task. */
     subject: text("subject"),
     state: focusSessionState("state").notNull().default("running"),
+    /** Spec §1 tier for this session; every guarded transition reads it. */
+    strictness: focusStrictness("strictness").notNull().default("normal"),
+    /** Structural count of pause transitions. The timeout tier's ≤2-pause rule is an invariant, not something to derive from free-text interruption reasons. */
+    pauseCount: integer("pause_count").notNull().default(0),
+    /** Set when an abandon is requested; the tier's cooldown (server clock) gates the confirm. */
+    abandonRequestedAt: timestamp("abandon_requested_at", { withTimezone: true }),
     plannedMinutes: integer("planned_minutes"),
     /** Durable clock: startedAt plus accumulated time is authoritative. Null while only scheduled (ASH-308). */
     startedAt: timestamp("started_at", { withTimezone: true }).defaultNow(),

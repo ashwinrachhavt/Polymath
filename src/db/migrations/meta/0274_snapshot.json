@@ -1,6 +1,6 @@
 {
-  "id": "aab87429-cb2d-4bc3-bb43-a7fdf7d6fffe",
-  "prevId": "01162266-5a5c-4a32-802b-f6624dc021cd",
+  "id": "6dacd5a0-6f0a-4f9a-a742-4e7aaca29312",
+  "prevId": "aab87429-cb2d-4bc3-bb43-a7fdf7d6fffe",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -9429,6 +9429,27 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'running'"
+        },
+        "strictness": {
+          "name": "strictness",
+          "type": "focus_strictness",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'normal'"
+        },
+        "pause_count": {
+          "name": "pause_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "abandon_requested_at": {
+          "name": "abandon_requested_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         },
         "planned_minutes": {
           "name": "planned_minutes",
@@ -27088,6 +27109,15 @@
         "interrupted",
         "finished",
         "abandoned"
+      ]
+    },
+    "public.focus_strictness": {
+      "name": "focus_strictness",
+      "schema": "public",
+      "values": [
+        "normal",
+        "timeout",
+        "deep"
       ]
     },
     "public.ledger_reason": {
