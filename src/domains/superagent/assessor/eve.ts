@@ -19,7 +19,7 @@ export const EVAL_TOOLS = ["orchestrator_eval_read", "orchestrator_eval", "orche
  * candidate and the ported precedence order ride the per-eval brief instead,
  * so this says nothing about any candidate, only how to judge.
  */
-export const ASSESSOR_CHARTER = [
+const ASSESSOR_CHARTER = [
   "You are the assessor. You judge whether one request should become work.",
   "Read the candidate with orchestrator_eval_read, record a judgment with orchestrator_eval, and finish with orchestrator_eval_decide.",
   "Judge only what the read tool shows you; do not invent context.",

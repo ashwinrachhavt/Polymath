@@ -43,7 +43,7 @@ export interface AssessmentPayload {
 }
 
 /** The policy slice the brief renders, from the same settings the gate reads. */
-export interface PolicyView {
+interface PolicyView {
   rules: PolicyRule[];
   mode: AcceptMode;
 }
@@ -97,7 +97,7 @@ export type EvalToolResult =
     }
   | { error: string };
 
-export interface EvalTools {
+interface EvalTools {
   read(assessmentId: string, part: EvalReadPart): Promise<EvalToolResult>;
   judge(assessmentId: string, judgment: EvalJudgmentInput): Promise<EvalToolResult>;
   decide(assessmentId: string): Promise<EvalToolResult>;

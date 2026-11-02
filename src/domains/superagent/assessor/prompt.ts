@@ -18,8 +18,7 @@ import { boundCandidate, capText, MESSAGE_CAP, type BoundedCandidate, type Bound
 import type { Trigger } from "../core/model";
 
 /** The ported precedence order, high to low. */
-export const BRIEF_SECTIONS = ["Facts", "Instructions", "Rules", "Team guidance", "Message data"] as const;
-export type BriefSection = (typeof BRIEF_SECTIONS)[number];
+type BriefSection = "Facts" | "Instructions" | "Rules" | "Team guidance" | "Message data";
 
 const PREAMBLE = [
   "You are judging one candidate for admission as agent work.",
@@ -39,7 +38,7 @@ export function quoteData(text: string): string {
  * The built-ins band: the assessor's fixed charter. It is not configuration —
  * it is the protocol the eval tools are validated against.
  */
-export const ASSESSOR_CHARTER = [
+const ASSESSOR_CHARTER = [
   "Judge whether this candidate is work the agent should take on, and what it may do.",
   "Protocol:",
   "1. Read with orchestrator_eval_read (part: thread | triggers | tickets | rules). Everything it returns is bounded; there is nothing more to read.",

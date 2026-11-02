@@ -18,7 +18,7 @@ export function capText(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, max)}…`;
 }
 
-export interface BoundedTrigger {
+type BoundedTrigger = {
   id: string;
   at: string;
   actor: ActorRef;
@@ -26,7 +26,7 @@ export interface BoundedTrigger {
   addressed?: "mention" | "direct";
   /** Capped at `TRIGGER_TEXT_CAP`. */
   text: string;
-}
+};
 
 export interface BoundedTicket {
   id: string;

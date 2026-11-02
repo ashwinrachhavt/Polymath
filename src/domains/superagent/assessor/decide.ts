@@ -30,7 +30,7 @@ export function admitProbabilityOf(response: DecideResponse): number {
  * capped message texts — so a calibration reads the same state the judgment
  * read, and only what the bounds allowed into the session.
  */
-export function decideState(bounded: BoundedCandidate): DecideState {
+function decideState(bounded: BoundedCandidate): DecideState {
   return {
     candidate: { strength: bounded.strength, policyVersion: bounded.policyVersion },
     thread: { key: bounded.threadKey, facts: toJsonValue(bounded.thread.facts) as { [key: string]: JsonValue } },
