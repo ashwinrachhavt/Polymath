@@ -27,7 +27,8 @@
     "prepare": "git config core.hooksPath scripts/hooks",
     "seed:taxonomy": "tsx --env-file=.env scripts/seed-taxonomy.ts",
     "inventory": "tsx scripts/tech-spec-inventory.ts",
-    "inventory:check": "tsx scripts/tech-spec-inventory.ts --check"
+    "inventory:check": "tsx scripts/tech-spec-inventory.ts --check",
+    "test:ci": "sh scripts/reset-test-db.sh && vitest run"
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.106",

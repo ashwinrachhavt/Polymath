@@ -15,15 +15,17 @@ import { memberships, users, workspaces } from "@/domains/identity/schema";
 
 export function makeTestDb() {
   const url = process.env.TEST_DATABASE_URL;
-  // In CI a missing database is a broken gate, not a reason to skip: the
-  // suite would report green while every invariant it exists to prove never
-  // ran. A local clone without a scratch DB is the only legitimate skip.
-  if (!url && process.env.CI) {
+  // A missing database is a broken gate everywhere, not just on CI: the files
+  // that use this report green while every invariant they exist to prove never
+  // ran. A local run once showed "274 passed | 179 skipped" — and the skips
+  // included the migration suite that guards the converge script, so a broken
+  // migration reached CI having passed "locally". Loud beats quiet.
+  if (!url) {
     throw new Error(
-      "CI must provide TEST_DATABASE_URL: the integration suites cannot silently skip.",
+      "TEST_DATABASE_URL is not set: the integration and migration suites would skip silently. " +
+        "Point it at a scratch database (see scripts/initdb/01-test-db.sql) or run the unit project.",
     );
   }
-  if (!url) return null;
   // src/lib/db-transaction.ts reads DATABASE_URL at module load; point it here
   // before anything lazy-imports that module.
   process.env.DATABASE_URL = url;
@@ -49,9 +51,7 @@ export async function seedWorkspace(
     .insert(workspaces)
     .values({ name: slug, slug: `${slug}-${Date.now()}`, isPersonal: true })
     .returning();
-  await db
-    .insert(memberships)
-    .values({ workspaceId: ws.id, userId: user.id, role: "owner", status: "active" });
+  await db.insert(memberships).values({ workspaceId: ws.id, userId: user.id, role: "owner", status: "active" });
   return { userId: user.id, workspaceId: ws.id };
 }
 
