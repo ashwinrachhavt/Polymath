@@ -77,7 +77,7 @@ export async function ensureTopicHub(auth: AuthContext, topicSlug: string): Prom
         // The version's plain text names the topic, so the hub embeds as the
         // topic itself rather than as an empty card.
         plainText: topic.displayName,
-        versionReason: "created",
+        reason: "created",
       })
       .returning({ id: artifactVersions.id });
     await tx.update(artifacts).set({ currentVersionId: version.id }).where(eq(artifacts.id, hub.id));
@@ -100,10 +100,10 @@ export async function fileIdeaUnderTopic(
     .values({
       workspaceId: auth.workspaceId,
       artifactId: input.artifactId,
-      // Hubs are artifacts, not linkable cards: "artifact" keeps the edge
-      // outside LINKABLE_KINDS backlink reads (and the target-kind check
-      // has no "other", by design).
-      targetType: "artifact",
+      // The plan pins targetType "note": the target-kind check list has no
+      // "other", and hub edges must stay out of LINKABLE_KINDS backlink reads
+      // only via the link kind — the hub target itself is never rendered.
+      targetType: "note",
       targetId: hub.id,
       label: hub.title,
       linkType: "part_of",
