@@ -84,6 +84,7 @@ export async function listHomeQueue(workspaceId: string): Promise<HomeQueueCard[
         confidence: captureProposals.confidence,
         createdAt: captureProposals.createdAt,
         captureText: captures.text,
+        captureTitle: captures.title,
         captureKind: captures.kind,
       })
       .from(captureProposals)
@@ -129,7 +130,9 @@ export async function listHomeQueue(workspaceId: string): Promise<HomeQueueCard[
       return {
         origin: "capture" as const,
         id: row.id,
-        title: firstLine,
+        // The capture's own title (person or enrichment) names the card; the
+        // first line of the text is the fallback.
+        title: row.captureTitle?.trim() || firstLine,
         effect: effectOfCaptureProposal(row.kind),
         reason: `${row.rationale ?? "The classifier read this capture"}${confidence}`,
         riskClass: "prepare" as const,
