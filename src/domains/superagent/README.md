@@ -92,6 +92,27 @@ taken and load-bearing elsewhere in the codebase:
   stored, and the channel defined over the existing ChatFrame stream
   contract, with no new transport.
 
+## Decide (`decide/`)
+
+The Mercury Decide seam (`POST /v1/decisions`, Inception Labs), a wave-1
+module beside the core rather than in it: `types.ts` is the typed wire
+contract (binary-probability `noul`, categorical `choice`, ordinal `score`,
+and text-span `extract` questions over a shared text/JSON state; typed
+answers with calibrated probabilities; no streaming, no tool calling);
+`client.ts` is the thin HTTP client (Bearer auth, timeout, typed
+`DecideError` paths with a `retryable` flag); `record.ts` is the
+`AssessmentDecisionRecord` — the Eve judgment, the Decide probability, and
+the final decision with which path decided it — plus the escalation rule
+(`resolveAssessmentDecision`): below-threshold probabilities and material
+Eve/Decide disagreement record not-admitted for the panel to surface.
+
+It is a fourth port beside `Assessor` and `Executor` in the core's port
+family, consumed by the assessor implementation. The Engine never imports
+it: no Decide in core, so the Engine stays deterministic. The
+decisions-only model id `mercury-decide` is declared in `client.ts`
+(`DECIDE_MODEL_ID`), not in the chat model catalog — it does not serve
+`/chat/completions`.
+
 ## Tests
 
 `tests/unit/superagent/core-engine.test.ts` and `stage.test.ts` are the
