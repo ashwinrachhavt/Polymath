@@ -14,7 +14,9 @@ function db() {
   return process.env.DATABASE_URL ? postgres(process.env.DATABASE_URL, { max: 1 }) : null;
 }
 
-test("the dock follows a real session across pages, marks a failed read stale, and leaves when it finishes", async ({ page }) => {
+test("the dock follows a real session across pages, marks a failed read stale, and leaves when it finishes", async ({
+  page,
+}) => {
   test.setTimeout(180_000);
   const client = db();
   const tag = `dock-${Date.now().toString(36)}`;
@@ -28,8 +30,11 @@ test("the dock follows a real session across pages, marks a failed read stale, a
     await page.getByRole("link", { name: tag, exact: true }).click();
     await expect(page).toHaveURL(/task=[0-9a-f-]{36}/);
     await page.getByRole("button", { name: "Start focus", exact: true }).click();
-    await expect(page.getByText("A focus session is running.", { exact: true })).toBeVisible();
-    // On Work itself the dock stays out of the way - the controls are on the page.
+    // Start focus lands on the Focus screen, which owns the live controls now
+    // (Work's banner went with the redirect bridge).
+    await page.waitForURL(/\/neuralflow\/focus$/);
+    await expect(page.getByRole("timer")).toBeVisible();
+    // On the Focus screen itself the dock stays out of the way - the controls are on the page.
     await expect(page.getByLabel("Focus session")).toBeHidden();
 
     // Navigate away: the dock names the live session and links back.
@@ -72,10 +77,11 @@ test("the dock follows a real session across pages, marks a failed read stale, a
 
     // Return to the session, finish it, and the dock is gone everywhere.
     await dock.getByRole("link").click();
-    await expect(page).toHaveURL(/\/neuralflow\/work\?view=today/);
-    await expect(page.getByText("A focus session is running.", { exact: true })).toBeVisible();
+    await expect(page).toHaveURL(/\/neuralflow\/focus$/);
+    await expect(page.getByRole("timer")).toBeVisible();
     await page.getByRole("button", { name: "Finish", exact: true }).click();
-    await expect(page.getByText("A focus session is running.", { exact: true })).toBeHidden();
+    // The screen's summary replaces the live view - the session is over.
+    await expect(page.getByRole("timer")).toBeHidden();
     await page.goto("/command-center/inbox");
     await expect(page.getByLabel("Focus session")).toBeHidden();
   } finally {

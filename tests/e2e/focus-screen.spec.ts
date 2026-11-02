@@ -15,7 +15,9 @@ function db() {
   return process.env.DATABASE_URL ? postgres(process.env.DATABASE_URL, { max: 1 }) : null;
 }
 
-test("focus screen: setup to a deep session's blocked finish through the abandon door to the summary", async ({ page }) => {
+test("focus screen: setup to a deep session's blocked finish through the abandon door to the summary", async ({
+  page,
+}) => {
   test.setTimeout(300_000);
   const client = db();
   const tag = `screen-${Date.now().toString(36)}`;
@@ -65,7 +67,10 @@ test("focus screen: setup to a deep session's blocked finish through the abandon
     await expect(page.getByLabel("Focus session")).toBeHidden();
     await page.goto("/command-center/inbox");
     const dock = page.getByLabel("Focus session");
-    await expect(dock).toBeVisible();
+    // The dock's first read pays the dev-mode compile of /api/v1/focus/live;
+    // a fresh server (CI shard or this run's first hit) can spend the default
+    // 5s inside that compile, so the dock gets the same courtesy as Start.
+    await expect(dock).toBeVisible({ timeout: 20_000 });
     await expect(dock).toContainText("Focus running");
     await expect(dock).toContainText(subject);
 

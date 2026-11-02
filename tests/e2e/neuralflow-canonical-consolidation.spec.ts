@@ -23,10 +23,16 @@ test("every Work view reads the same canonical Neon task", async ({ page }) => {
   await page.getByRole("navigation", { name: "Work views" }).getByRole("link", { name: "Today", exact: true }).click();
   await expect(page.getByRole("link", { name: title, exact: true })).toBeVisible();
   // Board and Calendar read the same rows.
-  await page.getByRole("navigation", { name: "Presentation" }).getByRole("link", { name: "Board", exact: true }).click();
+  await page
+    .getByRole("navigation", { name: "Presentation" })
+    .getByRole("link", { name: "Board", exact: true })
+    .click();
   await expect(page.getByRole("navigation", { name: "Work views", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: title, exact: true })).toBeVisible();
-  await page.getByRole("navigation", { name: "Presentation" }).getByRole("link", { name: "Calendar", exact: true }).click();
+  await page
+    .getByRole("navigation", { name: "Presentation" })
+    .getByRole("link", { name: "Calendar", exact: true })
+    .click();
   await expect(page.getByRole("navigation", { name: "Work views", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "Previous week", exact: true })).toBeVisible();
   // The relocated tools live in their contextual homes, wired to the real
@@ -39,11 +45,17 @@ test("every Work view reads the same canonical Neon task", async ({ page }) => {
   await page.getByRole("link", { name: "Meetings", exact: true }).click();
   await expect(page).toHaveURL(/\/neuralflow\/work\?view=today$/);
   const related = page.getByRole("navigation", { name: "Related tools", exact: true });
-  await expect(related.getByRole("link", { name: "Weekly review" })).toHaveAttribute("href", "/apps/neuralflow/reports");
+  await expect(related.getByRole("link", { name: "Weekly review" })).toHaveAttribute(
+    "href",
+    "/apps/neuralflow/reports",
+  );
   await related.getByRole("link", { name: "Brain dump" }).click();
   await expect(page).toHaveURL(/\/command-center\/inbox$/);
   await page.goBack();
-  await page.getByRole("navigation", { name: "Related tools", exact: true }).getByRole("link", { name: "Stone collection" }).click();
+  await page
+    .getByRole("navigation", { name: "Related tools", exact: true })
+    .getByRole("link", { name: "Stone collection" })
+    .click();
   await expect(page).toHaveURL(/\/apps\/neuralflow\/rewards$/);
 });
 
@@ -60,18 +72,22 @@ test("a canonical task deep link opens its detail and starts a focus session fro
   await page.getByRole("link", { name: title, exact: true }).click();
   await expect(page).toHaveURL(/task=[0-9a-f-]{36}/);
   // Focus left the rail (IA simplification): the detail panel owns the focus
-  // entry point and the session history on Work, and the focus address itself
-  // is a redirect bridge back to Work (query dropped).
+  // entry point and the session history on Work, and the focus address is the
+  // real screen now — the redirect bridge is gone.
   await expect(page.getByText("Focus history", { exact: true })).toBeVisible();
   await expect(page.getByText("No focus sessions against this task yet.", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Start focus", exact: true }).click();
-  await expect(page.getByText("A focus session is running.", { exact: true })).toBeVisible();
-  // The finish form records against the task; the session ends and the
-  // history picks it up.
+  await page.waitForURL(/\/neuralflow\/focus$/);
+  await expect(page.getByRole("timer")).toBeVisible();
+  // Leaving a session is the two-step door: request, then confirm. The
+  // default tier's cooldown is 0, so the confirm enables immediately; the
+  // session ends and the summary replaces the live view.
   await page.getByRole("button", { name: "Abandon", exact: true }).click();
-  await expect(page.getByText("A focus session is running.", { exact: true })).toBeHidden();
+  const confirm = page.getByRole("button", { name: "Confirm abandon" });
+  await expect(confirm).toBeEnabled();
+  await confirm.click();
+  await expect(page.getByRole("timer")).toBeHidden();
 });
-
 
 test("a non-canonical task parameter opens nothing and the canonical list still renders", async ({ page }) => {
   await page.goto("/neuralflow/work?view=list&task=task-architecture");
@@ -81,7 +97,9 @@ test("a non-canonical task parameter opens nothing and the canonical list still 
   await expect(page.getByRole("link", { name: "Start a focus session" })).toHaveCount(0);
 });
 
-test("the stone collection is the durable catalog: definitions are saved, and the ledger stays empty until a task completes", async ({ page }) => {
+test("the stone collection is the durable catalog: definitions are saved, and the ledger stays empty until a task completes", async ({
+  page,
+}) => {
   await page.goto("/apps/neuralflow/rewards");
   await waitSettled(page);
   await expect(page.getByRole("heading", { name: "Stone collection", exact: true })).toBeVisible();
