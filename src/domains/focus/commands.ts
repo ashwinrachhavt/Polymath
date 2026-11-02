@@ -7,6 +7,7 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { isUniqueViolation } from "@/lib/pg-errors";
+import { recordFocusReward } from "@/domains/gamification/commands";
 import { tasks } from "@/domains/work/schema";
 import { focusBlocklist, focusSessions, focusStrictness, type FocusStrictness } from "./schema";
 import { TIMEOUT_PAUSE_LIMIT, abandonRemainingSeconds, elapsedSecondsAt, timeoutAutoResumeAt } from "./strictness";
@@ -269,16 +270,23 @@ export async function finishFocusSession(auth: AuthContext, input: LiveTransitio
       // so a committed finish never loses its one shot; the handler decides
       // (deterministically) whether a party resolution justifies the run.
       // Deduped on the session id: a replayed finish cannot double-start.
-      if (!updated.taskId) return;
-      await tx
-        .insert(outboxEvents)
-        .values({
-          workspaceId: auth.workspaceId,
-          topic: "focus.follow_up_requested",
-          payload: { sessionId: updated.id },
-          dispatchKey: updated.id,
-        })
-        .onConflictDoNothing();
+      if (updated.taskId) {
+        await tx
+          .insert(outboxEvents)
+          .values({
+            workspaceId: auth.workspaceId,
+            topic: "focus.follow_up_requested",
+            payload: { sessionId: updated.id },
+            dispatchKey: updated.id,
+          })
+          .onConflictDoNothing();
+      }
+      // Spec §5: the finish is what pays. The award, the progress it moves,
+      // and the stones it unlocks ride this same transaction - a committed
+      // finish never lacks its reward, and a reward cannot exist without its
+      // finish. The abandon paths below never reach this hook: letting go
+      // earns nothing. Never throws for game reasons.
+      await recordFocusReward(tx, auth, updated);
     },
     outer,
     (current, now) => {

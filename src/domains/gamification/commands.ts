@@ -1,8 +1,10 @@
 import { and, eq, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
+import type { FocusStrictness } from "@/domains/focus/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { withTransaction } from "@/lib/db-transaction";
 import { isUniqueViolation } from "@/lib/pg-errors";
+import { FOCUS_RULE, focusPointsForSession } from "./rules";
 import { rewardDefinitions, rewardLedger } from "./schema";
 
 /*
@@ -58,7 +60,12 @@ export async function createRewardDefinition(auth: AuthContext, input: RewardDef
         .returning();
       await recordAudit(
         auth,
-        { action: "reward_definition.created", subjectType: "reward_definition", subjectId: definition.id, summary: `Reward defined: ${definition.key}` },
+        {
+          action: "reward_definition.created",
+          subjectType: "reward_definition",
+          subjectId: definition.id,
+          summary: `Reward defined: ${definition.key}`,
+        },
         tx,
       );
       return definition;
@@ -103,7 +110,12 @@ export async function updateRewardDefinition(
     }
     await recordAudit(
       auth,
-      { action: "reward_definition.updated", subjectType: "reward_definition", subjectId: updated.id, summary: `Reward updated: ${updated.key}` },
+      {
+        action: "reward_definition.updated",
+        subjectType: "reward_definition",
+        subjectId: updated.id,
+        summary: `Reward updated: ${updated.key}`,
+      },
       tx,
     );
     return updated;
@@ -119,7 +131,8 @@ export async function awardReward(
   auth: AuthContext,
   input: {
     definitionKey: string;
-    reason: "outcome_completed" | "focus_completed" | "task_completed" | "review_decided" | "weekly_review" | "adjustment";
+    reason:
+      "outcome_completed" | "focus_completed" | "task_completed" | "review_decided" | "weekly_review" | "adjustment";
     idempotencyKey: string;
     subjectType?: string | null;
     subjectId?: string | null;
@@ -150,7 +163,12 @@ export async function awardReward(
         .returning();
       await recordAudit(
         auth,
-        { action: "reward.awarded", subjectType: "reward_ledger", subjectId: entry.id, summary: `Reward earned: ${definition.key} (${input.reason})` },
+        {
+          action: "reward.awarded",
+          subjectType: "reward_ledger",
+          subjectId: entry.id,
+          summary: `Reward earned: ${definition.key} (${input.reason})`,
+        },
         tx,
       );
       return entry;
@@ -219,7 +237,12 @@ async function ensureDefinition(
  * Called from task completion, inside the same transaction. Never throws for
  * game reasons: a disabled definition or an already-awarded day simply skips.
  */
-export async function recordDailyQuartz(tx: TxDrizzle, auth: AuthContext, taskId: string, note?: string): Promise<boolean> {
+export async function recordDailyQuartz(
+  tx: TxDrizzle,
+  auth: AuthContext,
+  taskId: string,
+  note?: string,
+): Promise<boolean> {
   const rows = await tx.execute(sql`
     select to_char(timezone(coalesce(
       (select timezone from user_preferences where workspace_id = ${auth.workspaceId} and user_id = ${auth.userId} limit 1),
@@ -297,7 +320,70 @@ export async function recordLearningReview(
   if (!entry) return false;
   await recordAudit(
     auth,
-    { action: "reward.awarded", subjectType: "reward_ledger", subjectId: entry.id, summary: `Learning stone earned (${LEARNING_REVIEWED.label})` },
+    {
+      action: "reward.awarded",
+      subjectType: "reward_ledger",
+      subjectId: entry.id,
+      summary: `Learning stone earned (${LEARNING_REVIEWED.label})`,
+    },
+    tx,
+  );
+  return true;
+}
+
+/*
+ * Spec §5: focus pays on the finish. Points are earned per session, not per
+ * day: whole 10-minute units of banked focus, multiplied by how strictly the
+ * session was held. The idempotency key names the session, so a replayed
+ * finish is a silent skip, and the definition carries no static price - the
+ * ledger row's points are the computed award.
+ */
+export type FocusRewardSession = {
+  id: string;
+  accumulatedSeconds: number;
+  strictness: FocusStrictness;
+};
+
+/**
+ * Called from finishFocusSession, inside the finish's own transaction. Never
+ * throws for game reasons: a disabled definition, a replayed finish, or a
+ * session with no banked time simply skips. Returns whether this call wrote
+ * the award.
+ */
+export async function recordFocusReward(
+  tx: TxDrizzle,
+  auth: AuthContext,
+  session: FocusRewardSession,
+): Promise<boolean> {
+  const points = focusPointsForSession(session.accumulatedSeconds, session.strictness);
+  if (points <= 0) return false;
+
+  const definition = await ensureDefinition(tx, auth, { ...FOCUS_RULE, kind: "points", points: 0 });
+  if (!definition || !definition.active) return false;
+
+  const [entry] = await tx
+    .insert(rewardLedger)
+    .values({
+      workspaceId: auth.workspaceId,
+      rewardDefinitionId: definition.id,
+      userId: auth.userId,
+      reason: "focus_completed",
+      subjectType: "focus_session",
+      subjectId: session.id,
+      points,
+      idempotencyKey: `focus:${session.id}`,
+    })
+    .onConflictDoNothing({ target: [rewardLedger.workspaceId, rewardLedger.idempotencyKey] })
+    .returning();
+  if (!entry) return false;
+  await recordAudit(
+    auth,
+    {
+      action: "reward.awarded",
+      subjectType: "reward_ledger",
+      subjectId: entry.id,
+      summary: `Focus earned (${points} pts, ${session.strictness})`,
+    },
     tx,
   );
   return true;
@@ -339,7 +425,9 @@ export async function claimShard(auth: AuthContext) {
     const row = (rows as unknown as Array<{ stones: number; claimed: number }>)[0] ?? { stones: 0, claimed: 0 };
     const claimable = Math.floor(row.stones / STONES_PER_SHARD) - row.claimed;
     if (claimable < 1) {
-      throw new ConflictError(`No shard to claim yet - ${STONES_PER_SHARD - (row.stones % STONES_PER_SHARD)} more stone(s) to the next one.`);
+      throw new ConflictError(
+        `No shard to claim yet - ${STONES_PER_SHARD - (row.stones % STONES_PER_SHARD)} more stone(s) to the next one.`,
+      );
     }
 
     try {
@@ -358,7 +446,12 @@ export async function claimShard(auth: AuthContext) {
         .returning();
       await recordAudit(
         auth,
-        { action: "reward.shard_claimed", subjectType: "reward_ledger", subjectId: entry.id, summary: `Shard claimed (${row.claimed + 1})` },
+        {
+          action: "reward.shard_claimed",
+          subjectType: "reward_ledger",
+          subjectId: entry.id,
+          summary: `Shard claimed (${row.claimed + 1})`,
+        },
         tx,
       );
       return entry;
