@@ -6,9 +6,11 @@ import { ABANDON_COOLDOWN_SECONDS, TIMEOUT_PAUSE_CAP_SECONDS, TIMEOUT_PAUSE_LIMI
 import {
   getActiveFocusSessionForPage,
   getLastTaskHandoffForPage,
+  listFocusBlocklistForPage,
   listFocusHistoryForPage,
   listWorkRowsForPage,
 } from "../work/data";
+import { BlocklistEditor } from "./blocklist-editor";
 import { LiveSession } from "./live-session";
 import { FocusSetup } from "./setup-form";
 import { ClosedSummary } from "./summary";
@@ -50,10 +52,11 @@ export default async function FocusPage() {
   // Per-user data: render at request time, never prerender.
   await io();
   const auth = await getAuthContext();
-  const [activeSession, openRows, history] = await Promise.all([
+  const [activeSession, openRows, history, blocklist] = await Promise.all([
     getActiveFocusSessionForPage(auth),
     listWorkRowsForPage(auth, "open"),
     listFocusHistoryForPage(auth, 8),
+    listFocusBlocklistForPage(auth),
   ]);
   const latest = history[0] ?? null;
   const [handoff, followUp] = await Promise.all([
@@ -79,11 +82,16 @@ export default async function FocusPage() {
             plannedMinutes: activeSession.plannedMinutes,
             elapsedSeconds: activeSession.elapsedSeconds,
             version: activeSession.version,
+            abandonRequestedAt: activeSession.abandonRequestedAt,
           }}
+          cooldownSeconds={ABANDON_COOLDOWN_SECONDS[activeSession.strictness]}
           handoff={handoff}
         />
       ) : (
-        <FocusSetup tasks={openRows.map((row) => ({ id: row.id, title: row.title }))} tiers={tierOptions} />
+        <>
+          <FocusSetup tasks={openRows.map((row) => ({ id: row.id, title: row.title }))} tiers={tierOptions} />
+          <BlocklistEditor entries={blocklist} />
+        </>
       )}
       {!activeSession && latestClosed ? <ClosedSummary session={latestClosed} followUp={followUp} /> : null}
     </Screen>

@@ -7,7 +7,13 @@ import { Input } from "@/components/ui/input";
 import { Field } from "@/components/workspace/ui";
 import { FormingStone, StoneStage } from "@/components/products/neuralflow/stone-art";
 import { formingProgress, stoneForReward } from "@/components/products/neuralflow/stones";
-import { abandonSessionAction, finishSessionAction, pauseSessionAction, resumeSessionAction } from "../work/actions";
+import {
+  confirmAbandonSessionAction,
+  finishSessionAction,
+  pauseSessionAction,
+  requestAbandonSessionAction,
+  resumeSessionAction,
+} from "../work/actions";
 
 /*
  * The live session's controls (spec §3) - ActiveSessionControls, absorbed
@@ -39,6 +45,8 @@ type LiveSessionData = {
    * with key={id:version} after every transition, rebasing the ticker. */
   elapsedSeconds: number;
   version: number;
+  /** Set once the abandon door has been requested (spec §2); null until then. */
+  abandonRequestedAt: Date | null;
 };
 
 const tierLabels: Record<LiveSessionData["strictness"], string> = {
@@ -49,7 +57,15 @@ const tierLabels: Record<LiveSessionData["strictness"], string> = {
 
 const clarityStone = stoneForReward("Clarity stone");
 
-export function LiveSession({ session, handoff }: { session: LiveSessionData; handoff: { nextStep: string } | null }) {
+export function LiveSession({
+  session,
+  handoff,
+  cooldownSeconds,
+}: {
+  session: LiveSessionData;
+  handoff: { nextStep: string } | null;
+  cooldownSeconds: number;
+}) {
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   // The OS-level motion preference; the stage's sheen honours it like the preview screens do.
@@ -68,6 +84,20 @@ export function LiveSession({ session, handoff }: { session: LiveSessionData; ha
   const plannedSeconds = session.plannedMinutes != null ? session.plannedMinutes * 60 : 25 * 60;
   const hasTask = Boolean(session.taskId);
   const deep = session.strictness === "deep";
+
+  // The abandon door's countdown. The server owns the real check - a confirm
+  // that arrives early gets the guard's error - this only keeps the button
+  // honest between renders.
+  const requestedAt = session.abandonRequestedAt;
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    if (!requestedAt) return;
+    const timer = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [requestedAt]);
+  const abandonRemaining = requestedAt
+    ? Math.max(0, cooldownSeconds - Math.floor((nowMs - requestedAt.getTime()) / 1000))
+    : 0;
 
   const act = (
     action: (input: unknown) => Promise<{ ok: true } | { ok: false; error: string }>,
@@ -165,9 +195,31 @@ export function LiveSession({ session, handoff }: { session: LiveSessionData; ha
               Finish
             </Button>
           )}
-          <Button variant="ghost" disabled={pending} onClick={() => act(abandonSessionAction)}>
-            Abandon
-          </Button>
+          {requestedAt ? (
+            <div className="w-full rounded-lg border border-dashed border-border p-3">
+              <p className="text-[13px] font-medium">Abandon requested</p>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                Nothing is lost while the door is open - the timer keeps running. The state is in Postgres, not a modal,
+                so closing this tab changes nothing.
+              </p>
+              <div className="mt-2 flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  disabled={pending || abandonRemaining > 0}
+                  onClick={() => act(confirmAbandonSessionAction)}
+                >
+                  Confirm abandon
+                </Button>
+                <span className="text-xs text-muted-foreground">
+                  {abandonRemaining > 0 ? `You can abandon in ${abandonRemaining}s` : "The door is open."}
+                </span>
+              </div>
+            </div>
+          ) : (
+            <Button variant="ghost" disabled={pending} onClick={() => act(requestAbandonSessionAction)}>
+              Abandon
+            </Button>
+          )}
         </div>
         {error ? (
           <p className="text-destructive text-[13px]" role="alert">

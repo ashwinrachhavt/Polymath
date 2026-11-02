@@ -18,13 +18,17 @@ import {
   updateTask,
 } from "@/domains/work/task-commands";
 import {
-  abandonFocusSession,
+  archiveFocusBlocklistEntry,
   ConflictError as FocusConflictError,
+  createFocusBlocklistEntry,
   finishFocusSession,
   pauseFocusSession,
+  requestAbandonFocusSession,
+  confirmAbandonFocusSession,
   resumeFocusSession,
   StaleWriteError as FocusStaleWriteError,
   startFocusSession,
+  updateFocusBlocklistEntry,
 } from "@/domains/focus/commands";
 import { focusStrictness } from "@/domains/focus/schema";
 import { markSeedCommitted, dismissSeed } from "@/domains/work/seeds";
@@ -222,9 +226,7 @@ export async function completeTaskAction(taskId: string, sentence?: string): Pro
  */
 const bulkCompleteInput = z.array(z.string().uuid()).min(1).max(100);
 
-export async function completeTasksAction(
-  taskIds: string[],
-): Promise<
+export async function completeTasksAction(taskIds: string[]): Promise<
   | {
       ok: true;
       completed: string[];
@@ -494,12 +496,90 @@ export async function finishSessionAction(input: unknown): Promise<FocusResult> 
   return { ok: true };
 }
 
-export async function abandonSessionAction(input: unknown): Promise<FocusResult> {
+/*
+ * The abandon door (spec §2): the first click requests it and the second,
+ * after a tier-scaled cooldown, completes it. Both are real transitions the
+ * server timestamps - the state lives in Postgres, not a modal, so closing
+ * the tab does not close the door. The one-shot abandon survives only on the
+ * machine API route, which the extension calls.
+ */
+export async function requestAbandonSessionAction(input: unknown): Promise<FocusResult> {
   const parsed = focusTransitionInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Reload and try again." };
   const auth = await authorize();
   try {
-    await abandonFocusSession(auth, { ...parsed.data, reason: parsed.data.reason || null });
+    await requestAbandonFocusSession(auth, { ...parsed.data, reason: parsed.data.reason || null });
+  } catch (error) {
+    return focusFail(error);
+  }
+  revalidateFocus(auth);
+  return { ok: true };
+}
+
+export async function confirmAbandonSessionAction(input: unknown): Promise<FocusResult> {
+  const parsed = focusTransitionInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Reload and try again." };
+  const auth = await authorize();
+  try {
+    await confirmAbandonFocusSession(auth, { ...parsed.data, reason: parsed.data.reason || null });
+  } catch (error) {
+    return focusFail(error);
+  }
+  revalidateFocus(auth);
+  return { ok: true };
+}
+
+/*
+ * Blocklist curation from the setup screen (spec §1). The commands own the
+ * canonicalization and the unique-key race; the actions only validate shape
+ * and map the domain's errors to messages.
+ */
+const blocklistCreateInput = z.object({
+  pattern: z.string().trim().min(1).max(300),
+  kind: z.enum(["block", "allow"]).optional(),
+});
+
+export async function createBlocklistEntryAction(input: unknown): Promise<FocusResult> {
+  const parsed = blocklistCreateInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Enter the site or pattern to add." };
+  const auth = await authorize();
+  try {
+    await createFocusBlocklistEntry(auth, parsed.data);
+  } catch (error) {
+    return focusFail(error);
+  }
+  revalidateFocus(auth);
+  return { ok: true };
+}
+
+const blocklistUpdateInput = z.object({
+  blockId: z.string().uuid(),
+  pattern: z.string().trim().min(1).max(300).optional(),
+  kind: z.enum(["block", "allow"]).optional(),
+});
+
+export async function updateBlocklistEntryAction(input: unknown): Promise<FocusResult> {
+  const parsed = blocklistUpdateInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Reload and try again." };
+  const auth = await authorize();
+  try {
+    await updateFocusBlocklistEntry(auth, parsed.data.blockId, {
+      ...(parsed.data.pattern !== undefined ? { pattern: parsed.data.pattern } : {}),
+      ...(parsed.data.kind !== undefined ? { kind: parsed.data.kind } : {}),
+    });
+  } catch (error) {
+    return focusFail(error);
+  }
+  revalidateFocus(auth);
+  return { ok: true };
+}
+
+export async function archiveBlocklistEntryAction(input: unknown): Promise<FocusResult> {
+  const parsed = z.object({ blockId: z.string().uuid() }).safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Reload and try again." };
+  const auth = await authorize();
+  try {
+    await archiveFocusBlocklistEntry(auth, parsed.data.blockId);
   } catch (error) {
     return focusFail(error);
   }
