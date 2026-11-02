@@ -68,3 +68,11 @@ mockups/
 # isolated worktrees spawned for parallel task execution. Neither is source.
 .superpowers/
 .claude/worktrees/
+
+# Drizzle snapshots: exactly one is tracked — the newest, matching the
+# journal's last entry (see scripts/check-snapshot-invariant.ts and
+# src/db/migrations/README.md). Rolling the baseline forward: flip the
+# exception to the new snapshot, `git add -f` it, and `git rm --cached`
+# the old one.
+src/db/migrations/meta/*_snapshot.json
+!src/db/migrations/meta/0270_snapshot.json

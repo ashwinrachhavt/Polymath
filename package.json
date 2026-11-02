@@ -24,6 +24,7 @@
     "seed:inventory": "tsx --env-file=.env scripts/seed/inventory.ts",
     "companion:pair": "tsx --env-file=.env scripts/pair-companion.ts",
     "check:migrations": "tsx scripts/check-migrations.ts",
+    "check:snapshot-invariant": "tsx scripts/check-snapshot-invariant.ts",
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm inventory:check && pnpm build",
     "prepare": "git config core.hooksPath scripts/hooks",
     "seed:taxonomy": "tsx --env-file=.env scripts/seed-taxonomy.ts",

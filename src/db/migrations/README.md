@@ -32,3 +32,39 @@ DATABASE_URL=<any> pnpm exec drizzle-kit generate --name probe
 
 New migrations still follow the normal flow: generate, review the SQL, number
 past every migration on an open PR, and append the journal entry.
+
+## The one-snapshot invariant
+
+Only the newest snapshot is tracked — the one matching the journal's last
+entry (currently `0270_snapshot.json`); every other snapshot under `meta/` is
+gitignored, which keeps ~13.4 MB of ~600k lines out of every checkout.
+Nothing reads the older snapshots: `drizzle-kit generate` diffs against the
+newest snapshot present, and everything else (`check:migrations`, CI's psql
+replay, the Vercel `drizzle-kit migrate`) reads the journal and SQL files
+only.
+
+`scripts/check-snapshot-invariant.ts` — run in CI next to the append-only
+guard — fails when the count of tracked snapshots is not exactly one, or when
+the tracked one is not the journal's last entry.
+
+When you generate a migration (say `0271`), roll the baseline forward:
+
+1. flip the `.gitignore` exception from `0270` to `0271`;
+2. `git rm --cached src/db/migrations/meta/0270_snapshot.json`;
+3. `git add -f src/db/migrations/meta/0271_snapshot.json`.
+
+`pnpm check:snapshot-invariant` catches each forgotten step.
+
+### The first db:generate after this change lands
+
+Stale local snapshots survive pulls: untracking removes them from the index,
+not the working tree, and they are now ignored. A local snapshot newer than
+the tracked baseline would silently become generate's diff base, so run the
+first `pnpm db:generate` in a clean tree — delete the stale files first:
+
+```
+git clean -fX src/db/migrations/meta
+```
+
+(`-X` removes only ignored files, so the tracked baseline and `_journal.json`
+survive.)
