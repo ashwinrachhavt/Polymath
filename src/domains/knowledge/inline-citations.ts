@@ -46,6 +46,20 @@ export function splitCitations(answer: string, citations: DocumentCitation[]): C
 }
 
 /**
+ * The indices into `citations` that an answer's markers actually resolve to:
+ * 0-based, deduplicated, ascending. The Sources strip filters on this, so it
+ * renders only passages the answer cited; a marker with no source behind it
+ * names nothing and is ignored here just as it is dropped in the prose.
+ */
+export function citedIndices(answer: string, citations: DocumentCitation[]): number[] {
+  const indices = new Set<number>();
+  for (const segment of splitCitations(answer, citations)) {
+    if (segment.type === "citation") indices.add(segment.index);
+  }
+  return [...indices].sort((a, b) => a - b);
+}
+
+/**
  * The prompt fragment that teaches the model the marker convention. Kept here
  * so the parser and the instruction cannot drift.
  */

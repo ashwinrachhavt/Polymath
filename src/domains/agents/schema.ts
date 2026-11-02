@@ -15,6 +15,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { mutable, primaryId, recorded, recordedBy, tenantId } from "../../db/columns";
+import type { AgentSource, SessionSummary } from "../../lib/agent-artifacts/types";
 import { blobObjects } from "../audit/schema";
 import { memberships } from "../identity/schema";
 // users comes from tables, not schema: identity/schema sits in a cycle with
@@ -681,6 +682,46 @@ export const repoCheckpoints = pgTable(
     index("repo_checkpoints_workspace_created_idx").on(t.workspaceId, t.createdAt),
     index("repo_checkpoints_run_idx").on(t.runId),
     check("repo_checkpoints_decision_status_check", sql`decision_status in ('recorded', 'inferred')`),
+  ],
+);
+
+/*
+ * Local agent sessions imported from the user's own Claude Code / Codex files
+ * (~/.claude, ~/.codex). One row per (workspace, source, session); a re-scan
+ * updates summary and timestamps in place and dedupes the raw bytes — never
+ * a duplicate row. Raw transcripts are stored as-received in
+ * audit.blob_objects and are never rendered or exported; the summary is
+ * redacted before it is persisted here.
+ */
+export const importedAgentSessions = pgTable(
+  "imported_agent_sessions",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    /** Which agent wrote the transcript. Read from the folder layout, never guessed. */
+    source: text("source").$type<AgentSource>().notNull(),
+    /** The agent's own session id (Claude Code sessionId / Codex thread id). */
+    externalSessionId: text("external_session_id").notNull(),
+    /** Project path from the transcript's cwd field — the slug directory is never decoded. */
+    cwd: text("cwd").notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    lastActivityAt: timestamp("last_activity_at", { withTimezone: true }),
+    /** Normalized, redacted session summary (SessionSummary). */
+    summary: jsonb("summary").$type<SessionSummary>().notNull(),
+    /** Raw transcript bytes, as-received, deduped by content hash. */
+    rawBlobId: uuid("raw_blob_id").references(() => blobObjects.id, { onDelete: "set null" }),
+    /** What the operator said the session was for, when they said it at all. */
+    decisionNote: text("decision_note"),
+    /** recorded: a human wrote decisionNote at scan time. inferred: no note was given. */
+    decisionStatus: text("decision_status").$type<"recorded" | "inferred">().notNull().default("inferred"),
+    ...mutable,
+  },
+  (t) => [
+    uniqueIndex("imported_agent_sessions_source_session_key").on(t.workspaceId, t.source, t.externalSessionId),
+    index("imported_agent_sessions_activity_idx").on(t.workspaceId, t.lastActivityAt),
+    index("imported_agent_sessions_cwd_idx").on(t.workspaceId, t.cwd),
+    check("imported_agent_sessions_source_check", sql.raw(`source in ('claude-code', 'codex')`)),
+    check("imported_agent_sessions_decision_status_check", sql`decision_status in ('recorded', 'inferred')`),
   ],
 );
 

@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { UnauthorizedError } from "@/lib/auth";
 
 /*
  * The settings preferences/profile actions share the API-key boundary rule:
@@ -22,19 +21,26 @@ vi.mock("@/lib/auth", async (importOriginal) => {
   return { ...original, getAuthContext };
 });
 
-import {
-  loadAssistantProfileAction,
-  loadPreferencesAction,
-  saveAssistantProfileAction,
-  savePreferencesAction,
-} from "@/app/(workspace)/settings/actions";
+let loadAssistantProfileAction: typeof import("@/app/(workspace)/settings/actions").loadAssistantProfileAction;
+let loadPreferencesAction: typeof import("@/app/(workspace)/settings/actions").loadPreferencesAction;
+let saveAssistantProfileAction: typeof import("@/app/(workspace)/settings/actions").saveAssistantProfileAction;
+let savePreferencesAction: typeof import("@/app/(workspace)/settings/actions").savePreferencesAction;
+let UnauthorizedError: typeof import("@/lib/auth").UnauthorizedError;
 
 const ownerAuth = { userId: "u", workspaceId: "w", role: "owner" as const };
 const RAW_DB_ERROR = new Error(
   'Failed query: select "id" from "user_preferences" where "workspace_id" = $1 params: f4327824-9579-4245-9f04-6fcc7bb673c6',
 );
 
-beforeEach(() => {
+beforeEach(async () => {
+  // Shared workers reuse the module registry across files: the actions and
+  // auth modules cached from another settings test would carry that file's
+  // mocks (and the wrong auth class identity). Re-import per test so this
+  // file's mocks win and the error class is the one the actions actually see.
+  vi.resetModules();
+  ({ loadAssistantProfileAction, loadPreferencesAction, saveAssistantProfileAction, savePreferencesAction } =
+    await import("@/app/(workspace)/settings/actions"));
+  ({ UnauthorizedError } = await import("@/lib/auth"));
   vi.clearAllMocks();
   vi.spyOn(console, "error").mockImplementation(() => undefined);
   getAuthContext.mockResolvedValue(ownerAuth);
