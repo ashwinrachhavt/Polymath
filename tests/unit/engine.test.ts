@@ -84,6 +84,7 @@ vi.mock("@/domains/spending/commands", () => ({
   releaseSpend: vi.fn(async () => {
     ops.push("release");
   }),
+  settleSpend: vi.fn(async () => ({ wasSettled: true })),
 }));
 
 vi.mock("@/domains/agents/runtime-persistence", () => ({
@@ -135,7 +136,11 @@ describe("engine", () => {
   it("start claims the reservation before the driver starts the session", async () => {
     const { driver } = fakeDriver();
 
-    const { runId, reservationId } = await createEngine(driver, undefined, vi.fn(async () => undefined)).start(startInput);
+    const { runId, reservationId } = await createEngine(
+      driver,
+      undefined,
+      vi.fn(async () => undefined),
+    ).start(startInput);
 
     expect(runId).toBe(RUN.id);
     expect(reservationId).toBe("rsv_1");
@@ -184,7 +189,13 @@ describe("engine", () => {
       action: "fail",
     });
 
-    await expect(createEngine(driver, undefined, vi.fn(async () => undefined)).start(startInput)).rejects.toThrow("Spend ceiling exceeded");
+    await expect(
+      createEngine(
+        driver,
+        undefined,
+        vi.fn(async () => undefined),
+      ).start(startInput),
+    ).rejects.toThrow("Spend ceiling exceeded");
     expect(driver.start).not.toHaveBeenCalled();
     // The run is closed as failed with the reason, not left live.
     expect(lastUpdateSet()).toEqual(
@@ -197,7 +208,13 @@ describe("engine", () => {
     driver.start.mockRejectedValueOnce(new Error("eve unreachable"));
     stubResults.execute = { rows: [{ id: "rsv_7" }] };
 
-    await expect(createEngine(driver, undefined, vi.fn(async () => undefined)).start(startInput)).rejects.toThrow("eve unreachable");
+    await expect(
+      createEngine(
+        driver,
+        undefined,
+        vi.fn(async () => undefined),
+      ).start(startInput),
+    ).rejects.toThrow("eve unreachable");
 
     expect(lastUpdateSet()).toEqual(
       expect.objectContaining({
@@ -205,11 +222,7 @@ describe("engine", () => {
         error: expect.stringContaining("driver failed to start"),
       }),
     );
-    expect(releaseSpend).toHaveBeenCalledWith(
-      expect.anything(),
-      { workspaceId: WS },
-      { reservationId: "rsv_7" },
-    );
+    expect(releaseSpend).toHaveBeenCalledWith(expect.anything(), { workspaceId: WS }, { reservationId: "rsv_7" });
   });
 
   it("a cancel landing before the running flip wins: start refuses, hands back the budget, starts no session", async () => {
@@ -220,7 +233,13 @@ describe("engine", () => {
     // The reservation start just made is still open and must go back.
     stubResults.execute = { rows: [{ id: "rsv_5" }] };
 
-    await expect(createEngine(driver, undefined, vi.fn(async () => undefined)).start(startInput)).rejects.toThrow("cancelled before it started");
+    await expect(
+      createEngine(
+        driver,
+        undefined,
+        vi.fn(async () => undefined),
+      ).start(startInput),
+    ).rejects.toThrow("cancelled before it started");
 
     // No session for a run the user was told was cancelled.
     expect(driver.start).not.toHaveBeenCalled();
@@ -234,7 +253,13 @@ describe("engine", () => {
     driver.start.mockRejectedValueOnce(new Error("eve unreachable"));
     stubResults.execute = { rows: [{ id: "rsv_7" }] };
 
-    await expect(createEngine(driver, undefined, vi.fn(async () => undefined)).start(startInput)).rejects.toThrow("eve unreachable");
+    await expect(
+      createEngine(
+        driver,
+        undefined,
+        vi.fn(async () => undefined),
+      ).start(startInput),
+    ).rejects.toThrow("eve unreachable");
 
     // Both update writes on the start path — the queued→running flip and the
     // failRun close — are conditional on run state. Dropping the predicate is
@@ -246,7 +271,11 @@ describe("engine", () => {
 
   it("cancel is terminal-only-once: second cancel is a no-op", async () => {
     const { driver } = fakeDriver();
-    const engine = createEngine(driver, undefined, vi.fn(async () => undefined));
+    const engine = createEngine(
+      driver,
+      undefined,
+      vi.fn(async () => undefined),
+    );
 
     stubResults.select = { returning: [runningRun()] };
     await expect(engine.cancel(RUN.id, auth)).resolves.toEqual({ cancelled: true });
@@ -263,14 +292,22 @@ describe("engine", () => {
     stubResults.select = { returning: [runningRun()] };
     stubResults.execute = { rows: [{ id: "rsv_9" }] };
 
-    await createEngine(driver, undefined, vi.fn(async () => undefined)).cancel(RUN.id, auth);
+    await createEngine(
+      driver,
+      undefined,
+      vi.fn(async () => undefined),
+    ).cancel(RUN.id, auth);
 
     expect(releaseSpend).toHaveBeenCalledWith(expect.anything(), { workspaceId: WS }, { reservationId: "rsv_9" });
   });
 
   it("signal and resume do nothing on a terminal run", async () => {
     const { driver } = fakeDriver();
-    const engine = createEngine(driver, undefined, vi.fn(async () => undefined));
+    const engine = createEngine(
+      driver,
+      undefined,
+      vi.fn(async () => undefined),
+    );
     stubResults.select = { returning: [{ id: RUN.id, workspaceId: WS, state: "succeeded" }] };
 
     await engine.signal(RUN.id, "checkpoint", auth);
@@ -283,7 +320,13 @@ describe("engine", () => {
     const { driver } = fakeDriver();
     stubResults.select = { returning: [{ id: RUN.id, workspaceId: OTHER_WS, state: "running" }] };
 
-    await expect(createEngine(driver, undefined, vi.fn(async () => undefined)).cancel(RUN.id, auth)).rejects.toThrow("run not found in workspace");
+    await expect(
+      createEngine(
+        driver,
+        undefined,
+        vi.fn(async () => undefined),
+      ).cancel(RUN.id, auth),
+    ).rejects.toThrow("run not found in workspace");
     expect(driver.cancel).not.toHaveBeenCalled();
   });
 });

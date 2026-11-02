@@ -2,8 +2,15 @@ import { outboxEvents } from "@/domains/audit/schema";
 import { queueThreadSync } from "@/domains/knowledge/thread-sync-event";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { settleSpend } from "@/domains/spending/commands";
-import { reportedCostFromUsage, resolvePricing, tokensFromUsage, type PricedUsage } from "@/domains/spending/pricing";
+import {
+  reportedCostFromUsage,
+  resolvePricing,
+  tokensFromUsage,
+  type PricedUsage,
+  type PricingState,
+} from "@/domains/spending/pricing";
 import { findEffectiveRateCard } from "@/domains/spending/queries";
+import { decideSettlement, type SettlementState } from "@/domains/spending/settlement";
 import { db } from "@/lib/db";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { agentQuestions, agentRuns, messages, runEvents, threads, toolCalls } from "./schema";
@@ -352,14 +359,107 @@ export async function mirrorMessage(input: {
   });
 }
 
-/** The accumulated usage across a run's `usage` events, summed as numeric in SQL. */
-type UsageTotals = {
-  usd: string;
+/*
+ * The accumulated usage across a run's `usage` events, aggregated as numeric
+ * in SQL. `priced` counts events carrying a resolved figure, from either
+ * source: the `data.pricing` stamp PR-4's ingestion writes (a
+ * `provider-reported` gateway cost, a card estimate, a known zero, or a manual
+ * reconciliation) or a raw provider-reported `costUsd` in the payload itself —
+ * runs predating the stamp (or without a frozen model) still reported real
+ * money, and a known figure is never discarded in favor of the estimate. Only
+ * events with no figure anywhere are unpriced.
+ */
+type UsageAggregate = {
+  priced_usd: string;
+  usage_events: number;
+  priced_events: number;
+  state_provider_reported: number;
+  state_estimated: number;
+  state_confirmed_zero: number;
+  state_reconciled: number;
   input_tokens: number;
   output_tokens: number;
   cache_read_tokens: number;
   cache_write_tokens: number;
 };
+
+/** What a settlement carries: the figure, its state, and the usage row payload. */
+export interface RunSettlement {
+  actualUsd: string;
+  state: SettlementState;
+  usage: Record<string, unknown>;
+}
+
+/**
+ * Computes a run's settlement inputs by the close rule (PR-5, Pino's
+ * settle-at-estimate call): every event priced → the priced sum; any unpriced
+ * usage → the reservation estimate, state `estimated`; no usage events at all
+ * → zero, state `confirmed-zero`. Unknown cost is never settled as zero, and
+ * the caller (closeRun, the engine's cancel/dead-session paths) hands the
+ * result to settleSpend.
+ *
+ * `reservedUsd` is the open reservation's estimate — read from the
+ * reservation row the caller is about to settle, so the figure settled is the
+ * figure that was held.
+ */
+export async function runSettlement(
+  tx: TxDrizzle,
+  input: { runId: string; workspaceId: string; reservedUsd: string },
+): Promise<RunSettlement> {
+  const totals = firstRow<UsageAggregate>(
+    await tx.execute(sql`
+      select
+        coalesce(sum(coalesce(nullif(data->'pricing'->>'usd', ''),
+                             case when data->>'costUsd' ~ '^[0-9]+([.][0-9]+)?$' then data->>'costUsd' end
+                           )::numeric), 0)::text as priced_usd,
+        count(*)::int as usage_events,
+        count(coalesce(nullif(data->'pricing'->>'usd', ''),
+                       case when data->>'costUsd' ~ '^[0-9]+([.][0-9]+)?$' then data->>'costUsd' end))::int as priced_events,
+        coalesce(sum(case when data->'pricing'->>'state' = 'provider-reported' then 1 else 0 end), 0)::int as state_provider_reported,
+        coalesce(sum(case when data->'pricing'->>'state' = 'estimated' then 1 else 0 end), 0)::int as state_estimated,
+        coalesce(sum(case when data->'pricing'->>'state' = 'confirmed-zero' then 1 else 0 end), 0)::int as state_confirmed_zero,
+        coalesce(sum(case when data->'pricing'->>'state' = 'reconciled' then 1 else 0 end), 0)::int as state_reconciled,
+        coalesce(sum((data->>'inputTokens')::bigint), 0)::int as input_tokens,
+        coalesce(sum((data->>'outputTokens')::bigint), 0)::int as output_tokens,
+        coalesce(sum((data->>'cacheReadTokens')::bigint), 0)::int as cache_read_tokens,
+        coalesce(sum((data->>'cacheWriteTokens')::bigint), 0)::int as cache_write_tokens
+      from run_events
+      where run_id = ${input.runId} and workspace_id = ${input.workspaceId} and type = 'usage'
+    `),
+  );
+
+  const usageEvents = totals?.usage_events ?? 0;
+  const pricedEvents = totals?.priced_events ?? 0;
+  const unpricedEvents = usageEvents - pricedEvents;
+
+  const decision = decideSettlement({
+    usageEvents,
+    pricedEvents,
+    pricedUsd: totals?.priced_usd ?? "0",
+    reservedUsd: input.reservedUsd,
+  });
+
+  // The settlement row's usage payload: the token counts, the settled figure,
+  // the state it settled in, and how each event was priced (or why it was
+  // not). `unpriced` also counts pre-stamp rows with no pricing key at all.
+  const usage = {
+    inputTokens: totals?.input_tokens ?? 0,
+    outputTokens: totals?.output_tokens ?? 0,
+    cacheReadTokens: totals?.cache_read_tokens ?? 0,
+    cacheWriteTokens: totals?.cache_write_tokens ?? 0,
+    costUsd: decision.actualUsd,
+    pricingState: decision.state,
+    stateMix: {
+      "provider-reported": totals?.state_provider_reported ?? 0,
+      estimated: totals?.state_estimated ?? 0,
+      "confirmed-zero": totals?.state_confirmed_zero ?? 0,
+      reconciled: totals?.state_reconciled ?? 0,
+      unpriced: unpricedEvents,
+    } satisfies Record<PricingState, number>,
+  };
+
+  return { actualUsd: decision.actualUsd, state: decision.state, usage };
+}
 
 /**
  * A finished turn parks the run as waiting for the owner's next message rather
@@ -410,6 +510,10 @@ export async function parkRunForReview(input: { workspaceId: string; runId: stri
  * The flip is conditional on an active state, so terminal states stay
  * immutable — a second close matches no row and writes nothing, which is also
  * what makes the settle idempotent (there is no second path to the reservation).
+ *
+ * The settlement follows the close rule (PR-5): all usage priced → the priced
+ * sum; any unpriced usage → the reservation estimate, state `estimated`; no
+ * usage events → zero, state `confirmed-zero`. Unknown cost is never zero.
  */
 export async function closeRun(input: {
   workspaceId: string;
@@ -447,23 +551,10 @@ export async function closeRun(input: {
       data: { summary: input.summary ?? null },
     });
 
-    const totals = firstRow<UsageTotals>(
+    const open = firstRow<{ id: string; reserved_usd: string }>(
       await tx.execute(sql`
-        select
-          coalesce(sum((data->>'costUsd')::numeric), 0)::text as usd,
-          coalesce(sum((data->>'inputTokens')::bigint), 0)::int as input_tokens,
-          coalesce(sum((data->>'outputTokens')::bigint), 0)::int as output_tokens,
-          coalesce(sum((data->>'cacheReadTokens')::bigint), 0)::int as cache_read_tokens,
-          coalesce(sum((data->>'cacheWriteTokens')::bigint), 0)::int as cache_write_tokens
-        from run_events
-        where run_id = ${input.runId} and type = 'usage'
-      `),
-    );
-    const actualUsd = totals?.usd ?? "0";
-
-    const open = firstRow<{ id: string }>(
-      await tx.execute(sql`
-        select id from spending_reservations
+        select id, reserved_usd::text as reserved_usd
+        from spending_reservations
         where run_id = ${input.runId}
           and workspace_id = ${input.workspaceId}
           and status = 'reserved'
@@ -475,22 +566,21 @@ export async function closeRun(input: {
     if (open) {
       // Scoped to the workspace and guarded on status = 'reserved' inside
       // settleSpend, so a released or already-settled claim is a no-op.
+      const settlement = await runSettlement(tx, {
+        runId: input.runId,
+        workspaceId: input.workspaceId,
+        reservedUsd: open.reserved_usd,
+      });
       const settled = await settleSpend(
         tx,
         { workspaceId: input.workspaceId },
         {
           reservationId: open.id,
-          actualUsd,
-          usage: {
-            inputTokens: totals?.input_tokens ?? 0,
-            outputTokens: totals?.output_tokens ?? 0,
-            cacheReadTokens: totals?.cache_read_tokens ?? 0,
-            cacheWriteTokens: totals?.cache_write_tokens ?? 0,
-            costUsd: actualUsd,
-          },
+          actualUsd: settlement.actualUsd,
+          usage: settlement.usage,
         },
       );
-      if (settled.wasSettled) settledUsd = actualUsd;
+      if (settled.wasSettled) settledUsd = settlement.actualUsd;
     }
 
     // A succeeded run earns its self-critique pass (ASH-304). Enqueued in
