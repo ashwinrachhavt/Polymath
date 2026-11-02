@@ -92,6 +92,7 @@ export function chatMessages(input: GenerateInput): { role: "system" | "user"; c
 import { cloudflareProvider } from "./cloudflare";
 import { fixtureProvider } from "./fixture";
 import { geminiProvider } from "./gemini";
+import { headroomFetch } from "../headroom/client";
 import { mercuryProvider } from "./mercury";
 import { openRouterProvider } from "./openrouter";
 
@@ -99,6 +100,11 @@ export function generationProvider(
   env: Record<string, string | undefined> = process.env,
   fetchImpl: typeof fetch = fetch,
 ): GenerationProvider {
+  // Headroom compression (spec PR-3) rides the one funnel every catalog
+  // provider shares. With HEADROOM_BASE_URL unset this is fetchImpl itself,
+  // so every branch below hands its adapter exactly the fetch it handed
+  // before — byte-identical when the gate is off, even for injected doubles.
+  const wiredFetch = headroomFetch(env, fetchImpl);
   const choice = env.GENERATION_PROVIDER?.toLowerCase();
   switch (choice) {
     // E2E journeys only: deterministic and free, explicit opt-in, never a
@@ -109,14 +115,14 @@ export function generationProvider(
       if (env.NODE_ENV === "production") throw new GenerationUnconfiguredError();
       return fixtureProvider();
     case "gemini":
-      return geminiProvider(env, fetchImpl);
+      return geminiProvider(env, wiredFetch);
     case "mercury":
-      return mercuryProvider(env, fetchImpl);
+      return mercuryProvider(env, wiredFetch);
     case "openrouter":
-      return openRouterProvider(env, fetchImpl);
+      return openRouterProvider(env, wiredFetch);
     // Opt-in only (plan §8): the free-first default chain above is untouched.
     case "cloudflare":
-      return cloudflareProvider(env, fetchImpl);
+      return cloudflareProvider(env, wiredFetch);
     case undefined:
     case "":
       // Free-first (ASH-187, owner decision 2026-10-27; Mercury added first on
@@ -125,9 +131,9 @@ export function generationProvider(
       // OpenRouter remains last so a workspace that has only that key still
       // generates. No route rescues another mid-run: an exhausted allowance is
       // an error the caller surfaces.
-      if (env.MERCURY_API_KEY || env.INCEPTION_API_KEY) return mercuryProvider(env, fetchImpl);
-      if (env.GEMINI_API_KEY || env.GOOGLE_GENERATIVE_AI_API_KEY) return geminiProvider(env, fetchImpl);
-      if (env.OPENROUTER_API_KEY) return openRouterProvider(env, fetchImpl);
+      if (env.MERCURY_API_KEY || env.INCEPTION_API_KEY) return mercuryProvider(env, wiredFetch);
+      if (env.GEMINI_API_KEY || env.GOOGLE_GENERATIVE_AI_API_KEY) return geminiProvider(env, wiredFetch);
+      if (env.OPENROUTER_API_KEY) return openRouterProvider(env, wiredFetch);
       throw new GenerationUnconfiguredError();
     default:
       throw new GenerationUnconfiguredError();
@@ -182,7 +188,10 @@ export function metered(
       // forwarded: the chunk contract downstream stays thinking | token.
       let usage: GenerationUsage | undefined;
       for await (const chunk of inner(input)) {
-        if (chunk.type === "usage") { usage = chunk.usage; continue; }
+        if (chunk.type === "usage") {
+          usage = chunk.usage;
+          continue;
+        }
         yield chunk;
       }
       await record({
