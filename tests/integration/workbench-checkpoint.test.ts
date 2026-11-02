@@ -5,10 +5,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { agentProfiles, agentRuns, repoCheckpoints } from "@/domains/agents/schema";
+import { getRunChangeBrief } from "@/domains/agents/change-brief-queries";
+import { projects } from "@/domains/work/schema";
 import { auditEvents, blobObjects } from "@/domains/audit/schema";
 import { artifactLinks, artifactVersions, artifacts } from "@/domains/knowledge/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
-import { CAPTURE_DISCLOSURE, buildCapturePlan, collectGitState } from "../../scripts/workbench/capture-core";
+import { CAPTURE_DISCLOSURE, RATIONALE_INFERRED, buildCapturePlan, collectGitState } from "../../scripts/workbench/capture-core";
 
 /*
  * Blob-dedupe integration: the same diff bytes must reuse one blob_objects
@@ -170,5 +172,92 @@ suite("workbench checkpoint capture", () => {
     expect(artifact.producedByRunId).toBeNull();
     const links = await holder.db!.select().from(artifactLinks).where(eq(artifactLinks.artifactId, artifact.id));
     expect(links).toHaveLength(0);
+  });
+
+  /** A fixture repo whose diff one file from `from` to `to`; shell-made via sed, like makePlan. */
+  async function fixtureState(variant: string, from = "before", to = "after") {
+    const repoPath = mkdtempSync(join(tmpdir(), "wb-brief-"));
+    git(repoPath, "init", "-b", "main");
+    git(repoPath, "config", "user.email", "fixture@example.com");
+    git(repoPath, "config", "user.name", "Fixture");
+    const filePath = join(repoPath, "app.ts");
+    writeFileSync(filePath, `export const value = '${from}'; // ${variant}\n`);
+    git(repoPath, "add", ".");
+    git(repoPath, "commit", "-m", "base");
+    const baseSha = git(repoPath, "rev-parse", "HEAD").trim();
+    execFileSync("sed", ["-i", `s/${from}/${to}/`, filePath]);
+    git(repoPath, "add", ".");
+    git(repoPath, "commit", "-m", "shell-made change");
+    return collectGitState({ repoPath, baseSha });
+  }
+
+  it("serves the brief read path from the stored checkpoint, project subject, and persisted links", async () => {
+    const runId = await createRun("brief read path");
+    const [project] = await holder.db!
+      .insert(projects)
+      .values({ workspaceId: auth.workspaceId, name: "Brief read path", intendedOutcome: "The brief renders from stored rows.", createdBy: auth.userId, updatedBy: auth.userId })
+      .returning();
+    await holder.db!.update(agentRuns).set({ subjects: [{ type: "project", id: project.id }] }).where(eq(agentRuns.id, runId));
+    const state = await fixtureState("read-path");
+    const plan = await buildCapturePlan({
+      state,
+      workspaceId: auth.workspaceId,
+      runId,
+      testResults: [
+        { name: "brief renders", ok: true, runAt: "2026-11-02T00:00:00.000Z" },
+        { name: "brief flags unchecked failures", ok: false, runAt: "2026-11-02T00:00:00.000Z" },
+      ],
+      decisionNote: "Ship behind the flag.",
+      decisionStatus: "recorded",
+    });
+    const result = await holder.db!.transaction((tx) => captureToWorkspace(auth, plan, tx));
+
+    const data = await getRunChangeBrief(auth.workspaceId, runId);
+    expect(data).not.toBeNull();
+    expect(data!.project).toEqual({ name: "Brief read path", intendedOutcome: "The brief renders from stored rows." });
+    expect(data!.tests).toHaveLength(2);
+    expect(data!.tests!.some((t) => !t.ok)).toBe(true);
+    expect(data!.diffText).toContain("export const value = 'after'");
+    expect(data!.diffText).toContain("-export const value = 'before'");
+    expect(data!.decisionLine).toContain("Ship behind the flag.");
+    expect(data!.areas[0]).toMatchObject({ area: "(root)", paths: ["app.ts"] });
+    expect(data!.tierCounts.grounded).toBeGreaterThanOrEqual(3);
+    expect(data!.checkpoint.decisionStatus).toBe("recorded");
+
+    // The persisted shape the panel depends on: the brief artifact links to the
+    // run with reason "explains", and the run is credited as its producer. An
+    // orphan brief (no link, no producedByRunId) is the failure this pins.
+    const links = await holder.db!
+      .select()
+      .from(artifactLinks)
+      .where(and(eq(artifactLinks.artifactId, result.artifactId), eq(artifactLinks.targetType, "run"), eq(artifactLinks.targetId, runId)));
+    expect(links).toHaveLength(1);
+    expect(links[0].linkType).toBe("explains");
+    const [artifact] = await holder.db!.select().from(artifacts).where(eq(artifacts.id, result.artifactId));
+    expect(artifact.producedByRunId).toBe(runId);
+  });
+
+  it("reports the inferred fallback and honest absences when capture had nothing recorded", async () => {
+    const runId = await createRun("brief absences");
+    const state = await fixtureState("absences");
+    const plan = await buildCapturePlan({
+      state,
+      workspaceId: auth.workspaceId,
+      runId,
+      // The script's shape when no --test-results file was given: an empty list
+      // that the DB write converts to null, which the read path must report as
+      // "no tests on record".
+      testResults: [],
+      decisionNote: null,
+      decisionStatus: "inferred",
+    });
+    await holder.db!.transaction((tx) => captureToWorkspace(auth, plan, tx));
+
+    const data = await getRunChangeBrief(auth.workspaceId, runId);
+    expect(data).not.toBeNull();
+    expect(data!.decisionLine).toBe(RATIONALE_INFERRED);
+    expect(data!.project).toBeNull();
+    expect(data!.tests).toBeNull();
+    expect(data!.diffText).toContain("export const value = 'after'");
   });
 });
