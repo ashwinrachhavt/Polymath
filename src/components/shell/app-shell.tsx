@@ -7,7 +7,7 @@ import { PreviewStorageWarning, WorkspaceProvider } from "@/components/workspace
 import { SideNav } from "@/components/shell/side-nav";
 import { MobileNav } from "@/components/shell/mobile-nav";
 import { TopBar } from "@/components/shell/top-bar";
-import type { NotificationFeed } from "@/domains/notifications/feed";
+import type { TriageFeed } from "@/domains/notifications/feed";
 import { isConversationSurface, isBrowserPreviewPath } from "@/lib/navigation";
 import { FocusDock } from "@/components/shell/focus-dock";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -38,10 +38,14 @@ export function AppShell({
   storageScope?: string;
   clerkConfigured?: boolean;
   interfaceMode?: "library" | "action";
-  notifications: NotificationFeed;
+  notifications: TriageFeed;
 }) {
   const pathname = usePathname();
-  const hydrated = useSyncExternalStore(subscribeToHydration, () => true, () => false);
+  const hydrated = useSyncExternalStore(
+    subscribeToHydration,
+    () => true,
+    () => false,
+  );
   // Browser-preview records live in localStorage; rendering the server's empty
   // snapshot first flashed stale rows before the stored workspace replaced them.
   const waitingForStorage = !hydrated && isBrowserPreviewPath(pathname);
@@ -49,7 +53,9 @@ export function AppShell({
 
   return (
     <WorkspaceProvider key={storageScope} storageScope={storageScope}>
-      <a href="#content" className="skip-link">Skip to content</a>
+      <a href="#content" className="skip-link">
+        Skip to content
+      </a>
       {/* ASH-312: the interface language scopes from one attribute; every
           density, typography and contrast token keys off it in globals.css. */}
       {/* The conversation surface scrolls inside its transcript, never as a
@@ -57,22 +63,18 @@ export function AppShell({
           .shell-conversation in globals.css), and everything below it is a
           min-h-0 flex chain the transcript's own overflow container fills. */}
       <div
-        className={cn(
-          "flex flex-1",
-          headerless ? "shell-conversation" : "min-h-dvh",
-        )}
+        className={cn("flex flex-1", headerless ? "shell-conversation" : "min-h-dvh")}
         data-interface-mode={interfaceMode}
       >
         <SideNav />
         <div className={cn("flex min-w-0 flex-1 flex-col", headerless && "min-h-0")}>
-          {!headerless ? <TopBar clerkConfigured={clerkConfigured} interfaceMode={interfaceMode} notifications={notifications} /> : null}
+          {!headerless ? (
+            <TopBar clerkConfigured={clerkConfigured} interfaceMode={interfaceMode} notifications={notifications} />
+          ) : null}
           <main
             id="content"
             tabIndex={-1}
-            className={cn(
-              "flex min-w-0 flex-1 flex-col",
-              headerless && "min-h-0 overflow-hidden [flex-basis:0px]",
-            )}
+            className={cn("flex min-w-0 flex-1 flex-col", headerless && "min-h-0 overflow-hidden [flex-basis:0px]")}
             /* Sticky headers anchor below the top bar where one exists; /polymath routes
                render no top bar, so their anchor is the window's own top. */
             style={{ "--topbar-h": headerless ? "0px" : "48px" } as React.CSSProperties}
@@ -81,7 +83,9 @@ export function AppShell({
             <PreviewStorageWarning />
             {waitingForStorage ? <PreviewSkeleton /> : null}
             {/* Still rendered while hidden so the segment stays server-rendered for instant navigation. */}
-            <div hidden={waitingForStorage} className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</div>
+            <div hidden={waitingForStorage} className="flex min-h-0 min-w-0 flex-1 flex-col">
+              {children}
+            </div>
             <FocusDock />
           </main>
           <MobileNav />
@@ -92,11 +96,19 @@ export function AppShell({
 }
 
 function PreviewSkeleton() {
-  return <div role="status" aria-label="Loading your browser preview" className="suite-screen">
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-2"><Skeleton className="h-6 w-40" /><Skeleton className="h-4 w-full max-w-xl" /></div>
-      <Skeleton className="h-24 w-full" />
-      <div className="grid gap-3 md:grid-cols-2"><Skeleton className="h-40" /><Skeleton className="h-40" /></div>
+  return (
+    <div role="status" aria-label="Loading your browser preview" className="suite-screen">
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-6 w-40" />
+          <Skeleton className="h-4 w-full max-w-xl" />
+        </div>
+        <Skeleton className="h-24 w-full" />
+        <div className="grid gap-3 md:grid-cols-2">
+          <Skeleton className="h-40" />
+          <Skeleton className="h-40" />
+        </div>
+      </div>
     </div>
-  </div>;
+  );
 }

@@ -41,6 +41,8 @@ export type NotificationCardProps = NotificationCardBase &
     | {
         kind: "question";
         questionText: string;
+        /** The specific missing input the agent supplied alongside the prompt. */
+        context?: string | null;
         /** Submits the one-line answer; the run resumes (PR3 wires the action). */
         onReply: (answer: string) => void;
         onDismiss: () => void;
@@ -63,6 +65,8 @@ export type NotificationCardProps = NotificationCardBase &
         title: string;
         /** The agent's own one-line account; the heading prefers it. */
         summary: string | null;
+        /** The redacted failure detail; only failed runs carry one today. */
+        detail?: string | null;
         onOpen: () => void;
       }
   );
@@ -130,7 +134,10 @@ function heading(props: NotificationCardProps): string {
 }
 
 function detail(props: NotificationCardProps): string | null {
-  return props.kind === "decision" ? props.detail : null;
+  if (props.kind === "decision") return props.detail;
+  if (props.kind === "question") return props.context ?? null;
+  if (props.kind === "run") return props.detail ?? null;
+  return null;
 }
 
 /**
