@@ -100,7 +100,12 @@ export function useChatStream(runId: string | null, options: UseChatStreamOption
   const seededRef = useRef(false);
   if (!seededRef.current && options.initial?.blocks?.length) {
     seededRef.current = true;
-    accRef.current.apply({ type: "snapshot", runId: runId ?? "", blocks: options.initial.blocks, cursor: cursorRef.current });
+    accRef.current.apply({
+      type: "snapshot",
+      runId: runId ?? "",
+      blocks: options.initial.blocks,
+      cursor: cursorRef.current,
+    });
   }
   const onCitationRef = useRef(options.onCitation);
   onCitationRef.current = options.onCitation;
@@ -162,8 +167,10 @@ export function useChatStream(runId: string | null, options: UseChatStreamOption
           buffer = rest;
           let terminal = false;
           // The end frame carries the run's terminal state; only "failed"
-          // changes what the surface may promise the reader.
+          // changes what the surface may promise the reader, and its reason
+          // replaces the generic line when Eve supplied one.
           let endState: "succeeded" | "failed" | "cancelled" | null = null;
+          let endError: string | null = null;
           for (const line of lines) {
             const frame = decodeFrame(line);
             if (!frame) continue;
@@ -203,7 +210,14 @@ export function useChatStream(runId: string | null, options: UseChatStreamOption
               // lastFailedTurn flag, not the ended state, so the composer
               // stays and the error explains the failed reply.
               if (frame.state === "failed") {
-                setState((prev) => ({ ...prev, connection: "waiting", error: "The last reply failed. You can send another message.", lastFailedTurn: true }));
+                setState((prev) => ({
+                  ...prev,
+                  connection: "waiting",
+                  error: frame.error
+                    ? `The last reply failed: ${frame.error}`
+                    : "The last reply failed. You can send another message.",
+                  lastFailedTurn: true,
+                }));
               }
             }
             if (frame.type === "error") {
@@ -217,6 +231,7 @@ export function useChatStream(runId: string | null, options: UseChatStreamOption
             if (frame.type === "end") {
               terminal = true;
               endState = frame.state;
+              endError = frame.error ?? null;
             }
           }
           scheduleFlush();
@@ -236,8 +251,10 @@ export function useChatStream(runId: string | null, options: UseChatStreamOption
                 lastFailedTurn: false,
                 runFailed: true,
                 // Neutral on purpose: the hook is shared, and only surfaces
-                // that wire a fresh-start retry should promise one.
-                error: "This run failed.",
+                // that wire a fresh-start retry should promise one. Eve's
+                // reason, when present, keeps the failure diagnosable without
+                // opening the run page.
+                error: endError ? `This run failed: ${endError}` : "This run failed.",
                 retryable: false,
               }));
             } else {
@@ -313,8 +330,6 @@ function mergeTool(
   // running frame's `input` (the call arguments) is kept: the settled frame's
   // `input` is the result payload and moves to `output`.
   copy[index] =
-    next.status === "running"
-      ? { ...next }
-      : { ...next, input: prev.input, output: next.input ?? prev.output };
+    next.status === "running" ? { ...next } : { ...next, input: prev.input, output: next.input ?? prev.output };
   return copy;
 }

@@ -37,7 +37,10 @@ const ndjson = (frames: object[]) =>
   });
 
 function mockStreamOnce(frames: object[]) {
-  vi.stubGlobal("fetch", vi.fn(async () => new Response(ndjson(frames), { status: 200 })));
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => new Response(ndjson(frames), { status: 200 })),
+  );
 }
 
 import { useChatStream } from "@/components/chat/use-chat-stream";
@@ -49,7 +52,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("useChatStream terminal run failure (end frame state \"failed\")", () => {
+describe('useChatStream terminal run failure (end frame state "failed")', () => {
   it("surfaces the terminal truth with runFailed and no stream retry", async () => {
     mockStreamOnce([
       { type: "message", runId: RUN, role: "user", text: "Are you connected to Notion?", cursor: 2 },
@@ -72,6 +75,17 @@ describe("useChatStream terminal run failure (end frame state \"failed\")", () =
     await waitFor(() => expect(result.current.connection).toBe("done"));
     expect(result.current.error).not.toBe("The last reply failed. You can send another message.");
     expect(result.current.error).toBe("This run failed.");
+  });
+
+  it("shows Eve's reason instead of the generic terminal line", async () => {
+    mockStreamOnce([
+      { type: "turn", runId: RUN, state: "failed", cursor: 3 },
+      { type: "end", runId: RUN, state: "failed", cursor: 4, error: "The provider rejected the request as too large." },
+    ]);
+    const { result } = renderHook(() => useChatStream(RUN, { enabled: true }));
+    await waitFor(() => expect(result.current.runFailed).toBe(true));
+    expect(result.current.error).toBe("This run failed: The provider rejected the request as too large.");
+    expect(result.current.retryable).toBe(false);
   });
 
   it("leaves no failure state behind when the run ended successfully", async () => {
@@ -98,6 +112,18 @@ describe("useChatStream recoverable turn failure (no terminal end frame)", () =>
     // runFailed stays false, so no terminal affordance replaces the composer.
     expect(result.current.connection).not.toBe("done");
     expect(result.current.error).toBe("The last reply failed. You can send another message.");
+    expect(result.current.runFailed).toBe(false);
+  });
+
+  it("names the turn's failure reason but still allows a follow-up", async () => {
+    mockStreamOnce([
+      { type: "message", runId: RUN, role: "user", text: "Summarize this video.", cursor: 2 },
+      { type: "turn", runId: RUN, state: "failed", cursor: 4, error: "The tool timed out." },
+    ]);
+    const { result } = renderHook(() => useChatStream(RUN, { enabled: true }));
+    await waitFor(() => expect(result.current.error).toContain("timed out"));
+    expect(result.current.connection).not.toBe("done");
+    expect(result.current.error).toBe("The last reply failed: The tool timed out.");
     expect(result.current.runFailed).toBe(false);
   });
 });

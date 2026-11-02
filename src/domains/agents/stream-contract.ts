@@ -45,10 +45,24 @@ export type ChatFrame =
   | { type: "message"; runId: string; role: "user"; text: string; cursor: number }
   /** Citations a tool produced; `onCitation` on the surface receives these. */
   | { type: "citations"; runId: string; citations: ChatCitation[]; cursor: number }
-  /** The turn ended. `state` mirrors the run row, not Eve's turn vocabulary. */
-  | { type: "turn"; runId: string; state: "waiting" | "completed" | "failed" | "cancelled"; cursor: number }
-  /** The run reached a terminal state. No further frames follow. */
-  | { type: "end"; runId: string; state: "succeeded" | "failed" | "cancelled"; cursor: number }
+  /**
+   * The turn ended. `state` mirrors the run row, not Eve's turn vocabulary.
+   * `error` is Eve's failure line when the turn failed, so the surface can say
+   * why instead of only that it failed.
+   */
+  | {
+      type: "turn";
+      runId: string;
+      state: "waiting" | "completed" | "failed" | "cancelled";
+      error?: string;
+      cursor: number;
+    }
+  /**
+   * The run reached a terminal state. No further frames follow. `error` is the
+   * terminal failure line from Eve; the run row stores the same text, so the
+   * live transcript and a reload agree on why the run failed.
+   */
+  | { type: "end"; runId: string; state: "succeeded" | "failed" | "cancelled"; error?: string; cursor: number }
   /** A transport-level problem the surface should show, not crash on. */
   | { type: "error"; runId: string; code: ChatErrorCode; message: string; cursor: number };
 
@@ -94,6 +108,21 @@ export type EveEvent = {
 
 const asString = (value: unknown): string | null => (typeof value === "string" ? value : null);
 const asNumber = (value: unknown): number | null => (typeof value === "number" ? value : null);
+
+/**
+ * Eve's failure line, bounded for the wire. A provider error can be a paragraph
+ * long (account, tier, request size), while the transcript has one line for it;
+ * the run row keeps the full text.
+ */
+const MAX_FAILURE_MESSAGE = 400;
+
+function failureMessageOf(data: Record<string, unknown>): string | null {
+  const message = asString(data.message)?.trim();
+  if (message) {
+    return message.length > MAX_FAILURE_MESSAGE ? `${message.slice(0, MAX_FAILURE_MESSAGE)}…` : message;
+  }
+  return asString(data.code)?.trim() || null;
+}
 
 /**
  * Citation extraction for a tool output, inline rather than imported from the
@@ -360,8 +389,10 @@ export function frameOf(
     }
     case "turn.completed":
       return [{ type: "turn", runId, state: "completed", cursor }];
-    case "turn.failed":
-      return [{ type: "turn", runId, state: "failed", cursor }];
+    case "turn.failed": {
+      const error = failureMessageOf(data);
+      return [{ type: "turn", runId, state: "failed", cursor, ...(error ? { error } : {}) }];
+    }
     case "turn.cancelled":
       return [{ type: "turn", runId, state: "cancelled", cursor }];
     case "session.waiting":
@@ -369,8 +400,10 @@ export function frameOf(
       return [{ type: "turn", runId, state: "waiting", cursor }];
     case "session.completed":
       return [{ type: "end", runId, state: "succeeded", cursor }];
-    case "session.failed":
-      return [{ type: "end", runId, state: "failed", cursor }];
+    case "session.failed": {
+      const error = failureMessageOf(data);
+      return [{ type: "end", runId, state: "failed", cursor, ...(error ? { error } : {}) }];
+    }
     default:
       return [];
   }

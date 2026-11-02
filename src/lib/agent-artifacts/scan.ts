@@ -374,7 +374,13 @@ async function groupAndParseCodex(root: string, files: FoundFile[], skipped: Ski
       });
       continue;
     }
-    if (meta.cwd !== undefined && isInside(meta.cwd, root)) {
+    // The recorded cwd comes from another process's environment, so resolve it
+    // the same way the roots were resolved. On macOS /var is a symlink to
+    // /private/var, and comparing a raw cwd against a resolved root reports an
+    // internal rollout as a user session. An unresolvable path keeps its raw
+    // form: it is not inside the root either way.
+    const cwd = meta.cwd === undefined ? undefined : await realpath(meta.cwd).catch(() => meta.cwd);
+    if (cwd !== undefined && isInside(cwd, root)) {
       skipped.push({
         source: "codex",
         path: file.path,
