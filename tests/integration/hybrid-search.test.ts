@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { agentProfiles, messages, threads } from "@/domains/agents/schema";
+import { captures } from "@/domains/capture/schema";
 import { artifacts } from "@/domains/knowledge/schema";
 import type { EmbeddingProvider } from "@/integrations/embeddings/provider";
 import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
@@ -14,7 +15,11 @@ import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
 const handle = makeTestDb();
 const suite = handle ? describe : describe.skip;
 const holder: { db: ReturnType<typeof drizzle> | undefined } = { db: undefined };
-vi.mock("@/lib/db", () => ({ get db() { return holder.db; } }));
+vi.mock("@/lib/db", () => ({
+  get db() {
+    return holder.db;
+  },
+}));
 vi.mock("@/lib/db-transaction", () => ({
   get withTransaction() {
     return (fn: Parameters<typeof import("@/lib/db-transaction").withTransaction>[0]) =>
@@ -26,6 +31,7 @@ import { embedArtifact } from "@/domains/knowledge/embedding";
 import { commitNoteSnapshot, createNote } from "@/domains/knowledge/notes";
 import { countMeaningUncovered, fuse, searchKnowledge } from "@/domains/knowledge/retrieval";
 import { syncThreadToGraph } from "@/domains/knowledge/thread-graph";
+import { searchPaletteKnowledge } from "@/domains/knowledge/palette-records";
 
 function vec(dims: number[]): number[] {
   const v = new Array(1536).fill(0);
@@ -35,10 +41,11 @@ function vec(dims: number[]): number[] {
 /** Maps a text to a concept direction, so "meaning" is controllable. */
 const provider = (concepts: Record<string, number[]>): EmbeddingProvider => ({
   model: "fake@1",
-  embed: async (values) => values.map((t) => {
-    const hit = Object.entries(concepts).find(([k]) => t.toLowerCase().includes(k));
-    return hit ? hit[1] : vec([900]);
-  }),
+  embed: async (values) =>
+    values.map((t) => {
+      const hit = Object.entries(concepts).find(([k]) => t.toLowerCase().includes(k));
+      return hit ? hit[1] : vec([900]);
+    }),
 });
 
 // Regression: provider keys unset for the whole suite; the first test only
@@ -51,21 +58,38 @@ beforeAll(() => {
   vi.stubEnv("GEMINI_API_KEY", "");
   vi.stubEnv("OPENAI_API_KEY", "");
 });
-afterAll(async () => { vi.unstubAllEnvs(); await handle?.client.end(); });
+afterAll(async () => {
+  vi.unstubAllEnvs();
+  await handle?.client.end();
+});
 
-const workspace = async () => ({ ...await seedWorkspace(holder.db!, `hs-${crypto.randomUUID()}`), role: "owner" as const });
+const workspace = async () => ({
+  ...(await seedWorkspace(holder.db!, `hs-${crypto.randomUUID()}`)),
+  role: "owner" as const,
+});
 type Auth = Awaited<ReturnType<typeof workspace>>;
 
 async function write(auth: Auth, title: string, text: string, p?: EmbeddingProvider, kind: "note" | "zettel" = "note") {
   const note = await createNote(auth, { title, kind });
-  await commitNoteSnapshot(auth, { artifactId: note.id, expectedVersion: 1, content: { format: "markdown", text }, plainText: text });
+  await commitNoteSnapshot(auth, {
+    artifactId: note.id,
+    expectedVersion: 1,
+    content: { format: "markdown", text },
+    plainText: text,
+  });
   if (p) await embedArtifact(auth, { artifactId: note.id, provider: p });
   return note;
 }
 
 describe("fuse (pure)", () => {
   it("rewards agreement between legs over a single strong leg", () => {
-    const out = fuse([{ id: "a" }, { id: "b" }], [{ id: "b", distance: 0.2 }, { id: "c", distance: 0.3 }]);
+    const out = fuse(
+      [{ id: "a" }, { id: "b" }],
+      [
+        { id: "b", distance: 0.2 },
+        { id: "c", distance: 0.3 },
+      ],
+    );
     expect(out.map((o) => o.id)).toEqual(["b", "a", "c"]);
     expect(out[0]).toMatchObject({ kw: 2, mn: 1 });
   });
@@ -89,7 +113,7 @@ suite("hybrid search (real Postgres)", () => {
 
   it("finds an idea with no shared words through the meaning leg, and hybrid keeps both", async () => {
     const auth = await workspace();
-    const p = provider({ money: vec([1]), loaf: vec([2]), "saving": vec([1]) });
+    const p = provider({ money: vec([1]), loaf: vec([2]), saving: vec([1]) });
     await write(auth, "Compound interest", "Money grows on its own earnings.", p);
     await write(auth, "Bread", "A loaf needs time.", p);
     const res = await searchKnowledge(auth, { query: "saving", provider: p });
@@ -122,15 +146,38 @@ suite("hybrid search (real Postgres)", () => {
   it("projects a whole conversation as one searchable transcript node, once", async () => {
     const auth = await workspace();
     const db = holder.db!;
-    const [profile] = await db.insert(agentProfiles).values({ workspaceId: auth.workspaceId, name: `p-${crypto.randomUUID()}`, allowedTools: [] }).returning();
-    const [thread] = await db.insert(threads).values({ workspaceId: auth.workspaceId, agentProfileId: profile.id, title: "Pricing chat" }).returning();
+    const [profile] = await db
+      .insert(agentProfiles)
+      .values({ workspaceId: auth.workspaceId, name: `p-${crypto.randomUUID()}`, allowedTools: [] })
+      .returning();
+    const [thread] = await db
+      .insert(threads)
+      .values({ workspaceId: auth.workspaceId, agentProfileId: profile.id, title: "Pricing chat" })
+      .returning();
     await db.insert(messages).values([
-      { workspaceId: auth.workspaceId, threadId: thread.id, role: "user", content: "How should we price the annual plan?" },
-      { workspaceId: auth.workspaceId, threadId: thread.id, role: "assistant", content: "Anchor on two months free for annual billing." },
+      {
+        workspaceId: auth.workspaceId,
+        threadId: thread.id,
+        role: "user",
+        content: "How should we price the annual plan?",
+      },
+      {
+        workspaceId: auth.workspaceId,
+        threadId: thread.id,
+        role: "assistant",
+        content: "Anchor on two months free for annual billing.",
+      },
     ]);
     const first = await syncThreadToGraph(auth, thread.id);
     expect(first.created).toBe(true);
-    await db.insert(messages).values({ workspaceId: auth.workspaceId, threadId: thread.id, role: "user", content: "And the discount for nonprofits?" });
+    await db
+      .insert(messages)
+      .values({
+        workspaceId: auth.workspaceId,
+        threadId: thread.id,
+        role: "user",
+        content: "And the discount for nonprofits?",
+      });
     const second = await syncThreadToGraph(auth, thread.id);
     expect(second).toEqual({ artifactId: first.artifactId, created: false });
     const res = await searchKnowledge(auth, { query: "nonprofits", mode: "keyword", kinds: ["transcript"] });
@@ -147,7 +194,11 @@ suite("search filters (real Postgres)", () => {
     const zettels = await searchKnowledge(auth, { query: "zephyr", mode: "keyword", kinds: ["zettel"] });
     expect(zettels.hits.map((h) => h.title)).toEqual(["Keyword zettel"]);
     // Kinds are interpolated into SQL: a bogus kind must be rejected, not passed through.
-    const bogus = await searchKnowledge(auth, { query: "zephyr", mode: "keyword", kinds: ["note; drop table artifacts--"] });
+    const bogus = await searchKnowledge(auth, {
+      query: "zephyr",
+      mode: "keyword",
+      kinds: ["note; drop table artifacts--"],
+    });
     expect(bogus.hits).toEqual([]);
   });
 
@@ -156,10 +207,21 @@ suite("search filters (real Postgres)", () => {
     const p = provider({ zephyr: vec([1]) });
     const fresh = await write(auth, "Fresh zephyr", "zephyr today", p);
     const stale = await write(auth, "Stale zephyr", "zephyr long ago", p);
-    await holder.db!.update(artifacts).set({ updatedAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000) }).where(eq(artifacts.id, stale.id));
-    const week = await searchKnowledge(auth, { query: "zephyr", provider: p, filters: { from: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } });
+    await holder
+      .db!.update(artifacts)
+      .set({ updatedAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000) })
+      .where(eq(artifacts.id, stale.id));
+    const week = await searchKnowledge(auth, {
+      query: "zephyr",
+      provider: p,
+      filters: { from: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+    });
     expect(week.hits.map((h) => h.title)).toEqual(["Fresh zephyr"]);
-    const beforeYesterday = await searchKnowledge(auth, { query: "zephyr", mode: "keyword", filters: { to: new Date(Date.now() - 24 * 60 * 60 * 1000) } });
+    const beforeYesterday = await searchKnowledge(auth, {
+      query: "zephyr",
+      mode: "keyword",
+      filters: { to: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+    });
     expect(beforeYesterday.hits.map((h) => h.title)).toEqual(["Stale zephyr"]);
     expect(fresh.id).not.toBe(stale.id);
   });
@@ -168,10 +230,21 @@ suite("search filters (real Postgres)", () => {
     const auth = await workspace();
     const human = await write(auth, "Handwritten zephyr", "zephyr by hand");
     const generated = await write(auth, "Generated zephyr", "zephyr by run");
-    await holder.db!.update(artifacts).set({ producedByRunId: crypto.randomUUID() }).where(eq(artifacts.id, generated.id));
-    const agentOnly = await searchKnowledge(auth, { query: "zephyr", mode: "keyword", filters: { provenance: "agent" } });
+    await holder
+      .db!.update(artifacts)
+      .set({ producedByRunId: crypto.randomUUID() })
+      .where(eq(artifacts.id, generated.id));
+    const agentOnly = await searchKnowledge(auth, {
+      query: "zephyr",
+      mode: "keyword",
+      filters: { provenance: "agent" },
+    });
     expect(agentOnly.hits.map((h) => h.title)).toEqual(["Generated zephyr"]);
-    const notAgent = await searchKnowledge(auth, { query: "zephyr", mode: "keyword", filters: { provenance: "not-agent" } });
+    const notAgent = await searchKnowledge(auth, {
+      query: "zephyr",
+      mode: "keyword",
+      filters: { provenance: "not-agent" },
+    });
     expect(notAgent.hits.map((h) => h.title)).toEqual(["Handwritten zephyr"]);
     expect(human.id).not.toBe(generated.id);
   });
@@ -206,9 +279,134 @@ suite("search filters (real Postgres)", () => {
     const before = await searchKnowledge(auth, { query: "zephyr", mode: "meaning", provider: p });
     expect(before.hits.map((h) => h.title)).toContain("Shifting note");
     // Edit: v2 commits, the auto-embed fails without a real key, v1 chunks go stale.
-    await commitNoteSnapshot(auth, { artifactId: note.id, expectedVersion: 2, content: { format: "markdown", text: "entirely ordinary replacement words" }, plainText: "entirely ordinary replacement words" });
+    await commitNoteSnapshot(auth, {
+      artifactId: note.id,
+      expectedVersion: 2,
+      content: { format: "markdown", text: "entirely ordinary replacement words" },
+      plainText: "entirely ordinary replacement words",
+    });
     const after = await searchKnowledge(auth, { query: "zephyr", mode: "meaning", provider: p });
     expect(after.hits.map((h) => h.title)).not.toContain("Shifting note");
     expect(await countMeaningUncovered(auth, {})).toBe(1);
+  });
+});
+
+suite("search facets: tags and domain (real Postgres)", () => {
+  it("tags narrow both legs to any-of the given tags", async () => {
+    const auth = await workspace();
+    const p = provider({ zephyr: vec([1]) });
+    const priced = await write(auth, "Priced zephyr", "zephyr through the pricing gate", p);
+    await write(auth, "Free zephyr", "zephyr without a price", p);
+    await holder
+      .db!.update(artifacts)
+      .set({ tags: ["pricing", "revenue"] })
+      .where(eq(artifacts.id, priced.id));
+    const keyword = await searchKnowledge(auth, { query: "zephyr", mode: "keyword", filters: { tags: ["pricing"] } });
+    expect(keyword.hits.map((h) => h.title)).toEqual(["Priced zephyr"]);
+    const meaning = await searchKnowledge(auth, { query: "zephyr", provider: p, filters: { tags: ["pricing"] } });
+    expect(meaning.hits.map((h) => h.title)).toEqual(["Priced zephyr"]);
+    // Any-of: a second tag on the same artifact also reaches it.
+    const anyOf = await searchKnowledge(auth, {
+      query: "zephyr",
+      mode: "keyword",
+      filters: { tags: ["nope", "revenue"] },
+    });
+    expect(anyOf.hits.map((h) => h.title)).toEqual(["Priced zephyr"]);
+  });
+
+  it("domain narrows to material converted from a capture classified in that domain", async () => {
+    const auth = await workspace();
+    const db = holder.db!;
+    const finance = await write(auth, "Finance zephyr", "zephyr of the ledger");
+    await write(auth, "Plain zephyr", "zephyr of the plain");
+    await db.insert(captures).values({
+      workspaceId: auth.workspaceId,
+      kind: "text",
+      rawPayload: { text: "zephyr of the ledger" },
+      text: "zephyr of the ledger",
+      captureMode: "authored",
+      processingState: "converted",
+      domain: "finance",
+      convertedType: "note",
+      convertedId: finance.id,
+      convertedAt: new Date(),
+    });
+    // Case-insensitive: the facet matches however the Tier 2 reading wrote it.
+    const financeOnly = await searchKnowledge(auth, {
+      query: "zephyr",
+      mode: "keyword",
+      filters: { domain: "Finance" },
+    });
+    expect(financeOnly.hits.map((h) => h.title)).toEqual(["Finance zephyr"]);
+    // A domain nothing was captured under matches nothing, not everything.
+    const none = await searchKnowledge(auth, { query: "zephyr", mode: "keyword", filters: { domain: "systems" } });
+    expect(none.hits).toEqual([]);
+  });
+
+  it("facet predicates shape the uncovered count the same way", async () => {
+    const auth = await workspace();
+    const db = holder.db!;
+    const tagged = await write(auth, "Tagged zephyr", "zephyr tagged");
+    const plain = await write(auth, "Plain zephyr", "zephyr plain");
+    await db
+      .update(artifacts)
+      .set({ tags: ["pricing"] })
+      .where(eq(artifacts.id, tagged.id));
+    await db.insert(captures).values({
+      workspaceId: auth.workspaceId,
+      kind: "text",
+      rawPayload: { text: "zephyr tagged" },
+      text: "zephyr tagged",
+      captureMode: "authored",
+      processingState: "converted",
+      domain: "finance",
+      convertedType: "note",
+      convertedId: tagged.id,
+      convertedAt: new Date(),
+    });
+    // Both notes carry text and embed_error (no real key in this suite), so
+    // both are uncovered before the facets narrow the count.
+    expect(await countMeaningUncovered(auth, {})).toBe(2);
+    expect(await countMeaningUncovered(auth, { filters: { tags: ["pricing"] } })).toBe(1);
+    expect(await countMeaningUncovered(auth, { filters: { domain: "finance" } })).toBe(1);
+    expect(await countMeaningUncovered(auth, { filters: { tags: ["pricing"], domain: "finance" } })).toBe(1);
+    expect(await countMeaningUncovered(auth, { filters: { tags: ["pricing"], domain: "other" } })).toBe(0);
+    expect(tagged.id).not.toBe(plain.id);
+  });
+});
+
+suite("palette knowledge leg (real Postgres)", () => {
+  it("maps hybrid hits to palette rows and says why a non-title match ranked", async () => {
+    const auth = await workspace();
+    const p = provider({ saving: vec([1]) });
+    await write(auth, "Compound interest", "Saving grows on its own earnings.", p);
+    const res = await searchPaletteKnowledge(auth, "saving", { provider: p });
+    expect(res.meaning).toBe("ok");
+    expect(res.records.map((r) => r.label)).toEqual(["Compound interest"]);
+    expect(res.records[0].kind).toBe("note");
+    expect(res.records[0].href).toBe(`/polymath/notes?id=${res.records[0].id}`);
+    expect(res.records[0].context).toContain("Note in Polymath");
+    expect(res.records[0].context).toContain("meaning match");
+  });
+
+  it("zettels reach the palette even though the title search never sees them", async () => {
+    const auth = await workspace();
+    const p = provider({ zephyr: vec([1]) });
+    await write(auth, "Zettel zephyr", "a zettel about zephyr winds", p, "zettel");
+    const res = await searchPaletteKnowledge(auth, "zephyr");
+    expect(res.records[0].kind).toBe("knowledge");
+    expect(res.records[0].context).toContain("Zettel in Polymath");
+  });
+
+  it("degrades to keyword-only rows without a provider key", async () => {
+    const auth = await workspace();
+    await write(auth, "Stoic zephyr", "zephyr in the body, not the title");
+    // The suite runs with keys stubbed empty (beforeAll): the meaning leg is
+    // unconfigured and the keyword leg still answers, body matches included.
+    const res = await searchPaletteKnowledge(auth, "zephyr body");
+    expect(res.meaning).toBe("unconfigured");
+    expect(res.records.map((r) => r.label)).toEqual(["Stoic zephyr"]);
+    // A body hit is not a title hit: the row says why it ranked.
+    expect(res.records[0].context).toContain("text match");
   });
 });

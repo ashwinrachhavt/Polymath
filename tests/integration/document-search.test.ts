@@ -1,13 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { blobObjects } from "@/domains/audit/schema";
 import { contacts } from "@/domains/crm/schema";
-import {
-  documentParties,
-  documents,
-  documentExtractions,
-  files,
-  reviewedAssertions,
-} from "@/domains/knowledge/schema";
+import { documentParties, documents, documentExtractions, files, reviewedAssertions } from "@/domains/knowledge/schema";
 import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
 
 /*
@@ -25,7 +19,11 @@ const holder: {
   db: NonNullable<ReturnType<typeof makeTestDb>>["db"];
 } = { db: undefined as never };
 
-vi.mock("@/lib/db", () => ({ get db() { return holder.db; } }));
+vi.mock("@/lib/db", () => ({
+  get db() {
+    return holder.db;
+  },
+}));
 
 import { explainAssertion, searchDocuments } from "@/domains/knowledge/search";
 
@@ -169,10 +167,7 @@ suite("document search", () => {
   it("explainAssertion returns history with document titles and spans", async () => {
     const auth = await seedAuth("explain");
     const db = holder.db;
-    const [contact] = await db
-      .insert(contacts)
-      .values({ workspaceId: auth.workspaceId, fullName: "Ada" })
-      .returning();
+    const [contact] = await db.insert(contacts).values({ workspaceId: auth.workspaceId, fullName: "Ada" }).returning();
     const first = await seedDocument(auth, { title: "Résumé v1", extractionText: "engineer at Acme" });
     const second = await seedDocument(auth, { title: "Résumé v2", extractionText: "senior engineer at Acme" });
 
@@ -252,5 +247,24 @@ suite("document search", () => {
     expect(history).toHaveLength(1);
     expect(history[0].documentId).toBeNull();
     expect(history[0].documentTitle).toBeNull();
+  });
+
+  it("orders by relevance, not recency, when a query is present", async () => {
+    const auth = await seedAuth("order");
+    // The OLDER document matches the query harder; the newer one matches only
+    // by title (the ILIKE fallback carries zero rank).
+    const older = await seedDocument(auth, {
+      title: `Manifest ${Date.now()}`,
+      extractionText: "zeppelin logistics manifest, zeppelin scheduled, zeppelin routes",
+    });
+    const newer = await seedDocument(auth, {
+      title: `zeppelin ${Date.now()}`,
+      extractionText: "an unrelated extraction text",
+    });
+    const hits = await searchDocuments(auth, { query: "zeppelin" });
+    expect(hits.map((r) => r.id)).toEqual([older.document.id, newer.document.id]);
+    // No query: nothing to rank, recency answers alone.
+    const recent = await searchDocuments(auth, {});
+    expect(recent.map((r) => r.id)).toEqual([newer.document.id, older.document.id]);
   });
 });
