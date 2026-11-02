@@ -15,6 +15,7 @@
 import type { AuthContext } from "@/domains/identity/resolve";
 import { createEveDriver, eveAgentForProfile } from "@/domains/agents/eve-driver";
 import { createEngine } from "@/domains/agents/engine";
+import { ensureProfile } from "@/domains/agents/commands";
 import { ACTIVE_RUN_STATES, createEveSeam } from "@/domains/superagent/executor/eve";
 
 const args = process.argv.slice(2);
@@ -30,9 +31,13 @@ if (!workspaceId || !userId || !ticketId || !runId) {
 }
 
 async function main() {
+  const auth: AuthContext = { userId, workspaceId, role: "owner" };
+  // The engine resolves its profile by name at start; make sure the row
+  // exists first — the same bootstrap POST /api/v1/runs does for a
+  // workspace's first run.
+  await ensureProfile(workspaceId, profile);
   const engine = createEngine(createEveDriver(eveAgentForProfile(profile)));
   const seam = createEveSeam(engine);
-  const auth: AuthContext = { userId, workspaceId, role: "owner" };
 
   // Read-only first: what does the seam see for this ticket run right now?
   const liveRun = await seam.liveRun({ workspaceId, ticketId, runId });
