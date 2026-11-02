@@ -307,7 +307,7 @@ describe("chatFrame", () => {
     accumulator.apply(decoded!);
     accumulator.apply(decoded!);
     expect(accumulator.list()).toEqual([
-      { id: chatBlockId("reply-1"), kind: "assistant", text: "The report is ready.", done: true },
+      { id: chatBlockId("reply-1"), kind: "assistant", text: "The report is ready.", done: true, messageId: null },
     ]);
     // A retry at a later cursor re-renders the same block in place, never twice.
     accumulator.apply(decodeFrame(JSON.stringify(chatFrame(message, 8)))!);
