@@ -50,6 +50,13 @@ export interface EveForSuperagent {
     objective: string;
     profileName: string;
     estimateUsd: string;
+    /**
+     * The Mandate strength and Policy accept mode to freeze into the run's
+     * policy snapshot (engine.start's `admission`). The executor reads the
+     * strength off the ticket's frozen Mandate and the mode off the live
+     * policy; together they are what the run is authorized under.
+     */
+    admission?: { strength: "explicit" | "inferred"; acceptMode: "off" | "observe" | "auto" };
   }): Promise<{ agentRunId: string }>;
   /** Carry an input's text to the run's session. */
   signal(input: { workspaceId: string; auth: AuthContext; agentRunId: string; text: string }): Promise<void>;
@@ -93,7 +100,7 @@ export function createEveSeam(engine: AgentEngine): EveForSuperagent {
       return found && isActiveRunState(found.state) ? found : undefined;
     },
     lastRun: ({ workspaceId, runId }) => byRunSubject(workspaceId, runId),
-    start: async ({ auth, ticketId, runId, objective, profileName, estimateUsd }) => {
+    start: async ({ auth, ticketId, runId, objective, profileName, estimateUsd, admission }) => {
       const { runId: agentRunId } = await engine.start({
         auth,
         profileName,
@@ -104,6 +111,7 @@ export function createEveSeam(engine: AgentEngine): EveForSuperagent {
         // request that started it — not a person's words; it opens the
         // session's first turn without appearing in any chat transcript.
         objectiveInternal: true,
+        ...(admission ? { admission } : {}),
       });
       return { agentRunId };
     },

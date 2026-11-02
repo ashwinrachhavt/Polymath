@@ -27,7 +27,7 @@ const PREAMBLE = [
 ].join(" ");
 
 /** Quotes a data text line by line, so injected headers stay inside the data band. */
-export function quoteData(text: string): string {
+function quoteData(text: string): string {
   return text
     .split("\n")
     .map((line) => `> ${line}`)

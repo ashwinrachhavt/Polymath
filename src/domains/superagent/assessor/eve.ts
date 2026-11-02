@@ -52,7 +52,7 @@ async function ensureAssessorProfile(workspaceId: string, profileName: string): 
     .onConflictDoNothing({ target: [agentProfiles.workspaceId, agentProfiles.name] });
 }
 
-export type EvalRunState = (typeof agentRuns.$inferSelect)["state"];
+type EvalRunState = (typeof agentRuns.$inferSelect)["state"];
 
 /** The slice of an agent run row the assessor reads back. */
 export interface LiveEval {

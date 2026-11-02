@@ -7,14 +7,4 @@ export {
   decideClient,
   decideClientFromEnv,
   type DecideClient,
-  type DecideClientConfig,
 } from "./client";
-export {
-  resolveAssessmentDecision,
-  type AssessmentDecisionRecord,
-  type DecideEscalation,
-  type DecisionPath,
-  type DecideVerdict,
-  type EscalationCause,
-  type EveJudgment,
-} from "./record";

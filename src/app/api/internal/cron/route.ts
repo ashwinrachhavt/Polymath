@@ -6,7 +6,8 @@ import { outboxHandlers } from "@/domains/audit/outbox-handlers";
 import { syncAllGmailSenders } from "@/domains/crm/sender-sync";
 import { InstantTools } from "@/domains/integrations/instant-tools";
 import { composioTransport } from "@/domains/integrations/transport";
-import { effectHandlers, runSuperagentDispatch } from "@/domains/superagent/effects";
+import { runSuperagentDispatch } from "@/domains/superagent/effects";
+import { superagentEffectHandlers, sweepSuperagentWorkspaces } from "@/domains/superagent/wiring";
 import { reapStaleReservations } from "@/integrations/providers/quota";
 import { problemResponse } from "@/lib/problems";
 
@@ -60,12 +61,14 @@ async function drain(): Promise<Response> {
   try {
     const recovered = await recoverStrandedOutbox(client);
     const result = await dispatchPendingOutbox(client, outboxHandlers(), { workerId: `cron:${crypto.randomUUID()}` });
-    // The superagent domain's drain rides the same tick: sweepers first, then
-    // the effects pass (whose reply handlers send the reply lane). Kinds
-    // without a consumer yet park without failure — the free plan's daily
-    // cron cannot be relied on for latency, which is why the inline
-    // post-commit drain is the primary trigger.
-    const superagent = await runSuperagentDispatch(client, effectHandlers({ rawClient: client }), {
+    // The superagent domain's drain rides the same tick: the sweep first
+    // (the engine's serverless tick — start due evals, which is what
+    // enqueues the assessment effects — plus the ticket-run observer), then
+    // the effects pass (whose reply handlers send the reply lane). The free
+    // plan's daily cron cannot be relied on for latency, which is why the
+    // inline post-commit drain is the primary trigger.
+    await sweepSuperagentWorkspaces();
+    const superagent = await runSuperagentDispatch(client, await superagentEffectHandlers(), {
       workerId: `cron:${crypto.randomUUID()}`,
     });
     // After the drain: a send that just went UNKNOWN is too young to reconcile,

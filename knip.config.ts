@@ -51,21 +51,7 @@ const config = {
   // package scripts and langgraph.json, and its dependencies intentionally
   // resolve from the root install (see its README), so the root sweep has
   // nothing to say about it.
-  ignore: [
-    "evals-langgraph/**",
-
-    // The superagent domain is ported ahead of its consumers (spec
-    // art_VA18LcZA): the cutover wave wires the assessor, executor, and chat
-    // source to these modules, and until then most of the exported surface
-    // has no importer. Scope it out so the mid-port state does not mask real
-    // findings elsewhere; remove these entries when the cutover lands, so
-    // dead domain exports flag again.
-    "src/domains/superagent/core/**",
-    "src/domains/superagent/sources/**",
-    "src/domains/superagent/decide/**",
-    "src/domains/superagent/store/**",
-    "src/domains/superagent/assessor/**",
-  ],
+  ignore: ["evals-langgraph/**"],
 
   // evals-langgraph runs `langgraphjs dev` with the binary resolving from the
   // root node_modules/.bin — the root declaration is its install point.

@@ -2,7 +2,7 @@
  * Structured reason codes and templates for decisions, filtered triggers, and ended runs.
  * Policy gates and source scopes may also emit their own literal reason codes.
  */
-export const REASONS = {
+const REASONS = {
   said: "{text}",
   timeout: "Assessment timed out",
   policyChanged: "Policy changed during assessment",
@@ -28,7 +28,7 @@ export const REASONS = {
   decideDisagreement:
     "The assessor would not admit, but Mercury Decide's admission probability reached the threshold ({probability})",
 } as const;
-export type ReasonCode = keyof typeof REASONS;
+type ReasonCode = keyof typeof REASONS;
 /** Reason code and template values; `triggerId` identifies the trigger in a batch that the reason applies to. */
 export interface Reason {
   code: ReasonCode | (string & {});

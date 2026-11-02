@@ -1,19 +1,24 @@
 "use server";
 
-import { createEngine } from "@/domains/agents/engine";
-import { createEveDriver, eveAgentForProfile, eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { ensureProfile } from "@/domains/agents/commands";
+import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
+import { startSuperagentConversation } from "@/domains/superagent/wiring";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 import { fitMentionContext } from "@/components/chat/mention-context";
 
 /*
- * Starting a chat run from a surface.
+ * Starting a chat conversation from a surface — the superagent cutover.
  *
- * The chat surface is a client component, and `engine.start` needs a resolved
- * AuthContext plus a spend reservation, so the run must be created server-side.
- * This action is the one path every chat surface uses to get a runId; the
- * surface then streams from /api/v1/runs/:runId/stream.
+ * The chat surface is a client component and needs a server-side runId to
+ * stream; this action is the one path every chat surface uses to get one.
+ * Under the cutover the run is the conversation's durable transcript (a
+ * sessionless row the person's words seed), and the message travels through
+ * the superagent pipeline: the chat Source translates it into a Trigger, the
+ * policy gate and assessor decide it, and any admitted work runs in the
+ * ticket's own run, whose reply returns through the outbox into this
+ * conversation's stream. No session opens on the conversation row itself —
+ * nothing answers a person here except the pipeline.
  *
  * The objective bound matches the smallest documented cap in
  * src/app/api/v1/runs: the POST route validates `objective` at 2000
@@ -21,16 +26,9 @@ import { fitMentionContext } from "@/components/chat/mention-context";
  * bound is enforced by shedding context blocks, never the typed text — see
  * fitMentionContext.
  *
- * Idempotency is NOT implemented here. `engine.start` takes no key, and this
- * action claims no receipt, so two invocations start two runs. The surface
- * guards the common case by starting once per conversation, but a retry after a
- * timeout can still double-reserve. `profileName` and `estimateUsd` are fixed
- * rather than caller-supplied for the same reason the API route validates them:
- * an objective alone is the whole input a chat surface has.
- *
- * A failure returns a message the surface shows in place of a chat, rather than
- * throwing a stack into the boundary: "the agent is not configured" is a state,
- * not a crash.
+ * A failure returns a message the surface shows in place of a chat, rather
+ * than throwing a stack into the boundary: "the agent is not configured" is
+ * a state, not a crash.
  */
 
 /** The smallest documented objective cap in src/app/api/v1/runs (POST route). */
@@ -55,7 +53,10 @@ export async function startChatRun(input: {
   const bounded = fitMentionContext(objective, MAX_OBJECTIVE_CHARS);
   // A malformed id would reach Postgres's uuid cast and put raw database
   // error text in the composer; the API route validates the same shape.
-  if (input.skillId !== undefined && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.skillId)) {
+  if (
+    input.skillId !== undefined &&
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.skillId)
+  ) {
     return { ok: false, message: "That skill could not be found. Pick it from the list again." };
   }
 
@@ -74,23 +75,25 @@ export async function startChatRun(input: {
   await ensureProfile(auth.workspaceId, profileName);
 
   try {
-    const engine = createEngine(createEveDriver(eveAgentForProfile(profileName)));
-    const { runId } = await engine.start({
+    // The skill pin is a reactive-path concept: a conversation run under the
+    // pipeline carries the person's words and the pipeline's decisions, and
+    // any work runs in the ticket's own run. A skill picked in the composer
+    // is recorded in the trigger's text, not frozen into a snapshot that no
+    // session will ever read.
+    if (input.skillId) {
+      console.warn("[superagent] chat send ignored a skill pin; skills bind to ticket runs (wave two).");
+    }
+    const { runId } = await startSuperagentConversation({
       auth,
       profileName,
-      objective: bounded,
-      subjects: input.subject ? [{ type: input.subject.type, id: input.subject.id }] : [],
-      ...(input.skillId ? { skillId: input.skillId } : {}),
-      estimateUsd: "0.50",
+      message: bounded,
+      ...(input.subject ? { subjects: [{ type: input.subject.type, id: input.subject.id }] } : {}),
     });
     return { ok: true, runId };
   } catch (cause) {
-    // The engine closes the run and returns budget on its own failure paths;
-    // what is left is a start that never got a session.
     return {
       ok: false,
       message: cause instanceof Error ? cause.message : "The chat could not start.",
     };
   }
 }
-

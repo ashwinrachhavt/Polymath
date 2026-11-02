@@ -34,6 +34,15 @@ export type PolicySnapshot = {
   auth: AuthContext;
   /** The skill this run is pinned to. Frozen at start; a later skill edit cannot change it. */
   skill?: { id: string; revision: string; contentHash: string; name: string };
+  /**
+   * The superagent admission facts this run carries: the Mandate strength its
+   * ticket was accepted under, and the Policy accept mode at acceptance. Set
+   * only for superagent ticket runs (the executor's launch); frozen by the
+   * same insert that creates the run, so a later policy save cannot change
+   * what an in-flight worker is authorized to do. Ordinary reactive runs,
+   * which have no Mandate, leave both unset.
+   */
+  admission?: { strength: "explicit" | "inferred"; acceptMode: "off" | "observe" | "auto" };
 };
 
 /**
@@ -71,6 +80,12 @@ export interface AgentEngine {
      * read it the same way. [] means the run can call no tools at all.
      */
     allowedTools?: string[];
+    /**
+     * The superagent admission facts (Mandate strength, Policy accept mode) to
+     * freeze into this run's snapshot. Only the superagent executor's launch
+     * sets it; see PolicySnapshot.admission.
+     */
+    admission?: { strength: "explicit" | "inferred"; acceptMode: "off" | "observe" | "auto" };
     /**
      * Set when the objective is run machinery — a scripted interview — rather
      * than the person's own words. The seeded event is written as its own
@@ -157,12 +172,7 @@ export function createEngine(
       const [profile] = await db
         .select()
         .from(agentProfiles)
-        .where(
-          and(
-            eq(agentProfiles.workspaceId, input.auth.workspaceId),
-            eq(agentProfiles.name, input.profileName),
-          ),
-        )
+        .where(and(eq(agentProfiles.workspaceId, input.auth.workspaceId), eq(agentProfiles.name, input.profileName)))
         .limit(1);
       if (!profile) throw new Error(`Unknown agent profile: ${input.profileName}`);
 
@@ -201,6 +211,14 @@ export function createEngine(
                 revision: skill.revision,
                 contentHash: skill.contentHash,
                 name: skill.name,
+              },
+            }
+          : {}),
+        ...(input.admission
+          ? {
+              admission: {
+                strength: input.admission.strength,
+                acceptMode: input.admission.acceptMode,
               },
             }
           : {}),

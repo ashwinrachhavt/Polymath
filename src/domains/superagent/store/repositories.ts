@@ -50,7 +50,7 @@ import {
 import type { EffectKind } from "./schema";
 
 /** Raised when a flush cannot make a row match the store's known version. */
-export class StoreFlushError extends Error {
+class StoreFlushError extends Error {
   constructor(message: string, options?: { cause: unknown }) {
     super(message, options ? { cause: options.cause } : undefined);
     this.name = "StoreFlushError";
@@ -83,7 +83,7 @@ type CacheSnapshot = {
   hydrated: boolean;
 };
 
-export type EffectRequest = {
+type EffectRequest = {
   kind: EffectKind;
   /** The unit of work the kind names — a run id, a ticket id, a conversation key. Opaque to the queue. */
   key: string;

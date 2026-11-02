@@ -22,7 +22,7 @@ type RowState = "versioned" | "append-only" | "mutable-unversioned";
  * Collapsing that to a single label overstates whichever mechanism got named and
  * lets someone delete the others believing the trigger covers them.
  */
-type GuardKind = "atomic-counter" | "app-cas" | "trigger-immutable" | "lease";
+type GuardKind = "atomic-counter" | "app-cas" | "trigger-immutable" | "lease" | "sole-writer";
 
 export type Guard = {
   kind: GuardKind;
@@ -69,6 +69,16 @@ export type Guard = {
 export type TableDeclaration = { guards: Guard[] };
 
 export const GUARDED_WITHOUT_VERSION: Record<string, TableDeclaration> = {
+  "superagent.superagent_state": {
+    guards: [
+      {
+        kind: "sole-writer",
+        detail:
+          "the superagent wiring's host bookkeeping (chat Source read positions, observer cursors); the key is the primary key's second column and every write is an upsert of one small value — the domain's aggregate versioning does not apply, and the Engine never reads or writes this table",
+        evidence: "src/domains/superagent/store/queries.ts:13-39",
+      },
+    ],
+  },
   "integrations.provider_quota_buckets": {
     guards: [
       {

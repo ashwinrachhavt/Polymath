@@ -76,14 +76,18 @@ describe("row-state rule", () => {
     for (const [key, decl] of Object.entries(allGuardTables)) {
       for (const g of decl.guards) {
         expect(g.detail.length, `${key} has a guard with no detail`).toBeGreaterThan(20);
-        expect(["atomic-counter", "app-cas", "trigger-immutable", "lease"], `${key} has an unknown guard kind`).toContain(g.kind);
+        expect(
+          ["atomic-counter", "app-cas", "trigger-immutable", "lease", "sole-writer"],
+          `${key} has an unknown guard kind`,
+        ).toContain(g.kind);
       }
     }
   });
 
   it("backs every trigger claim with a trigger that touches the named columns", () => {
-    const claims = Object.entries(allGuardTables)
-      .flatMap(([key, decl]) => decl.guards.filter((g) => g.kind === "trigger-immutable").map((g) => ({ key, g })));
+    const claims = Object.entries(allGuardTables).flatMap(([key, decl]) =>
+      decl.guards.filter((g) => g.kind === "trigger-immutable").map((g) => ({ key, g })),
+    );
     expect(claims.length, "expected at least one trigger-backed declaration").toBeGreaterThan(0);
 
     for (const { key, g } of claims) {
@@ -93,7 +97,10 @@ describe("row-state rule", () => {
       expect(body, `${key} claims a trigger but ${path} has none on "${table}"`).not.toBeNull();
       expect(g.columns?.length, `${key} claims a trigger but names no columns`).toBeGreaterThan(0);
       for (const column of g.columns!) {
-        expect(body!.includes(`"${column}"`) || body!.includes(`.${column}`), `${key}: trigger does not reference "${column}"`).toBe(true);
+        expect(
+          body!.includes(`"${column}"`) || body!.includes(`.${column}`),
+          `${key}: trigger does not reference "${column}"`,
+        ).toBe(true);
       }
     }
   });
@@ -105,7 +112,10 @@ describe("row-state rule", () => {
     const trigger = runtimeSignals.guards.find((g: Guard) => g.kind === "trigger-immutable");
     expect(trigger).toBeDefined();
     const body = triggerBody("src/db/migrations/0150_runtime_persistence.sql", "runtime_signals")!;
-    expect(body.includes('"status"'), "runtime_signals trigger unexpectedly guards status — revisit its app-cas declaration").toBe(false);
+    expect(
+      body.includes('"status"'),
+      "runtime_signals trigger unexpectedly guards status — revisit its app-cas declaration",
+    ).toBe(false);
   });
 
   /*
@@ -116,8 +126,9 @@ describe("row-state rule", () => {
    * lease is a failure, and a new production caller is a failure.
    */
   it("backs every lease with a demonstrated single entry path", () => {
-    const leases = Object.entries(allGuardTables)
-      .flatMap(([key, decl]) => decl.guards.filter((g) => g.kind === "lease").map((g) => ({ key, g })));
+    const leases = Object.entries(allGuardTables).flatMap(([key, decl]) =>
+      decl.guards.filter((g) => g.kind === "lease").map((g) => ({ key, g })),
+    );
     expect(leases.length, "expected at least one lease-guarded declaration").toBeGreaterThan(0);
 
     for (const { key, g } of leases) {

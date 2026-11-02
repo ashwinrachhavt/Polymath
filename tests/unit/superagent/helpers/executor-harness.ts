@@ -135,6 +135,7 @@ export function harness(config: Partial<ExecutorConfig> = {}) {
     flush: async () => {},
     auth: async () => auth,
     config: { ...EXECUTOR_DEFAULTS, ...config },
+    acceptMode: () => "auto",
   };
   const executor = createSuperagentExecutor(host);
 

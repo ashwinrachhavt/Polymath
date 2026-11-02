@@ -1,6 +1,6 @@
 {
-  "id": "cbcd9bc4-5679-43b0-bda7-c2deb5ed93cb",
-  "prevId": "406ffec6-2e72-458e-95c1-cc966c86c7c6",
+  "id": "f7bd882a-84ce-4b19-8031-55a7ca13c61d",
+  "prevId": "cbcd9bc4-5679-43b0-bda7-c2deb5ed93cb",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -27065,6 +27065,66 @@
           "columns": [
             "workspace_id",
             "rule_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.superagent_state": {
+      "name": "superagent_state",
+      "schema": "",
+      "columns": {
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "value": {
+          "name": "value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "superagent_state_workspace_id_workspaces_id_fk": {
+          "name": "superagent_state_workspace_id_workspaces_id_fk",
+          "tableFrom": "superagent_state",
+          "tableTo": "workspaces",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "superagent_state_workspace_id_key_pk": {
+          "name": "superagent_state_workspace_id_key_pk",
+          "columns": [
+            "workspace_id",
+            "key"
           ]
         }
       },

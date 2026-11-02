@@ -508,6 +508,30 @@ export const superagentPolicyRules = pgTable(
   ],
 );
 
+/* ------------------------------------------------------------------ */
+/* Source state: the wiring's host bookkeeping                         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Small durable key/value rows the wiring owns: the chat Source's per-
+ * conversation read positions, and the ticket-run observer's read cursors.
+ * Not domain state — the Engine never reads or writes this table — so its
+ * rows carry no version and no cascade into aggregates. The chat cursor
+ * lives here rather than in the policy document on purpose: the policy's
+ * version hash covers `sources`, and a read position must never flip it
+ * (a version change discards running assessments and requeues triggers).
+ */
+export const superagentState = pgTable(
+  "superagent_state",
+  {
+    workspaceId: tenantId(),
+    key: text("key").notNull(),
+    value: text("value").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.workspaceId, t.key] })],
+);
+
 export type WorkTriggerRow = typeof workTriggers.$inferSelect;
 export type WorkThreadRow = typeof workThreads.$inferSelect;
 export type WorkSubscriptionRow = typeof workSubscriptions.$inferSelect;
