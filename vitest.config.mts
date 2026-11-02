@@ -28,16 +28,6 @@ export default defineConfig({
           // wall) can overlap safely. The root false below stays in force for
           // every project that does not override it here.
           fileParallelism: true,
-          // Shared workers: each worker runs many files through one module
-          // registry, cutting the per-file isolation overhead that dominates
-          // this project's wall. That is only safe while every unit file is
-          // hermetic — modules bound at import time must re-import under
-          // vi.resetModules() per test (the settings/db-pool/bridge/search
-          // files and PR #426's two follow the pattern), and the fetch guard
-          // re-arms itself per file under shared workers. A new file that
-          // relies on import-time mocks alone will trip a sibling's mocks and
-          // must be fixed before it can join this project.
-          isolate: false,
         },
       },
       {
