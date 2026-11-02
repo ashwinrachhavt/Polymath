@@ -419,7 +419,12 @@ export const workEffects = pgTable(
 /* Outbound receipts: the reply lane's send-once log                   */
 /* ------------------------------------------------------------------ */
 
-/** An outbound message queued for a channel; the primary key is the send-once guarantee. */
+/**
+ * An outbound message queued for a channel; the primary key is the send-once guarantee.
+ * The sender pass claims pending rows under a short lease — the same discipline the
+ * effects queue uses — so two concurrent passes never send one conversation's message
+ * twice, and a sender that died mid-send is retried after its lease expires.
+ */
 export const workOutboxReceipts = pgTable(
   "work_outbox_receipts",
   {
@@ -430,6 +435,9 @@ export const workOutboxReceipts = pgTable(
     kind: text("kind").notNull(),
     ticketId: text("ticket_id"),
     status: text("status").notNull().default("pending"),
+    leaseOwner: text("lease_owner"),
+    leaseToken: uuid("lease_token"),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
     sentAt: timestamp("sent_at", { withTimezone: true }),
     droppedAt: timestamp("dropped_at", { withTimezone: true }),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -448,6 +456,9 @@ export const workOutboxReceipts = pgTable(
     index("work_outbox_receipts_pending_idx")
       .on(t.workspaceId, t.seq)
       .where(sql`${t.status} = 'pending'`),
+    index("work_outbox_receipts_lease_expiry_idx")
+      .on(t.leaseExpiresAt)
+      .where(sql`${t.leaseOwner} is not null and ${t.status} = 'pending'`),
   ],
 );
 

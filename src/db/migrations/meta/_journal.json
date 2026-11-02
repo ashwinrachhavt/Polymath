@@ -707,6 +707,13 @@
       "when": 1793687520000,
       "tag": "0274_superagent_store",
       "breakpoints": true
+    },
+    {
+      "idx": 275,
+      "version": "7",
+      "when": 1793687520001,
+      "tag": "0275_short_mikhail_rasputin",
+      "breakpoints": true
     }
   ]
 }
