@@ -4,7 +4,25 @@ import type { FocusStrictness } from "@/domains/focus/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { withTransaction } from "@/lib/db-transaction";
 import { isUniqueViolation } from "@/lib/pg-errors";
-import { FOCUS_RULE, focusPointsForSession, streakFromDays } from "./rules";
+import {
+  DIAMOND_LEVEL,
+  DIAMOND_RULE,
+  EMERALD_RULE,
+  FOCUS_RULE,
+  GARNET_RULE,
+  RUBY_HIGH_PRIORITIES,
+  RUBY_RULE,
+  SAPPHIRE_DEEP_MINIMUM_MINUTES,
+  SAPPHIRE_RULE,
+  TOPAZ_RULE,
+  TOPAZ_STREAK_DAYS,
+  QUARTZ_RULE,
+  focusPointsForSession,
+  levelForPoints,
+  streakFromDays,
+  type RuleText,
+  type TaskPriority,
+} from "./rules";
 import { rewardDefinitions, rewardLedger, userProgress } from "./schema";
 
 /*
@@ -200,7 +218,7 @@ export async function awardReward(
 
 export const STONES_PER_SHARD = 5;
 
-const QUARTZ = { key: "quartz", label: "Quartz", points: 10 };
+const QUARTZ = { ...QUARTZ_RULE, points: 10 };
 const SHARD = { key: "shard", label: "Shard", points: 0 };
 
 type TxDrizzle = Parameters<Parameters<typeof withTransaction>[0]>[0];
@@ -253,7 +271,6 @@ export async function recordDailyQuartz(
   const definition = await ensureDefinition(tx, auth, {
     ...QUARTZ,
     kind: "points",
-    description: "First completed task of the day.",
   });
   if (!definition || !definition.active) return false;
 
@@ -342,6 +359,10 @@ export type FocusRewardSession = {
   id: string;
   accumulatedSeconds: number;
   strictness: FocusStrictness;
+  /** The linked task's priority, when the finisher touched one; null otherwise. */
+  linkedTaskPriority: TaskPriority | null;
+  /** Whether this user has ever let a session go - the recovery stone's premise. */
+  followedAbandon: boolean;
 };
 
 /**
@@ -387,6 +408,31 @@ export async function recordFocusReward(
     tx,
   );
 
+  // Session-scoped stones (spec §5), each a first-time collectible keyed to
+  // the user: sapphire holds a deep session to its 45-minute floor, ruby
+  // links the finish to a high-priority task, garnet follows a let-go.
+  if (session.strictness === "deep" && session.accumulatedSeconds >= SAPPHIRE_DEEP_MINIMUM_MINUTES * 60) {
+    await recordStoneOnce(tx, auth, SAPPHIRE_RULE, {
+      reason: "focus_completed",
+      subjectType: "focus_session",
+      subjectId: session.id,
+    });
+  }
+  if (session.linkedTaskPriority !== null && RUBY_HIGH_PRIORITIES.includes(session.linkedTaskPriority)) {
+    await recordStoneOnce(tx, auth, RUBY_RULE, {
+      reason: "focus_completed",
+      subjectType: "focus_session",
+      subjectId: session.id,
+    });
+  }
+  if (session.followedAbandon) {
+    await recordStoneOnce(tx, auth, GARNET_RULE, {
+      reason: "focus_completed",
+      subjectType: "focus_session",
+      subjectId: session.id,
+    });
+  }
+
   // The progress cache moves in the same transaction: total points are the
   // ledger's own sum, streaks come from its distinct earning days in the
   // workspace's timezone (today's award is already in the set), so the cache
@@ -394,6 +440,20 @@ export async function recordFocusReward(
   // place for the truth to live.
   const progress = await ledgerProgress(tx, auth);
   const streak = streakFromDays(progress.days, progress.today);
+  if (streak.current >= TOPAZ_STREAK_DAYS) {
+    await recordStoneOnce(tx, auth, TOPAZ_RULE, {
+      reason: "focus_completed",
+      subjectType: "focus_session",
+      subjectId: session.id,
+    });
+  }
+  if (levelForPoints(progress.totalPoints) >= DIAMOND_LEVEL) {
+    await recordStoneOnce(tx, auth, DIAMOND_RULE, {
+      reason: "focus_completed",
+      subjectType: "focus_session",
+      subjectId: session.id,
+    });
+  }
   await upsertUserProgress(tx, auth, {
     totalPoints: progress.totalPoints,
     currentStreakDays: streak.current,
@@ -401,6 +461,66 @@ export async function recordFocusReward(
     lastActiveOn: progress.days.length > 0 ? progress.days[progress.days.length - 1] : null,
   });
   return true;
+}
+
+/*
+ * The stones are first-time collectibles: one ledger row per user, ever,
+ * keyed `<stone>:<userId>`. The definition row materializes lazily on first
+ * fire, carrying the rule's own words - the text the durable page renders.
+ * A stone never announces points (its row is worth zero); it marks that a
+ * threshold was met.
+ */
+type StoneTrigger = { reason: "focus_completed" | "learning_reviewed"; subjectType: string; subjectId: string | null };
+
+async function recordStoneOnce(
+  tx: TxDrizzle,
+  auth: AuthContext,
+  stone: RuleText,
+  trigger: StoneTrigger,
+): Promise<boolean> {
+  const definition = await ensureDefinition(tx, auth, { ...stone, kind: "collectible", points: 0 });
+  if (!definition || !definition.active) return false;
+
+  const [entry] = await tx
+    .insert(rewardLedger)
+    .values({
+      workspaceId: auth.workspaceId,
+      rewardDefinitionId: definition.id,
+      userId: auth.userId,
+      reason: trigger.reason,
+      subjectType: trigger.subjectType,
+      subjectId: trigger.subjectId,
+      points: 0,
+      idempotencyKey: `${stone.key}:${auth.userId}`,
+    })
+    .onConflictDoNothing({ target: [rewardLedger.workspaceId, rewardLedger.idempotencyKey] })
+    .returning();
+  if (!entry) return false;
+  await recordAudit(
+    auth,
+    {
+      action: "reward.awarded",
+      subjectType: "reward_ledger",
+      subjectId: entry.id,
+      summary: `Stone earned: ${stone.label}`,
+    },
+    tx,
+  );
+  return true;
+}
+
+/**
+ * Spec §5: the emerald is the gated learning stone - a perfect,
+ * server-graded sitting earns it, once per user. Grading has already run in
+ * completeQuizAttempt, and a dontKnow answer never grades correct, so a
+ * perfect sitting answered every question honestly.
+ */
+export async function recordEmerald(tx: TxDrizzle, auth: AuthContext, attemptId: string): Promise<boolean> {
+  return recordStoneOnce(tx, auth, EMERALD_RULE, {
+    reason: "learning_reviewed",
+    subjectType: "quiz_attempt",
+    subjectId: attemptId,
+  });
 }
 
 /*

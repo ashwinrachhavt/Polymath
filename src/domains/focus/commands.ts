@@ -286,7 +286,39 @@ export async function finishFocusSession(auth: AuthContext, input: LiveTransitio
       // finish never lacks its reward, and a reward cannot exist without its
       // finish. The abandon paths below never reach this hook: letting go
       // earns nothing. Never throws for game reasons.
-      await recordFocusReward(tx, auth, updated);
+      //
+      // The two stone premises are focus-domain facts, gathered here so the
+      // gamification rule never joins across domains: whether the linked
+      // task is high-priority, and whether this user has ever let a session
+      // go (the recovery stone's premise).
+      let linkedTaskPriority: (typeof tasks.$inferSelect)["priority"] | null = null;
+      if (updated.taskId) {
+        const [task] = await tx
+          .select({ priority: tasks.priority })
+          .from(tasks)
+          .where(and(eq(tasks.id, updated.taskId), eq(tasks.workspaceId, auth.workspaceId)))
+          .limit(1);
+        linkedTaskPriority = task?.priority ?? null;
+      }
+      const [dropped] = await tx
+        .select({ id: focusSessions.id })
+        .from(focusSessions)
+        .where(
+          and(
+            eq(focusSessions.workspaceId, auth.workspaceId),
+            eq(focusSessions.createdBy, auth.userId),
+            eq(focusSessions.state, "abandoned"),
+          ),
+        )
+        .limit(1);
+
+      await recordFocusReward(tx, auth, {
+        id: updated.id,
+        accumulatedSeconds: updated.accumulatedSeconds,
+        strictness: updated.strictness,
+        linkedTaskPriority,
+        followedAbandon: dropped !== undefined,
+      });
     },
     outer,
     (current, now) => {
