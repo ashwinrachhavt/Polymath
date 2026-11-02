@@ -75,6 +75,17 @@ function stripMarkdownLinks(text: string, base = 0): MappedText {
   let i = 0;
   while (i < text.length) {
     const ch = text[i];
+    // <br>, <br/>, <br /> - extractions keep hard line breaks as HTML; a
+    // reader sees a line break (whitespace), not the tag.
+    if (ch === "<") {
+      const br = /^<br\s*\/?>/i.exec(text.slice(i, i + 7));
+      if (br) {
+        out += " ";
+        map.push(base + i);
+        i += br[0].length;
+        continue;
+      }
+    }
     if (ch === "!" && text[i + 1] === "[") {
       const image = parseLink(text, i + 1);
       if (image) {

@@ -79,8 +79,7 @@ async function QuizShell({ documentId }: { documentId: string }) {
   );
 }
 
-export default async function DocumentQuizPage({ params }: { params: Promise<{ documentId: string }> }) {
-  const { documentId } = await params;
+export default function DocumentQuizPage({ params }: { params: Promise<{ documentId: string }> }) {
   return (
     <Suspense
       fallback={
@@ -89,7 +88,12 @@ export default async function DocumentQuizPage({ params }: { params: Promise<{ d
         </p>
       }
     >
-      <QuizShell documentId={documentId} />
+      <QuizShellFromParams params={params} />
     </Suspense>
   );
+}
+
+async function QuizShellFromParams({ params }: { params: Promise<{ documentId: string }> }) {
+  const { documentId } = await params;
+  return <QuizShell documentId={documentId} />;
 }

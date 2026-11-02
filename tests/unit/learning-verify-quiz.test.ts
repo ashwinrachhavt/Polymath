@@ -204,6 +204,15 @@ describe("locateQuoteNormalized", () => {
     expect(WIKI.slice(span!.start, span!.end).startsWith("Hermann Ebbinghaus")).toBe(true);
   });
 
+  it("locates a quote crossing a hard <br> the extraction kept as HTML", () => {
+    const brText = "it has to be something you have a<br>natural aptitude for, that you have a deep interest in";
+    const span = locateQuoteNormalized(brText, "you have a natural aptitude for");
+    expect(span).not.toBeNull();
+    expect(brText.slice(span!.start, span!.end)).toContain("you have a");
+    const spaced = locateQuoteNormalized("line one<br />line two", "line one line two");
+    expect(spaced).not.toBeNull();
+  });
+
   it("still rejects paraphrase - formatting tolerance is not paraphrase tolerance", () => {
     expect(locateQuoteNormalized(WIKI, "In 1894, he was denied a promotion in Berlin")).toBeNull();
     expect(locateQuoteNormalized(WIKI, "He invented the forgetting curve in Berlin")).toBeNull();
