@@ -31,7 +31,7 @@ Migrations: 99 files, highest `0272_imported_agent_sessions`.
 
 ## Tests
 
-471 `.test.ts` and 43 `.spec.ts` files (unit: 282, integration: 187, e2e: 43).
+473 `.test.ts` and 43 `.spec.ts` files (unit: 284, integration: 187, e2e: 43).
 ## Domains
 
 24 folders; 18 own tables.
