@@ -187,7 +187,7 @@ suite("proposeZettels (real Postgres)", () => {
     } = await proposeZettels(auth, { documentId: doc.id, extractor: ex });
     await rejectZettel(auth, { proposalId: first.id });
     expect((await proposeZettels(auth, { documentId: doc.id, extractor: ex })).proposals).toHaveLength(0);
-    const all = await listZettelProposals(auth, doc.id);
+    const all = (await listZettelProposals(auth, doc.id)).proposals;
     expect(all).toHaveLength(1);
     expect(all[0].status).toBe("rejected");
   });

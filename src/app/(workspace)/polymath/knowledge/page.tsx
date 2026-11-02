@@ -3,7 +3,15 @@ import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
 import { getAuthContext } from "@/lib/auth";
 import type { RawSearchParams } from "@/lib/list-params";
-import { ApplyTitleButton, ClassificationDecisions, FieldDecisions, ObligationDecisions, PartyDecisions, ProposeZettelsButton, ZettelDecisions } from "./decision-buttons";
+import {
+  ApplyTitleButton,
+  ClassificationDecisions,
+  FieldDecisions,
+  ObligationDecisions,
+  PartyDecisions,
+  ProposeZettelsButton,
+  ZettelDecisions,
+} from "./decision-buttons";
 import { listZettelProposals } from "@/domains/knowledge/zettels";
 import { RetryExtractionButton } from "./retry-extraction-button";
 import { RetryCaptureButton } from "./retry-capture-button";
@@ -12,21 +20,12 @@ import { RULES_PROPOSER } from "@/domains/knowledge/field-rules";
 import { fieldLabel } from "./field-display";
 import { getOpenClassification } from "@/domains/knowledge/classify";
 import { sentenceCase, suggestTitle } from "@/domains/knowledge/naming";
-import {
-  getDocumentReview,
-  type DocumentReviewParty,
-} from "@/domains/knowledge/queries";
+import { getDocumentReview, type DocumentReviewParty } from "@/domains/knowledge/queries";
 import { resolvePartyCandidates } from "@/domains/knowledge/parties";
 import { Suspense } from "react";
 import { io } from "next/cache";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  CheckCircle2,
-  Circle,
-  CircleAlert,
-  LoaderCircle,
-  TriangleAlert,
-} from "lucide-react";
+import { CheckCircle2, Circle, CircleAlert, LoaderCircle, TriangleAlert } from "lucide-react";
 import { listFolders } from "@/domains/knowledge/library";
 import { getVaultDocuments } from "@/domains/knowledge/vault-queries";
 import { statementForDocument } from "@/domains/knowledge/statement-import";
@@ -34,7 +33,6 @@ import { judgeTransactions } from "@/domains/knowledge/transaction-rules";
 import { summarize, type Judgment } from "@/domains/knowledge/transaction-classify";
 import { StatementPanel, type StatementPanelData } from "./statement-panel";
 import { DocumentVault } from "./vault";
-
 
 export const metadata = { title: "Knowledge · Polymath" };
 
@@ -80,11 +78,7 @@ function pageDomain(sourceUrl: string | null): string {
   }
 }
 
-export async function KnowledgeSurface({
-  searchParams,
-}: {
-  searchParams: Promise<RawSearchParams>;
-}) {
+export async function KnowledgeSurface({ searchParams }: { searchParams: Promise<RawSearchParams> }) {
   // Per-request data; streams inside the Suspense boundary below.
   await io();
   if (!process.env.DATABASE_URL?.trim()) {
@@ -118,7 +112,7 @@ export async function KnowledgeSurface({
     const classification = await getOpenClassification(auth, review.document.id);
     const classificationValue = classification as Awaited<ReturnType<typeof getOpenClassification>> | null;
     const suggestedTitle = suggestTitle(
-      review.document.docType ?? (classificationValue?.proposedType ?? ""),
+      review.document.docType ?? classificationValue?.proposedType ?? "",
       Object.fromEntries(
         review.fieldProposals
           .filter((p) => p.status === "accepted" && (p.acceptedValue ?? p.normalizedValue) != null)
@@ -146,10 +140,7 @@ export async function KnowledgeSurface({
     );
   }
 
-  const [folders, vaultDocuments] = await Promise.all([
-    listFolders(auth),
-    getVaultDocuments(auth, params.folder),
-  ]);
+  const [folders, vaultDocuments] = await Promise.all([listFolders(auth), getVaultDocuments(auth, params.folder)]);
 
   // The vault always has a root crumb, so the toolbar reads the same at the
   // root and inside a folder (and Drive's location line has a first word).
@@ -160,7 +151,10 @@ export async function KnowledgeSurface({
     const chain: { name: string; href: string | null }[] = [];
     let current = folders.find((f) => f.id === params.folder) ?? null;
     while (current) {
-      chain.unshift({ name: current.name, href: current.id === params.folder ? null : `/polymath/knowledge?folder=${current.id}` });
+      chain.unshift({
+        name: current.name,
+        href: current.id === params.folder ? null : `/polymath/knowledge?folder=${current.id}`,
+      });
       current = current.parentId ? (folders.find((f) => f.id === current!.parentId) ?? null) : null;
     }
     breadcrumb.push(...chain);
@@ -171,8 +165,13 @@ export async function KnowledgeSurface({
       <PageHeader title="Knowledge" purpose="Write, retrieve, and connect." />
 
       <nav aria-label="Knowledge views" className="flex gap-1 border-b border-border">
-        <span aria-current="page" className="border-b-2 border-foreground px-3 py-1.5 text-[13px] font-medium">Documents</span>
-        <Link href="/polymath/ideas" className="px-3 py-1.5 text-[13px] text-muted-foreground underline-offset-2 hover:underline">
+        <span aria-current="page" className="border-b-2 border-foreground px-3 py-1.5 text-[13px] font-medium">
+          Documents
+        </span>
+        <Link
+          href="/polymath/ideas"
+          className="px-3 py-1.5 text-[13px] text-muted-foreground underline-offset-2 hover:underline"
+        >
           Ideas
         </Link>
       </nav>
@@ -180,12 +179,16 @@ export async function KnowledgeSurface({
       <div className="page-content">
         <DocumentVault
           key={params.folder ?? "root"}
-          folders={folders.map((f) => ({ id: f.id, parentId: f.parentId, name: f.name, documentCount: f.documentCount }))}
+          folders={folders.map((f) => ({
+            id: f.id,
+            parentId: f.parentId,
+            name: f.name,
+            documentCount: f.documentCount,
+          }))}
           documents={vaultDocuments}
           currentFolderId={params.folder}
           breadcrumb={breadcrumb}
         />
-
       </div>
     </>
   );
@@ -282,7 +285,12 @@ function ReviewWorkbench({
               {doc.sourceUrl ? (
                 <>
                   {"Web page · "}
-                  <a href={doc.sourceUrl} target="_blank" rel="noreferrer" className="underline-offset-4 hover:underline">
+                  <a
+                    href={doc.sourceUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline-offset-4 hover:underline"
+                  >
                     {pageDomain(doc.sourceUrl)}
                   </a>
                 </>
@@ -298,7 +306,9 @@ function ReviewWorkbench({
                 {extraction.error}
               </p>
             ) : null}
-            {extraction?.status === "succeeded" && extraction.proposalStatus === "failed" && extraction.proposalError ? (
+            {extraction?.status === "succeeded" &&
+            extraction.proposalStatus === "failed" &&
+            extraction.proposalError ? (
               <p role="alert" className="text-destructive mt-2 text-xs">
                 {extraction.proposalError}
               </p>
@@ -310,9 +320,7 @@ function ReviewWorkbench({
             ) : null}
             {extraction?.status === "pending" || extraction === null ? (
               <p className="text-muted-foreground mt-2 text-xs">
-                {extraction === null
-                  ? "The file has not been read yet."
-                  : "The document is being read."}
+                {extraction === null ? "The file has not been read yet." : "The document is being read."}
               </p>
             ) : null}
           </div>
@@ -330,9 +338,7 @@ function ReviewWorkbench({
             extractionSucceeded={extraction?.status === "succeeded"}
             statement={statementPanelData(statement, judgments)}
           />
-          {extraction?.status === "failed" && doc.sourceUrl ? (
-            <RetryCaptureButton url={doc.sourceUrl} />
-          ) : null}
+          {extraction?.status === "failed" && doc.sourceUrl ? <RetryCaptureButton url={doc.sourceUrl} /> : null}
           {doc.docType ? (
             <p className="text-muted-foreground text-xs">
               Classified as <span className="font-medium text-foreground">{doc.docType}</span>.
@@ -347,11 +353,7 @@ function ReviewWorkbench({
             />
           ) : null}
           {suggestedTitle ? (
-            <ApplyTitleButton
-              documentId={doc.id}
-              title={suggestedTitle}
-              expectedVersion={doc.version}
-            />
+            <ApplyTitleButton documentId={doc.id} title={suggestedTitle} expectedVersion={doc.version} />
           ) : null}
         </div>
 
@@ -385,7 +387,9 @@ function ReviewWorkbench({
                     </p>
                     <p className="text-muted-foreground mt-0.5 text-xs">
                       Reads as{" "}
-                      <span className="text-foreground">{proposal.normalizedValue != null ? String(proposal.normalizedValue) : "nothing readable"}</span>
+                      <span className="text-foreground">
+                        {proposal.normalizedValue != null ? String(proposal.normalizedValue) : "nothing readable"}
+                      </span>
                     </p>
                     {proposal.status === "proposed" ? (
                       <div className="mt-2">
@@ -444,17 +448,32 @@ function ReviewWorkbench({
 
           <h3 className="mt-2 text-[13px] font-medium">Proposed zettels</h3>
           {extraction?.status === "succeeded" ? <ProposeZettelsButton documentId={doc.id} /> : null}
-          {zettels.length === 0 ? (
+          {zettels.unreadChars > 0 ? (
+            <p className="text-xs text-amber-700 dark:text-amber-400">
+              Read {zettels.readChars} of {zettels.readChars + zettels.unreadChars} characters — {zettels.unreadChars}{" "}
+              in {zettels.unreadSections} {zettels.unreadSections === 1 ? "section was" : "sections were"} not read.
+            </p>
+          ) : null}
+          {zettels.proposals.length === 0 ? (
             <p className="text-muted-foreground text-xs">No zettels proposed yet.</p>
           ) : (
             <ul className="flex flex-col gap-2">
-              {zettels.map((z) => (
+              {zettels.proposals.map((z) => (
                 <li key={z.id} className="panel rounded-lg px-3.5 py-3 transition-colors hover:bg-muted/40">
                   <p className="text-[13px] font-medium">{z.title}</p>
                   <p className="text-[13px]">{z.claim}</p>
                   <p className="text-muted-foreground mt-1 line-clamp-2 text-xs">
                     &ldquo;{z.quote}&rdquo; · chars {z.spanStart}-{z.spanEnd}
                   </p>
+                  {z.duplicateOf ? (
+                    <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+                      Already exists as{" "}
+                      <Link href={`/polymath/ideas/${z.duplicateOf.id}`} className="underline">
+                        &ldquo;{z.duplicateOf.title}&rdquo;
+                      </Link>
+                      . Accepting will create a near-duplicate.
+                    </p>
+                  ) : null}
                   {z.status === "proposed" ? (
                     <div className="mt-2">
                       <ZettelDecisions proposalId={z.id} />
@@ -498,9 +517,7 @@ function Parties({
           <li key={party.id} className="panel rounded-lg px-3.5 py-3 transition-colors hover:bg-muted/40">
             <p className="text-[13px] font-medium">
               {party.displayName}{" "}
-              <span className="text-muted-foreground font-normal">
-                · {sentenceCase(party.partyRole)}
-              </span>
+              <span className="text-muted-foreground font-normal">· {sentenceCase(party.partyRole)}</span>
             </p>
             {party.resolutionStatus === "unresolved" ? (
               <div className="mt-2">
@@ -514,7 +531,7 @@ function Parties({
             ) : (
               <p className="text-muted-foreground mt-1 text-xs">
                 {party.resolutionStatus === "matched" || party.resolutionStatus === "created"
-                  ? `Linked to ${(party.contactName ?? party.companyName) ?? "a record"}`
+                  ? `Linked to ${party.contactName ?? party.companyName ?? "a record"}`
                   : "Marked as not part of this document"}
               </p>
             )}
@@ -525,11 +542,7 @@ function Parties({
   );
 }
 
-export default function KnowledgePage({
-  searchParams,
-}: {
-  searchParams: Promise<RawSearchParams>;
-}) {
+export default function KnowledgePage({ searchParams }: { searchParams: Promise<RawSearchParams> }) {
   return (
     <Suspense fallback={<KnowledgeSkeleton />}>
       <KnowledgeSurface searchParams={searchParams} />

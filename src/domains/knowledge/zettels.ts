@@ -1,4 +1,5 @@
 import { and, asc, count, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { auditEvents } from "@/domains/audit/schema";
 import { db } from "@/lib/db";
@@ -9,7 +10,12 @@ import { mergeCandidates, type SectionCandidate } from "./zettel-merge";
 import { ZETTEL_MERGE_MAX_PER_SOURCE, splitSections } from "./zettel-chunking";
 import { defaultZettelExtractor, type ZettelExtractor } from "@/integrations/zettels/extractor";
 import { generationProvider } from "@/integrations/generation/provider";
-import { embedArtifact } from "./embedding";
+import {
+  EmbeddingUnconfiguredError,
+  embeddingProvider,
+  type EmbeddingProvider,
+} from "@/integrations/embeddings/provider";
+import { embedArtifact, vectorLiteral } from "./embedding";
 import {
   artifactLinks,
   artifactVersions,
@@ -45,6 +51,55 @@ import {
 export const ZETTEL_MAX_PER_SOURCE = ZETTEL_MERGE_MAX_PER_SOURCE;
 const MAX_TITLE = 120;
 const MAX_CLAIM = 400;
+
+/*
+ * A candidate claim within this cosine distance of an accepted idea is its
+ * twin. Calibrated far tighter than the related-neighbour threshold, so a
+ * proposal is flagged only when accepting it would mint a near-duplicate.
+ * Flags never auto-merge: the owner decides.
+ */
+export const ZETTEL_DUPLICATE_MAX_DISTANCE = 0.15;
+
+export function isDuplicateDistance(distance: number): boolean {
+  return distance <= ZETTEL_DUPLICATE_MAX_DISTANCE;
+}
+
+export type DuplicateHit = { artifactId: string; title: string; distance: number };
+
+/**
+ * The one accepted idea this claim would duplicate, nearest first, or null.
+ * Embeds the claim with the provider (EmbeddingUnconfiguredError throws
+ * through so a caller can degrade), then reads the corpus once. `conn`
+ * lets the proposal pass run the lookup inside its own transaction.
+ */
+export async function findDuplicateIdea(
+  auth: AuthContext,
+  claim: string,
+  options: { provider?: EmbeddingProvider; excludeArtifactId?: string; conn?: Pick<TxDrizzle, "execute"> } = {},
+): Promise<DuplicateHit | null> {
+  const provider = options.provider ?? embeddingProvider();
+  const [vector] = await provider.embed([claim]);
+  const conn = options.conn ?? db;
+  const literal = vectorLiteral(vector);
+  const result = await conn.execute(sql`
+    select a.id, a.title, min(e.embedding <=> ${literal}::vector) as distance
+    from embeddings e
+    join artifacts a on a.id = e.owner_id
+    where e.workspace_id = ${auth.workspaceId}
+      and e.owner_type = 'artifact'
+      and e.model = ${provider.model}
+      and a.kind = 'zettel'
+      and a.archived_at is null
+      ${options.excludeArtifactId ? sql`and a.id <> ${options.excludeArtifactId}` : sql``}
+    group by a.id, a.title
+    having min(e.embedding <=> ${literal}::vector) <= ${ZETTEL_DUPLICATE_MAX_DISTANCE}
+    order by distance asc
+    limit 1
+  `);
+  const rows = result as unknown as Array<{ id: string; title: string; distance: number | string }>;
+  const [hit] = rows;
+  return hit ? { artifactId: hit.id, title: hit.title, distance: Number(hit.distance) } : null;
+}
 
 /** Same shape as obligationDedupeKey: kind, source, then what makes this one distinct (its span). */
 export function zettelDedupeKey(prefix: "doc" | "artifact", sourceId: string, spanStart: number, spanEnd: number) {
@@ -160,9 +215,10 @@ async function insertProposal(
     extractionId: string | null;
     candidate: SectionCandidate;
     proposer: string;
+    duplicateOfArtifactId: string | null;
   },
 ) {
-  const { auth, fromDocument, origin, extractionId, candidate: z, proposer } = params;
+  const { auth, fromDocument, origin, extractionId, candidate: z, proposer, duplicateOfArtifactId } = params;
   const [row] = await conn
     .insert(zettelProposals)
     .values({
@@ -175,6 +231,7 @@ async function insertProposal(
       spanEnd: z.end,
       dedupeKey: zettelDedupeKey(origin.path, origin.id, z.start, z.end),
       proposer,
+      duplicateOfArtifactId,
       createdBy: auth.userId,
       updatedBy: auth.userId,
     })
@@ -234,7 +291,22 @@ export async function proposeZettels(auth: AuthContext, input: ZettelSourceInput
   }
 
   const proposals = [];
+  let dedupDegraded = false;
   for (const z of merged.slice(0, ZETTEL_MAX_PER_SOURCE)) {
+    // Corpus-aware dedup flags twins; it decides nothing. Without an embedding
+    // provider the pass degrades to unflagged proposals rather than failing —
+    // a missing key must not block reading a document.
+    let duplicateOfArtifactId: string | null = null;
+    if (!dedupDegraded) {
+      try {
+        const hit = await findDuplicateIdea(auth, z.claim, { conn });
+        duplicateOfArtifactId = hit?.artifactId ?? null;
+      } catch (cause) {
+        if (!(cause instanceof EmbeddingUnconfiguredError)) throw cause;
+        dedupDegraded = true;
+        console.warn("[zettels] corpus dedup skipped: no embedding provider configured");
+      }
+    }
     const row = await insertProposal(conn, {
       auth,
       fromDocument,
@@ -242,19 +314,46 @@ export async function proposeZettels(auth: AuthContext, input: ZettelSourceInput
       extractionId: source.extractionId,
       candidate: z,
       proposer: extractor.name,
+      duplicateOfArtifactId,
     });
     if (row) proposals.push(row);
   }
   return { proposals, readChars, unreadChars, unreadSections };
 }
 
-/** Proposals for one document, oldest first, scoped to the workspace. */
+/** Proposals for one document with their duplicate flags and the pass's read report. */
 export async function listZettelProposals(auth: AuthContext, documentId: string) {
-  return db
-    .select()
+  const flagged = alias(artifacts, "flagged_idea");
+  const proposals = await db
+    .select({
+      proposal: zettelProposals,
+      duplicateOf: { id: flagged.id, title: flagged.title },
+    })
     .from(zettelProposals)
+    .leftJoin(flagged, eq(flagged.id, zettelProposals.duplicateOfArtifactId))
     .where(and(eq(zettelProposals.documentId, documentId), eq(zettelProposals.workspaceId, auth.workspaceId)))
     .orderBy(zettelProposals.spanStart);
+  // The read report travels with the audit row the pass wrote, so the review
+  // page can say what was not read even after the proposal rows are settled.
+  const [audit] = await db
+    .select({ metadata: auditEvents.metadata })
+    .from(auditEvents)
+    .where(
+      and(
+        eq(auditEvents.workspaceId, auth.workspaceId),
+        eq(auditEvents.action, "capture.zettels_proposed"),
+        sql`${auditEvents.metadata}->>'documentId' = ${documentId}`,
+      ),
+    )
+    .orderBy(desc(auditEvents.createdAt))
+    .limit(1);
+  const counts = (audit?.metadata ?? {}) as { readChars?: number; unreadChars?: number; unreadSections?: number };
+  return {
+    proposals: proposals.map((row) => ({ ...row.proposal, duplicateOf: row.duplicateOf?.id ? row.duplicateOf : null })),
+    readChars: counts.readChars ?? 0,
+    unreadChars: counts.unreadChars ?? 0,
+    unreadSections: counts.unreadSections ?? 0,
+  };
 }
 
 /**
