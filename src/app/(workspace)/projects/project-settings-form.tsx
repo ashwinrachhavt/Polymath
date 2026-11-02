@@ -39,7 +39,13 @@ export function ProjectSettingsForm({
   connectors,
 }: {
   projectId: string;
-  project: { title: string; description: string | null; instructions: string | null; emoji: string | null };
+  project: {
+    title: string;
+    description: string | null;
+    instructions: string | null;
+    emoji: string | null;
+    repoPath: string | null;
+  };
   sources: Array<{ documentId: string; title: string; readiness: string }>;
   automations: Array<{ id: string; prompt: string; schedule: string; enabled: boolean }>;
   memories: Array<{ id: string; content: string }>;
@@ -54,6 +60,7 @@ export function ProjectSettingsForm({
   const [description, setDescription] = useState(project.description ?? "");
   const [instructions, setInstructions] = useState(project.instructions ?? "");
   const [emoji, setEmoji] = useState(project.emoji ?? "");
+  const [repoPath, setRepoPath] = useState(project.repoPath ?? "");
 
   function run(action: () => Promise<{ ok: boolean; error?: string }>, done?: () => void) {
     setError(null);
@@ -74,41 +81,121 @@ export function ProjectSettingsForm({
     <div className="grid gap-8 md:grid-cols-[180px_minmax(0,1fr)]">
       <nav aria-label="Settings sections" className="flex flex-col gap-1">
         {SECTIONS.map((section) => (
-          <a key={section.key} href={`#${section.key}`} className="rounded-md px-3 py-1.5 text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground">
+          <a
+            key={section.key}
+            href={`#${section.key}`}
+            className="rounded-md px-3 py-1.5 text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
             {section.label}
           </a>
         ))}
-        <span aria-disabled className="rounded-md px-3 py-1.5 text-[13px] text-muted-foreground/50">Members</span>
-        <span aria-disabled className="rounded-md px-3 py-1.5 text-[13px] text-muted-foreground/50">Skills</span>
+        <span aria-disabled className="rounded-md px-3 py-1.5 text-[13px] text-muted-foreground/50">
+          Members
+        </span>
+        <span aria-disabled className="rounded-md px-3 py-1.5 text-[13px] text-muted-foreground/50">
+          Skills
+        </span>
       </nav>
 
       <div className="flex min-w-0 flex-col gap-10">
         <section id="general" aria-label="General" className="flex flex-col gap-4">
           <h2 className="text-lg font-medium">General</h2>
           <div className="flex flex-col gap-1.5">
-            <label htmlFor="project-name" className="text-[13px]">Name</label>
-            <input id="project-name" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={200} className="h-9 rounded-md border border-input bg-transparent px-3 text-sm" />
+            <label htmlFor="project-name" className="text-[13px]">
+              Name
+            </label>
+            <input
+              id="project-name"
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              maxLength={200}
+              className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+            />
           </div>
           <div className="flex flex-col gap-1.5">
-            <label htmlFor="project-emoji" className="text-[13px]">Emoji</label>
-            <input id="project-emoji" value={emoji} onChange={(event) => setEmoji(event.target.value)} maxLength={8} className="h-9 w-20 rounded-md border border-input bg-transparent px-3 text-sm" />
+            <label htmlFor="project-emoji" className="text-[13px]">
+              Emoji
+            </label>
+            <input
+              id="project-emoji"
+              value={emoji}
+              onChange={(event) => setEmoji(event.target.value)}
+              maxLength={8}
+              className="h-9 w-20 rounded-md border border-input bg-transparent px-3 text-sm"
+            />
           </div>
           <div className="flex flex-col gap-1.5">
-            <label htmlFor="project-description" className="text-[13px]">Description</label>
-            <textarea id="project-description" value={description} onChange={(event) => setDescription(event.target.value)} rows={3} maxLength={2000} className="rounded-md border border-input bg-transparent px-3 py-2 text-sm" />
+            <label htmlFor="project-description" className="text-[13px]">
+              Description
+            </label>
+            <textarea
+              id="project-description"
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              rows={3}
+              maxLength={2000}
+              className="rounded-md border border-input bg-transparent px-3 py-2 text-sm"
+            />
           </div>
           <div className="flex flex-col gap-1.5">
-            <label htmlFor="project-instructions" className="text-[13px]">Instructions</label>
-            <p className="text-xs text-muted-foreground">Explain what this project is for and how the assistant should work.</p>
-            <textarea id="project-instructions" value={instructions} onChange={(event) => setInstructions(event.target.value)} rows={6} maxLength={8000} className="rounded-md border border-input bg-transparent px-3 py-2 text-sm" />
+            <label htmlFor="project-instructions" className="text-[13px]">
+              Instructions
+            </label>
+            <p className="text-xs text-muted-foreground">
+              Explain what this project is for and how the assistant should work.
+            </p>
+            <textarea
+              id="project-instructions"
+              value={instructions}
+              onChange={(event) => setInstructions(event.target.value)}
+              rows={6}
+              maxLength={8000}
+              className="rounded-md border border-input bg-transparent px-3 py-2 text-sm"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="project-repo-path" className="text-[13px]">
+              Local repo path
+            </label>
+            <p className="text-xs text-muted-foreground">
+              Where this project&apos;s code lives on this machine. Sessions Claude Code or Codex ran with this folder
+              as their working directory appear on the project page — parsed from your own files, nothing sent anywhere.
+            </p>
+            <input
+              id="project-repo-path"
+              value={repoPath}
+              onChange={(event) => setRepoPath(event.target.value)}
+              maxLength={4096}
+              placeholder="/home/you/work/your-repo"
+              className="h-9 rounded-md border border-input bg-transparent px-3 font-mono text-sm"
+            />
           </div>
           <div className="flex items-center justify-end gap-3">
-            {error ? <p role="alert" className="text-xs text-destructive">{error}</p> : null}
-            {notice ? <p role="status" className="text-xs text-muted-foreground">{notice}</p> : null}
+            {error ? (
+              <p role="alert" className="text-xs text-destructive">
+                {error}
+              </p>
+            ) : null}
+            {notice ? (
+              <p role="status" className="text-xs text-muted-foreground">
+                {notice}
+              </p>
+            ) : null}
             <Button
               size="sm"
               disabled={pending}
-              onClick={() => run(() => updateProjectAction({ projectId, title, description, instructions, emoji: emoji || undefined }))}
+              onClick={() =>
+                run(() =>
+                  updateProjectAction({
+                    projectId,
+                    title,
+                    description,
+                    instructions,
+                    emoji: emoji || undefined,
+                    repoPath,
+                  }),
+                )
+              }
             >
               {pending ? <Loader2 aria-hidden className="animate-spin" /> : "Save"}
             </Button>
@@ -119,14 +206,23 @@ export function ProjectSettingsForm({
           <h2 className="text-lg font-medium">Sources</h2>
           {sources.length === 0 ? (
             <p className="text-[13px] text-muted-foreground">
-              No sources yet. Add them from <Link href="/polymath/sources" className="underline">Sources</Link> and attach them to this project.
+              No sources yet. Add them from{" "}
+              <Link href="/polymath/sources" className="underline">
+                Sources
+              </Link>{" "}
+              and attach them to this project.
             </p>
           ) : (
             <ul className="flex flex-col gap-1">
               {sources.map((source) => (
-                <li key={source.documentId} className="flex items-baseline justify-between gap-2 border-b border-border py-2 text-[13px] last:border-0">
+                <li
+                  key={source.documentId}
+                  className="flex items-baseline justify-between gap-2 border-b border-border py-2 text-[13px] last:border-0"
+                >
                   <span className="truncate">{source.title}</span>
-                  <span className="text-xs text-muted-foreground">{source.readiness === "ready" ? "Ready" : source.readiness}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {source.readiness === "ready" ? "Ready" : source.readiness}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -136,7 +232,10 @@ export function ProjectSettingsForm({
         <section id="automations" aria-label="Automations" className="flex flex-col gap-3">
           <h2 className="text-lg font-medium">Automations</h2>
           {automations.map((automation) => (
-            <div key={automation.id} className="flex items-start justify-between gap-3 rounded-md border border-border px-3 py-2.5">
+            <div
+              key={automation.id}
+              className="flex items-start justify-between gap-3 rounded-md border border-border px-3 py-2.5"
+            >
               <div className="min-w-0">
                 <p className="text-[13px]">{automation.prompt}</p>
                 <p className="font-mono text-xs text-muted-foreground">{automation.schedule}</p>
@@ -147,7 +246,15 @@ export function ProjectSettingsForm({
                     type="checkbox"
                     checked={automation.enabled}
                     disabled={pending}
-                    onChange={(event) => run(() => updateAutomationAction({ projectId, automationId: automation.id, enabled: event.target.checked }))}
+                    onChange={(event) =>
+                      run(() =>
+                        updateAutomationAction({
+                          projectId,
+                          automationId: automation.id,
+                          enabled: event.target.checked,
+                        }),
+                      )
+                    }
                   />
                   {automation.enabled ? "On" : "Off"}
                 </label>
@@ -163,14 +270,20 @@ export function ProjectSettingsForm({
               </div>
             </div>
           ))}
-          <NewAutomation pending={pending} onCreate={(prompt, schedule) => run(() => createAutomationAction({ projectId, prompt, schedule }))} />
+          <NewAutomation
+            pending={pending}
+            onCreate={(prompt, schedule) => run(() => createAutomationAction({ projectId, prompt, schedule }))}
+          />
         </section>
 
         <section id="memory" aria-label="Memory" className="flex flex-col gap-3">
           <h2 className="text-lg font-medium">Memory</h2>
           <p className="text-[13px] text-muted-foreground">Context that this project remembers.</p>
           {memories.map((memory) => (
-            <div key={memory.id} className="group flex items-start justify-between gap-3 border-b border-border py-2 text-[13px] last:border-0">
+            <div
+              key={memory.id}
+              className="group flex items-start justify-between gap-3 border-b border-border py-2 text-[13px] last:border-0"
+            >
               <p className="min-w-0 flex-1">{memory.content}</p>
               <button
                 type="button"
@@ -190,19 +303,34 @@ export function ProjectSettingsForm({
           <h2 className="text-lg font-medium">Integrations</h2>
           {connectors.length === 0 ? (
             <p className="text-[13px] text-muted-foreground">
-              Connect accounts on the <Link href="/command-center/integrations" className="underline">connectors page</Link>.
+              Connect accounts on the{" "}
+              <Link href="/command-center/integrations" className="underline">
+                connectors page
+              </Link>
+              .
             </p>
           ) : (
             <ul className="flex flex-col gap-2">
               {connectors.map((connector) => (
-                <li key={connector.id} className="flex items-center justify-between gap-3 border-b border-border py-2 text-[13px] last:border-0">
+                <li
+                  key={connector.id}
+                  className="flex items-center justify-between gap-3 border-b border-border py-2 text-[13px] last:border-0"
+                >
                   <span className="truncate">{connector.label}</span>
                   <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
                     <input
                       type="checkbox"
                       checked={connector.enabled}
                       disabled={pending}
-                      onChange={(event) => run(() => setProjectAccountAction({ projectId, gatewayAccountId: connector.id, enabled: event.target.checked }))}
+                      onChange={(event) =>
+                        run(() =>
+                          setProjectAccountAction({
+                            projectId,
+                            gatewayAccountId: connector.id,
+                            enabled: event.target.checked,
+                          }),
+                        )
+                      }
                     />
                     {connector.enabled ? "Connected" : "Connect"}
                   </label>
@@ -216,7 +344,13 @@ export function ProjectSettingsForm({
   );
 }
 
-function NewAutomation({ pending, onCreate }: { pending: boolean; onCreate: (prompt: string, schedule: string) => void }) {
+function NewAutomation({
+  pending,
+  onCreate,
+}: {
+  pending: boolean;
+  onCreate: (prompt: string, schedule: string) => void;
+}) {
   const [adding, setAdding] = useState(false);
   const [prompt, setPrompt] = useState("");
   const [schedule, setSchedule] = useState("0 8 * * *");
@@ -237,11 +371,28 @@ function NewAutomation({ pending, onCreate }: { pending: boolean; onCreate: (pro
         setAdding(false);
       }}
     >
-      <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} rows={3} required maxLength={4000} placeholder="What should it do?" className="w-full rounded-md border border-input bg-transparent px-2 py-1.5 text-[13px]" />
-      <input value={schedule} onChange={(event) => setSchedule(event.target.value)} aria-label="Cron schedule" className="w-40 rounded-md border border-input bg-transparent px-2 py-1.5 font-mono text-[13px]" />
+      <textarea
+        value={prompt}
+        onChange={(event) => setPrompt(event.target.value)}
+        rows={3}
+        required
+        maxLength={4000}
+        placeholder="What should it do?"
+        className="w-full rounded-md border border-input bg-transparent px-2 py-1.5 text-[13px]"
+      />
+      <input
+        value={schedule}
+        onChange={(event) => setSchedule(event.target.value)}
+        aria-label="Cron schedule"
+        className="w-40 rounded-md border border-input bg-transparent px-2 py-1.5 font-mono text-[13px]"
+      />
       <div className="flex justify-end gap-2">
-        <Button size="sm" variant="ghost" type="button" onClick={() => setAdding(false)}>Cancel</Button>
-        <Button size="sm" type="submit" disabled={pending || !prompt.trim()}>Add</Button>
+        <Button size="sm" variant="ghost" type="button" onClick={() => setAdding(false)}>
+          Cancel
+        </Button>
+        <Button size="sm" type="submit" disabled={pending || !prompt.trim()}>
+          Add
+        </Button>
       </div>
     </form>
   );
@@ -259,10 +410,21 @@ function NewMemory({ pending, onAdd }: { pending: boolean; onAdd: (content: stri
       }}
     >
       <div className="min-w-0 flex-1">
-        <label className="sr-only" htmlFor="settings-memory-input">Add memory</label>
-        <input id="settings-memory-input" value={value} onChange={(event) => setValue(event.target.value)} maxLength={2000} placeholder="Add a memory" className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-[13px]" />
+        <label className="sr-only" htmlFor="settings-memory-input">
+          Add memory
+        </label>
+        <input
+          id="settings-memory-input"
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+          maxLength={2000}
+          placeholder="Add a memory"
+          className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-[13px]"
+        />
       </div>
-      <Button size="sm" variant="outline" type="submit" disabled={pending || !value.trim()}>Add</Button>
+      <Button size="sm" variant="outline" type="submit" disabled={pending || !value.trim()}>
+        Add
+      </Button>
     </form>
   );
 }

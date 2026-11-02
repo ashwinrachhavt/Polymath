@@ -1,10 +1,12 @@
+import { stat } from "node:fs/promises";
 import { io } from "next/cache";
 import { Suspense } from "react";
 import { getDefaultProfile } from "@/domains/agents/queries";
 import { getPreferences } from "@/domains/identity/preferences";
+import { defaultRoots } from "@/lib/agent-artifacts/scan";
 import { getAuthContext } from "@/lib/auth";
 import { capabilityStatus } from "@/lib/capability-config";
-import Settings from "@/components/products/command-center/settings";
+import Settings, { type AgentRootStatus } from "@/components/products/command-center/settings";
 
 export const metadata = { title: "Settings · Polymath" };
 
@@ -48,7 +50,31 @@ export async function SettingsSurface() {
   // Owner scope, same contract as actions.ts: a non-owner must not receive
   // the raw brief in the initial RSC payload either.
   const serverAssistantProfile = auth.role === "owner" ? await getDefaultProfile(auth) : null;
-  return <Settings serverPreferences={serverPreferences} capabilities={capabilities} serverAssistantProfile={serverAssistantProfile} browserPreview={false} />;
+  // Where a project-page scan would read local agent sessions (Workbench D3).
+  // Paths and presence only — the transcripts themselves never reach this page.
+  const roots = defaultRoots();
+  const agentRoots: AgentRootStatus[] = await Promise.all(
+    [
+      { source: "Claude Code" as const, path: roots["claude-code"] },
+      { source: "Codex" as const, path: roots.codex },
+    ].map(async (root) => {
+      try {
+        await stat(root.path);
+        return { ...root, present: true };
+      } catch {
+        return { ...root, present: false };
+      }
+    }),
+  );
+  return (
+    <Settings
+      serverPreferences={serverPreferences}
+      capabilities={capabilities}
+      serverAssistantProfile={serverAssistantProfile}
+      browserPreview={false}
+      agentRoots={agentRoots}
+    />
+  );
 }
 
 /*
@@ -60,7 +86,13 @@ export async function SettingsSurface() {
  */
 export default function SettingsPage() {
   return (
-    <Suspense fallback={<p role="status" className="p-6 text-[13px] text-muted-foreground">Loading settings…</p>}>
+    <Suspense
+      fallback={
+        <p role="status" className="p-6 text-[13px] text-muted-foreground">
+          Loading settings…
+        </p>
+      }
+    >
       <SettingsSurface />
     </Suspense>
   );

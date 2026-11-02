@@ -9,13 +9,26 @@ import { timeAgoShort } from "@/lib/time";
 import { db } from "@/lib/db";
 import { agentProfiles, threads } from "@/domains/agents/schema";
 import { getProjectDetail } from "@/domains/knowledge/projects";
-import { buildProjectContextPrefix, listAutomations, listMemories, listProjectAccounts } from "@/domains/knowledge/project-settings";
+import {
+  buildProjectContextPrefix,
+  listAutomations,
+  listMemories,
+  listProjectAccounts,
+} from "@/domains/knowledge/project-settings";
 import { listConnectors } from "@/domains/integrations/queries";
 import { listSources, type SourceRow } from "@/domains/knowledge/source-readiness";
+import { listProjectSessions, type ProjectSessionRow } from "@/domains/agents/project-sessions";
 import { ProjectRightRail } from "../project-right-rail";
+import { ScanAgentSessions } from "../scan-agent-sessions";
 import { StartSession } from "../start-session";
 
 export const metadata = { title: "Project · Polymath" };
+
+/** How the page names each agent source — the agent's own product name. */
+const AGENT_SOURCE_LABEL: Record<ProjectSessionRow["source"], string> = {
+  "claude-code": "Claude Code",
+  codex: "Codex",
+};
 
 /*
  * The project screen (Perplexity Spaces parity): the session starter, the
@@ -31,7 +44,7 @@ export async function ProjectSurface({ projectId }: { projectId: string }) {
     return <div className="page-content text-[13px] text-muted-foreground">This project does not exist.</div>;
   }
 
-  const [sessions, automations, memories, connectors, notebookAccounts, sources] = await Promise.all([
+  const [sessions, automations, memories, connectors, notebookAccounts, sources, agentSessions] = await Promise.all([
     db
       .select({ id: threads.id, title: threads.title, updatedAt: threads.updatedAt, profileName: agentProfiles.name })
       .from(threads)
@@ -53,13 +66,18 @@ export async function ProjectSurface({ projectId }: { projectId: string }) {
     project.documents.length > 0
       ? listSources(auth, { documentIds: project.documents.map((d) => d.id), limit: 100 })
       : Promise.resolve([] as SourceRow[]),
+    // Sessions Claude Code / Codex wrote in this project's repo (Workbench D3):
+    // matched by transcript cwd, only when the project names a local repo path.
+    project.repoPath ? listProjectSessions(auth, project.repoPath) : Promise.resolve([] as ProjectSessionRow[]),
   ]);
 
   return (
     <>
       <div className="flex items-center justify-between gap-4 border-b border-border px-6 py-3">
         <p className="text-[13px] text-muted-foreground">
-          <Link href="/projects" className="hover:underline">Projects</Link>
+          <Link href="/projects" className="hover:underline">
+            Projects
+          </Link>
           <span className="px-1.5">›</span>
           <span className="text-foreground">{project.title}</span>
         </p>
@@ -77,7 +95,10 @@ export async function ProjectSurface({ projectId }: { projectId: string }) {
             <span aria-hidden className="flex size-11 items-center justify-center rounded-xl bg-muted">
               <Folder className="size-5 text-muted-foreground" />
             </span>
-            <h1 className="screen-title">{project.emoji ? `${project.emoji} ` : ""}{project.title}</h1>
+            <h1 className="screen-title">
+              {project.emoji ? `${project.emoji} ` : ""}
+              {project.title}
+            </h1>
           </div>
           <div className="mt-6">
             <StartSession
@@ -95,16 +116,81 @@ export async function ProjectSurface({ projectId }: { projectId: string }) {
               <ul className="mt-3 flex flex-col">
                 {sessions.map((session) => (
                   <li key={session.id} className="flex items-center gap-3 rounded-md px-2 py-2.5 hover:bg-muted/50">
-                    <Link href={`/polymath/${session.id}`} className="min-w-0 flex-1 truncate text-[15px] hover:underline">
+                    <Link
+                      href={`/polymath/${session.id}`}
+                      className="min-w-0 flex-1 truncate text-[15px] hover:underline"
+                    >
                       {session.title ?? "Untitled session"}
                     </Link>
                     <Lock aria-hidden className="size-3.5 text-muted-foreground" />
-                    <span className="w-16 text-right text-xs text-muted-foreground">{timeAgoShort(session.updatedAt)}</span>
+                    <span className="w-16 text-right text-xs text-muted-foreground">
+                      {timeAgoShort(session.updatedAt)}
+                    </span>
                   </li>
                 ))}
               </ul>
             </section>
           ) : null}
+
+          {/* Agent sessions (Workbench D3): what Claude Code / Codex wrote in
+              this project's repo, parsed locally from the user's own files.
+              The section exists even before the first scan — a missing section
+              would hide the feature; the empty states say what to do. */}
+          <section aria-label="Agent sessions" className="mt-10">
+            <h2 className="screen-title text-[20px]">Agent sessions</h2>
+            {project.repoPath ? (
+              <>
+                <p className="mt-2 text-[13px] text-muted-foreground">
+                  What Claude Code or Codex did in <span className="font-mono">{project.repoPath}</span>, parsed locally
+                  from your own files — nothing was sent to a model. Set the folder in{" "}
+                  <Link href={`/projects/${projectId}/settings`} className="underline">
+                    project settings
+                  </Link>
+                  .
+                </p>
+                <div className="mt-3">
+                  <ScanAgentSessions />
+                </div>
+                {agentSessions.length > 0 ? (
+                  <ul className="mt-4 flex flex-col">
+                    {agentSessions.map((agentSession) => (
+                      <li
+                        key={agentSession.id}
+                        className="flex items-baseline gap-3 rounded-md px-2 py-2.5 hover:bg-muted/50"
+                      >
+                        <span className="w-20 shrink-0 text-xs text-muted-foreground">
+                          {AGENT_SOURCE_LABEL[agentSession.source]}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-[15px]">
+                          {agentSession.aiTitle ?? agentSession.externalSessionId}
+                        </span>
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          {agentSession.fileCount} file{agentSession.fileCount === 1 ? "" : "s"} ·{" "}
+                          {agentSession.commandCount} command{agentSession.commandCount === 1 ? "" : "s"}
+                          {agentSession.failureCount > 0 ? ` · ${agentSession.failureCount} failed` : ""}
+                        </span>
+                        <span className="w-16 shrink-0 text-right text-xs text-muted-foreground">
+                          {agentSession.lastActivityAt ? timeAgoShort(agentSession.lastActivityAt) : "—"}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-3 text-[13px] text-muted-foreground">
+                    No agent sessions scanned for this folder yet.
+                  </p>
+                )}
+              </>
+            ) : (
+              <p className="mt-2 text-[13px] text-muted-foreground">
+                Add this project&apos;s local repo path in{" "}
+                <Link href={`/projects/${projectId}/settings`} className="underline">
+                  settings
+                </Link>{" "}
+                and scan to see what Claude Code or Codex did in it, parsed from your own files.
+              </p>
+            )}
+          </section>
         </div>
 
         <ProjectRightRail
@@ -112,7 +198,12 @@ export async function ProjectSurface({ projectId }: { projectId: string }) {
           instructions={project.instructions}
           description={project.description ?? project.descriptionSeed}
           sources={sources.map((s) => ({ documentId: s.documentId, title: s.title, readiness: s.readiness }))}
-          automations={automations.map((a) => ({ id: a.id, prompt: a.prompt, schedule: a.schedule, enabled: a.enabled }))}
+          automations={automations.map((a) => ({
+            id: a.id,
+            prompt: a.prompt,
+            schedule: a.schedule,
+            enabled: a.enabled,
+          }))}
           memories={memories.map((m) => ({ id: m.id, content: m.content }))}
           connectors={connectors.flatMap((c) =>
             c.accounts.map((account) => ({

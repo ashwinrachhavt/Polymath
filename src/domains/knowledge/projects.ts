@@ -14,7 +14,10 @@ import { agentRuns } from "@/domains/agents/schema";
  */
 
 export class ProjectError extends Error {
-  constructor(public readonly code: "documents_not_found" | "project_not_found" | "invalid_name", message: string) {
+  constructor(
+    public readonly code: "documents_not_found" | "project_not_found" | "invalid_name",
+    message: string,
+  ) {
     super(message);
     this.name = "ProjectError";
   }
@@ -22,12 +25,18 @@ export class ProjectError extends Error {
 
 type Tx = Parameters<Parameters<typeof withTransaction>[0]>[0];
 
-async function sourceFor(tx: Tx, auth: AuthContext, doc: { fileId: string | null; sourceUrl: string | null; title: string }): Promise<string> {
+async function sourceFor(
+  tx: Tx,
+  auth: AuthContext,
+  doc: { fileId: string | null; sourceUrl: string | null; title: string },
+): Promise<string> {
   if (doc.fileId) {
     const [existing] = await tx
       .select({ id: sources.id })
       .from(sources)
-      .where(and(eq(sources.workspaceId, auth.workspaceId), eq(sources.fileId, doc.fileId), eq(sources.kind, "document")))
+      .where(
+        and(eq(sources.workspaceId, auth.workspaceId), eq(sources.fileId, doc.fileId), eq(sources.kind, "document")),
+      )
       .limit(1);
     if (existing) return existing.id;
   }
@@ -44,7 +53,15 @@ async function sourceFor(tx: Tx, auth: AuthContext, doc: { fileId: string | null
   }
   const [created] = await tx
     .insert(sources)
-    .values({ workspaceId: auth.workspaceId, kind: "document", title: doc.title, fileId: doc.fileId, url: doc.sourceUrl, createdBy: auth.userId, updatedBy: auth.userId })
+    .values({
+      workspaceId: auth.workspaceId,
+      kind: "document",
+      title: doc.title,
+      fileId: doc.fileId,
+      url: doc.sourceUrl,
+      createdBy: auth.userId,
+      updatedBy: auth.userId,
+    })
     .returning({ id: sources.id });
   return created.id;
 }
@@ -56,7 +73,13 @@ async function attach(tx: Tx, auth: AuthContext, projectId: string, documentIds:
   const docs = await tx
     .select({ id: documents.id, fileId: documents.fileId, sourceUrl: documents.sourceUrl, title: documents.title })
     .from(documents)
-    .where(and(inArray(documents.id, ids), eq(documents.workspaceId, auth.workspaceId), sql`${documents.archivedAt} is null`));
+    .where(
+      and(
+        inArray(documents.id, ids),
+        eq(documents.workspaceId, auth.workspaceId),
+        sql`${documents.archivedAt} is null`,
+      ),
+    );
   if (docs.length !== ids.length) {
     throw new ProjectError("documents_not_found", "One or more documents are not in this workspace.");
   }
@@ -65,13 +88,24 @@ async function attach(tx: Tx, auth: AuthContext, projectId: string, documentIds:
     const [latest] = await tx
       .select({ contentHash: documentExtractions.contentHash })
       .from(documentExtractions)
-      .where(and(eq(documentExtractions.documentId, doc.id), eq(documentExtractions.workspaceId, auth.workspaceId), eq(documentExtractions.status, "succeeded")))
+      .where(
+        and(
+          eq(documentExtractions.documentId, doc.id),
+          eq(documentExtractions.workspaceId, auth.workspaceId),
+          eq(documentExtractions.status, "succeeded"),
+        ),
+      )
       .orderBy(desc(documentExtractions.createdAt))
       .limit(1);
     const sourceId = await sourceFor(tx, auth, doc);
     const rows = await tx
       .insert(notebookSources)
-      .values({ workspaceId: auth.workspaceId, notebookId: projectId, sourceId, pinnedContentHash: latest?.contentHash ?? null })
+      .values({
+        workspaceId: auth.workspaceId,
+        notebookId: projectId,
+        sourceId,
+        pinnedContentHash: latest?.contentHash ?? null,
+      })
       .onConflictDoNothing({ target: [notebookSources.notebookId, notebookSources.sourceId] })
       .returning({ id: notebookSources.id });
     attached += rows.length;
@@ -81,7 +115,8 @@ async function attach(tx: Tx, auth: AuthContext, projectId: string, documentIds:
 
 export async function createProject(auth: AuthContext, input: { name: string; documentIds?: string[] }) {
   const name = input.name.trim();
-  if (!name || name.length > 200) throw new ProjectError("invalid_name", "Give the project a name of up to 200 characters.");
+  if (!name || name.length > 200)
+    throw new ProjectError("invalid_name", "Give the project a name of up to 200 characters.");
   return withTransaction(async (tx) => {
     const [project] = await tx
       .insert(notebooks)
@@ -123,8 +158,19 @@ export async function listProjects(auth: AuthContext) {
 export async function setProjectPinned(auth: AuthContext, input: { projectId: string; pinned: boolean }) {
   const [row] = await db
     .update(notebooks)
-    .set({ pinnedAt: input.pinned ? new Date() : null, updatedAt: new Date(), updatedBy: auth.userId, version: sql`${notebooks.version} + 1` })
-    .where(and(eq(notebooks.id, input.projectId), eq(notebooks.workspaceId, auth.workspaceId), sql`${notebooks.archivedAt} is null`))
+    .set({
+      pinnedAt: input.pinned ? new Date() : null,
+      updatedAt: new Date(),
+      updatedBy: auth.userId,
+      version: sql`${notebooks.version} + 1`,
+    })
+    .where(
+      and(
+        eq(notebooks.id, input.projectId),
+        eq(notebooks.workspaceId, auth.workspaceId),
+        sql`${notebooks.archivedAt} is null`,
+      ),
+    )
     .returning({ id: notebooks.id, pinnedAt: notebooks.pinnedAt });
   if (!row) throw new ProjectError("project_not_found", "No such project.");
   return row;
@@ -132,22 +178,51 @@ export async function setProjectPinned(auth: AuthContext, input: { projectId: st
 
 export async function updateProject(
   auth: AuthContext,
-  input: { projectId: string; title?: string; description?: string; instructions?: string; emoji?: string },
+  input: {
+    projectId: string;
+    title?: string;
+    description?: string;
+    instructions?: string;
+    emoji?: string;
+    repoPath?: string;
+  },
 ) {
-  const patch: Record<string, unknown> = { updatedAt: new Date(), updatedBy: auth.userId, version: sql`${notebooks.version} + 1` };
+  const patch: Record<string, unknown> = {
+    updatedAt: new Date(),
+    updatedBy: auth.userId,
+    version: sql`${notebooks.version} + 1`,
+  };
   if (input.title !== undefined) {
     const name = input.title.trim();
-    if (!name || name.length > 200) throw new ProjectError("invalid_name", "Give the project a name of up to 200 characters.");
+    if (!name || name.length > 200)
+      throw new ProjectError("invalid_name", "Give the project a name of up to 200 characters.");
     patch.title = name;
   }
   if (input.description !== undefined) patch.description = input.description.trim() || null;
   if (input.instructions !== undefined) patch.instructions = input.instructions.trim() || null;
   if (input.emoji !== undefined) patch.emoji = input.emoji.trim() || null;
+  // The path whose local agent sessions this project claims (Workbench D3);
+  // empty clears it. Stored as typed — matching normalizes at compare time,
+  // because the user typed the path their own agent writes.
+  if (input.repoPath !== undefined) patch.repoPath = input.repoPath.trim() || null;
   const [row] = await db
     .update(notebooks)
     .set(patch)
-    .where(and(eq(notebooks.id, input.projectId), eq(notebooks.workspaceId, auth.workspaceId), sql`${notebooks.archivedAt} is null`))
-    .returning({ id: notebooks.id, title: notebooks.title, description: notebooks.description, instructions: notebooks.instructions, emoji: notebooks.emoji });
+    .where(
+      and(
+        eq(notebooks.id, input.projectId),
+        eq(notebooks.workspaceId, auth.workspaceId),
+        sql`${notebooks.archivedAt} is null`,
+      ),
+    )
+    .returning({
+      id: notebooks.id,
+      title: notebooks.title,
+      description: notebooks.description,
+      instructions: notebooks.instructions,
+      emoji: notebooks.emoji,
+      repoPath: notebooks.repoPath,
+    });
   if (!row) throw new ProjectError("project_not_found", "No such project.");
   return row;
 }
@@ -164,13 +239,16 @@ export async function projectDocumentIds(auth: AuthContext, projectId: string): 
     .select({ id: documents.id })
     .from(notebookSources)
     .innerJoin(sources, eq(sources.id, notebookSources.sourceId))
-    .innerJoin(documents, and(
-      eq(documents.workspaceId, auth.workspaceId),
-      // A queued capture has no fileId yet, so it binds by its source address;
-      // an extracted document binds by file. SQL null never equals null, so the
-      // file arm simply misses until extraction lands.
-      or(eq(documents.fileId, sources.fileId), eq(documents.sourceUrl, sources.url)),
-    ))
+    .innerJoin(
+      documents,
+      and(
+        eq(documents.workspaceId, auth.workspaceId),
+        // A queued capture has no fileId yet, so it binds by its source address;
+        // an extracted document binds by file. SQL null never equals null, so the
+        // file arm simply misses until extraction lands.
+        or(eq(documents.fileId, sources.fileId), eq(documents.sourceUrl, sources.url)),
+      ),
+    )
     .where(and(eq(notebookSources.notebookId, projectId), eq(notebookSources.workspaceId, auth.workspaceId)));
   return [...new Set(rows.map((r) => r.id))];
 }
@@ -186,22 +264,32 @@ export async function getProjectDetail(auth: AuthContext, projectId: string) {
       instructions: notebooks.instructions,
       emoji: notebooks.emoji,
       pinnedAt: notebooks.pinnedAt,
+      repoPath: notebooks.repoPath,
     })
     .from(notebooks)
-    .where(and(eq(notebooks.id, projectId), eq(notebooks.workspaceId, auth.workspaceId), sql`${notebooks.archivedAt} is null`))
+    .where(
+      and(
+        eq(notebooks.id, projectId),
+        eq(notebooks.workspaceId, auth.workspaceId),
+        sql`${notebooks.archivedAt} is null`,
+      ),
+    )
     .limit(1);
   if (!project) return null;
   const docs = await db
     .select({ id: documents.id, title: documents.title, mimeType: documents.mimeType })
     .from(notebookSources)
     .innerJoin(sources, eq(sources.id, notebookSources.sourceId))
-    .innerJoin(documents, and(
-      eq(documents.workspaceId, auth.workspaceId),
-      // A queued capture has no fileId yet, so it binds by its source address;
-      // an extracted document binds by file. SQL null never equals null, so the
-      // file arm simply misses until extraction lands.
-      or(eq(documents.fileId, sources.fileId), eq(documents.sourceUrl, sources.url)),
-    ))
+    .innerJoin(
+      documents,
+      and(
+        eq(documents.workspaceId, auth.workspaceId),
+        // A queued capture has no fileId yet, so it binds by its source address;
+        // an extracted document binds by file. SQL null never equals null, so the
+        // file arm simply misses until extraction lands.
+        or(eq(documents.fileId, sources.fileId), eq(documents.sourceUrl, sources.url)),
+      ),
+    )
     .where(and(eq(notebookSources.notebookId, projectId), eq(notebookSources.workspaceId, auth.workspaceId)));
   const seen = new Set<string>();
   return { ...project, documents: docs.filter((d) => (seen.has(d.id) ? false : (seen.add(d.id), true))) };
@@ -217,14 +305,28 @@ export async function listAttachableDocuments(auth: AuthContext) {
   const docs = await db
     .select({ id: documents.id, title: documents.title })
     .from(documents)
-    .where(and(eq(documents.workspaceId, auth.workspaceId), sql`${documents.archivedAt} is null`, sql`${documents.fileId} is not null`))
+    .where(
+      and(
+        eq(documents.workspaceId, auth.workspaceId),
+        sql`${documents.archivedAt} is null`,
+        sql`${documents.fileId} is not null`,
+      ),
+    )
     .orderBy(desc(documents.createdAt))
     .limit(200);
   if (docs.length === 0) return docs.map((doc) => ({ ...doc, extractionStatus: null as string | null }));
   const extractions = await db
     .select({ documentId: documentExtractions.documentId, status: documentExtractions.status })
     .from(documentExtractions)
-    .where(and(eq(documentExtractions.workspaceId, auth.workspaceId), inArray(documentExtractions.documentId, docs.map((doc) => doc.id))))
+    .where(
+      and(
+        eq(documentExtractions.workspaceId, auth.workspaceId),
+        inArray(
+          documentExtractions.documentId,
+          docs.map((doc) => doc.id),
+        ),
+      ),
+    )
     .orderBy(desc(documentExtractions.createdAt));
   const latest = new Map<string, string>();
   for (const row of extractions) if (!latest.has(row.documentId)) latest.set(row.documentId, row.status);
@@ -234,9 +336,19 @@ export async function listAttachableDocuments(auth: AuthContext) {
 /** The runs bound to a project (Studio Generate, research, and automations bind with a project subject), newest first. */
 export async function listProjectRuns(auth: AuthContext, projectId: string, limit = 20) {
   return db
-    .select({ id: agentRuns.id, state: agentRuns.state, objective: agentRuns.objective, createdAt: agentRuns.createdAt })
+    .select({
+      id: agentRuns.id,
+      state: agentRuns.state,
+      objective: agentRuns.objective,
+      createdAt: agentRuns.createdAt,
+    })
     .from(agentRuns)
-    .where(and(eq(agentRuns.workspaceId, auth.workspaceId), sql`${agentRuns.subjects} @> ${JSON.stringify([{ type: "project", id: projectId }])}::jsonb`))
+    .where(
+      and(
+        eq(agentRuns.workspaceId, auth.workspaceId),
+        sql`${agentRuns.subjects} @> ${JSON.stringify([{ type: "project", id: projectId }])}::jsonb`,
+      ),
+    )
     .orderBy(desc(agentRuns.createdAt))
     .limit(limit);
 }

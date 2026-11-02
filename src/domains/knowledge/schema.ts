@@ -710,6 +710,13 @@ export const notebooks = pgTable(
     pinnedAt: timestamp("pinned_at", { withTimezone: true }),
     sourcePolicy: dossierSourcePolicy("source_policy").notNull().default("bounded"),
     projectId: uuid("project_id"),
+    /**
+     * The local repository path whose Claude Code / Codex sessions this project
+     * claims (Workbench D3). Sessions match by their transcript cwd — equal to
+     * or nested under this path. Null until the operator sets it in project
+     * settings; a null means the project shows no agent sessions.
+     */
+    repoPath: text("repo_path"),
     ...mutable,
   },
   (t) => [index("notebooks_workspace_updated_idx").on(t.workspaceId, t.updatedAt)],

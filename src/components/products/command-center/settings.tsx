@@ -183,6 +183,52 @@ function Section({ id, children }: { id: string; children: React.ReactNode }) {
  * the difference between "no results" and "not switched on" (ASH-193). Variable
  * names only; a value never reaches the browser.
  */
+/** One agent's local artifact root, resolved and probed on the server. */
+export type AgentRootStatus = { source: "Claude Code" | "Codex"; path: string; present: boolean };
+
+/*
+ * Where this deployment reads local agent sessions from (Workbench D3): the
+ * roots a project-page scan reads, named so the operator can see what would
+ * be read and what is missing before running it. Read-only on purpose — the
+ * roots belong to the agents' own configuration; Polymath points tests at
+ * fixture folders with the override variable instead of a setting here.
+ */
+function AgentSessionsPanel({ roots }: { roots?: AgentRootStatus[] }) {
+  if (!roots || roots.length === 0) return null;
+  return (
+    <Panel
+      title="Local agent sessions"
+      description="Folders this deployment reads when you scan agent sessions from a project page. Files are parsed on this machine and nothing is sent to a model."
+    >
+      <dl className="grid gap-3 text-[13px]">
+        {roots.map((root) => (
+          <div key={root.source}>
+            <dt className="text-muted-foreground">{root.source}</dt>
+            <dd className="font-mono break-all">
+              {root.path}
+              {root.present ? (
+                <span className="ml-2 font-sans text-xs text-muted-foreground">present</span>
+              ) : (
+                <span className="ml-2 font-sans text-xs text-destructive">
+                  not found — that agent may not be installed
+                </span>
+              )}
+            </dd>
+          </div>
+        ))}
+        <div>
+          <dt className="text-muted-foreground">Override</dt>
+          <dd>
+            Set <code className="bg-muted rounded px-1 py-0.5">POLYMATH_AGENT_ARTIFACT_ROOTS</code> to{" "}
+            <code className="bg-muted rounded px-1 py-0.5">claude-code=…;codex=…</code> to point the scan elsewhere
+            (relocated installs, tests).
+          </dd>
+        </div>
+      </dl>
+    </Panel>
+  );
+}
+
 function CapabilityPanel({ capabilities }: { capabilities?: CapabilityStatus[] }) {
   if (!capabilities || capabilities.length === 0) return null;
   const missing = capabilities.filter((c) => !c.configured);
@@ -348,11 +394,13 @@ export default function Settings({
   capabilities,
   serverAssistantProfile,
   browserPreview,
+  agentRoots,
 }: {
   serverPreferences?: LoadedPreferences;
   capabilities?: CapabilityStatus[];
   serverAssistantProfile?: AssistantProfile | null;
   browserPreview: boolean;
+  agentRoots?: AgentRootStatus[];
 }) {
   const { state, updatePreferences, resetPreview, notify } = useWorkspace();
   // The server row is the record; `saved` mirrors it here so a form always
@@ -598,6 +646,10 @@ export default function Settings({
               </div>
             </Panel>
             <CapabilityPanel capabilities={capabilities} />
+          </Section>
+
+          <Section id="agent-sessions">
+            <AgentSessionsPanel roots={agentRoots} />
           </Section>
 
           <Section id="documents">

@@ -37,7 +37,9 @@ const uuid = z.string().uuid();
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
-export async function createProjectAction(input: { name: string }): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+export async function createProjectAction(input: {
+  name: string;
+}): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   const auth = await authorize();
   const parsed = z.object({ name: z.string().trim().min(1).max(200) }).safeParse(input);
   if (!parsed.success) return { ok: false, error: "Give the project a name of up to 200 characters." };
@@ -69,6 +71,7 @@ export async function updateProjectAction(input: {
   description?: string;
   instructions?: string;
   emoji?: string;
+  repoPath?: string;
 }): Promise<ActionResult> {
   const auth = await authorize();
   const parsed = z
@@ -78,6 +81,7 @@ export async function updateProjectAction(input: {
       description: z.string().max(2000).optional(),
       instructions: z.string().max(8000).optional(),
       emoji: z.string().trim().max(8).optional(),
+      repoPath: z.string().trim().max(4096).optional(),
     })
     .safeParse(input);
   if (!parsed.success) return { ok: false, error: "Check the fields and try again." };
@@ -90,7 +94,11 @@ export async function updateProjectAction(input: {
   }
 }
 
-export async function createAutomationAction(input: { projectId: string; prompt: string; schedule: string }): Promise<ActionResult> {
+export async function createAutomationAction(input: {
+  projectId: string;
+  prompt: string;
+  schedule: string;
+}): Promise<ActionResult> {
   const auth = await authorize();
   const parsed = z
     .object({ projectId: uuid, prompt: z.string().min(1).max(4000), schedule: z.string().min(1).max(100) })
@@ -105,7 +113,11 @@ export async function createAutomationAction(input: { projectId: string; prompt:
   }
 }
 
-export async function updateAutomationAction(input: { projectId: string; automationId: string; enabled: boolean }): Promise<ActionResult> {
+export async function updateAutomationAction(input: {
+  projectId: string;
+  automationId: string;
+  enabled: boolean;
+}): Promise<ActionResult> {
   const auth = await authorize();
   const parsed = z.object({ projectId: uuid, automationId: uuid, enabled: z.boolean() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: "That automation could not be updated." };
@@ -118,7 +130,10 @@ export async function updateAutomationAction(input: { projectId: string; automat
   }
 }
 
-export async function deleteAutomationAction(input: { projectId: string; automationId: string }): Promise<ActionResult> {
+export async function deleteAutomationAction(input: {
+  projectId: string;
+  automationId: string;
+}): Promise<ActionResult> {
   const auth = await authorize();
   const parsed = z.object({ projectId: uuid, automationId: uuid }).safeParse(input);
   if (!parsed.success) return { ok: false, error: "That automation could not be deleted." };
@@ -157,7 +172,11 @@ export async function deleteMemoryAction(input: { projectId: string; memoryId: s
   }
 }
 
-export async function setProjectAccountAction(input: { projectId: string; gatewayAccountId: string; enabled: boolean }): Promise<ActionResult> {
+export async function setProjectAccountAction(input: {
+  projectId: string;
+  gatewayAccountId: string;
+  enabled: boolean;
+}): Promise<ActionResult> {
   const auth = await authorize();
   const parsed = z.object({ projectId: uuid, gatewayAccountId: uuid, enabled: z.boolean() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: "That connector could not be updated." };
