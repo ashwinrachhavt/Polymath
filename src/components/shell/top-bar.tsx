@@ -5,7 +5,7 @@ import { ModeToggle } from "@/components/shell/mode-toggle";
 import { UserMenu } from "@/components/shell/user-menu";
 import { CommandLayer } from "@/components/shell/command-layer";
 import { NotificationsPanel } from "@/components/shell/notifications-panel";
-import type { TriageFeed } from "@/domains/notifications/feed";
+import type { TriageFeed } from "@/domains/notifications/triage";
 
 /*
  * The header. Where-you-are on the left (the breadcrumb names the app in

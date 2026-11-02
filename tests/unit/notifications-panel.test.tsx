@@ -54,18 +54,12 @@ vi.mock("@/components/workspace/workspace-provider", () => ({
 }));
 
 /*
- * The feed module's import graph reaches the eve runtime through the query
- * and executor domains, and undici 8 (eve's fetcher) refuses this sandbox's
- * Node at worker start. A component test runs none of that graph - the feed's
- * classification code is pure - so the data branches are severed here.
+ * The panel imports only the client-safe triage module — no database graph
+ * reaches this test (tests/unit/triage-client-boundary.test.ts owns that
+ * guarantee).
  */
-vi.mock("@/lib/db", () => ({ db: {} }));
-vi.mock("@/domains/agents/queries", () => ({ listRecentRuns: vi.fn() }));
-vi.mock("@/domains/agents/run-context", () => ({ getOpenQuestion: vi.fn() }));
-vi.mock("@/domains/home/queue", () => ({ listHomeQueue: vi.fn() }));
-
 import { NotificationsPanel } from "@/components/shell/notifications-panel";
-import type { TriageFeed, TriageItem } from "@/domains/notifications/feed";
+import type { TriageFeed, TriageItem } from "@/domains/notifications/triage";
 
 const question: TriageItem = {
   kind: "question",

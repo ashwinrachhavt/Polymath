@@ -10,7 +10,7 @@ import { NotificationCard } from "@/components/shell/notifications/NotificationC
 import { useWorkspace } from "@/components/workspace/workspace-provider";
 import { decideHomeAgentAction, decideHomeCaptureAction } from "@/domains/home/actions";
 import { answerRunQuestion, dismissQuestionAction } from "@/app/(workspace)/polymath/[runId]/question-actions";
-import { triageTab, type TriageFeed, type TriageItem, type TriageTab } from "@/domains/notifications/feed";
+import { triageTab, type TriageFeed, type TriageItem, type TriageTab } from "@/domains/notifications/triage";
 
 /*
  * The notifications sheet, rebuilt as a zero-hop triage workspace (spec

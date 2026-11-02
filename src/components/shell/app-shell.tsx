@@ -7,7 +7,7 @@ import { PreviewStorageWarning, WorkspaceProvider } from "@/components/workspace
 import { SideNav } from "@/components/shell/side-nav";
 import { MobileNav } from "@/components/shell/mobile-nav";
 import { TopBar } from "@/components/shell/top-bar";
-import type { TriageFeed } from "@/domains/notifications/feed";
+import type { TriageFeed } from "@/domains/notifications/triage";
 import { isConversationSurface, isBrowserPreviewPath } from "@/lib/navigation";
 import { FocusDock } from "@/components/shell/focus-dock";
 import { Skeleton } from "@/components/ui/skeleton";
