@@ -24,6 +24,9 @@ export const REASONS = {
   noRuleMatched: "No enabled admission rule matched",
   ignoredFromCard: "Ignored from its card, without a rule assessment",
   observed: "Observe mode: would accept ({text})",
+  decideBelowThreshold: "Mercury Decide's admission probability was {probability}, below the threshold {threshold}",
+  decideDisagreement:
+    "The assessor would not admit, but Mercury Decide's admission probability reached the threshold ({probability})",
 } as const;
 export type ReasonCode = keyof typeof REASONS;
 /** Reason code and template values; `triggerId` identifies the trigger in a batch that the reason applies to. */
