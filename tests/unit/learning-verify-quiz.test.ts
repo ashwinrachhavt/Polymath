@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MIN_QUIZ_QUESTIONS, MAX_QUIZ_QUESTIONS, verifyQuiz } from "@/domains/learning/generate-quiz";
+import { locateQuoteNormalized } from "@/domains/learning/locate-quote";
 import type { GeneratedQuestion } from "@/integrations/learning/quiz-generator";
 
 /*
@@ -9,7 +10,17 @@ import type { GeneratedQuestion } from "@/integrations/learning/quiz-generator";
  * choice value. Anything else is dropped and counted, never repaired.
  */
 
-const TEXT = "The lease renews on March 1. Rent rises by 4% unless the tenant gives notice within 60 days. The deposit is held in escrow.";
+const TEXT =
+  "The lease renews on March 1. Rent rises by 4% unless the tenant gives notice within 60 days. The deposit is held in escrow.";
+
+// Real extraction text is markdown: wiki links, citation refs, image
+// embeds. The model quotes the prose a reader sees; matching must
+// tolerate the formatting without tolerating paraphrase.
+const WIKI = `Hermann Ebbinghaus
+
+[![](https://thumb.wikimedia.org/x.jpg)Portrait](https://en.wikipedia.org/wiki/X)
+
+In 1894, he was passed over for promotion to head of the philosophy department at [Berlin](https://en.wikipedia.org/wiki/University_of_Berlin "University of Berlin"), most likely due to his lack of publications. Shortly after this publication, on 26 February 1909,[\\[2\\]](#cite_note-1968-2) Ebbinghaus died from [pneumonia](https://en.wikipedia.org/wiki/Pneumonia).`;
 
 function question(overrides: Partial<GeneratedQuestion> & { quote: string }): GeneratedQuestion {
   return {
@@ -30,7 +41,11 @@ describe("verifyQuiz", () => {
     const out = verifyQuiz(TEXT, [question({ quote })]);
     expect(out.droppedQuestions).toBe(0);
     expect(out.questions).toHaveLength(1);
-    expect(out.questions[0].evidence).toEqual({ quote, startOffset: TEXT.indexOf(quote), endOffset: TEXT.indexOf(quote) + quote.length });
+    expect(out.questions[0].evidence).toEqual({
+      quote,
+      startOffset: TEXT.indexOf(quote),
+      endOffset: TEXT.indexOf(quote) + quote.length,
+    });
   });
 
   it("drops a paraphrased quote - the evidence must be verbatim", () => {
@@ -62,7 +77,10 @@ describe("verifyQuiz", () => {
 
   it("caps the quiz at the maximum question count", () => {
     const quote = "The deposit is held in escrow.";
-    const out = verifyQuiz(TEXT, Array.from({ length: 9 }, (_, i) => question({ quote, prompt: `Question ${i}?` })));
+    const out = verifyQuiz(
+      TEXT,
+      Array.from({ length: 9 }, (_, i) => question({ quote, prompt: `Question ${i}?` })),
+    );
     expect(out.questions).toHaveLength(MAX_QUIZ_QUESTIONS);
   });
 
@@ -78,7 +96,9 @@ describe("verifyQuiz", () => {
       const out = verifyQuiz(TEXT, [question({ quote, prompt: `Q${i}` })]);
       expect(out.droppedQuestions).toBe(0);
       expect(out.questions[0].evidence).toEqual({ quote, startOffset: start, endOffset: end });
-      expect(TEXT.slice(out.questions[0].evidence.startOffset, out.questions[0].evidence.endOffset)).toBe(out.questions[0].evidence.quote);
+      expect(TEXT.slice(out.questions[0].evidence.startOffset, out.questions[0].evidence.endOffset)).toBe(
+        out.questions[0].evidence.quote,
+      );
     }
     const mutated = `X${TEXT.slice(1, 30)}`;
     expect(verifyQuiz(TEXT, [question({ quote: mutated })]).droppedQuestions).toBe(1);
@@ -100,7 +120,9 @@ describe("verifyQuiz", () => {
     expect(out.droppedQuestions).toBe(0);
     const evidence = out.questions[0].evidence;
     expect(evidence.quote.length).toBeLessThanOrEqual(400);
-    expect(longText.slice(evidence.startOffset, evidence.endOffset)).toBe(evidence.quote);
+    // The stored quote's normalized form is exactly what the offsets cut.
+    const raw = longText.slice(evidence.startOffset, evidence.endOffset);
+    expect(raw.replace(/\s+/g, " ").trim()).toBe(evidence.quote.replace(/\s+/g, " ").trim());
   });
 
   it("drops a question whose distinct choice values would collide after the value cap", () => {
@@ -151,5 +173,71 @@ describe("verifyQuiz", () => {
 
   it("exposes the minimum count the domain enforces", () => {
     expect(MIN_QUIZ_QUESTIONS).toBe(3);
+  });
+});
+
+describe("locateQuoteNormalized", () => {
+  it("locates a quote that crosses a markdown link, mapping back to original offsets", () => {
+    const quote =
+      "In 1894, he was passed over for promotion to head of the philosophy department at Berlin, most likely due to his lack of publications.";
+    const span = locateQuoteNormalized(WIKI, quote);
+    expect(span).not.toBeNull();
+    const raw = WIKI.slice(span!.start, span!.end);
+    // The raw bytes carry the link syntax; normalized equality is the
+    // locator's guarantee (asserted by the paraphrase and plain-text tests).
+    expect(raw).toContain("[Berlin](https://en.wikipedia.org/wiki/University_of_Berlin");
+    expect(raw.startsWith("In 1894, he was passed over")).toBe(true);
+    expect(raw.endsWith("lack of publications.")).toBe(true);
+  });
+
+  it("locates a quote that crosses a citation ref", () => {
+    const span = locateQuoteNormalized(
+      WIKI,
+      "Shortly after this publication, on 26 February 1909, Ebbinghaus died from pneumonia",
+    );
+    expect(span).not.toBeNull();
+  });
+
+  it("collapses whitespace runs so a quote copied across paragraphs locates", () => {
+    const span = locateQuoteNormalized(WIKI, "Hermann Ebbinghaus Portrait");
+    expect(span).not.toBeNull();
+    expect(WIKI.slice(span!.start, span!.end).startsWith("Hermann Ebbinghaus")).toBe(true);
+  });
+
+  it("still rejects paraphrase - formatting tolerance is not paraphrase tolerance", () => {
+    expect(locateQuoteNormalized(WIKI, "In 1894, he was denied a promotion in Berlin")).toBeNull();
+    expect(locateQuoteNormalized(WIKI, "He invented the forgetting curve in Berlin")).toBeNull();
+  });
+
+  it("returns null for an empty quote", () => {
+    expect(locateQuoteNormalized(WIKI, "   ")).toBeNull();
+  });
+
+  it("keeps byte-exact matching working on plain text", () => {
+    const span = locateQuoteNormalized(TEXT, "The deposit is held in escrow.");
+    expect(span).toEqual({
+      start: TEXT.indexOf("The deposit is held in escrow."),
+      end: TEXT.indexOf("The deposit is held in escrow.") + "The deposit is held in escrow.".length,
+    });
+  });
+});
+
+describe("verifyQuiz with normalized evidence", () => {
+  it("keeps a question whose quote crosses markdown links, with offsets into the raw text", () => {
+    const quote =
+      "In 1894, he was passed over for promotion to head of the philosophy department at Berlin, most likely due to his lack of publications.";
+    const out = verifyQuiz(WIKI, [question({ quote })]);
+    expect(out.droppedQuestions).toBe(0);
+    expect(out.questions).toHaveLength(1);
+    const { startOffset, endOffset } = out.questions[0].evidence;
+    expect(startOffset).toBeGreaterThanOrEqual(0);
+    expect(endOffset).toBeGreaterThan(startOffset);
+    expect(endOffset).toBeLessThanOrEqual(WIKI.length);
+  });
+
+  it("drops a question whose quote is not in the document at all", () => {
+    const out = verifyQuiz(WIKI, [question({ quote: "Ebbinghaus moved to Paris in 1895 and never returned." })]);
+    expect(out.droppedQuestions).toBe(1);
+    expect(out.questions).toHaveLength(0);
   });
 });

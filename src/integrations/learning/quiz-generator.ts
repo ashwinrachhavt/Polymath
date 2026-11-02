@@ -43,7 +43,7 @@ export interface QuizGenerator {
   generate(extractionText: string): Promise<{ questions: GeneratedQuestion[] }>;
 }
 
-export const QUIZ_PROMPT_VERSION = "learn-quiz@1";
+export const QUIZ_PROMPT_VERSION = "learn-quiz@2";
 
 const MAX_INPUT_CHARS = 12_000;
 
@@ -71,10 +71,13 @@ const SYSTEM = `You write a short quiz over a document so a reader can check wha
 "choices": one correct option plus 2 to 4 wrong options. Each "label" is a bare claim - no justification inside an option; the reasoning belongs in "explanation". Write the correct claim first, then build each wrong option by mutating it from one specific, believable misconception, keeping the same sentence skeleton, length, and register, so the correct answer never leaks by format. Never "all of the above", never "none of the above". "value" is a short stable id for the option, unique within the question.
 "answerValue": the correct option's "value", exactly.
 "explanation": why the correct claim is true and the tempting wrong ones are not. Required.
-"quote": the passage from the document, copied VERBATIM, that grounds the question. If no passage supports a question, drop the question.
+"quote": the passage from the document, copied exactly as the reader sees it, that grounds the question. Keep it to one sentence, at most about 30 words. If no passage supports a question, drop the question.
 3 to 6 questions. Never invent a fact, a quote, or a question to fill the shape. ${untrustedDataClauseJsonSafe("article")}`;
 
-function fromGeneration(provider: GenerationProvider, run: (input: { system: string; prompt: string }) => Promise<{ text: string }>): QuizGenerator {
+function fromGeneration(
+  provider: GenerationProvider,
+  run: (input: { system: string; prompt: string }) => Promise<{ text: string }>,
+): QuizGenerator {
   return {
     name: provider.name,
     async generate(text) {
