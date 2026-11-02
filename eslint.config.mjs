@@ -29,6 +29,12 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Generated eve dev-host artifacts (gitignored; appears after `pnpm dev`).
     "**/.eve/**",
+    // A nested eve app's own build output and dependencies
+    // (eve/alfred/.output, eve/specialist/node_modules). Both are gitignored,
+    // and both hold bundled third-party code that fails rules it predates -
+    // the same reasoning as extensions/** above.
+    "**/.output/**",
+    "eve/*/node_modules/**",
     // Vendored agent skills: third-party scripts, not our source.
     ".claude/skills/**",
     // The Chrome companion is browser code, not part of the Next build. Its
