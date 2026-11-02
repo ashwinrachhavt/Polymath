@@ -17,7 +17,7 @@ import { isActiveRunState, type EveForSuperagent, type LiveRun } from "./eve";
 import type { Executor } from "../core/ports";
 
 /** The effect queue the executor enqueues into; the effects module owns the drain. */
-export interface ExecutorEffects {
+interface ExecutorEffects {
   enqueue(effect: { kind: "launch" | "delivery"; key: string; payload: Record<string, unknown> }): void;
 }
 
@@ -26,7 +26,7 @@ export interface LaunchPayload {
   runId: string;
 }
 
-export type DeliveryPayload = LaunchPayload;
+type DeliveryPayload = LaunchPayload;
 
 /**
  * Everything the executor borrows from its host. `repos` is the read side of
@@ -63,7 +63,7 @@ export interface SuperagentExecutor extends Executor {
  * The one effect key per unit: a launch is a TicketRun, a delivery is a
  * ticket — coalescing a burst of messages into one pass (spec §4).
  */
-export function launchKey(run: Pick<TicketRun, "id">): string {
+function launchKey(run: Pick<TicketRun, "id">): string {
   return run.id;
 }
 
@@ -295,7 +295,10 @@ export function createSuperagentExecutor(host: ExecutorHost): SuperagentExecutor
   return { ...port, handleLaunch, handleDelivery, recover };
 }
 
-/** The module's public surface: the port, its handlers, the slot rules, and the seam's types. */
+/**
+ * The module's public surface: the port, its handlers, and the slot rules.
+ * The seam's types export from eve.ts; the error from errors.ts (the spec
+ * imports both there). The effects module's wiring re-exports what it needs
+ * when it lands.
+ */
 export { EXECUTOR_DEFAULTS, admission, parseExecutorConfig, spareEligible, type ExecutorConfig } from "./slots";
-export { Later } from "./errors";
-export type { EveForSuperagent, LiveRun } from "./eve";

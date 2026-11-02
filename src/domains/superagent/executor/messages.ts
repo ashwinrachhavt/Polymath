@@ -6,12 +6,12 @@
  */
 import type { TicketInput, Ticket, Trigger } from "../core/model";
 
-export const TRIGGER_TEXT_CAP = 4000;
-export const NOTE_TEXT_CAP = 2000;
-export const TITLE_CAP = 200;
-export const SCOPE_CAP = 2000;
+const TRIGGER_TEXT_CAP = 4000;
+const NOTE_TEXT_CAP = 2000;
+const TITLE_CAP = 200;
+const SCOPE_CAP = 2000;
 
-export function cap(text: string, max: number): string {
+function cap(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, max)}…`;
 }
 
@@ -23,7 +23,7 @@ export function triggerCard(trigger: Trigger): string {
 }
 
 /** The policy-changed input's description: what the new rules change for this ticket. */
-export function policyChangeText(input: Extract<TicketInput, { kind: "policy-changed" }>): string {
+function policyChangeText(input: Extract<TicketInput, { kind: "policy-changed" }>): string {
   const parts: string[] = [];
   for (const rule of input.effect?.rules ?? []) {
     if (rule.change === "disabled") parts.push(`rule "${rule.name}" no longer applies`);

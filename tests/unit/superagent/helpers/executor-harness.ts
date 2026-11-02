@@ -26,8 +26,8 @@ import {
 } from "@/domains/superagent/executor";
 import { isActiveRunState, type EveForSuperagent, type LiveRun } from "@/domains/superagent/executor/eve";
 
-export const WORKSPACE = "ws-1";
-export const auth: AuthContext = { userId: "owner-1", workspaceId: WORKSPACE, role: "owner" };
+const WORKSPACE = "ws-1";
+const auth: AuthContext = { userId: "owner-1", workspaceId: WORKSPACE, role: "owner" };
 
 export function trig(id: string, overrides: Partial<Trigger> = {}): Trigger {
   return {
@@ -45,7 +45,7 @@ export function trig(id: string, overrides: Partial<Trigger> = {}): Trigger {
 }
 
 /** A fake eve seam: runs live in a map, starts and signals are recorded, failures are programmable. */
-export class FakeEve implements EveForSuperagent {
+class FakeEve implements EveForSuperagent {
   readonly starts: { ticketId: string; runId: string; objective: string; profileName: string; estimateUsd: string }[] =
     [];
   readonly signals: { agentRunId: string; text: string }[] = [];
@@ -95,9 +95,9 @@ export class FakeEve implements EveForSuperagent {
   }
 }
 
-export type RecordedEffect = { kind: "launch" | "delivery"; key: string; payload: Record<string, unknown> };
+type RecordedEffect = { kind: "launch" | "delivery"; key: string; payload: Record<string, unknown> };
 
-export function isLaunchPayload(payload: object): payload is LaunchPayload {
+function isLaunchPayload(payload: object): payload is LaunchPayload {
   return (
     "ticketId" in payload &&
     "runId" in payload &&

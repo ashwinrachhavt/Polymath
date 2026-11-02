@@ -1,4 +1,4 @@
-/** The executor's named errors: a defer that counts no failure, and a missing owner. */
+/** The executor's named error: a defer that counts no failure. */
 
 /**
  * Throw from an effect handler to reschedule the effect without counting a
@@ -12,19 +12,5 @@ export class Later extends Error {
   constructor(message: string) {
     super(message);
     this.name = "Later";
-  }
-}
-
-/**
- * A background run has no session to inherit an AuthContext from: the executor
- * resolves the workspace owner per operation. A workspace always has an owner
- * in the data model, so failing to resolve one is a structural fault worth its
- * own name — the launch reports it as a failed run, not as a retryable effect.
- */
-export class OwnerUnavailableError extends Error {
-  readonly code = "owner_unavailable";
-  constructor() {
-    super("No workspace owner could be resolved to run this ticket.");
-    this.name = "OwnerUnavailableError";
   }
 }

@@ -25,7 +25,7 @@ export interface LiveRun {
   state: AgentRunState;
 }
 
-export interface RunLookup {
+interface RunLookup {
   ticketId: string;
   runId: string;
 }
@@ -62,7 +62,7 @@ export interface EveForSuperagent {
  * ticket and one TicketRun. Subject tags mirror the event-bridge's
  * superagent_ticket tags so any consumer can trace a run to its ticket.
  */
-export function ticketRunSubjects(ticketId: string, runId: string): { type: string; id: string }[] {
+function ticketRunSubjects(ticketId: string, runId: string): { type: string; id: string }[] {
   return [
     { type: "superagent_ticket", id: ticketId },
     { type: "superagent_ticket_run", id: runId },
