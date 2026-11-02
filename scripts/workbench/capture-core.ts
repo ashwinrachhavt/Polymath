@@ -103,10 +103,10 @@ export async function collectGitState(input: { repoPath: string; baseSha: string
   if (status.trim() !== "") {
     throw new CaptureError("dirty_tree", `Working tree at ${repoPath} is not clean; commit or stash before capture`);
   }
-  // --no-textconv: a textconv driver would archive the converted rendering
-  // instead of the actual bytes, and identical conversions could read as an
-  // empty diff.
-  const diffBytes: Uint8Array = await runGitBuffer(repoPath, ["diff", "--binary", "--no-textconv", baseSha, headSha]);
+  // --no-textconv and --no-ext-diff: a converted or external rendering must
+  // never stand in for the actual bytes, and identical conversions or empty
+  // external output could read as an empty diff.
+  const diffBytes: Uint8Array = await runGitBuffer(repoPath, ["diff", "--binary", "--no-textconv", "--no-ext-diff", baseSha, headSha]);
   if (diffBytes.length === 0) {
     throw new CaptureError("empty_diff", `No diff between ${baseSha} and ${headSha}; nothing to capture`);
   }

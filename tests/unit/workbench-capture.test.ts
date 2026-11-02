@@ -102,9 +102,21 @@ describe("workbench capture-core", () => {
     // record must carry the full resolved commit SHA.
     expect(state.baseSha).toBe(fixture.baseSha);
 
-    const raw = execFileSync("git", ["-C", fixture.repoPath, "diff", "--binary", "--no-textconv", fixture.baseSha, "HEAD"], { encoding: "buffer" });
+    const raw = execFileSync("git", ["-C", fixture.repoPath, "diff", "--binary", "--no-textconv", "--no-ext-diff", fixture.baseSha, "HEAD"], { encoding: "buffer" });
     expect(raw.includes(0xe9)).toBe(true);
     expect(Buffer.from(state.diffBytes).equals(raw)).toBe(true);
+  });
+
+  it("ignores an external diff driver — git must generate the patch itself", async () => {
+    const fixture = makeFixtureRepo();
+    sedChange(fixture.repoPath, fixture.filePath);
+    git(fixture.repoPath, "config", "diff.external", "echo EXTERNAL-DIFF-RAN");
+
+    const state = await collectGitState({ repoPath: fixture.repoPath, baseSha: fixture.baseSha });
+
+    const text = Buffer.from(state.diffBytes).toString("utf8");
+    expect(text.startsWith("diff --git")).toBe(true);
+    expect(text).not.toContain("EXTERNAL-DIFF-RAN");
   });
 
   it("parses the provided test-results file in both shapes and stamps missing runAt", () => {
