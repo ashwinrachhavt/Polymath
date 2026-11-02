@@ -225,7 +225,8 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "Paid strong model for hard synthesis and drafting; routed by task difficulty.",
     baseUrl: "https://api.openai.com/v1",
     keyEnv: "OPENAI_API_KEY",
-    probe: "listing 2026-10-29 (models endpoint answered; chat turn blocked by zero account credits — chat probed in Task 3's live eval run)",
+    probe:
+      "listing 2026-10-29 (models endpoint answered; chat turn blocked by zero account credits — chat probed in Task 3's live eval run)",
   },
   {
     id: "gpt-5.4-mini",
@@ -234,7 +235,8 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "Cheaper paid route for routine paid work",
     baseUrl: "https://api.openai.com/v1",
     keyEnv: "OPENAI_API_KEY",
-    probe: "listing 2026-10-29 (models endpoint answered; chat turn blocked by zero account credits — chat probed in Task 3's live eval run)",
+    probe:
+      "listing 2026-10-29 (models endpoint answered; chat turn blocked by zero account credits — chat probed in Task 3's live eval run)",
   },
 ];
 
@@ -251,6 +253,11 @@ export function availableModels(env: Record<string, string | undefined> = proces
 
 export function modelById(id: string): ModelOption | null {
   return MODEL_CATALOG.find((model) => model.id === id) ?? null;
+}
+
+/** The catalog provider that owns a model id, or null for an unknown model. */
+export function providerForModel(model: string): ModelProviderId | null {
+  return modelById(model)?.provider ?? null;
 }
 
 /**
@@ -270,8 +277,6 @@ export function resolveModelId(stored: unknown): string {
  */
 export function resolveRunModel(modelPolicy: unknown): ModelOption | null {
   const primary =
-    typeof modelPolicy === "object" && modelPolicy !== null
-      ? (modelPolicy as { primary?: unknown }).primary
-      : null;
+    typeof modelPolicy === "object" && modelPolicy !== null ? (modelPolicy as { primary?: unknown }).primary : null;
   return modelById(resolveModelId(primary));
 }
