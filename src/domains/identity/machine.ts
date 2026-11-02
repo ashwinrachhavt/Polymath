@@ -22,7 +22,7 @@ import { apiClientUsage, apiClients } from "./schema";
 const DAILY_REQUEST_CEILING = 1_000;
 
 /** Every scope an API key can carry today; the Settings UI offers exactly these. */
-export const API_KEY_SCOPES = ["captures:read", "captures:write"] as const;
+export const API_KEY_SCOPES = ["captures:read", "captures:write", "focus:read"] as const;
 export type ApiKeyScope = (typeof API_KEY_SCOPES)[number];
 
 export type MachineClient = {
@@ -33,8 +33,7 @@ export type MachineClient = {
 };
 
 type MachineResolveResult =
-  | { ok: true; client: MachineClient }
-  | { ok: false; reason: "not_found" | "not_active" | "expired" | "rate_limited" };
+  { ok: true; client: MachineClient } | { ok: false; reason: "not_found" | "not_active" | "expired" | "rate_limited" };
 
 type ClientRow = {
   id: string;
@@ -158,9 +157,7 @@ export async function resolveCompanionToken(token: string): Promise<MachineResol
  * matching, no client-supplied id. Also serves legacy undivided companion
  * secrets, whose digest is what token_hash holds.
  */
-export async function resolveMachineClient(
-  tokenHash: string,
-): Promise<MachineResolveResult> {
+export async function resolveMachineClient(tokenHash: string): Promise<MachineResolveResult> {
   const [client] = await db
     .select(CLIENT_COLUMNS)
     .from(apiClients)

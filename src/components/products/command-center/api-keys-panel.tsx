@@ -24,6 +24,7 @@ const dateFormat = new Intl.DateTimeFormat("en-US", { dateStyle: "medium" });
 const SCOPE_LABELS: Record<string, string> = {
   "captures:read": "Read captures",
   "captures:write": "Write captures",
+  "focus:read": "Read focus sessions and blocklist",
 };
 
 function keyPrefix(key: ApiKeyDto): string {
@@ -40,8 +41,10 @@ export default function ApiKeysPanel() {
 
   const reload = () => {
     void listApiKeysAction().then((result) => {
-      if (result.ok) { setKeys(result.keys); setError(null); }
-      else setError(result.error);
+      if (result.ok) {
+        setKeys(result.keys);
+        setError(null);
+      } else setError(result.error);
     });
   };
   useEffect(reload, []);
@@ -50,7 +53,11 @@ export default function ApiKeysPanel() {
     return <Unavailable feature="API keys">{error}</Unavailable>;
   }
   if (keys === null) {
-    return <p role="status" className="text-[13px] text-muted-foreground">Loading API keys…</p>;
+    return (
+      <p role="status" className="text-[13px] text-muted-foreground">
+        Loading API keys…
+      </p>
+    );
   }
 
   return (
@@ -68,7 +75,9 @@ export default function ApiKeysPanel() {
               <th className="py-2 font-medium">Scopes</th>
               <th className="py-2 font-medium">Created</th>
               <th className="py-2 font-medium">Last used</th>
-              <th className="py-2 font-medium"><span className="sr-only">Actions</span></th>
+              <th className="py-2 font-medium">
+                <span className="sr-only">Actions</span>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -76,11 +85,15 @@ export default function ApiKeysPanel() {
               <tr key={key.id} className="border-b last:border-0">
                 <td className="py-2">
                   <p className="font-medium">{key.name}</p>
-                  <p className="readout text-xs text-muted-foreground">{keyPrefix(key)} · {key.kind}</p>
+                  <p className="readout text-xs text-muted-foreground">
+                    {keyPrefix(key)} · {key.kind}
+                  </p>
                 </td>
                 <td className="py-2">
                   <span className="flex flex-wrap gap-1">
-                    {key.scopes.map((scope) => <Status key={scope}>{SCOPE_LABELS[scope] ?? scope}</Status>)}
+                    {key.scopes.map((scope) => (
+                      <Status key={scope}>{SCOPE_LABELS[scope] ?? scope}</Status>
+                    ))}
                   </span>
                 </td>
                 <td className="py-2 text-muted-foreground">{dateFormat.format(new Date(key.pairedAt))}</td>
@@ -103,10 +116,14 @@ export default function ApiKeysPanel() {
                       >
                         Confirm
                       </Button>
-                      <Button variant="ghost" onClick={() => setConfirmRevoke(null)}>Keep</Button>
+                      <Button variant="ghost" onClick={() => setConfirmRevoke(null)}>
+                        Keep
+                      </Button>
                     </span>
                   ) : (
-                    <Button variant="ghost" onClick={() => setConfirmRevoke(key.id)}>Revoke</Button>
+                    <Button variant="ghost" onClick={() => setConfirmRevoke(key.id)}>
+                      Revoke
+                    </Button>
                   )}
                 </td>
               </tr>
@@ -131,7 +148,10 @@ export default function ApiKeysPanel() {
             scopes,
           }).then((result) => {
             setCreating(false);
-            if (!result.ok) { setError(result.error); return; }
+            if (!result.ok) {
+              setError(result.error);
+              return;
+            }
             setShownToken(result.token);
             setCopied(false);
             reload();
@@ -160,17 +180,26 @@ export default function ApiKeysPanel() {
           ))}
         </fieldset>
         <div>
-          <Button type="submit" variant="outline" disabled={creating}>{creating ? "Creating…" : "Create API key"}</Button>
+          <Button type="submit" variant="outline" disabled={creating}>
+            {creating ? "Creating…" : "Create API key"}
+          </Button>
         </div>
       </form>
 
-      <Dialog open={shownToken !== null} onOpenChange={(open) => { if (!open) setShownToken(null); }}>
+      <Dialog
+        open={shownToken !== null}
+        onOpenChange={(open) => {
+          if (!open) setShownToken(null);
+        }}
+      >
         <DialogContent>
           <DialogTitle>Your new API key</DialogTitle>
           <DialogDescription>
             Shown once. Paste it into the client now. Polymath stores only its digest and cannot show it again.
           </DialogDescription>
-          <p className="readout mt-2 break-all rounded-md border border-border bg-muted/60 p-3 text-[13px]">{shownToken}</p>
+          <p className="readout mt-2 break-all rounded-md border border-border bg-muted/60 p-3 text-[13px]">
+            {shownToken}
+          </p>
           <div className="mt-4 flex items-center gap-3">
             <Button
               variant="outline"
@@ -181,10 +210,13 @@ export default function ApiKeysPanel() {
             >
               {copied ? "Copied" : "Copy key"}
             </Button>
-            <Button variant="ghost" onClick={() => setShownToken(null)}>Done</Button>
+            <Button variant="ghost" onClick={() => setShownToken(null)}>
+              Done
+            </Button>
           </div>
           <p className="mt-3 text-xs text-muted-foreground">
-            Chrome companion: extension → Settings → Access token. It sends this as a bearer token; revoke it here to cut access.
+            Chrome companion: extension → Settings → Access token. It sends this as a bearer token; revoke it here to
+            cut access.
           </p>
         </DialogContent>
       </Dialog>
