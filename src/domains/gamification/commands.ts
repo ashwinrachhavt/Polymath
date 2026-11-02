@@ -4,8 +4,8 @@ import type { FocusStrictness } from "@/domains/focus/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { withTransaction } from "@/lib/db-transaction";
 import { isUniqueViolation } from "@/lib/pg-errors";
-import { FOCUS_RULE, focusPointsForSession } from "./rules";
-import { rewardDefinitions, rewardLedger } from "./schema";
+import { FOCUS_RULE, focusPointsForSession, streakFromDays } from "./rules";
+import { rewardDefinitions, rewardLedger, userProgress } from "./schema";
 
 /*
  * Reward definition management and the ledger's single write path
@@ -386,7 +386,83 @@ export async function recordFocusReward(
     },
     tx,
   );
+
+  // The progress cache moves in the same transaction: total points are the
+  // ledger's own sum, streaks come from its distinct earning days in the
+  // workspace's timezone (today's award is already in the set), so the cache
+  // can only ever be as right as the rows it summarizes - there is no second
+  // place for the truth to live.
+  const progress = await ledgerProgress(tx, auth);
+  const streak = streakFromDays(progress.days, progress.today);
+  await upsertUserProgress(tx, auth, {
+    totalPoints: progress.totalPoints,
+    currentStreakDays: streak.current,
+    longestStreakDays: streak.longest,
+    lastActiveOn: progress.days.length > 0 ? progress.days[progress.days.length - 1] : null,
+  });
   return true;
+}
+
+/*
+ * The ledger, summarized for user_progress: one query for the user's point
+ * total, their distinct earning days, and today's date in the workspace's
+ * timezone - the same convention recordDailyQuartz uses to pick the day a
+ * reward belongs to.
+ */
+async function ledgerProgress(
+  tx: TxDrizzle,
+  auth: AuthContext,
+): Promise<{ totalPoints: number; days: string[]; today: string }> {
+  const rows = await tx.execute(sql`
+    with prefs as (
+      select coalesce((select timezone from user_preferences where workspace_id = ${auth.workspaceId} and user_id = ${auth.userId} limit 1), 'UTC') as tz
+    )
+    select
+      coalesce(sum(points), 0)::int as total_points,
+      coalesce(array_agg(distinct day order by day), '{}') as days,
+      to_char(timezone((select tz from prefs), now()), 'YYYY-MM-DD') as today
+    from (
+      select points, to_char(timezone((select tz from prefs), created_at), 'YYYY-MM-DD') as day
+      from reward_ledger
+      where workspace_id = ${auth.workspaceId} and user_id = ${auth.userId}
+    ) t
+  `);
+  // drizzle's execute returns an untyped record bag; this query has exactly
+  // one row with three named columns.
+  const row = (rows as unknown as Array<{ total_points: number; days: string[]; today: string }>)[0];
+  return { totalPoints: row.total_points, days: row.days, today: row.today };
+}
+
+/** The only writer of user_progress: an upsert keyed to the (workspace, user) pair. */
+async function upsertUserProgress(
+  tx: TxDrizzle,
+  auth: AuthContext,
+  input: { totalPoints: number; currentStreakDays: number; longestStreakDays: number; lastActiveOn: string | null },
+): Promise<void> {
+  await tx
+    .insert(userProgress)
+    .values({
+      workspaceId: auth.workspaceId,
+      userId: auth.userId,
+      totalPoints: input.totalPoints,
+      currentStreakDays: input.currentStreakDays,
+      longestStreakDays: input.longestStreakDays,
+      lastActiveOn: input.lastActiveOn,
+      createdBy: auth.userId,
+      updatedBy: auth.userId,
+    })
+    .onConflictDoUpdate({
+      target: [userProgress.workspaceId, userProgress.userId],
+      set: {
+        totalPoints: input.totalPoints,
+        currentStreakDays: input.currentStreakDays,
+        longestStreakDays: input.longestStreakDays,
+        lastActiveOn: input.lastActiveOn,
+        version: sql`${userProgress.version} + 1`,
+        updatedAt: new Date(),
+        updatedBy: auth.userId,
+      },
+    });
 }
 
 /** Stones and claims, derived from the ledger at read time. */
