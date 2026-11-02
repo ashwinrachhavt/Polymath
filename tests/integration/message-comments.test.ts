@@ -12,7 +12,7 @@ import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace"
  * neither read nor touch the comment, a fellow member cannot read someone's
  * supervisor thread's comments (ASH-306), resolve/reopen toggles the visible
  * state and never deletes, and deleting the thread takes its comments with
- * it. The migration under test is 0272_message_comments_and_proposal_sources.
+ * it. The migration under test is 0273_message_comments_and_proposal_sources.
  */
 
 const handle = makeTestDb();
