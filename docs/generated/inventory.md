@@ -31,7 +31,7 @@ Migrations: 97 files, highest `0270_learning_quizzes`.
 
 ## Tests
 
-454 `.test.ts` and 43 `.spec.ts` files (unit: 270, integration: 182, e2e: 43).
+455 `.test.ts` and 43 `.spec.ts` files (unit: 271, integration: 182, e2e: 43).
 ## Domains
 
 23 folders; 18 own tables.
