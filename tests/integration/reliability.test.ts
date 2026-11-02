@@ -6,6 +6,7 @@ import { auditEvents, requestReceipts } from "@/domains/audit/schema";
 import { focusSessions } from "@/domains/focus/schema";
 import { users, workspaces } from "@/domains/identity/schema";
 import { taskLinks, tasks } from "@/domains/work/schema";
+import { pristineDatabaseUrl } from "../helpers/pristine-database-url";
 
 /*
  * The invariants the engineering guidelines says run against real Postgres, because * a mock proves the mock works. These are the ones a later caller can break
@@ -39,7 +40,7 @@ suite("reliability primitives", () => {
     // Everything below deletes every row in the schema. Refuse to do that to
     // the application database, because pointing the two at the same URL is
     // the obvious mistake and it costs the owner their data.
-    if (url === process.env.DATABASE_URL) {
+    if (url === pristineDatabaseUrl()) {
       throw new Error(
         "TEST_DATABASE_URL equals DATABASE_URL. This suite truncates every table; use a scratch database or a Neon branch.",
       );
@@ -52,11 +53,11 @@ suite("reliability primitives", () => {
   });
 
   async function seedWorkspace(slug: string) {
-    const [user] = await db.insert(users).values({ clerkUserId: `clerk_${slug}` }).returning();
-    const [workspace] = await db
-      .insert(workspaces)
-      .values({ name: slug, slug, createdBy: user.id })
+    const [user] = await db
+      .insert(users)
+      .values({ clerkUserId: `clerk_${slug}` })
       .returning();
+    const [workspace] = await db.insert(workspaces).values({ name: slug, slug, createdBy: user.id }).returning();
     return { user, workspace };
   }
 
@@ -70,7 +71,10 @@ suite("reliability primitives", () => {
     await db.insert(requestReceipts).values(values);
 
     // Drizzle wraps driver errors, so the SQLSTATE lives on the cause.
-    const replay = await db.insert(requestReceipts).values(values).catch((e) => e);
+    const replay = await db
+      .insert(requestReceipts)
+      .values(values)
+      .catch((e) => e);
     expect((replay as { cause?: { code?: string } }).cause?.code).toBe("23505");
   });
 
@@ -81,10 +85,7 @@ suite("reliability primitives", () => {
     await db.insert(requestReceipts).values({ ...values, workspaceId: a.workspace.id });
     await db.insert(requestReceipts).values({ ...values, workspaceId: b.workspace.id });
 
-    const rows = await db
-      .select()
-      .from(requestReceipts)
-      .where(eq(requestReceipts.idempotencyKey, "shared-key"));
+    const rows = await db.select().from(requestReceipts).where(eq(requestReceipts.idempotencyKey, "shared-key"));
     expect(rows).toHaveLength(2);
   });
 
@@ -108,10 +109,7 @@ suite("reliability primitives", () => {
 
   it("a stale write is rejected, and a fresh one wins", async () => {
     const { workspace } = await seedWorkspace("versions");
-    const [task] = await db
-      .insert(tasks)
-      .values({ workspaceId: workspace.id, title: "Versioned" })
-      .returning();
+    const [task] = await db.insert(tasks).values({ workspaceId: workspace.id, title: "Versioned" }).returning();
     expect(task.version).toBe(1);
 
     // A caller that read version 1 and is writing again, guarded on that read.
@@ -156,10 +154,7 @@ suite("reliability primitives", () => {
    * test the constraint is a comment again the moment someone edits it out. */
   it("a link row rejects a target kind that is not on the shared list", async () => {
     const { workspace } = await seedWorkspace("link-kinds");
-    const [task] = await db
-      .insert(tasks)
-      .values({ workspaceId: workspace.id, title: "Linking" })
-      .returning();
+    const [task] = await db.insert(tasks).values({ workspaceId: workspace.id, title: "Linking" }).returning();
 
     await expect(
       db.insert(taskLinks).values({
