@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /*
  * The settings route's initial render is an entry path of its own: guarding
@@ -19,7 +19,12 @@ const authHolder: { ctx: { userId: string; workspaceId: string; role: "owner" | 
 vi.mock("@/lib/auth", () => ({ getAuthContext: vi.fn(async () => authHolder.ctx) }));
 vi.mock("@/lib/capability-config", () => ({ capabilityStatus: () => [] }));
 const { getDefaultProfile, getPreferences } = vi.hoisted(() => ({
-  getDefaultProfile: vi.fn(async () => ({ name: "Polymath", description: "secret brief", instructions: "secret instructions", version: 3 })),
+  getDefaultProfile: vi.fn(async () => ({
+    name: "Polymath",
+    description: "secret brief",
+    instructions: "secret instructions",
+    version: 3,
+  })),
   getPreferences: vi.fn(async () => ({})),
 }));
 vi.mock("@/domains/agents/queries", () => ({ getDefaultProfile }));
@@ -32,7 +37,14 @@ vi.mock("@/components/products/command-center/settings", () => ({
   },
 }));
 
-import { SettingsSurface } from "@/app/(workspace)/settings/page";
+let SettingsSurface: typeof import("@/app/(workspace)/settings/page").SettingsSurface;
+beforeEach(async () => {
+  // Shared workers reuse the module registry across files: the settings page
+  // cached from a sibling settings test would carry that file's auth and
+  // profile mocks. Re-import per test so this file's mocks win.
+  vi.resetModules();
+  ({ SettingsSurface } = await import("@/app/(workspace)/settings/page"));
+});
 
 describe("settings page assistant-brief scope", () => {
   it("a non-owner render never calls the profile read and receives no brief props", async () => {

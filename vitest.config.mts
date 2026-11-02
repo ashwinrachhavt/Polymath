@@ -22,7 +22,12 @@ export default defineConfig({
           // load-env first: a handful of unit files (the instant-tool and
           // gateway suites) drive production code that opens the test database,
           // and makeTestDb() now fails loudly rather than skipping.
-          setupFiles: ["tests/setup.load-env.ts", "tests/unit/setup.clock.ts", "tests/setup.fetch-guard.ts"],
+          setupFiles: [
+            "tests/setup.load-env.ts",
+            "tests/unit/setup.db-url.ts",
+            "tests/unit/setup.clock.ts",
+            "tests/setup.fetch-guard.ts",
+          ],
           // Unit files are pure: no database, no shared filesystem state, so
           // their per-file startup (import + transform, the bulk of the serial
           // wall) can overlap safely. The root false below stays in force for

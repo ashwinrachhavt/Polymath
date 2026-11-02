@@ -1,6 +1,6 @@
 import { createElement as h, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SearchHit, SearchResult } from "@/domains/knowledge/retrieval";
 
 /*
@@ -10,7 +10,9 @@ import type { SearchHit, SearchResult } from "@/domains/knowledge/retrieval";
  * supporting passage, out references, backlinks, "+N more" for the rest.
  */
 
-vi.mock("next/link", () => ({ default: (props: { href: string; children: ReactNode }) => h("a", { href: props.href }, props.children) }));
+vi.mock("next/link", () => ({
+  default: (props: { href: string; children: ReactNode }) => h("a", { href: props.href }, props.children),
+}));
 
 // Fresh per test: Ranked attaches connections onto the hit objects in place.
 const makeHit = (): SearchHit => ({
@@ -33,23 +35,47 @@ vi.mock("@/domains/knowledge/retrieval", async (importOriginal) => {
   return { ...actual, ...mocks };
 });
 
-import { Ranked } from "@/app/(workspace)/polymath/notes/search-results";
+let Ranked: typeof import("@/app/(workspace)/polymath/notes/search-results").Ranked;
+beforeEach(async () => {
+  // Shared workers reuse the module registry across files: a search-results
+  // graph cached from an earlier file would call that file's retrieval mocks.
+  // Re-import per test so the partial mocks above always win.
+  vi.resetModules();
+  ({ Ranked } = await import("@/app/(workspace)/polymath/notes/search-results"));
+});
 
 const auth = { userId: "u1", workspaceId: "w1", role: "owner" as const };
 const hrefFor = (id: string) => `/polymath/notes?id=${id}`;
 
 describe("Ranked connections wiring", () => {
   it("attaches the batched neighborhood and renders source, links, and citations", async () => {
-    mocks.searchKnowledge.mockResolvedValueOnce({ hits: [makeHit()], meaning: "off" as const, ms: 1 } satisfies SearchResult);
-    mocks.listHitConnections.mockResolvedValueOnce(new Map([["h1", {
-      out: [
-        { id: "d1", title: "Reference doc", kind: "document", linkType: "source", context: "The exact supporting passage." },
-        { id: "n1", title: "Note A", kind: "note", linkType: "reference", context: null },
-      ],
-      in: [{ id: "n2", title: "Big essay", kind: "note", linkType: "reference", context: null }],
-      outTotal: 3,
-      inTotal: 1,
-    }]]));
+    mocks.searchKnowledge.mockResolvedValueOnce({
+      hits: [makeHit()],
+      meaning: "off" as const,
+      ms: 1,
+    } satisfies SearchResult);
+    mocks.listHitConnections.mockResolvedValueOnce(
+      new Map([
+        [
+          "h1",
+          {
+            out: [
+              {
+                id: "d1",
+                title: "Reference doc",
+                kind: "document",
+                linkType: "source",
+                context: "The exact supporting passage.",
+              },
+              { id: "n1", title: "Note A", kind: "note", linkType: "reference", context: null },
+            ],
+            in: [{ id: "n2", title: "Big essay", kind: "note", linkType: "reference", context: null }],
+            outTotal: 3,
+            inTotal: 1,
+          },
+        ],
+      ]),
+    );
     const html = renderToStaticMarkup(await Ranked({ auth, q: "claim", hrefFor }));
     expect(mocks.listHitConnections).toHaveBeenCalledWith(auth, ["h1"]);
     expect(html).toContain('aria-label="Connections"');
@@ -61,7 +87,11 @@ describe("Ranked connections wiring", () => {
   });
 
   it("renders no connections line for an unconnected hit", async () => {
-    mocks.searchKnowledge.mockResolvedValueOnce({ hits: [makeHit()], meaning: "off" as const, ms: 1 } satisfies SearchResult);
+    mocks.searchKnowledge.mockResolvedValueOnce({
+      hits: [makeHit()],
+      meaning: "off" as const,
+      ms: 1,
+    } satisfies SearchResult);
     mocks.listHitConnections.mockResolvedValueOnce(new Map([["h1", { out: [], in: [], outTotal: 0, inTotal: 0 }]]));
     const html = renderToStaticMarkup(await Ranked({ auth, q: "claim", hrefFor }));
     expect(html).toContain("Claim card");

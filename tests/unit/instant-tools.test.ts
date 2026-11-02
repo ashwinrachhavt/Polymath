@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi, afterEach } from "vitest";
 import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
 import { sql } from "drizzle-orm";
 
@@ -64,7 +64,21 @@ vi.mock("@/integrations/providers/quota", async (importOriginal) => {
   };
 });
 
-beforeEach(() => {
+beforeEach(async () => {
+  // Shared workers reuse the module registry across files: an instant-tools
+  // graph cached from an earlier file would carry that file's mock wiring
+  // (or none), so the registry/quota wrappers below never engage. Re-import
+  // per test so this file's partial mocks always win.
+  vi.resetModules();
+  ({
+    deriveInstantCapability,
+    executeInstantTool,
+    listInstantTools,
+    resetInstantListCache,
+    resolveInstantCapability,
+    seedInstantListCacheForTest: listCacheSeedForTest,
+  } = await import("@/domains/integrations/instant-tools"));
+  ({ providerEntry } = await import("@/integrations/providers/registry"));
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
   resetInstantListCache();
@@ -75,15 +89,21 @@ beforeEach(() => {
   vi.stubEnv("COMPOSIO_API_KEY", "test-key");
 });
 
-import {
-  deriveInstantCapability,
-  executeInstantTool,
-  listInstantTools,
-  resetInstantListCache,
-  resolveInstantCapability,
-  seedInstantListCacheForTest as listCacheSeedForTest,
-} from "@/domains/integrations/instant-tools";
-import { providerEntry } from "@/integrations/providers/registry";
+afterEach(() => {
+  // Exit hygiene: a stub left registered at file end outlives the file in a
+  // shared worker and hijacks the next file's stubGlobal original-capture
+  // (the compose test in fetch-guard.test.ts fails on exactly that).
+  vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
+});
+
+let deriveInstantCapability: typeof import("@/domains/integrations/instant-tools").deriveInstantCapability;
+let executeInstantTool: typeof import("@/domains/integrations/instant-tools").executeInstantTool;
+let listInstantTools: typeof import("@/domains/integrations/instant-tools").listInstantTools;
+let resetInstantListCache: typeof import("@/domains/integrations/instant-tools").resetInstantListCache;
+let resolveInstantCapability: typeof import("@/domains/integrations/instant-tools").resolveInstantCapability;
+let listCacheSeedForTest: typeof import("@/domains/integrations/instant-tools").seedInstantListCacheForTest;
+let providerEntry: typeof import("@/integrations/providers/registry").providerEntry;
 
 function stubFetchOnce(status: number, body: unknown) {
   return vi.stubGlobal(

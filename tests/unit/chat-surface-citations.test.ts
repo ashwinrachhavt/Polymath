@@ -1,7 +1,6 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
-import { ChatSurface } from "@/components/chat/chat-surface";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChatState } from "@/components/chat/use-chat-stream";
 
 /*
@@ -18,6 +17,15 @@ import type { ChatState } from "@/components/chat/use-chat-stream";
  * stream-contract.test.ts's seam); no_claim=markdown rendering, the composer,
  * the live SSE transport.
  */
+
+let ChatSurface: typeof import("@/components/chat/chat-surface").ChatSurface;
+beforeEach(async () => {
+  // Shared workers reuse the module registry across files: a ChatSurface
+  // graph cached from an earlier file would carry that file's stream-hook
+  // wiring (or the real hook). Re-import per test so the mock above wins.
+  vi.resetModules();
+  ({ ChatSurface } = await import("@/components/chat/chat-surface"));
+});
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn(), replace: vi.fn(), push: vi.fn() }),
