@@ -50,19 +50,21 @@ for (const vp of VIEWPORTS) {
     await waitSettled(page);
 
     // The panel is chrome: it exists on every destination but is closed until
-    // asked for, so nothing here is on screen by default.
+    // asked for, so nothing here is on screen by default. The rebuilt panel
+    // files by tab (Inbox / In-Flight / Activity) through ui/tabs.
     const trigger = page.getByRole("button", { name: /^Notifications/ });
     await expect(trigger).toBeVisible();
     await trigger.click();
-    await expect(page.getByRole("navigation", { name: "Notification kinds" })).toBeVisible();
+    await expect(page.getByRole("dialog").getByRole("tab", { name: /Inbox/ })).toBeVisible();
 
-    // Both proposers are in the queue, on the Decisions tab.
-    await page.getByRole("button", { name: /^Decisions/ }).click();
+    // Both proposers are in the queue, on the Inbox tab (the decision tab of
+    // the triage workspace).
+    await page.getByRole("dialog").getByRole("tab", { name: /Inbox/ }).click();
 
     // The agent's external write outranks the capture's prepare. Ranking is
     // the relative position of our two cards; foreign cards from parallel
-    // specs can sit anywhere in the queue without bearing on it.
-    const cards = page.getByRole("dialog").getByRole("listitem");
+    // specs (and the other tabs' items) can sit anywhere without bearing on it.
+    const cards = page.getByRole("dialog").getByRole("option");
     await expect
       .poll(async () => {
         const texts = await cards.allTextContents();
