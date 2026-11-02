@@ -1,11 +1,36 @@
 #!/bin/sh
-# Pre-commit guard for CI flakes that only appear on remote runs (agents/
-# engineering.md: a bug fixed twice is a rule). Fast checks only — build and
-# e2e stay in CI. Set core.hooksPath to scripts/hooks to install:
+# Pre-commit gate: staged-file lint and format, plus a guard for CI flakes that
+# only appear on remote runs (agents/engineering.md: a bug fixed twice is a
+# rule). Fast checks only — typecheck runs at pre-push, build and e2e in CI.
+# Set core.hooksPath to scripts/hooks to install:
 #   git config core.hooksPath scripts/hooks
 set -e
 
 fails=0
+
+# Lint and format the files actually going into this commit. Whole-tree lint
+# here would be too slow to live in a commit, so pre-push keeps the full
+# `pnpm lint && pnpm typecheck` gate. Skipped silently when prettier is not yet
+# installed so the hook never blocks on a missing tool.
+# Null-delimited throughout: these paths carry spaces and parentheses
+# (src/app/(workspace)/...), which a whitespace-splitting xargs would shred.
+if command -v npx >/dev/null 2>&1 && [ -x node_modules/.bin/prettier ]; then
+  git diff --cached -z --name-only --diff-filter=ACM \
+    | grep -zE '\.(js|jsx|ts|tsx|mjs|cjs|json|md|css)$' \
+    | xargs -0 npx prettier --write --ignore-unknown --log-level warn || fails=1
+  # Re-stage what prettier rewrote so the commit carries the formatted bytes.
+  git diff --cached -z --name-only --diff-filter=ACM \
+    | grep -zE '\.(js|jsx|ts|tsx|mjs|cjs|json|md|css)$' \
+    | xargs -0 git add -- || fails=1
+fi
+
+if [ -x node_modules/.bin/eslint ]; then
+  # --max-warnings=0 keeps a warning from quietly becoming the new normal;
+  # CI's `pnpm lint` fails the same way.
+  git diff --cached -z --name-only --diff-filter=ACM \
+    | grep -zE '\.(js|jsx|ts|tsx|mjs|cjs)$' \
+    | xargs -0 npx eslint --max-warnings=0 || fails=1
+fi
 
 # The app renders two <main> elements (shell content main plus the route
 # loading skeleton), so a bare page.locator("main") resolves to 2 elements

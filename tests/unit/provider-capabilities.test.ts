@@ -10,7 +10,6 @@ import catalogJsonRaw from "@/domains/integrations/instant-catalog.generated.jso
  * regeneration boundary, so it is narrowed once here; a malformed file fails
  * these tests rather than the production gate.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function catalogJson(): { toolkits: Array<{ slug: string; tools: Array<{ slug: string }> }> } {
   const value = catalogJsonRaw as unknown;
   if (typeof value !== "object" || value === null || !Array.isArray((value as { toolkits?: unknown }).toolkits)) {
@@ -186,8 +185,15 @@ const DEFERRED_PROVIDER_CAPABILITIES = ["calendar.read"];
 
 describe("the default profile's tools all resolve", () => {
   it("only grants a catalogued, native, explicitly deferred, or Instant-derived capability", () => {
-    const instantNames = new Set(catalogJson().toolkits.flatMap((t) => t.tools.map((x) => deriveInstantCapability(t.slug, x.slug))));
-    const known = new Set<string>([...capabilities, ...NATIVE_TOOLS, ...DEFERRED_PROVIDER_CAPABILITIES, ...instantNames]);
+    const instantNames = new Set(
+      catalogJson().toolkits.flatMap((t) => t.tools.map((x) => deriveInstantCapability(t.slug, x.slug))),
+    );
+    const known = new Set<string>([
+      ...capabilities,
+      ...NATIVE_TOOLS,
+      ...DEFERRED_PROVIDER_CAPABILITIES,
+      ...instantNames,
+    ]);
     for (const tool of DEFAULT_ALLOWED_TOOLS) {
       expect(known.has(tool), `${tool} is not a known capability`).toBe(true);
     }
@@ -211,7 +217,14 @@ describe("the default profile's tools all resolve", () => {
 describe("the Instant derived namespace cannot collide", () => {
   it("derives names that never shadow a hand-registered capability or tool", () => {
     const catalog = catalogJson();
-    const adversarialSuffixes = ["gmail_search", "gmail_read_thread", "notion_search", "x1", "Mixed_Case", "with__dashes--and.dots"];
+    const adversarialSuffixes = [
+      "gmail_search",
+      "gmail_read_thread",
+      "notion_search",
+      "x1",
+      "Mixed_Case",
+      "with__dashes--and.dots",
+    ];
     for (const toolkit of catalog.toolkits) {
       for (const suffix of [...adversarialSuffixes, ...toolkit.tools.map((t) => t.slug)]) {
         const name = deriveInstantCapability(toolkit.slug, suffix);

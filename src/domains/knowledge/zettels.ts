@@ -7,7 +7,18 @@ import { escapeLike } from "@/lib/list-params";
 import { currentExtractionIdSubquery } from "./versions";
 import { defaultZettelExtractor, type ZettelCandidate, type ZettelExtractor } from "@/integrations/zettels/extractor";
 import { embedArtifact } from "./embedding";
-import { artifactLinks, artifactVersions, artifacts, claimEvidence, claims, concepts, documentExtractions, documents, sources, zettelProposals } from "./schema";
+import {
+  artifactLinks,
+  artifactVersions,
+  artifacts,
+  claimEvidence,
+  claims,
+  concepts,
+  documentExtractions,
+  documents,
+  sources,
+  zettelProposals,
+} from "./schema";
 
 /*
  * proposeZettels: one succeeded document in, proposal rows out. Each row is a
@@ -72,12 +83,14 @@ export async function proposeZettels(
     .select({ id: documentExtractions.id, text: documentExtractions.text })
     .from(documentExtractions)
     .innerJoin(documents, eq(documents.id, documentExtractions.documentId))
-    .where(and(
-      eq(documentExtractions.documentId, input.documentId),
-      eq(documentExtractions.workspaceId, auth.workspaceId),
-      eq(documentExtractions.status, "succeeded"),
-      eq(documentExtractions.id, sql`(${currentExtractionIdSubquery()})`),
-    ))
+    .where(
+      and(
+        eq(documentExtractions.documentId, input.documentId),
+        eq(documentExtractions.workspaceId, auth.workspaceId),
+        eq(documentExtractions.status, "succeeded"),
+        eq(documentExtractions.id, sql`(${currentExtractionIdSubquery()})`),
+      ),
+    )
     .limit(1);
   if (!extraction?.text) throw new Error("document has no succeeded extraction");
 
@@ -91,7 +104,12 @@ export async function proposeZettels(
     if (!title || !claim || typeof c.quote !== "string") continue;
     const span = locate(extraction.text, c.quote);
     if (!span) continue; // not a verbatim passage: no evidence, no proposal
-    accepted.push({ title: title.slice(0, MAX_TITLE), claim: claim.slice(0, MAX_CLAIM), quote: c.quote.trim(), ...span });
+    accepted.push({
+      title: title.slice(0, MAX_TITLE),
+      claim: claim.slice(0, MAX_CLAIM),
+      quote: c.quote.trim(),
+      ...span,
+    });
     if (accepted.length >= MAX_ZETTELS_PER_DOCUMENT) break;
   }
 
@@ -146,11 +164,13 @@ export async function acceptZettel(auth: AuthContext, input: { proposalId: strin
         updatedAt: new Date(),
         version: sql`${zettelProposals.version} + 1`,
       })
-      .where(and(
-        eq(zettelProposals.id, input.proposalId),
-        eq(zettelProposals.workspaceId, auth.workspaceId),
-        eq(zettelProposals.status, "proposed"),
-      ))
+      .where(
+        and(
+          eq(zettelProposals.id, input.proposalId),
+          eq(zettelProposals.workspaceId, auth.workspaceId),
+          eq(zettelProposals.status, "proposed"),
+        ),
+      )
       .returning();
     if (!proposal) throw new Error("zettel not found or already decided");
 
@@ -167,14 +187,23 @@ export async function acceptZettel(auth: AuthContext, input: { proposalId: strin
       const [existing] = await tx
         .select({ id: sources.id })
         .from(sources)
-        .where(and(eq(sources.workspaceId, auth.workspaceId), eq(sources.fileId, doc.fileId), eq(sources.kind, "document")))
+        .where(
+          and(eq(sources.workspaceId, auth.workspaceId), eq(sources.fileId, doc.fileId), eq(sources.kind, "document")),
+        )
         .limit(1);
       sourceId = existing?.id;
     }
     if (!sourceId) {
       const [created] = await tx
         .insert(sources)
-        .values({ workspaceId: auth.workspaceId, kind: "document", title: doc.title, fileId: doc.fileId, createdBy: auth.userId, updatedBy: auth.userId })
+        .values({
+          workspaceId: auth.workspaceId,
+          kind: "document",
+          title: doc.title,
+          fileId: doc.fileId,
+          createdBy: auth.userId,
+          updatedBy: auth.userId,
+        })
         .returning({ id: sources.id });
       sourceId = created.id;
     }
@@ -195,12 +224,24 @@ export async function acceptZettel(auth: AuthContext, input: { proposalId: strin
     const [concept] = await tx
       .select({ id: concepts.id })
       .from(concepts)
-      .where(and(eq(concepts.workspaceId, auth.workspaceId), eq(concepts.term, proposal.title), eq(concepts.sense, "domain")))
+      .where(
+        and(
+          eq(concepts.workspaceId, auth.workspaceId),
+          eq(concepts.term, proposal.title),
+          eq(concepts.sense, "domain"),
+        ),
+      )
       .limit(1);
 
     const [claim] = await tx
       .insert(claims)
-      .values({ workspaceId: auth.workspaceId, statement: proposal.claim, status: "accepted", createdBy: auth.userId, updatedBy: auth.userId })
+      .values({
+        workspaceId: auth.workspaceId,
+        statement: proposal.claim,
+        status: "accepted",
+        createdBy: auth.userId,
+        updatedBy: auth.userId,
+      })
       .returning({ id: claims.id });
     await tx.insert(claimEvidence).values({
       workspaceId: auth.workspaceId,
@@ -244,7 +285,10 @@ export async function acceptZettel(auth: AuthContext, input: { proposalId: strin
         createdBy: auth.userId,
       })
       .returning({ id: artifactVersions.id });
-    await tx.update(artifacts).set({ currentVersionId: cardVersion.id, embedError: null }).where(eq(artifacts.id, card.id));
+    await tx
+      .update(artifacts)
+      .set({ currentVersionId: cardVersion.id, embedError: null })
+      .where(eq(artifacts.id, card.id));
     await tx.insert(artifactLinks).values({
       workspaceId: auth.workspaceId,
       artifactId: card.id,
@@ -312,8 +356,13 @@ export async function pageZettelCards(
   input: { query?: string; tag?: string; limit: number; offset: number; sort?: ZettelSort },
 ): Promise<{ items: ZettelCardItem[]; total: number }> {
   return withTransaction(async (tx) => {
-    const filters = [eq(artifacts.workspaceId, auth.workspaceId), eq(artifacts.kind, "zettel"), isNull(artifacts.archivedAt)];
-    if (input.tag?.trim()) filters.push(sql`${artifacts.tags} @> ${JSON.stringify([input.tag.trim().toLowerCase()])}::jsonb`);
+    const filters = [
+      eq(artifacts.workspaceId, auth.workspaceId),
+      eq(artifacts.kind, "zettel"),
+      isNull(artifacts.archivedAt),
+    ];
+    if (input.tag?.trim())
+      filters.push(sql`${artifacts.tags} @> ${JSON.stringify([input.tag.trim().toLowerCase()])}::jsonb`);
     if (input.query?.trim()) {
       const like = `%${escapeLike(input.query.trim())}%`;
       filters.push(or(ilike(artifacts.title, like), ilike(artifactVersions.plainText, like))!);
@@ -335,10 +384,18 @@ export async function pageZettelCards(
       .leftJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
       .leftJoin(
         artifactLinks,
-        and(eq(artifactLinks.artifactId, artifacts.id), eq(artifactLinks.linkType, "source"), eq(artifactLinks.targetType, "document")),
+        and(
+          eq(artifactLinks.artifactId, artifacts.id),
+          eq(artifactLinks.linkType, "source"),
+          eq(artifactLinks.targetType, "document"),
+        ),
       )
       .where(where)
-      .orderBy(...(input.sort === "title" ? [asc(artifacts.title), desc(artifacts.id)] : [desc(artifacts.updatedAt), desc(artifacts.id)]))
+      .orderBy(
+        ...(input.sort === "title"
+          ? [asc(artifacts.title), desc(artifacts.id)]
+          : [desc(artifacts.updatedAt), desc(artifacts.id)]),
+      )
       .limit(input.limit)
       .offset(input.offset);
     const [totalRow] = await tx
@@ -350,13 +407,20 @@ export async function pageZettelCards(
     // cards, for the metadata-strip accept/dismiss. Bounded per card.
     const suggestionRows = rows.length
       ? await tx
-          .select({ artifactId: artifactLinks.artifactId, targetId: artifactLinks.targetId, label: artifactLinks.label })
+          .select({
+            artifactId: artifactLinks.artifactId,
+            targetId: artifactLinks.targetId,
+            label: artifactLinks.label,
+          })
           .from(artifactLinks)
           .where(
             and(
               eq(artifactLinks.workspaceId, auth.workspaceId),
               eq(artifactLinks.linkType, "semantic"),
-              inArray(artifactLinks.artifactId, rows.map((r) => r.id)),
+              inArray(
+                artifactLinks.artifactId,
+                rows.map((r) => r.id),
+              ),
             ),
           )
       : [];
@@ -370,12 +434,21 @@ export async function pageZettelCards(
       total: totalRow?.n ?? 0,
       items: rows.map((row) => {
         const bloom = (row.metadata as { bloom?: { level?: unknown; levelName?: unknown } } | null)?.bloom;
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars -- raw metadata stays server-side; only the bloom projection leaves
+        // Raw metadata stays server-side; only the bloom projection leaves.
         const { metadata: _metadata, ...rest } = row;
         return {
           ...rest,
-          tags: Array.isArray(row.tags) ? (row.tags as unknown[]).filter((t): t is string => typeof t === "string") : [],
-          excerpt: row.excerpt ? (row.excerpt.split("\n").map((l) => l.trim()).find((l) => l.length > 0) ?? null)?.slice(0, 240) ?? null : null,
+          tags: Array.isArray(row.tags)
+            ? (row.tags as unknown[]).filter((t): t is string => typeof t === "string")
+            : [],
+          excerpt: row.excerpt
+            ? ((
+                row.excerpt
+                  .split("\n")
+                  .map((l) => l.trim())
+                  .find((l) => l.length > 0) ?? null
+              )?.slice(0, 240) ?? null)
+            : null,
           bloom:
             typeof bloom?.level === "number" && typeof bloom?.levelName === "string"
               ? { level: bloom.level, levelName: bloom.levelName }
@@ -398,11 +471,13 @@ export async function rejectZettel(auth: AuthContext, input: { proposalId: strin
       updatedAt: new Date(),
       version: sql`${zettelProposals.version} + 1`,
     })
-    .where(and(
-      eq(zettelProposals.id, input.proposalId),
-      eq(zettelProposals.workspaceId, auth.workspaceId),
-      eq(zettelProposals.status, "proposed"),
-    ))
+    .where(
+      and(
+        eq(zettelProposals.id, input.proposalId),
+        eq(zettelProposals.workspaceId, auth.workspaceId),
+        eq(zettelProposals.status, "proposed"),
+      ),
+    )
     .returning();
   if (!row) throw new Error("zettel not found or already decided");
   return row;

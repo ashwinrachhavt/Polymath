@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { agentProfiles, agentRuns, runEvents } from "@/domains/agents/schema";
-import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
+import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
 
 /*
  * The workspace usage ledger behind the Briefing spending tab (ASH-220's
@@ -19,11 +19,26 @@ afterAll(async () => {
   await handle?.client.end();
 });
 
-async function seedRun(workspaceId: string, objective: string, usage: { costUsd?: string; inputTokens?: number; outputTokens?: number }[], createdAt?: Date) {
-  const [profile] = await db.insert(agentProfiles).values({ workspaceId, name: `p-${Date.now()}-${Math.random()}` }).returning({ id: agentProfiles.id });
+async function seedRun(
+  workspaceId: string,
+  objective: string,
+  usage: { costUsd?: string; inputTokens?: number; outputTokens?: number }[],
+  createdAt?: Date,
+) {
+  const [profile] = await db
+    .insert(agentProfiles)
+    .values({ workspaceId, name: `p-${Date.now()}-${Math.random()}` })
+    .returning({ id: agentProfiles.id });
   const [run] = await db
     .insert(agentRuns)
-    .values({ workspaceId, agentProfileId: profile.id, objective, state: "succeeded", policySnapshot: {}, ...(createdAt ? { createdAt } : {}) })
+    .values({
+      workspaceId,
+      agentProfileId: profile.id,
+      objective,
+      state: "succeeded",
+      policySnapshot: {},
+      ...(createdAt ? { createdAt } : {}),
+    })
     .returning({ id: agentRuns.id });
   let seq = 0;
   for (const u of usage) {
@@ -42,7 +57,10 @@ suite("usage ledger", () => {
 
   it("sums recorded cost per run, names unpriced work, and totals honestly", async () => {
     const { workspaceId } = await seedWorkspace(db, `ledger-${Date.now()}`);
-    const priced = await seedRun(workspaceId, "Summarize the lease thread", [{ costUsd: "0.0042", inputTokens: 1200, outputTokens: 300 }, { costUsd: "0.0011", inputTokens: 400, outputTokens: 90 }]);
+    const priced = await seedRun(workspaceId, "Summarize the lease thread", [
+      { costUsd: "0.0042", inputTokens: 1200, outputTokens: 300 },
+      { costUsd: "0.0011", inputTokens: 400, outputTokens: 90 },
+    ]);
     const unpriced = await seedRun(workspaceId, "Draft the counter-offer", [{ inputTokens: 800, outputTokens: 120 }]);
     const noUsage = await seedRun(workspaceId, "Quiet run", []);
 

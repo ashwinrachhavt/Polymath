@@ -22,11 +22,7 @@ vi.mock("@/lib/auth", async (importOriginal) => {
   return { ...original, getAuthContext };
 });
 
-import {
-  createApiKeyAction,
-  listApiKeysAction,
-  revokeApiKeyAction,
-} from "@/app/(workspace)/settings/api-key-actions";
+import { createApiKeyAction, listApiKeysAction, revokeApiKeyAction } from "@/app/(workspace)/settings/api-key-actions";
 
 const ownerAuth = { userId: "u", workspaceId: "w", role: "owner" as const };
 
@@ -107,7 +103,7 @@ describe("createApiKeyAction", () => {
 describe("revokeApiKeyAction", () => {
   it("sanitizes a driver error", async () => {
     machine.revokeApiClient.mockRejectedValue(RAW_DB_ERROR);
-    const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
 
     const result = await revokeApiKeyAction({ clientId: "c1" });
 
