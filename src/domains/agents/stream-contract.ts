@@ -409,12 +409,17 @@ export class ChatAccumulator {
       return;
     }
     if (frame.type === "block") {
-      // Authoritative: replaces whatever deltas accumulated.
+      // Authoritative: replaces whatever deltas accumulated. A replayed block
+      // carries no message id, but the block id is the identity proof — same
+      // id is the same message — so the pair the page seeded survives the
+      // replace instead of hiding the comment control after every reconnect.
+      const pairedMessageId = this.blocks.get(frame.blockId)?.messageId ?? null;
       this.blocks.set(frame.blockId, {
         id: frame.blockId,
         kind: this.kindOf(frame.blockId),
         text: frame.text,
         done: true,
+        messageId: pairedMessageId,
       });
       return;
     }
