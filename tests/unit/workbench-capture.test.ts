@@ -10,6 +10,7 @@ import {
   collectGitState,
   parseTestResults,
   RATIONALE_INFERRED,
+  resolveDecisionStatus,
 } from "../../scripts/workbench/capture-core";
 
 /*
@@ -168,5 +169,16 @@ describe("workbench capture-core", () => {
     expect(recorded.decisionStatus).toBe("recorded");
     // The same bytes hash identically — the property blob dedupe relies on.
     expect(recorded.diffHash).toBe(inferred.diffHash);
+  });
+
+  it("records a human-typed decision note unless explicitly marked inferred", () => {
+    // A note IS a recorded decision: the person wrote it at capture time. The
+    // old default (inferred unless --decision-status recorded was spelled out)
+    // rendered human notes with the inferred badge — the exact dishonesty the
+    // tier grammar exists to prevent.
+    expect(resolveDecisionStatus("ship behind the flag", undefined)).toBe("recorded");
+    expect(resolveDecisionStatus(null, undefined)).toBe("inferred");
+    expect(resolveDecisionStatus("ship behind the flag", "inferred")).toBe("inferred");
+    expect(resolveDecisionStatus("ship behind the flag", "recorded")).toBe("recorded");
   });
 });

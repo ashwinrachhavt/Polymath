@@ -7,6 +7,10 @@
  *     [--workspace <id>] [--test-results <file>] [--decision "<note>"]
  *     [--decision-status recorded|inferred] [--apply]
  *
+ * A provided --decision note records by default (a human typed it); pass
+ * --decision-status inferred to mark it model-inferred instead, and note
+ * that --decision-status recorded without a note is refused.
+ *
  * Dry-run by default; writes only with --apply. Mechanical only — git
  * status/diff/log plus the provided test-results file. No LLM call, no
  * network (the diff blob goes to the configured object store, local disk in
@@ -30,7 +34,7 @@ import { blobObjects } from "@/domains/audit/schema";
 import { db } from "@/lib/db";
 import type { TxDrizzle } from "@/lib/db-transaction";
 import { withTransaction } from "@/lib/db-transaction";
-import { buildCapturePlan, collectGitState, parseTestResults, CaptureError } from "./capture-core";
+import { buildCapturePlan, collectGitState, parseTestResults, resolveDecisionStatus, CaptureError } from "./capture-core";
 import type { CapturePlan } from "./capture-core";
 
 export type CaptureResult = {
@@ -200,15 +204,21 @@ function parseArgs(argv: string[]): CaptureArgs {
     const index = argv.indexOf(flag);
     return index === -1 ? undefined : argv[index + 1];
   };
-  const decisionStatus = get("--decision-status");
+  const decisionNote = get("--decision") ?? null;
+  const decisionStatus = resolveDecisionStatus(decisionNote, get("--decision-status"));
+  // A recorded badge over nothing would render the inferred-fallback line as if
+  // a human had confirmed it — refuse the combination at the boundary.
+  if (decisionStatus === "recorded" && !decisionNote) {
+    throw new CaptureError("bad_decision", "--decision-status recorded needs --decision <note>");
+  }
   return {
     repo: get("--repo") ?? process.cwd(),
     base: get("--base") ?? "",
     runId: get("--run") ?? null,
     workspaceId: get("--workspace") ?? null,
     testResultsPath: get("--test-results") ?? null,
-    decisionNote: get("--decision") ?? null,
-    decisionStatus: decisionStatus === "recorded" ? "recorded" : "inferred",
+    decisionNote,
+    decisionStatus,
     apply: argv.includes("--apply"),
   };
 }

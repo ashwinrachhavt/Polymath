@@ -105,9 +105,14 @@ function diffHeaderPath(line: string): string {
 }
 
 function unquoteGitPath(path: string): string {
-  return path.replace(/\\(?:["\\]|([0-7]{3}))/g, (_, octal: string | undefined) =>
-    octal !== undefined ? String.fromCharCode(parseInt(octal, 8)) : _ === '\\\\' ? "\\" : '"',
-  );
+  // Git octal-escapes non-ASCII bytes one escape per BYTE, so a UTF-8 sequence
+  // must be decoded as a whole run — String.fromCharCode per byte would turn
+  // "λ.txt" into "Î».txt".
+  return path
+    .replace(/(?:\\[0-7]{3})+/g, (run) =>
+      new TextDecoder().decode(Uint8Array.from(run.match(/\\([0-7]{3})/g)!, (octal) => parseInt(octal.slice(1), 8))),
+    )
+    .replace(/\\(["\\])/g, "$1");
 }
 
 /**
@@ -152,16 +157,23 @@ export function behaviorOf(files: DiffFile[]): ChangeBehavior {
  * neither: absence is reported in its section, never dressed as a tier.
  */
 function tierCountsOf(input: {
-  hasProject: boolean;
+  hasProjectOutcome: boolean;
   hasTests: boolean;
   hasDiff: boolean;
   decisionStatus: "recorded" | "inferred";
 }): ChangeBriefData["tierCounts"] {
-  let grounded = 0; // areas + behaviour are always grounded (observed in the diff)
-  if (input.hasProject) grounded += 1;
+  // Grounded = the sections whose claim a stored artifact backs, counted
+  // exactly as the panel renders them (six sections at most): the three
+  // diff-derived ones (areas, behaviour, diff) only when the diff is readable,
+  // the project's outcome only when one is stated, the tests when provided,
+  // and the decision when a human recorded it. Absent evidence counts as
+  // neither grounded nor inferred — absence is reported in its section, never
+  // dressed as a tier.
+  let grounded = 0;
+  if (input.hasDiff) grounded += 3;
+  if (input.hasProjectOutcome) grounded += 1;
   if (input.hasTests) grounded += 1;
-  if (input.hasDiff) grounded += 1;
-  grounded += 2;
+  if (input.decisionStatus === "recorded") grounded += 1;
   return { grounded, inferred: input.decisionStatus === "inferred" ? 1 : 0, hypothesis: 0 };
 }
 
@@ -182,7 +194,7 @@ export function buildChangeBriefData(input: {
     diffUnavailableReason: input.diffUnavailableReason,
     project: input.project,
     tierCounts: tierCountsOf({
-      hasProject: input.project !== null,
+      hasProjectOutcome: input.project?.intendedOutcome != null,
       hasTests: input.tests !== null,
       hasDiff: input.diffText !== null,
       decisionStatus: input.checkpoint.decisionStatus,

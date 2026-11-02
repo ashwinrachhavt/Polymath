@@ -75,6 +75,16 @@ function OutcomeSection({ brief }: { brief: ChangeBriefData }) {
 }
 
 function AreasSection({ brief }: { brief: ChangeBriefData }) {
+  if (!brief.diffText) {
+    return (
+      <div className="flex flex-col gap-1">
+        <SectionLabel label="Affected areas" />
+        <p className="text-muted-foreground text-[12px]">
+          Unknown — the diff is not on record, so the affected paths cannot be read.
+        </p>
+      </div>
+    );
+  }
   return (
     <div className="flex flex-col gap-1">
       <SectionLabel label="Affected areas" tier="observed" />
@@ -100,6 +110,16 @@ function AreasSection({ brief }: { brief: ChangeBriefData }) {
 }
 
 function BehaviorSection({ brief }: { brief: ChangeBriefData }) {
+  if (!brief.diffText) {
+    return (
+      <div className="flex flex-col gap-1">
+        <SectionLabel label="Behavior" />
+        <p className="text-muted-foreground text-[12px]">
+          Unknown — the diff is not on record, so nothing can be said about what this checkpoint added, removed, or changed in place.
+        </p>
+      </div>
+    );
+  }
   const { added, removed, modified } = brief.behavior;
   return (
     <div className="flex flex-col gap-1">

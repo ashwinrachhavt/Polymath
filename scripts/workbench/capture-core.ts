@@ -17,6 +17,7 @@ export class CaptureError extends Error {
   constructor(
     readonly code:
       | "bad_base"
+      | "bad_decision"
       | "dirty_tree"
       | "empty_diff"
       | "diff_too_large"
@@ -134,6 +135,17 @@ const testResultEntry = z.object({
   runAt: z.string().min(1).optional(),
 });
 const testResultsPayload = z.union([z.array(testResultEntry), z.object({ results: z.array(testResultEntry) })]);
+
+/**
+ * Whether the captured decision is recorded or inferred. An explicit flag wins;
+ * with no flag, a human-typed note IS a recorded decision — the person wrote it
+ * at capture time — and the absence of one is the only honest "inferred".
+ */
+export function resolveDecisionStatus(decisionNote: string | null, flag: string | undefined): "recorded" | "inferred" {
+  if (flag === "inferred") return "inferred";
+  if (flag === "recorded") return "recorded";
+  return decisionNote ? "recorded" : "inferred";
+}
 
 /**
  * Parse the provided test-results file: a bare array or { results: [...] } of

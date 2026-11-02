@@ -2,7 +2,13 @@
 import { createElement } from "react";
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { CAPTURE_DISCLOSURE, RATIONALE_INFERRED, type ChangeBriefData } from "@/domains/agents/change-brief";
+import {
+  buildChangeBriefData,
+  CAPTURE_DISCLOSURE,
+  parseDiffFiles,
+  RATIONALE_INFERRED,
+  type ChangeBriefData,
+} from "@/domains/agents/change-brief";
 import { ChangeBriefPanel } from "@/components/polymath/workbench/change-brief-panel";
 
 /*
@@ -121,5 +127,87 @@ describe("change brief panel", () => {
     const { container } = renderBrief(brief({}));
     expect((container.textContent ?? "").replace(/\s+/g, " ")).toContain("3 grounded · 1 inferred · 0 hypotheses");
     expect(container.textContent).toContain(CAPTURE_DISCLOSURE);
+  });
+
+  it("renders unknown states without tier marks when the diff is unavailable", () => {
+    const { container } = renderBrief(
+      brief({
+        diffText: null,
+        diffUnavailableReason: "The diff blob's retention lapsed.",
+        areas: [],
+        behavior: { added: [], removed: [], modified: [] },
+      }),
+    );
+    const text = container.textContent ?? "";
+    // Unknown is stated as unknown — never as "0 added · 0 removed", which
+    // would present unrecorded changes as verified inactivity.
+    expect(text).toContain("Unknown — the diff is not on record");
+    expect(text).not.toContain("0 added · 0 removed · 0 modified");
+    expect(sectionText(container, "Affected areas").toLowerCase()).not.toContain("observed");
+    expect(sectionText(container, "Behavior").toLowerCase()).not.toContain("observed");
+    expect(sectionText(container, "Diff").toLowerCase()).not.toContain("observed");
+  });
+});
+
+describe("change brief data shape", () => {
+  const checkpoint = (decisionStatus: "recorded" | "inferred") => ({
+    id: "6557a1d2-0000-4000-8000-000000000002",
+    repoUrl: "https://github.com/acme/app",
+    baseCommitSha: "aaaaaaaaaaa00000000000000000000000000000a",
+    commitSha: "bbbbbbbbbbb00000000000000000000000000000b",
+    decisionNote: decisionStatus === "recorded" ? "recorded at capture" : null,
+    decisionStatus,
+    capturedAt: new Date("2026-11-02T00:00:00.000Z"),
+  });
+  const diffText = "diff --git a/app.ts b/app.ts\nindex 000..000\n";
+
+  function build(over: Partial<Parameters<typeof buildChangeBriefData>[0]>) {
+    return buildChangeBriefData({
+      checkpoint: checkpoint("inferred"),
+      tests: null,
+      diffText: null,
+      diffUnavailableReason: null,
+      project: null,
+      ...over,
+    });
+  }
+
+  it("counts grounded sections exactly as the panel renders them", () => {
+    // Everything on record, decision recorded: all six sections grounded.
+    const full = build({
+      checkpoint: checkpoint("recorded"),
+      diffText,
+      tests: [{ name: "t", ok: true, runAt: "2026-11-02T00:00:00.000Z" }],
+      project: { name: "P", intendedOutcome: "outcome" },
+    });
+    expect(full.tierCounts).toEqual({ grounded: 6, inferred: 0, hypothesis: 0 });
+
+    // The review's exact case: readable diff, recorded decision, no project
+    // outcome and no tests — areas, behavior, diff, decision = 4 grounded.
+    const sparse = build({ checkpoint: checkpoint("recorded"), diffText });
+    expect(sparse.tierCounts).toEqual({ grounded: 4, inferred: 0, hypothesis: 0 });
+  });
+
+  it("never counts absent evidence or an unstated outcome as grounded", () => {
+    // Unreadable diff: the three diff-derived sections drop out of the count —
+    // even though the areas/behavior arrays still arrive empty.
+    const noDiff = build({
+      checkpoint: checkpoint("recorded"),
+      tests: [{ name: "t", ok: true, runAt: "2026-11-02T00:00:00.000Z" }],
+      project: { name: "P", intendedOutcome: "outcome" },
+      diffUnavailableReason: "retention lapsed",
+    });
+    expect(noDiff.tierCounts).toEqual({ grounded: 3, inferred: 0, hypothesis: 0 });
+
+    // A linked project without an intended outcome backs no claim.
+    const noOutcome = build({ project: { name: "P", intendedOutcome: null } });
+    expect(noOutcome.tierCounts).toEqual({ grounded: 0, inferred: 1, hypothesis: 0 });
+  });
+
+  it("decodes git's octal-escaped UTF-8 paths as whole byte runs", () => {
+    // Git quotes non-ASCII paths one escape per BYTE: \316\273 is the two
+    // UTF-8 bytes of λ. Byte-at-a-time decoding produced "Î».txt".
+    const files = parseDiffFiles('diff --git "a/src/\\316\\273.txt" "b/src/\\316\\273.txt"\nindex 000..000\n');
+    expect(files.map((f) => f.path)).toEqual(["src/λ.txt"]);
   });
 });
