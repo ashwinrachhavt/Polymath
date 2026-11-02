@@ -29,7 +29,7 @@ taken and load-bearing elsewhere in the codebase:
 
 | Blueprint (prototype) | In Polymath                 | Home                    |
 | --------------------- | --------------------------- | ----------------------- |
-| Source                | Source (protocol, wave 2)   | `sources/` (later wave) |
+| Source                | Source (protocol)           | `sources/`              |
 | Thread                | **WorkThread**              | `core/model.ts`         |
 | Eval                  | **Assessment**              | `core/model.ts`         |
 | Assignment            | **TicketRun**               | `core/model.ts`         |
@@ -54,6 +54,13 @@ taken and load-bearing elsewhere in the codebase:
 - `model.ts` — domain types and the pure helpers over them (`liveTicket`,
   `runningTicketRun`, `ticketOutcome`, `followupOwners`, `reached`,
   `waitsForPerson`).
+- `sources/` — the Source protocol (`kind.ts`), the host seams the store,
+  effects, and cutover wiring implement (`host.ts`), the registry that adapts
+  registered kinds to the Engine's `SourceScope` port (`registry.ts`), and the
+  chat plugin (`chat.ts`): the Polymath chat surface as intake — stable
+  trigger ids from the message's stream identity, the agent's own messages
+  dropped, the read position advanced only after every covered trigger was
+  stored, and the channel defined over the existing ChatFrame stream
 - `ports.ts` — the seams: `Policy`, `Assessor`, `Executor`, `Outbox`,
   `Repositories`, and the source-scope protocol. No implementation.
 - `ids.ts` — deterministic, idempotent keys (`key(...)`) hashed with
@@ -71,6 +78,14 @@ taken and load-bearing elsewhere in the codebase:
   (`EngineForSources`, `EngineForMainSession`, `EngineForPeople`,
   `EngineForSettings`).
 - `memory-repository.ts` — in-memory `Repositories` for tests.
+- `sources/` — the Source protocol (`kind.ts`), the host seams the store,
+  effects, and cutover wiring implement (`host.ts`), the registry that adapts
+  registered kinds to the Engine's `SourceScope` port (`registry.ts`), and the
+  chat plugin (`chat.ts`): the Polymath chat surface as intake — stable
+  trigger ids from the message's stream identity, the agent's own messages
+  dropped, the read position advanced only after every covered trigger was
+  stored, and the channel defined over the existing ChatFrame stream
+  contract, with no new transport.
 
 ## Tests
 
@@ -79,3 +94,8 @@ prototype's core-engine and stage specs, ported with the same renames and
 driven from in-memory repositories: receiving, gate, assessment, fan-out,
 resume and stop, interrupted runs, pause, policy changes, reports, attaching,
 replies, and failed deliveries; the stage spec checks the table row by row.
+`sources-chat.test.ts` is the chat Source's spec: trigger id idempotency,
+the own-message drop, the listen-versus-observe scope through the registry,
+the read position (start from now, replay-safe rounds), and the channel
+returning `sent` or `gone`, never both, with frames that round-trip the
+stream contract.
