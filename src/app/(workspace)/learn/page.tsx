@@ -83,10 +83,23 @@ async function LearnSurface() {
   await io();
   const auth = await getAuthContext();
   const [rows, overview] = await Promise.all([getLearnLibrary(auth), getRewardsOverview(auth)]);
+  const quizzable = rows.filter((row) => row.quizzable).length;
+
+  const stats = (
+    <div className="grid gap-4 sm:grid-cols-2">
+      <Stat label="Stones earned" value={overview.totalPoints} hint="Derived from the ledger, never stored" />
+      <Stat
+        label="Documents ready to quiz"
+        value={`${quizzable} of ${rows.length}`}
+        hint="A document is ready once its text is read"
+      />
+    </div>
+  );
 
   if (rows.length === 0) {
     return (
       <Screen title="Learn">
+        {stats}
         <EmptyState
           title="Nothing to learn from yet"
           description="Capture an article in the vault and it will show up here, ready to become a quiz."
@@ -103,18 +116,9 @@ async function LearnSurface() {
     );
   }
 
-  const quizzable = rows.filter((row) => row.quizzable).length;
-
   return (
     <Screen title="Learn" description="Every captured document, ready to become a quiz. Finishing one earns stones.">
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Stat label="Stones earned" value={overview.totalPoints} hint="Derived from the ledger, never stored" />
-        <Stat
-          label="Documents ready to quiz"
-          value={`${quizzable} of ${rows.length}`}
-          hint="A document is ready once its text is read"
-        />
-      </div>
+      {stats}
 
       <Panel title="Your documents" description="Generate a quiz from what you captured, or retake the latest one.">
         <LibraryList rows={rows} />
