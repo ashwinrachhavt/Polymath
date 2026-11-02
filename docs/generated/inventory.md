@@ -27,14 +27,14 @@ dependent, so `inventory:check` behaves the same on a laptop and in CI.
 | `vitest` | ^5.0.5 |
 | `@playwright/test` | ^1.64.1 |
 
-Migrations: 100 files, highest `0273_message_comments_and_proposal_sources`.
+Migrations: 101 files, highest `0274_superagent_store`.
 
 ## Tests
 
 501 `.test.ts` and 44 `.spec.ts` files (unit: 299, integration: 199, e2e: 44).
 ## Domains
 
-24 folders; 18 own tables.
+24 folders; 19 own tables.
 
 | Domain | Tables |
 | --- | ---: |
@@ -55,9 +55,10 @@ Migrations: 100 files, highest `0273_message_comments_and_proposal_sources`.
 | `opportunities` | 5 |
 | `skills` | 1 |
 | `spending` | 4 |
+| `superagent` | 11 |
 | `work` | 10 |
 
-No tables: `conversations`, `home`, `import`, `notifications`, `superagent`, `supervisor`.
+No tables: `conversations`, `home`, `import`, `notifications`, `supervisor`.
 
 ## Tables
 
@@ -211,6 +212,17 @@ No tables: `conversations`, `home`, `import`, `notifications`, `superagent`, `su
 | `spending` | `spending_policies` | versioned |
 | `spending` | `spending_reservations` | versioned |
 | `spending` | `spend_settlements` | append-only |
+| `superagent` | `work_triggers` | versioned |
+| `superagent` | `work_threads` | versioned |
+| `superagent` | `work_assessments` | versioned |
+| `superagent` | `work_decisions` | versioned |
+| `superagent` | `work_tickets` | versioned |
+| `superagent` | `ticket_runs` | versioned |
+| `superagent` | `work_subscriptions` | append-only |
+| `superagent` | `work_effects` | append-only |
+| `superagent` | `work_outbox_receipts` | **DEFECT** |
+| `superagent` | `superagent_policies` | **DEFECT** |
+| `superagent` | `superagent_policy_rules` | append-only |
 | `work` | `spaces` | versioned |
 | `work` | `projects` | versioned |
 | `work` | `recurrence_templates` | versioned |
@@ -222,7 +234,7 @@ No tables: `conversations`, `home`, `import`, `notifications`, `superagent`, `su
 | `work` | `saved_views` | versioned |
 | `work` | `briefing_seeds` | versioned |
 
-Totals: 93 versioned, 60 append-only, 5 versionless but guarded (each declared with its guard and its file in `scripts/lib/row-state.ts`).
+Totals: 99 versioned, 63 append-only, 7 versionless but guarded (each declared with its guard and its file in `scripts/lib/row-state.ts`).
 
 ## Route handlers
 
@@ -326,3 +338,8 @@ Declared audit-only (observation events; no consumer by design):
 - `role.defined`
 - `role.revised`
 - `role.unassigned`
+
+## Defects found by this generator
+
+- superagent.work_outbox_receipts is mutable with no version column and no declared guard
+- superagent.superagent_policies is mutable with no version column and no declared guard

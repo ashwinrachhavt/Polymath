@@ -18,7 +18,7 @@ if (!url) {
 }
 
 export default defineConfig({
-  schema: ["./src/domains/*/schema.ts", "./src/domains/*/*-schema.ts"],
+  schema: ["./src/domains/*/schema.ts", "./src/domains/*/*-schema.ts", "./src/domains/superagent/store/schema.ts"],
   out: "./src/db/migrations",
   dialect: "postgresql",
   dbCredentials: { url },
