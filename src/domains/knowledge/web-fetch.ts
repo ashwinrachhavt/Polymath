@@ -1,5 +1,6 @@
 import type { AuthContext } from "@/domains/identity/resolve";
 import { scrapeToMarkdown, FirecrawlError, type FirecrawlScrapeResult } from "@/integrations/firecrawl/client";
+import { fetchTranscript, isYouTubeUrl, type TranscriptResult } from "@/integrations/youtube/transcript";
 import { withTransaction } from "@/lib/db-transaction";
 import { canonicalCaptureUrl } from "@/lib/safe-fetch";
 import { enqueueOutbox } from "@/domains/audit/outbox";
@@ -24,12 +25,10 @@ export const WEB_FETCH_CAPABILITY = "web.fetch";
 export const WEB_FETCH_MAX_BYTES = 200_000;
 
 export type AgentWebFetchResult =
-  | { ok: true; url: string; title: string | null; markdown: string; truncated: boolean }
-  | { ok: false; error: string };
+  { ok: true; url: string; title: string | null; markdown: string; truncated: boolean } | { ok: false; error: string };
 
 export type AgentWebCrawlResult =
-  | { ok: true; queued: true; url: string; limit: number; maxDepth: number; note: string }
-  | { ok: false; error: string };
+  { ok: true; queued: true; url: string; limit: number; maxDepth: number; note: string } | { ok: false; error: string };
 
 /** Reject anything that is not a normal http(s) URL to a public host name. */
 export function assertPublicUrl(raw: string): URL | null {
@@ -41,11 +40,64 @@ export function assertPublicUrl(raw: string): URL | null {
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") return null;
   const host = url.hostname.toLowerCase();
-  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".internal")) return null;
+  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".internal"))
+    return null;
   // A bare IP literal is refused; a host name is resolved by Firecrawl, and the
   // container's own network is not reachable from the internet.
   if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.startsWith("[")) return null;
   return url;
+}
+
+/**
+ * Renders cues as readable paragraphs with a timestamp every ~30 seconds. One
+ * timestamp per two-second cue is noise; a coarse marker keeps "what does he
+ * say at 12:30" answerable without drowning the prose.
+ */
+function transcriptMarkdown(
+  transcript: Extract<TranscriptResult, { ok: true }>,
+  maxChars: number,
+): { text: string; truncated: boolean } {
+  const header = [
+    transcript.title ? `# ${transcript.title}` : null,
+    transcript.canonicalUrl,
+    `Transcript: ${transcript.language ?? "unknown"}${transcript.generated ? " (auto-generated)" : ""}`,
+  ]
+    .filter((line): line is string => line !== null)
+    .join("\n");
+
+  const blocks: string[] = [];
+  let bucket: string[] = [];
+  let bucketStart = 0;
+  let bucketLength = 0;
+  const flush = () => {
+    if (bucket.length === 0) return;
+    blocks.push(`[${clock(bucketStart)}] ${bucket.join(" ")}`);
+    bucket = [];
+    bucketLength = 0;
+  };
+  for (const cue of transcript.cues) {
+    // Start a new block when the current one is ~30 seconds old or ~500
+    // characters long, so the timestamp marks the block's first word.
+    if (bucket.length > 0 && (cue.start - bucketStart >= 30 || bucketLength >= 500)) flush();
+    if (bucket.length === 0) bucketStart = cue.start;
+    bucket.push(cue.text);
+    bucketLength += cue.text.length + 1;
+  }
+  flush();
+
+  const full = `${header}\n\n${blocks.join("\n")}`;
+  const truncated = full.length > maxChars;
+  return { text: truncated ? full.slice(0, maxChars) : full, truncated };
+}
+
+function clock(seconds: number): string {
+  const total = Math.max(0, Math.floor(seconds));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const rest = total % 60;
+  return hours > 0
+    ? `${hours}:${String(minutes).padStart(2, "0")}:${String(rest).padStart(2, "0")}`
+    : `${minutes}:${String(rest).padStart(2, "0")}`;
 }
 
 export async function fetchPageForAgent(
@@ -55,6 +107,21 @@ export async function fetchPageForAgent(
   const url = assertPublicUrl(input.url.trim());
   if (!url) return { ok: false, error: "url must be a public http(s) address" };
   const maxChars = Math.min(Math.max(input.maxChars ?? WEB_FETCH_MAX_BYTES, 1_000), WEB_FETCH_MAX_BYTES);
+  // A YouTube page's markdown is chrome: title, description, recommendations,
+  // and none of the speech. When the owner points at a video, read its captions
+  // instead, which is the content the question is actually about.
+  if (isYouTubeUrl(url.toString())) {
+    const transcript = await fetchTranscript(url.toString());
+    if (!transcript.ok) return { ok: false, error: transcript.error };
+    const markdown = transcriptMarkdown(transcript, maxChars);
+    return {
+      ok: true,
+      url: transcript.canonicalUrl,
+      title: transcript.title,
+      markdown: markdown.text,
+      truncated: markdown.truncated,
+    };
+  }
   try {
     const page: FirecrawlScrapeResult = await scrapeToMarkdown(url.toString());
     if (page.error) return { ok: false, error: `fetch failed: ${page.error}` };

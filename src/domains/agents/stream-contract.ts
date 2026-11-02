@@ -31,23 +31,42 @@ export type ChatFrame =
   | { type: "block"; runId: string; blockId: string; text: string; finishReason: string | null; cursor: number }
   /** A tool call started or settled. `label` is the human-readable name. `detail` is a one-line outcome when settled. */
   /** `input` is the call's parsed arguments, `input` on a settled frame is the result payload — capped by MAX_TOOL_PAYLOAD. */
-  | { type: "tool"; runId: string; callId: string; label: string; status: "running" | "ok" | "error"; detail?: string; input?: unknown; cursor: number }
+  | {
+      type: "tool";
+      runId: string;
+      callId: string;
+      label: string;
+      status: "running" | "ok" | "error";
+      detail?: string;
+      input?: unknown;
+      cursor: number;
+    }
   /** The person's own message, replayed from the durable stream so a reload keeps it. */
   | { type: "message"; runId: string; role: "user"; text: string; cursor: number }
   /** Citations a tool produced; `onCitation` on the surface receives these. */
   | { type: "citations"; runId: string; citations: ChatCitation[]; cursor: number }
-  /** The turn ended. `state` mirrors the run row, not Eve's turn vocabulary. */
-  | { type: "turn"; runId: string; state: "waiting" | "completed" | "failed" | "cancelled"; cursor: number }
-  /** The run reached a terminal state. No further frames follow. */
-  | { type: "end"; runId: string; state: "succeeded" | "failed" | "cancelled"; cursor: number }
+  /**
+   * The turn ended. `state` mirrors the run row, not Eve's turn vocabulary.
+   * `error` is Eve's failure line when the turn failed, so the surface can say
+   * why instead of only that it failed.
+   */
+  | {
+      type: "turn";
+      runId: string;
+      state: "waiting" | "completed" | "failed" | "cancelled";
+      error?: string;
+      cursor: number;
+    }
+  /**
+   * The run reached a terminal state. No further frames follow. `error` is the
+   * terminal failure line from Eve; the run row stores the same text, so the
+   * live transcript and a reload agree on why the run failed.
+   */
+  | { type: "end"; runId: string; state: "succeeded" | "failed" | "cancelled"; error?: string; cursor: number }
   /** A transport-level problem the surface should show, not crash on. */
   | { type: "error"; runId: string; code: ChatErrorCode; message: string; cursor: number };
 
-export type ChatErrorCode =
-  | "run_finished"
-  | "run_not_found"
-  | "agent_bridge_unavailable"
-  | "stream_unavailable";
+export type ChatErrorCode = "run_finished" | "run_not_found" | "agent_bridge_unavailable" | "stream_unavailable";
 
 /**
  * A citation as the chat surface sees it. Deliberately the same fields as
@@ -82,6 +101,21 @@ export type EveEvent = {
 
 const asString = (value: unknown): string | null => (typeof value === "string" ? value : null);
 const asNumber = (value: unknown): number | null => (typeof value === "number" ? value : null);
+
+/**
+ * Eve's failure line, bounded for the wire. A provider error can be a paragraph
+ * long (account, tier, request size), while the transcript has one line for it;
+ * the run row keeps the full text.
+ */
+const MAX_FAILURE_MESSAGE = 400;
+
+function failureMessageOf(data: Record<string, unknown>): string | null {
+  const message = asString(data.message)?.trim();
+  if (message) {
+    return message.length > MAX_FAILURE_MESSAGE ? `${message.slice(0, MAX_FAILURE_MESSAGE)}…` : message;
+  }
+  return asString(data.code)?.trim() || null;
+}
 
 /**
  * Citation extraction for a tool output, inline rather than imported from the
@@ -129,12 +163,15 @@ const MAX_TOOL_PAYLOAD = 8_192;
 function capPayload(value: unknown): unknown {
   let size: number;
   try {
-    size = typeof value === "string" ? value.length : JSON.stringify(value ?? null)?.length ?? 0;
+    size = typeof value === "string" ? value.length : (JSON.stringify(value ?? null)?.length ?? 0);
   } catch {
     return String(value);
   }
   if (size <= MAX_TOOL_PAYLOAD) return value;
-  return { truncated: true, reason: `Result over ${MAX_TOOL_PAYLOAD} bytes; the full output stays in the run's recorded events.` };
+  return {
+    truncated: true,
+    reason: `Result over ${MAX_TOOL_PAYLOAD} bytes; the full output stays in the run's recorded events.`,
+  };
 }
 
 /**
@@ -301,7 +338,7 @@ export function frameOf(
           // code when the call failed, a count when a list came back.
           detail: succeeded
             ? summaryFromToolOutput(result.output)
-            : asString(error?.code) ?? (data.status === "rejected" ? "denied" : "failed"),
+            : (asString(error?.code) ?? (data.status === "rejected" ? "denied" : "failed")),
           // The result payload itself, capped, so a pill can expand to the
           // real data without the wire or the client state holding unbounded
           // provider output.
@@ -332,8 +369,10 @@ export function frameOf(
     }
     case "turn.completed":
       return [{ type: "turn", runId, state: "completed", cursor }];
-    case "turn.failed":
-      return [{ type: "turn", runId, state: "failed", cursor }];
+    case "turn.failed": {
+      const error = failureMessageOf(data);
+      return [{ type: "turn", runId, state: "failed", cursor, ...(error ? { error } : {}) }];
+    }
     case "turn.cancelled":
       return [{ type: "turn", runId, state: "cancelled", cursor }];
     case "session.waiting":
@@ -341,8 +380,10 @@ export function frameOf(
       return [{ type: "turn", runId, state: "waiting", cursor }];
     case "session.completed":
       return [{ type: "end", runId, state: "succeeded", cursor }];
-    case "session.failed":
-      return [{ type: "end", runId, state: "failed", cursor }];
+    case "session.failed": {
+      const error = failureMessageOf(data);
+      return [{ type: "end", runId, state: "failed", cursor, ...(error ? { error } : {}) }];
+    }
     default:
       return [];
   }
@@ -371,7 +412,13 @@ export class ChatAccumulator {
         // otherwise have every replayed delta appended to its complete text.
         if (existing.done) return;
         existing.text += frame.text;
-      } else this.blocks.set(frame.blockId, { id: frame.blockId, kind: this.kindOf(frame.blockId), text: frame.text, done: false });
+      } else
+        this.blocks.set(frame.blockId, {
+          id: frame.blockId,
+          kind: this.kindOf(frame.blockId),
+          text: frame.text,
+          done: false,
+        });
       return;
     }
     if (frame.type === "block") {
@@ -450,7 +497,13 @@ export function decodeFrame(line: string): ChatFrame | null {
     return null;
   }
   if (typeof parsed.type !== "string" || typeof parsed.runId !== "string") return null;
-  if (!STATELESS_FRAMES.has(parsed.type) && parsed.type !== "delta" && parsed.type !== "block" && parsed.type !== "message" && parsed.type !== "snapshot") {
+  if (
+    !STATELESS_FRAMES.has(parsed.type) &&
+    parsed.type !== "delta" &&
+    parsed.type !== "block" &&
+    parsed.type !== "message" &&
+    parsed.type !== "snapshot"
+  ) {
     // An unknown frame type is protocol skew. Dropping it silently is correct
     // for forward compatibility; the caller sees no state change.
     return null;

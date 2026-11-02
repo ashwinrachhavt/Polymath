@@ -25,9 +25,7 @@ describe("frameOf", () => {
       { type: "message.appended", data: { messageDelta: "Hel", turnId: "turn-1", stepIndex: 0 } },
       3,
     );
-    expect(frames).toEqual([
-      { type: "delta", runId: RUN, blockId: "assistant:turn-1:0", text: "Hel", cursor: 3 },
-    ]);
+    expect(frames).toEqual([{ type: "delta", runId: RUN, blockId: "assistant:turn-1:0", text: "Hel", cursor: 3 }]);
   });
 
   it("keeps two assistant messages in one turn in separate blocks", () => {
@@ -139,7 +137,11 @@ describe("frameOf", () => {
         type: "action.result",
         data: {
           status: "failed",
-          result: { callId: "c1", toolName: "documents_search", output: { results: [{ documentId: "d1", title: "t", text: "x" }] } },
+          result: {
+            callId: "c1",
+            toolName: "documents_search",
+            output: { results: [{ documentId: "d1", title: "t", text: "x" }] },
+          },
         },
       },
       8,
@@ -155,7 +157,14 @@ describe("frameOf", () => {
         RUN,
         {
           type: "action.result",
-          data: { status, result: { callId: "c1", toolName: "documents_search", output: { results: [{ documentId: "d", title: "t", text: "x" }] } } },
+          data: {
+            status,
+            result: {
+              callId: "c1",
+              toolName: "documents_search",
+              output: { results: [{ documentId: "d", title: "t", text: "x" }] },
+            },
+          },
         },
         1,
       );
@@ -167,7 +176,10 @@ describe("frameOf", () => {
   it("ignores a tool output with no citable results", () => {
     const frames = frameOf(
       RUN,
-      { type: "action.result", data: { status: "completed", result: { callId: "c1", toolName: "web_search", output: { hits: [] } } } },
+      {
+        type: "action.result",
+        data: { status: "completed", result: { callId: "c1", toolName: "web_search", output: { hits: [] } } },
+      },
       9,
     );
     expect(frames).toHaveLength(1);
@@ -210,6 +222,42 @@ describe("frameOf", () => {
   it("maps session completion to a terminal end frame", () => {
     expect(frameOf(RUN, { type: "session.completed" }, 8)).toEqual([
       { type: "end", runId: RUN, state: "succeeded", cursor: 8 },
+    ]);
+  });
+
+  it("carries Eve's reason on a terminal failed end frame", () => {
+    const [frame] = frameOf(
+      RUN,
+      {
+        type: "session.failed",
+        data: { code: "MODEL_CALL_FAILED", message: "Request too large for model `qwen/qwen3.8-27b`." },
+      },
+      9,
+    );
+    expect(frame).toEqual({
+      type: "end",
+      runId: RUN,
+      state: "failed",
+      cursor: 9,
+      error: "Request too large for model `qwen/qwen3.8-27b`.",
+    });
+  });
+
+  it("falls back to the failure code when Eve sends no message", () => {
+    const [frame] = frameOf(RUN, { type: "session.failed", data: { code: "MODEL_CALL_FAILED" } }, 9);
+    expect(frame).toMatchObject({ type: "end", state: "failed", error: "MODEL_CALL_FAILED" });
+  });
+
+  it("bounds a paragraph-long provider failure to one wire line", () => {
+    const [frame] = frameOf(RUN, { type: "session.failed", data: { message: "x".repeat(1_000) } }, 9);
+    expect(frame).toMatchObject({ type: "end", state: "failed" });
+    expect(frame && "error" in frame ? frame.error : "").toHaveLength(401);
+    expect(frame && "error" in frame ? frame.error?.endsWith("…") : false).toBe(true);
+  });
+
+  it("carries the reason on a failed turn without ending the session", () => {
+    expect(frameOf(RUN, { type: "turn.failed", data: { message: "tool timed out" } }, 10)).toEqual([
+      { type: "turn", runId: RUN, state: "failed", cursor: 10, error: "tool timed out" },
     ]);
   });
 
@@ -325,7 +373,10 @@ describe("wire framing", () => {
   });
 
   it("accepts a stateless frame that carries only a cursor", () => {
-    expect(decodeFrame('{"type":"turn","runId":"r","state":"waiting","cursor":3}')).toMatchObject({ type: "turn", cursor: 3 });
+    expect(decodeFrame('{"type":"turn","runId":"r","state":"waiting","cursor":3}')).toMatchObject({
+      type: "turn",
+      cursor: 3,
+    });
     expect(decodeFrame('{"type":"end","runId":"r","state":"succeeded","cursor":4}')).toMatchObject({ type: "end" });
   });
 
@@ -411,7 +462,9 @@ describe("threadBlocks", () => {
 describe("ChatAccumulator with a seeded transcript", () => {
   it("ignores replayed deltas for a block the seed already completed", () => {
     const acc = new ChatAccumulator();
-    const seed = threadBlocks([{ sequence: 2, role: "assistant", text: "Sierra retired its coding rounds.", turnId: "turn_0" }]);
+    const seed = threadBlocks([
+      { sequence: 2, role: "assistant", text: "Sierra retired its coding rounds.", turnId: "turn_0" },
+    ]);
     acc.apply({ type: "snapshot", runId: RUN, blocks: seed, cursor: 0 });
     acc.apply({ type: "delta", runId: RUN, blockId: "assistant:turn_0:0", text: "Sierra retired", cursor: 1 });
     expect(acc.assistantText()).toBe("Sierra retired its coding rounds.");
@@ -428,7 +481,14 @@ describe("ChatAccumulator with a seeded transcript", () => {
     const acc = new ChatAccumulator();
     const seed = threadBlocks([{ sequence: 2, role: "assistant", text: "Partial stored text", turnId: "turn_0" }]);
     acc.apply({ type: "snapshot", runId: RUN, blocks: seed, cursor: 0 });
-    acc.apply({ type: "block", runId: RUN, blockId: "assistant:turn_0:0", text: "The full answer.", finishReason: "stop", cursor: 9 });
+    acc.apply({
+      type: "block",
+      runId: RUN,
+      blockId: "assistant:turn_0:0",
+      text: "The full answer.",
+      finishReason: "stop",
+      cursor: 9,
+    });
     expect(acc.assistantText()).toBe("The full answer.");
   });
 });

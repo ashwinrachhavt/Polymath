@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowUp, BookOpen, ChevronDown, Square } from "lucide-react";
+import { ArrowUp, BookOpen, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import type { DocumentCitation } from "@/domains/knowledge/agent-search";
@@ -616,22 +616,6 @@ export function ChatSurface({
         </form>
       )}
     </section>
-  );
-}
-
-/** The stop control a surface shows while a turn is live. */
-export function ChatCancel({ runId }: { runId: string }) {
-  return (
-    <button
-      type="button"
-      className="hover:text-foreground inline-flex items-center gap-1.5 rounded text-[12px] outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-      onClick={() => {
-        void fetch(`/api/v1/runs/${encodeURIComponent(runId)}/cancel`, { method: "POST" });
-      }}
-    >
-      <Square aria-hidden className="size-3" />
-      Stop
-    </button>
   );
 }
 

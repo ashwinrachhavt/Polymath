@@ -15,6 +15,15 @@
  * "listing" were added 2026-10-24 from the mnfst/awesome-free-llm-apis catalog
  * without a live probe — they surface only when their key is set, and a failing
  * one is removed on first failed probe, not shipped to the picker.
+ *
+ * Groq is deliberately absent. Its free tier meters a request at 7,000 input
+ * tokens per minute (qwen3.8-27b) and 8,000 tokens per minute (gpt-oss-120b),
+ * while Polymath's first request is about 12,000 tokens before the person's
+ * message (instructions plus 23 tool schemas). Both entries answered a short
+ * probe on 2026-10-21 but cannot answer a real turn; the picker offered them,
+ * the turn failed at the provider with a 413, and the failure looked like a bug
+ * in Polymath. Re-add them only when the account's Groq tier raises the cap
+ * above the agent's baseline request.
  */
 
 export type ModelProviderId =
@@ -55,24 +64,6 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai/",
     keyEnv: "GEMINI_API_KEY",
     probe: "live 2026-10-21 (current default)",
-  },
-  {
-    id: "openai/gpt-oss-120b",
-    provider: "groq",
-    label: "GPT-OSS 120B (Groq)",
-    note: "Large open model on Groq's fast inference.",
-    baseUrl: "https://api.groq.com/openai/v1",
-    keyEnv: "GROQ_API_KEY",
-    probe: "live 2026-10-21",
-  },
-  {
-    id: "qwen/qwen3.8-27b",
-    provider: "groq",
-    label: "Qwen 3.8 27B (Groq)",
-    note: "Smaller and quicker; good for short turns.",
-    baseUrl: "https://api.groq.com/openai/v1",
-    keyEnv: "GROQ_API_KEY",
-    probe: "live 2026-10-21",
   },
   {
     id: "meta/llama-3.2-11b-vision-instruct",
@@ -225,7 +216,8 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "Paid strong model for hard synthesis and drafting; routed by task difficulty.",
     baseUrl: "https://api.openai.com/v1",
     keyEnv: "OPENAI_API_KEY",
-    probe: "listing 2026-10-29 (models endpoint answered; chat turn blocked by zero account credits — chat probed in Task 3's live eval run)",
+    probe:
+      "listing 2026-10-29 (models endpoint answered; chat turn blocked by zero account credits — chat probed in Task 3's live eval run)",
   },
   {
     id: "gpt-5.4-mini",
@@ -234,7 +226,8 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "Cheaper paid route for routine paid work",
     baseUrl: "https://api.openai.com/v1",
     keyEnv: "OPENAI_API_KEY",
-    probe: "listing 2026-10-29 (models endpoint answered; chat turn blocked by zero account credits — chat probed in Task 3's live eval run)",
+    probe:
+      "listing 2026-10-29 (models endpoint answered; chat turn blocked by zero account credits — chat probed in Task 3's live eval run)",
   },
 ];
 
@@ -270,8 +263,6 @@ export function resolveModelId(stored: unknown): string {
  */
 export function resolveRunModel(modelPolicy: unknown): ModelOption | null {
   const primary =
-    typeof modelPolicy === "object" && modelPolicy !== null
-      ? (modelPolicy as { primary?: unknown }).primary
-      : null;
+    typeof modelPolicy === "object" && modelPolicy !== null ? (modelPolicy as { primary?: unknown }).primary : null;
   return modelById(resolveModelId(primary));
 }

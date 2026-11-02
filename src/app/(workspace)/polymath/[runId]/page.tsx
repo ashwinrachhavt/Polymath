@@ -7,7 +7,7 @@ import { Plus } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Markdown } from "@/components/markdown";
 import { inline } from "@/components/markdown-inline";
-import { ChatCancel, ChatSurface } from "@/components/chat/chat-surface";
+import { ChatSurface } from "@/components/chat/chat-surface";
 import { ChainOfThought } from "@/components/chat/chain-of-thought";
 import { MessageFeedback } from "@/components/chat/message-feedback";
 import { getAuthContext } from "@/lib/auth";
@@ -80,20 +80,22 @@ async function ConversationSurface({ runId }: { runId: string }) {
     listRunPendingProposals(auth.workspaceId, run.id),
   ]);
   const historyGroups = groupHistory(
-    history.map(
-      (row): HistoryRow => ({
-        id: row.id,
-        title: displayTitle(stripMentionContext(row.objective)) || "Untitled conversation",
-        href: `/polymath/${row.id}`,
-        at: row.createdAt,
-      }),
-    ),
+    history.map((row): HistoryRow => ({
+      id: row.id,
+      title: displayTitle(stripMentionContext(row.objective)) || "Untitled conversation",
+      href: `/polymath/${row.id}`,
+      at: row.createdAt,
+    })),
   );
 
   const thread = threads.get(run.id) ?? [];
   // A user entry may carry the mention context block the model reads; the
   // stored snapshot renders only the words the person typed.
-  const visibleThread = thread.map((entry) => (entry.kind === "user" && hasMentionContext(entry.text) ? { ...entry, text: stripMentionContext(entry.text) } : entry));
+  const visibleThread = thread.map((entry) =>
+    entry.kind === "user" && hasMentionContext(entry.text)
+      ? { ...entry, text: stripMentionContext(entry.text) }
+      : entry,
+  );
   const unavailable = eveBridgeUnavailableReason();
   // Mirrors the server's own terminal set: a run that has not finished may still
   // produce events, so it streams; anything else is history.
@@ -124,9 +126,7 @@ async function ConversationSurface({ runId }: { runId: string }) {
             id: openQuestion.id,
             kind: "question",
             title: "The agent needs an answer",
-            body: openQuestion.context
-              ? `${openQuestion.question}\n\n${openQuestion.context}`
-              : openQuestion.question,
+            body: openQuestion.context ? `${openQuestion.question}\n\n${openQuestion.context}` : openQuestion.question,
             ...(openQuestion.options.length > 0 ? { options: openQuestion.options } : {}),
           }
         : firstProposal
@@ -225,7 +225,10 @@ async function ConversationSurface({ runId }: { runId: string }) {
                 entry.kind === "user" ? (
                   // The owner's words stay visible without a slab of chrome: right-aligned,
                   // tinted only enough to separate from the answer, no big bubble.
-                  <div key={entry.sequence} className="bg-muted/60 ml-auto w-fit max-w-[75%] rounded-md px-2.5 py-1 text-[14px] leading-6">
+                  <div
+                    key={entry.sequence}
+                    className="bg-muted/60 ml-auto w-fit max-w-[75%] rounded-md px-2.5 py-1 text-[14px] leading-6"
+                  >
                     {inline(entry.text)}
                   </div>
                 ) : entry.kind === "assistant" ? (
@@ -241,7 +244,15 @@ async function ConversationSurface({ runId }: { runId: string }) {
                   <ChainOfThought
                     key={entry.sequence}
                     streaming={false}
-                    steps={[{ id: String(entry.sequence), kind: "reasoning", label: "Thought process", text: entry.text, status: "complete" }]}
+                    steps={[
+                      {
+                        id: String(entry.sequence),
+                        kind: "reasoning",
+                        label: "Thought process",
+                        text: entry.text,
+                        status: "complete",
+                      },
+                    ]}
                   />
                 ) : (
                   <p key={entry.sequence} className="text-muted-foreground text-[12px]">
@@ -253,23 +264,22 @@ async function ConversationSurface({ runId }: { runId: string }) {
           )}
 
           {run.error ? (
-            <p role="alert" className="text-destructive text-[13px]">{run.error}</p>
+            <p role="alert" className="text-destructive text-[13px]">
+              {run.error}
+            </p>
           ) : null}
-          {/* One quiet action row under the transcript: the live composer above
-              already sends messages, so this row only carries what it lacks —
-              stop for a live run, retry for a finished one — plus the draft.
-              Text actions, not buttons: they share the transcript's edge and
-              never read as a second composer. */}
-          <div className="text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1">
-            {finished ? (
-              <RunControls runId={run.id} finished />
-            ) : unavailable ? (
-              <RunControls runId={run.id} finished={false} />
-            ) : (
-              <ChatCancel runId={run.id} />
-            )}
-            <DraftControls draft={drafts.get(run.id) ?? null} />
-          </div>
+          {/* One quiet action row under the transcript, rendered only when it
+              has something to carry: retry for a finished run, and the draft.
+              A live run needs no controls here — the composer above sends the
+              next message, and a stop control that could not settle the run
+              only took space. Text actions, not buttons: they share the
+              transcript's edge and never read as a second composer. */}
+          {finished || (drafts.get(run.id) ?? null) ? (
+            <div className="text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1">
+              {finished ? <RunControls runId={run.id} /> : null}
+              <DraftControls draft={drafts.get(run.id) ?? null} />
+            </div>
+          ) : null}
 
           {/* The run's review block: the agent's self-critique proposal and the
               operator's verdict. Finished runs only - a live run's review would
@@ -288,7 +298,11 @@ async function ConversationSurface({ runId }: { runId: string }) {
                     }
                   : null,
                 feedback: reviews.feedback
-                  ? { verdict: reviews.feedback.verdict, reasons: reviews.feedback.reasons, note: reviews.feedback.note }
+                  ? {
+                      verdict: reviews.feedback.verdict,
+                      reasons: reviews.feedback.reasons,
+                      note: reviews.feedback.note,
+                    }
                   : null,
               }}
             />
