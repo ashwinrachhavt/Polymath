@@ -186,10 +186,20 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     id: "mercury-3",
     provider: "mercury",
     label: "Mercury 3 (Inception)",
-    note: "Diffusion-token model on the 100M free-token grant; 1M context, fast.",
+    note: "Diffusion-token model on the 100M free-token grant; 1M context, fast. The assessor profile's designed-in default.",
     baseUrl: "https://api.inceptionlabs.ai/v1",
     keyEnv: "MERCURY_API_KEY",
     probe: "live 2026-10-30 (chat, tool calls with index, tool-result round-trip, SSE streaming verified)",
+  },
+  {
+    id: "mercury-voice",
+    provider: "mercury",
+    label: "Mercury Voice (Inception)",
+    note: "Voice-tuned chat model for latency-sensitive agent turns; reserved for a later-wave voice surface — not yet served to this account.",
+    baseUrl: "https://api.inceptionlabs.ai/v1",
+    keyEnv: "MERCURY_API_KEY",
+    probe:
+      "listing 2026-11-02 (docs.inceptionlabs.ai models page); absent from this account's live GET /v1/models on 2026-11-02 — never a default, remove on first failed probe",
   },
   {
     id: "deepseek/deepseek-chat",
@@ -233,6 +243,15 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
 
 /** The model used when nothing is chosen, and the one every run used before this existed. */
 export const DEFAULT_MODEL_ID = "gemini-3.5-flash-lite";
+
+/**
+ * The assessor profile's designed-in default (superagent spec §9, owner
+ * directive 2026-11-02): Mercury 3 on the 100M-token grant. Settings-resolvable
+ * like any run model — a profile's `model_policy.primary` overrides it — so
+ * another provider takes over by configuration alone. The superagent assessor
+ * module resolves through the catalog; it never hardcodes the id.
+ */
+export const ASSESSOR_MODEL_ID = "mercury-3";
 
 /** A model the workspace can actually call: its key is set. */
 export function availableModels(env: Record<string, string | undefined> = process.env): ModelOption[] {

@@ -170,14 +170,12 @@ suite("hybrid search (real Postgres)", () => {
     ]);
     const first = await syncThreadToGraph(auth, thread.id);
     expect(first.created).toBe(true);
-    await db
-      .insert(messages)
-      .values({
-        workspaceId: auth.workspaceId,
-        threadId: thread.id,
-        role: "user",
-        content: "And the discount for nonprofits?",
-      });
+    await db.insert(messages).values({
+      workspaceId: auth.workspaceId,
+      threadId: thread.id,
+      role: "user",
+      content: "And the discount for nonprofits?",
+    });
     const second = await syncThreadToGraph(auth, thread.id);
     expect(second).toEqual({ artifactId: first.artifactId, created: false });
     const res = await searchKnowledge(auth, { query: "nonprofits", mode: "keyword", kinds: ["transcript"] });

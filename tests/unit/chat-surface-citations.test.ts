@@ -166,8 +166,12 @@ describe("ChatSurface sources chip", () => {
 
 describe("ChatSurface sources truthfulness", () => {
   it("renders no Sources strip when the answer cites nothing", () => {
-    mockChatState = stateWithAnswer("Nothing in the library mentions that person.", [passage("doc-a", "Unrelated article", 0)]);
-    const html = renderToStaticMarkup(createElement(ChatSurface, { runId: "run-1", subject: { type: "project", id: "d1" } }));
+    mockChatState = stateWithAnswer("Nothing in the library mentions that person.", [
+      passage("doc-a", "Unrelated article", 0),
+    ]);
+    const html = renderToStaticMarkup(
+      createElement(ChatSurface, { runId: "run-1", subject: { type: "project", id: "d1" } }),
+    );
     expect(html).not.toContain("Sources ·");
     expect(html).not.toContain("Unrelated article");
   });
@@ -178,7 +182,9 @@ describe("ChatSurface sources truthfulness", () => {
       passage("doc-b", "Second", 0),
       passage("doc-c", "Third", 0),
     ]);
-    const html = renderToStaticMarkup(createElement(ChatSurface, { runId: "run-1", subject: { type: "project", id: "d1" } }));
+    const html = renderToStaticMarkup(
+      createElement(ChatSurface, { runId: "run-1", subject: { type: "project", id: "d1" } }),
+    );
     expect(html).toContain("Sources · 1");
     expect(html).toContain("Second");
     expect(html).not.toContain("Third");
@@ -186,13 +192,17 @@ describe("ChatSurface sources truthfulness", () => {
 
   it("renders one source for a duplicated marker", () => {
     mockChatState = stateWithAnswer("One [[1]] and again [[1]].", [passage("doc-a", "Only", 0)]);
-    const html = renderToStaticMarkup(createElement(ChatSurface, { runId: "run-1", subject: { type: "project", id: "d1" } }));
+    const html = renderToStaticMarkup(
+      createElement(ChatSurface, { runId: "run-1", subject: { type: "project", id: "d1" } }),
+    );
     expect(html).toContain("Sources · 1");
   });
 
   it("ignores a marker past the end of the candidate list", () => {
     mockChatState = stateWithAnswer("Beyond the list [[9]].", [passage("doc-a", "Only", 0)]);
-    const html = renderToStaticMarkup(createElement(ChatSurface, { runId: "run-1", subject: { type: "project", id: "d1" } }));
+    const html = renderToStaticMarkup(
+      createElement(ChatSurface, { runId: "run-1", subject: { type: "project", id: "d1" } }),
+    );
     expect(html).not.toContain("Sources ·");
   });
 });

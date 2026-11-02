@@ -31,10 +31,10 @@ Migrations: 100 files, highest `0273_message_comments_and_proposal_sources`.
 
 ## Tests
 
-495 `.test.ts` and 44 `.spec.ts` files (unit: 293, integration: 199, e2e: 44).
+501 `.test.ts` and 44 `.spec.ts` files (unit: 299, integration: 199, e2e: 44).
 ## Domains
 
-23 folders; 18 own tables.
+24 folders; 18 own tables.
 
 | Domain | Tables |
 | --- | ---: |
@@ -57,7 +57,7 @@ Migrations: 100 files, highest `0273_message_comments_and_proposal_sources`.
 | `spending` | 4 |
 | `work` | 10 |
 
-No tables: `conversations`, `home`, `import`, `notifications`, `supervisor`.
+No tables: `conversations`, `home`, `import`, `notifications`, `superagent`, `supervisor`.
 
 ## Tables
 

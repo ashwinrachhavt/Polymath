@@ -194,13 +194,11 @@ describe("openrouter vision adapter (generated scanned fixture)", () => {
 
     vi.stubGlobal(
       "fetch",
-      vi
-        .fn<typeof fetch>()
-        .mockResolvedValue(
-          jsonResponse({
-            choices: [{ message: { content: null, refusal: "cannot transcribe" }, finish_reason: "stop" }],
-          }),
-        ),
+      vi.fn<typeof fetch>().mockResolvedValue(
+        jsonResponse({
+          choices: [{ message: { content: null, refusal: "cannot transcribe" }, finish_reason: "stop" }],
+        }),
+      ),
     );
     provider = createOpenRouterVisionProvider("test-key", { baseUrl: "https://or.test" });
     result = await provider.extract({ bytes: PNG_BYTES, filename: "scan.png", mimeType: "image/png" });

@@ -23,7 +23,11 @@ export default defineTool({
   inputSchema: z.object({
     query: z.string().min(1).max(500),
     limit: z.number().int().min(1).max(AGENT_SEARCH_MAX_RESULTS).optional(),
-    projectId: z.string().uuid().optional().describe("Limit the search to one project. Ignored when the run is already bound to a project."),
+    projectId: z
+      .string()
+      .uuid()
+      .optional()
+      .describe("Limit the search to one project. Ignored when the run is already bound to a project."),
   }),
   async execute(input, ctx) {
     const current = ctx.session.auth.current;

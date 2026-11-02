@@ -3,8 +3,13 @@ import { AGENT_SEARCH_MIN_SCORE, rrfMerge } from "@/domains/knowledge/agent-sear
 import type { ChunkHit } from "@/domains/knowledge/search";
 
 const hit = (id: string): ChunkHit => ({
-  documentId: id, title: id, extractionId: `ex-${id}`, chunkIndex: 0,
-  text: `text of ${id}`, span: { start: 0, end: 10, page: null }, distance: 0,
+  documentId: id,
+  title: id,
+  extractionId: `ex-${id}`,
+  chunkIndex: 0,
+  text: `text of ${id}`,
+  span: { start: 0, end: 10, page: null },
+  distance: 0,
 });
 
 describe("AGENT_SEARCH_MIN_SCORE", () => {

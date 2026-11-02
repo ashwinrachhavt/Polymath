@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { MODEL_CATALOG, DEFAULT_MODEL_ID, availableModels, modelById, resolveModelId, resolveRunModel } from "@/domains/agents/models";
+import {
+  MODEL_CATALOG,
+  DEFAULT_MODEL_ID,
+  ASSESSOR_MODEL_ID,
+  availableModels,
+  modelById,
+  resolveModelId,
+  resolveRunModel,
+} from "@/domains/agents/models";
 
 /*
  * The catalog is the contract between the picker, the spend row, and the
@@ -47,7 +55,34 @@ describe("model catalog invariants", () => {
     expect(availableModels({}).map((m) => m.id)).not.toContain("mercury-3");
   });
 
-  it("sends a DeepSeek id only to the base URL that serves it", () => {    // The same id is served by more than one gateway; an entry that pairs one
+  it("declares mercury-voice on Inception's endpoint, hidden without the key", () => {
+    // Reserved for latency-sensitive turns and a later-wave voice surface
+    // (spec §9). Declared from Inception's models page as a listing entry —
+    // the account's live /v1/models did not serve it on 2026-11-02, so the
+    // probe says so and it must never become a default.
+    const voice = modelById("mercury-voice");
+    expect(voice).not.toBeNull();
+    expect(voice!.provider).toBe("mercury");
+    expect(voice!.baseUrl).toBe("https://api.inceptionlabs.ai/v1");
+    expect(voice!.keyEnv).toBe("MERCURY_API_KEY");
+    expect(availableModels({}).map((m) => m.id)).not.toContain("mercury-voice");
+    expect(availableModels({ MERCURY_API_KEY: "m" }).map((m) => m.id)).toContain("mercury-voice");
+  });
+
+  it("keeps the chat picker free of the decisions-only model", () => {
+    // mercury-decide answers POST /v1/decisions only — it does not serve
+    // /chat/completions, so frozen into a chat run it would fail on the first
+    // turn. The superagent decide module declares it (DECIDE_MODEL_ID).
+    expect(modelById("mercury-decide")).toBeNull();
+  });
+
+  it("names mercury-3 the assessor default and resolves it through the catalog", () => {
+    expect(ASSESSOR_MODEL_ID).toBe("mercury-3");
+    expect(modelById(ASSESSOR_MODEL_ID)?.provider).toBe("mercury");
+  });
+
+  it("sends a DeepSeek id only to the base URL that serves it", () => {
+    // The same id is served by more than one gateway; an entry that pairs one
     // gateway's id with another's base URL fails with "not a valid model ID".
     for (const model of MODEL_CATALOG.filter((m) => m.id.startsWith("deepseek/"))) {
       expect(model.baseUrl, model.id).toMatch(/^https:\/\//);
