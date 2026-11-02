@@ -1,7 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useOptimistic, useRef, useState, useTransition, type ReactNode } from "react";
+import { useEffect, useOptimistic, useRef, useState, useTransition, type ReactNode } from "react";
+import { cn } from "cn";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Check } from "@/components/products/command-center/controls";
@@ -98,7 +99,8 @@ function SendSummary({ capability, revision }: { capability: string; revision: Q
         <div className="flex gap-2">
           <dt className="w-14 shrink-0 text-muted-foreground">From</dt>
           <dd>
-            {pinnedSender ?? "No sending account is bound to this revision - approving cannot send it. Revise it after connecting the account."}
+            {pinnedSender ??
+              "No sending account is bound to this revision - approving cannot send it. Revise it after connecting the account."}
           </dd>
         </div>
         {to ? (
@@ -147,9 +149,7 @@ function DraftGrounding({ flags, revision }: { flags: unknown; revision: QueueCa
     <div className="mb-3 grid gap-2 text-[13px]">
       {flagList.length > 0 ? (
         <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3">
-          <p className="mb-1 text-xs font-medium">
-            The thread asked for something - quoted here, never acted on:
-          </p>
+          <p className="mb-1 text-xs font-medium">The thread asked for something - quoted here, never acted on:</p>
           <ul className="grid gap-1 text-xs text-muted-foreground">
             {flagList.map((flag, i) => (
               <li key={i}>&ldquo;{flag.excerpt as string}&rdquo;</li>
@@ -285,7 +285,9 @@ function ProposalCard({
               onChange={setConfirmedSensitive}
             />
           ) : null}
-          {expired ? <p className="text-xs text-muted-foreground">Past its expiry; the executor would refuse it.</p> : null}
+          {expired ? (
+            <p className="text-xs text-muted-foreground">Past its expiry; the executor would refuse it.</p>
+          ) : null}
           <div className="flex flex-wrap gap-2">
             <Button
               size="sm"
@@ -357,7 +359,12 @@ function ProposalCard({
           {outcome.status === "sent" && item.capability === "canva.design.import" && item.designUrl ? (
             <>
               {" "}
-              <a href={item.designUrl} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">
+              <a
+                href={item.designUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline underline-offset-2"
+              >
                 Open the design in Canva
               </a>
             </>
@@ -368,8 +375,26 @@ function ProposalCard({
   );
 }
 
-export function ReviewsQueue({ items, emptyState }: { items: QueueCardData[]; emptyState: ReactNode }) {
+export function ReviewsQueue({
+  items,
+  emptyState,
+  // The notifications panel's deep link (?proposal=<id>): the card to scroll
+  // to and ring.
+  highlightProposalId = null,
+}: {
+  items: QueueCardData[];
+  emptyState: ReactNode;
+  highlightProposalId?: string | null;
+}) {
   const router = useRouter();
+
+  // Bring the deep-linked card into view once mounted; the ring below marks
+  // it on a long queue.
+  useEffect(() => {
+    if (!highlightProposalId) return;
+    document.getElementById(`proposal-${highlightProposalId}`)?.scrollIntoView({ block: "center" });
+  }, [highlightProposalId]);
+
   const [, startTransition] = useTransition();
   const [errors, setErrors] = useState<Record<string, string>>({});
   /*
@@ -501,13 +526,21 @@ export function ReviewsQueue({ items, emptyState }: { items: QueueCardData[]; em
   }
 
   const card = (item: QueueCardData) => (
-    <ProposalCard
+    <div
       key={`${item.id}-${item.version}`}
-      item={item}
-      error={errors[item.id] ?? null}
-      outcome={item.outcome ?? decideOutcomes[item.id] ?? null}
-      decide={decide}
-    />
+      id={`proposal-${item.id}`}
+      className={cn(
+        "scroll-mt-16 rounded-md",
+        highlightProposalId === item.id && "ring-2 ring-ring/70 ring-offset-2 ring-offset-background",
+      )}
+    >
+      <ProposalCard
+        item={item}
+        error={errors[item.id] ?? null}
+        outcome={item.outcome ?? decideOutcomes[item.id] ?? null}
+        decide={decide}
+      />
+    </div>
   );
 
   if (rows.length === 0) return <>{emptyState}</>;
