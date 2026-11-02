@@ -67,11 +67,12 @@ test("the rail leads with the conversation, then Inbox", async ({ page }) => {
   // return before it is in the DOM, which made a one-shot read see no links.
   // Decisions left the rail when its queue moved into the notifications panel.
   await expect
-    .poll(async () =>
-      await page
-        .getByRole("navigation", { name: "Workspace", exact: true })
-        .locator("a[aria-label]")
-        .evaluateAll((links) => links.map((link) => link.getAttribute("aria-label")).slice(0, 3)),
+    .poll(
+      async () =>
+        await page
+          .getByRole("navigation", { name: "Workspace", exact: true })
+          .locator("a[aria-label]")
+          .evaluateAll((links) => links.map((link) => link.getAttribute("aria-label")).slice(0, 3)),
     )
     .toEqual(["Polymath", "Inbox", "Work"]);
 });
@@ -126,7 +127,9 @@ for (const destination of destinations) {
     // a link whose accessible name is "Polymath" (from its visible text), and
     // since b5b1d26 renamed the first destination to Polymath a plain
     // getByRole('link', name) collides between the two.
-    await expect(page.getByRole("navigation", { name: "Workspace", exact: true }).getByLabel(destination.label, { exact: true })).toHaveAttribute("aria-current", "page");
+    await expect(
+      page.getByRole("navigation", { name: "Workspace", exact: true }).getByLabel(destination.label, { exact: true }),
+    ).toHaveAttribute("aria-current", "page");
     expect(errors).toEqual([]);
   });
 }
@@ -215,11 +218,15 @@ test("a run opens its conversation, with controls under the transcript", async (
   // vocabulary, so the conversation page grows no status badge of its own.
   await expect(content.getByText("Needs your reply")).toHaveCount(0);
 
-  // A waiting run is live from the page's point of view: the composer offers a
-  // follow-up and a stop, and the draft control (nothing produced yet) stays
-  // out of the way.
-  await expect(conversation.getByRole("textbox", { name: "Follow-up message" })).toBeVisible();
-  await expect(conversation.getByRole("button", { name: "Stop" })).toBeVisible();
+  // A waiting run is live from the page's point of view, but the composer only
+  // exists while the Eve bridge is configured. These legs run without
+  // EVE_BRIDGE_SECRET, where the messages endpoint answers 503, so this surface
+  // offers no follow-up field and says why rather than leaving a dead control.
+  // The bridge-configured composer is covered by the unit suites over
+  // ChatSurface, which do not need a running bridge.
+  await expect(conversation.getByRole("textbox", { name: "Follow-up message" })).toHaveCount(0);
+  await expect(conversation.getByRole("button", { name: "Stop" })).toHaveCount(0);
+  await expect(conversation.getByText(/cannot continue until the agent bridge is configured/)).toBeVisible();
   await expect(conversation.getByRole("button", { name: "Save the answer as a draft" })).toHaveCount(0);
 });
 
@@ -315,7 +322,14 @@ test("the removed Learning route 404s with a noindex not-found state", async ({ 
  * toolbar only mounts with a note open, so no editor landmark here. The
  * artifacts leg scans the rail's kept-outputs list (IA simplification).
  */
-for (const path of ["/command-center/inbox", "/settings", "/neuralflow/work", "/polymath/knowledge", "/polymath/notes", "/polymath/artifacts"]) {
+for (const path of [
+  "/command-center/inbox",
+  "/settings",
+  "/neuralflow/work",
+  "/polymath/knowledge",
+  "/polymath/notes",
+  "/polymath/artifacts",
+]) {
   test(`${path} meets WCAG 2.2 AA`, async ({ page }) => {
     // An axe scan plus a cold dev-compile per screen; the ceiling only bites
     // when compile contention on the shared dev server stretches a leg.
@@ -325,7 +339,9 @@ for (const path of ["/command-center/inbox", "/settings", "/neuralflow/work", "/
     // disabled:opacity-50 until hydration and transition to full opacity,
     // and axe composites whatever it samples through in-flight opacity.
     await waitSettled(page);
-    const { violations } = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();
+    const { violations } = await new AxeBuilder({ page })
+      .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
+      .analyze();
     expect(violations, path).toEqual([]);
   });
 }
@@ -376,7 +392,9 @@ test("/reviews meets WCAG 2.2 AA", async ({ page }) => {
       await page.screenshot({ path: "test-results/feature-pixels/reviews-populated-mobile.png" });
       await page.setViewportSize({ width: 1280, height: 720 });
     }
-    const { violations } = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();
+    const { violations } = await new AxeBuilder({ page })
+      .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
+      .analyze();
     expect(violations, "/reviews").toEqual([]);
   } finally {
     if (client && seededProposalId) await client`delete from action_proposals where id = ${seededProposalId}`;
