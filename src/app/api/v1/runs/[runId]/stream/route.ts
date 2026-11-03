@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, gt } from "drizzle-orm";
 import { z } from "zod";
 import { authedHandler } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
@@ -8,12 +8,7 @@ import { eveAgentForProfile, eveBridgeUnavailableReason, eveSessionEndpoint } fr
 import { getProfileNameForRun } from "@/domains/agents/queries";
 import { agentRuns, runEvents } from "@/domains/agents/schema";
 import { isFinished } from "@/domains/agents/thread";
-import {
-  encodeFrame,
-  frameOf,
-  splitLines,
-  type ChatFrame,
-} from "@/domains/agents/stream-contract";
+import { encodeFrame, frameOf, splitLines, type ChatFrame } from "@/domains/agents/stream-contract";
 
 /*
  * GET /api/v1/runs/:runId/stream — the chat surface's one streaming endpoint.
@@ -93,12 +88,83 @@ export const GET = authedHandler<Ctx>(async (auth, request, ctx) => {
   // A finished run has nothing live to follow. Replay its durable tail instead
   // of holding a connection open forever.
   const finished = isFinished(run.state);
+  const replayed = run.sessionRef
+    ? { frames: [], cursor: startIndex }
+    : await durableReplay(runId, startIndex, suppressObjectiveText);
+  if (!run.sessionRef && replayed.frames.length > 0) {
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        const encoder = new TextEncoder();
+        let gone = false;
+        const push = (text: string) => {
+          if (gone) return;
+          try {
+            controller.enqueue(encoder.encode(text));
+          } catch {
+            gone = true;
+          }
+        };
+        try {
+          for (const frame of replayed.frames) push(encodeFrame(frame));
+          let cursor = replayed.cursor;
+          let state = run.state;
+          const deadline = Date.now() + FOLLOW_WINDOW_MS;
+          while (!finished && !gone && Date.now() < deadline) {
+            await sleep(POLL_MS, request.signal);
+            if (request.signal.aborted) break;
+            const [row] = await db
+              .select({ state: agentRuns.state })
+              .from(agentRuns)
+              .where(eq(agentRuns.id, runId))
+              .limit(1);
+            if (!row) break;
+            state = row.state;
+            const next = await durableReplay(runId, cursor, suppressObjectiveText);
+            for (const frame of next.frames) {
+              push(encodeFrame(frame));
+              cursor = Math.max(cursor, frame.cursor);
+            }
+            if (isFinished(row.state)) break;
+          }
+          if (isFinished(state) && !gone) {
+            push(encodeFrame({ type: "end", runId, state: terminalStateOf(state), cursor }));
+          }
+        } catch {
+          // A disconnect or a failed poll ends the read; the durable rows
+          // keep the events, and the client reconnects from its cursor.
+        } finally {
+          gone = true;
+          try {
+            controller.close();
+          } catch {
+            // Already closed by the consumer.
+          }
+        }
+      },
+      cancel() {
+        // Nothing upstream to release — the rows are already durable.
+      },
+    });
+    return new Response(stream, {
+      headers: {
+        "content-type": "application/x-ndjson; charset=utf-8",
+        "cache-control": "no-cache, no-transform",
+        "x-accel-buffering": "no",
+      },
+    });
+  }
   if (!run.sessionRef) {
     // The run exists but Eve never allocated a session (start failed before
     // create). Say so as a frame rather than a transport error: the surface
     // shows it inside the chat.
     return ndjsonResponse([
-      emit({ type: "error", runId, code: "stream_unavailable", message: "This run has no agent session.", cursor: startIndex }),
+      emit({
+        type: "error",
+        runId,
+        code: "stream_unavailable",
+        message: "This run has no agent session.",
+        cursor: startIndex,
+      }),
       emit({ type: "end", runId, state: terminalStateOf(run.state), cursor: startIndex }),
     ]);
   }
@@ -122,7 +188,13 @@ export const GET = authedHandler<Ctx>(async (auth, request, ctx) => {
     });
   } catch {
     return ndjsonResponse([
-      emit({ type: "error", runId, code: "stream_unavailable", message: "The agent stream is unreachable.", cursor: startIndex }),
+      emit({
+        type: "error",
+        runId,
+        code: "stream_unavailable",
+        message: "The agent stream is unreachable.",
+        cursor: startIndex,
+      }),
     ]);
   }
 
@@ -139,7 +211,9 @@ export const GET = authedHandler<Ctx>(async (auth, request, ctx) => {
         message: `The agent stream returned ${upstream.status}.`,
         cursor: startIndex,
       }),
-      ...(finished ? [emit({ type: "end" as const, runId, state: terminalStateOf(run.state), cursor: startIndex })] : []),
+      ...(finished
+        ? [emit({ type: "end" as const, runId, state: terminalStateOf(run.state), cursor: startIndex })]
+        : []),
     ]);
   }
 
@@ -234,6 +308,56 @@ function terminalStateOf(state: string): "succeeded" | "failed" | "cancelled" {
   if (state === "cancelled") return "cancelled";
   if (state === "failed") return "failed";
   return "succeeded";
+}
+
+/** How often the session-less follow polls the run's rows, and how long it holds one connection. */
+const POLL_MS = 2_000;
+const FOLLOW_WINDOW_MS = 5 * 60_000;
+
+const sleep = (ms: number, signal: AbortSignal) =>
+  new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    signal.addEventListener(
+      "abort",
+      () => {
+        clearTimeout(timer);
+        resolve();
+      },
+      { once: true },
+    );
+  });
+
+/**
+ * The run's durable events folded into frames, past the cursor. Cursor values
+ * are the rows' own sequence numbers — the same monotone space the client's
+ * reconnect cursor counts, so a resume replays nothing twice.
+ */
+async function durableReplay(
+  runId: string,
+  afterCursor: number,
+  suppressObjectiveText: string | null,
+): Promise<{ frames: ChatFrame[]; cursor: number }> {
+  const rows = await db
+    .select({ sequence: runEvents.sequence, type: runEvents.type, data: runEvents.data })
+    .from(runEvents)
+    .where(and(eq(runEvents.runId, runId), gt(runEvents.sequence, afterCursor)))
+    .orderBy(runEvents.sequence);
+  const frames: ChatFrame[] = [];
+  let cursor = afterCursor;
+  for (const row of rows) {
+    for (const frame of frameOf(
+      runId,
+      { type: row.type, data: (row.data ?? {}) as Record<string, unknown> },
+      row.sequence,
+      {
+        suppressObjectiveText,
+      },
+    )) {
+      frames.push(frame);
+      cursor = Math.max(cursor, row.sequence);
+    }
+  }
+  return { frames, cursor };
 }
 
 /** Eve's envelope: `{ type, data, meta }`. Anything else is skipped, not fatal. */
