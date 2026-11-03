@@ -2,8 +2,10 @@
 
 import { useRouter } from "next/navigation";
 import { useId, useState } from "react";
+import { motion } from "motion/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { motionTransition } from "@/components/motion-config";
 import {
   acceptDocumentObligation,
   acceptField,
@@ -79,9 +81,7 @@ export function FieldDecisions({
           size="xs"
           disabled={pending !== null}
           aria-describedby={!readable && !editing ? errorId : undefined}
-          onClick={() =>
-            run(`accept-${proposalId}`, () => acceptField(proposalId, editing ? correction : undefined))
-          }
+          onClick={() => run(`accept-${proposalId}`, () => acceptField(proposalId, editing ? correction : undefined))}
         >
           {pending === `accept-${proposalId}` ? "Accepting…" : "Accept"}
         </Button>
@@ -158,7 +158,9 @@ export function ObligationDecisions({ obligationId }: { obligationId: string }) 
           type="button"
           size="xs"
           disabled={pending !== null}
-          onClick={() => run(`accept-${obligationId}`, () => acceptDocumentObligation(obligationId, dueAt || undefined))}
+          onClick={() =>
+            run(`accept-${obligationId}`, () => acceptDocumentObligation(obligationId, dueAt || undefined))
+          }
         >
           {pending === `accept-${obligationId}` ? "Accepting…" : "Accept"}
         </Button>
@@ -214,13 +216,11 @@ export function PartyDecisions({
             variant="outline"
             disabled={pending !== null}
             onClick={() =>
-              run(
-                `match-${partyId}-${option.id}`,
-                () =>
-                  acceptPartyDecision(partyId, {
-                    action: "match",
-                    ...(option.kind === "contact" ? { contactId: option.id } : { companyId: option.id }),
-                  }),
+              run(`match-${partyId}-${option.id}`, () =>
+                acceptPartyDecision(partyId, {
+                  action: "match",
+                  ...(option.kind === "contact" ? { contactId: option.id } : { companyId: option.id }),
+                }),
               )
             }
           >
@@ -232,13 +232,13 @@ export function PartyDecisions({
           size="xs"
           disabled={pending !== null}
           onClick={() =>
-            run(
-              `create-${partyId}`,
-              () =>
-                acceptPartyDecision(partyId, {
-                  action: "create",
-                  ...(partyKind === "contact" ? { contact: { fullName: displayName } } : { company: { name: displayName } }),
-                }),
+            run(`create-${partyId}`, () =>
+              acceptPartyDecision(partyId, {
+                action: "create",
+                ...(partyKind === "contact"
+                  ? { contact: { fullName: displayName } }
+                  : { company: { name: displayName } }),
+              }),
             )
           }
         >
@@ -293,12 +293,27 @@ export function ZettelDecisions({ proposalId }: { proposalId: string }) {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-1.5">
-        <Button type="button" size="xs" disabled={pending !== null} onClick={() => run(`accept-${proposalId}`, () => acceptZettelAction(proposalId))}>
-          {pending === `accept-${proposalId}` ? "Accepting…" : "Accept"}
-        </Button>
-        <Button type="button" size="xs" variant="outline" disabled={pending !== null} onClick={() => run(`reject-${proposalId}`, () => rejectZettelAction(proposalId))}>
-          {pending === `reject-${proposalId}` ? "Rejecting…" : "Reject"}
-        </Button>
+        <motion.span className="inline-flex" whileTap={{ scale: 0.97 }} transition={motionTransition}>
+          <Button
+            type="button"
+            size="xs"
+            disabled={pending !== null}
+            onClick={() => run(`accept-${proposalId}`, () => acceptZettelAction(proposalId))}
+          >
+            {pending === `accept-${proposalId}` ? "Accepting…" : "Accept"}
+          </Button>
+        </motion.span>
+        <motion.span className="inline-flex" whileTap={{ scale: 0.97 }} transition={motionTransition}>
+          <Button
+            type="button"
+            size="xs"
+            variant="outline"
+            disabled={pending !== null}
+            onClick={() => run(`reject-${proposalId}`, () => rejectZettelAction(proposalId))}
+          >
+            {pending === `reject-${proposalId}` ? "Rejecting…" : "Reject"}
+          </Button>
+        </motion.span>
       </div>
       <ErrorLine id={errorId} error={error} />
     </div>
@@ -310,7 +325,14 @@ export function ProposeZettelsButton({ documentId }: { documentId: string }) {
   const { pending, error, errorId, run } = useDecision();
   return (
     <div className="flex flex-col gap-1">
-      <Button type="button" size="xs" variant="outline" className="w-fit" disabled={pending !== null} onClick={() => run("propose", () => proposeZettelsAction(documentId))}>
+      <Button
+        type="button"
+        size="xs"
+        variant="outline"
+        className="w-fit"
+        disabled={pending !== null}
+        onClick={() => run("propose", () => proposeZettelsAction(documentId))}
+      >
         {pending === "propose" ? "Reading…" : "Propose zettels"}
       </Button>
       <ErrorLine id={errorId} error={error} />

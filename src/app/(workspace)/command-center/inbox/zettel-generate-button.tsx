@@ -34,11 +34,7 @@ export function GenerateZettelsButton({
   const [outcome, setOutcome] = useState<{ message: string; failed: boolean } | null>(null);
 
   const disabled = pending || sources === 0 || !providerReady;
-  const reason = !providerReady
-    ? providerReason
-    : sources === 0
-      ? "No open capture has text to read."
-      : undefined;
+  const reason = !providerReady ? providerReason : sources === 0 ? "No open capture has text to read." : undefined;
 
   function run() {
     setOutcome(null);
@@ -81,14 +77,12 @@ export function GenerateZettelsButton({
           id="zettel-generation-outcome"
           role={outcome.failed ? "alert" : "status"}
           className={
-            outcome.failed
-              ? "w-full text-[13px] text-destructive"
-              : "w-full text-[13px] text-muted-foreground"
+            outcome.failed ? "w-full text-[13px] text-destructive" : "w-full text-[13px] text-muted-foreground"
           }
         >
           {outcome.message}{" "}
           {!outcome.failed ? (
-            <Link href="/polymath/ideas" className="font-medium text-foreground underline underline-offset-4">
+            <Link href="/polymath/ideas#in-review" className="font-medium text-foreground underline underline-offset-4">
               Review ideas
             </Link>
           ) : null}
