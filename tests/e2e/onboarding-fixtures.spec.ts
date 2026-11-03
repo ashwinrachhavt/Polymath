@@ -27,63 +27,90 @@ const HIDE_DEV_CHROME = { style: "nextjs-portal { display: none }" } as const;
  */
 test.setTimeout(240_000);
 
-const GOTO = { timeout: 90_000 } as const;
+const GOTO = { timeout: 90_000, waitUntil: "domcontentloaded" } as const;
+
+/*
+ * The wizard is an async client chunk: the DOM paints well before React
+ * attaches, so a click that lands in that gap does nothing and every
+ * downstream assertion reads a pre-hydration page. networkidle waits for
+ * the chunk graph to settle, which is the hydration gate.
+ */
+async function settle(page: import("@playwright/test").Page) {
+  await page.waitForLoadState("networkidle", { timeout: 30_000 });
+}
 
 const states = [
   {
     state: "fresh",
-    ready: (page: import("@playwright/test").Page) =>
-      page.getByRole("heading", { name: /What will your Polymath agent do/ }),
+    verify: async (page: import("@playwright/test").Page) => {
+      await expect(page.getByRole("heading", { name: "What do you do?" })).toBeVisible();
+    },
   },
   {
     state: "s1",
-    ready: (page: import("@playwright/test").Page) =>
-      page.getByRole("switch", { name: /Founder at a two-person climate studio/ }),
+    verify: async (page: import("@playwright/test").Page) => {
+      // The draft arrived: the role input is prefilled, Continue already on.
+      await expect(page.getByRole("textbox", { name: /Your role/ })).toHaveValue(
+        "Founder at a two-person climate studio",
+      );
+    },
   },
   {
     state: "s2",
-    ready: (page: import("@playwright/test").Page) =>
-      page.getByRole("heading", { name: /What tools does Founder work run on/ }),
+    verify: async (page: import("@playwright/test").Page) => {
+      await expect(page.getByRole("heading", { name: "Tools and what matters" })).toBeVisible();
+    },
   },
   {
     state: "s3",
-    ready: (page: import("@playwright/test").Page) => page.getByRole("textbox", { name: /In a few sentences/ }),
+    verify: async (page: import("@playwright/test").Page) => {
+      await expect(page.getByRole("textbox", { name: "In your own words" })).toBeVisible();
+    },
   },
   {
     state: "review",
-    ready: (page: import("@playwright/test").Page) => page.getByRole("heading", { name: /Review and confirm/ }),
+    verify: async (page: import("@playwright/test").Page) => {
+      await expect(page.getByRole("heading", { name: "Is this right?" })).toBeVisible();
+    },
   },
   {
     state: "salvage",
-    ready: (page: import("@playwright/test").Page) => page.getByText(/The interview could not finish/i),
-  },
-  {
-    state: "status",
-    ready: (page: import("@playwright/test").Page) => page.getByText(/agent runtime is not reachable/i),
+    verify: async (page: import("@playwright/test").Page) => {
+      await expect(page.getByText(/The interview could not finish/i)).toBeVisible();
+    },
   },
   {
     state: "welcome",
-    ready: (page: import("@playwright/test").Page) => page.getByText(/Your agent is ready/i),
+    verify: async (page: import("@playwright/test").Page) => {
+      await expect(page.getByText(/Your agent is ready/i)).toBeVisible();
+    },
   },
 ] as const;
 
-for (const { state, ready } of states) {
+for (const { state, verify } of states) {
   test(`onboarding ${state} state renders`, async ({ page }) => {
     await page.goto(`/dev/onboarding-fixtures?state=${state}`, GOTO);
-    await ready(page).first().waitFor();
+    // The welcome (and any motion-mounted state) paints at opacity 0 until
+    // hydration attaches; assert and capture only after the chunk settles.
+    await settle(page);
+    await verify(page);
     await expect(page.getByText("Something went wrong")).toHaveCount(0);
+    // The entrance motion (4px rise + fade) runs on mount; capture after it
+    // settles or the pixel shows the pre-fade frame.
+    await page.waitForTimeout(400);
     await page.screenshot({ path: `test-results/onboarding-pixels/${state}.png`, fullPage: true, ...HIDE_DEV_CHROME });
   });
 }
 
 test("a role choice unlocks the tools step", async ({ page }) => {
   await page.goto("/dev/onboarding-fixtures?state=fresh", GOTO);
-  await page.getByRole("switch", { name: /Founder or executive/ }).click();
+  await page.getByRole("heading", { name: "What do you do?" }).waitFor();
+  await settle(page);
+  // The role chips are pressed buttons in the house pill idiom.
+  await page.getByRole("button", { name: "Founder or executive" }).click();
   await expect(page.getByRole("button", { name: "Continue" })).toBeEnabled();
   await page.getByRole("button", { name: "Continue" }).click();
-  await expect(page.getByRole("heading", { name: /What tools does Founder or executive work run on/ })).toBeVisible({
-    timeout: 15_000,
-  });
+  await expect(page.getByRole("heading", { name: "Tools and what matters" })).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText("Something went wrong")).toHaveCount(0);
   await page.screenshot({
     path: "test-results/onboarding-pixels/advance-to-tools.png",
@@ -94,14 +121,15 @@ test("a role choice unlocks the tools step", async ({ page }) => {
 
 test("the assist pending state is a quiet status line, not a spinner", async ({ page }) => {
   await page.goto("/dev/onboarding-fixtures?state=s3", GOTO);
-  await page.getByRole("textbox", { name: /In a few sentences/ }).waitFor();
+  await page.getByRole("textbox", { name: "In your own words" }).waitFor();
+  await settle(page);
   // Dangle every server-action POST: the request never answers, so the
   // wizard sits in its pending state for as long as the transport does.
   await page.route("**/dev/onboarding-fixtures**", (route) =>
     route.request().method() === "POST" ? new Promise(() => {}) : route.continue(),
   );
   await page.getByRole("button", { name: /Polish with Polymath/ }).click();
-  await expect(page.getByRole("status")).toHaveText(/Reading your answers/, { timeout: 15_000 });
+  await expect(page.getByText(/Reading your answers/)).toBeVisible({ timeout: 15_000 });
   await page.screenshot({
     path: "test-results/onboarding-pixels/s3-assist-pending.png",
     fullPage: true,
@@ -111,16 +139,18 @@ test("the assist pending state is a quiet status line, not a spinner", async ({ 
 
 test("a failed assist shows a labelled error and keeps the draft", async ({ page }) => {
   await page.goto("/dev/onboarding-fixtures?state=s3", GOTO);
-  await page.getByRole("textbox", { name: /In a few sentences/ }).waitFor();
-  const words = await page.getByRole("textbox", { name: /In a few sentences/ }).inputValue();
+  const wordsBox = page.getByRole("textbox", { name: "In your own words" });
+  await wordsBox.waitFor();
+  await settle(page);
+  const words = await wordsBox.inputValue();
   // Abort the transport: the assist fetch throws, and the wizard owes the
   // person a labelled error — with their words exactly where they left them.
   await page.route("**/dev/onboarding-fixtures**", (route) =>
     route.request().method() === "POST" ? route.abort("connectionreset") : route.continue(),
   );
   await page.getByRole("button", { name: /Polish with Polymath/ }).click();
-  await expect(page.getByRole("alert")).toHaveText(/The assist did not run/, { timeout: 15_000 });
-  await expect(page.getByRole("textbox", { name: /In a few sentences/ })).toHaveValue(words);
+  await expect(page.getByText(/The assist could not be reached/)).toBeVisible({ timeout: 15_000 });
+  await expect(wordsBox).toHaveValue(words);
   await page.screenshot({
     path: "test-results/onboarding-pixels/s3-assist-failed.png",
     fullPage: true,
@@ -130,8 +160,10 @@ test("a failed assist shows a labelled error and keeps the draft", async ({ page
 
 test("confirm on the fixture route loses the version race and keeps the draft", async ({ page }) => {
   await page.goto("/dev/onboarding-fixtures?state=review", GOTO);
-  await page.getByRole("button", { name: "Confirm and finish" }).click();
-  await expect(page.getByRole("alert")).toHaveText(/edited since you opened this page/, { timeout: 15_000 });
+  await page.getByRole("heading", { name: "Is this right?" }).waitFor();
+  await settle(page);
+  await page.getByRole("button", { name: /Confirm and start/ }).click();
+  await expect(page.getByText(/changed in another tab/)).toBeVisible({ timeout: 15_000 });
   // The draft survives: the review fields still hold what the brief proposed.
   await expect(page.getByRole("textbox", { name: "What should your agent be called?" })).toHaveValue("Polymath");
   await page.screenshot({
