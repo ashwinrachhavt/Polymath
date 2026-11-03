@@ -1,4 +1,5 @@
 import { and, eq } from "drizzle-orm";
+import { dirname } from "node:path";
 import { z } from "zod";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
@@ -55,7 +56,36 @@ export function isEveAlive(base: string): boolean {
   }
 }
 
-function eveTarget(): EveTarget | null {
+/**
+ * The absolute path of one agent's dev-server state file.
+ *
+ * The dev state lives at `<repo root>/eve/<agent>/.eve/<file>`, but the
+ * process reading it is not always booted at the repo root: the specialist's
+ * post-decision drain runs the executor inside the specialist's own process,
+ * whose cwd is that agent's mount — a cwd-relative read then misses the
+ * polymath file and the ticket run's start reports Eve unreachable. Walk up
+ * from the cwd to the repo root and take the first hit.
+ */
+function eveStateFile(agentName: string, file: string): string {
+  // ponytail: sync fs probes at run-start frequency only.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const fs = require("fs") as typeof import("fs");
+  let dir = process.cwd();
+  for (let hop = 0; hop < 8; hop += 1) {
+    const candidate = `${dir}/eve/${agentName}/.eve/${file}`;
+    try {
+      fs.accessSync(candidate);
+      return candidate;
+    } catch {
+      const parent = dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+  }
+  return `${process.cwd()}/eve/${agentName}/.eve/${file}`;
+}
+
+function eveTarget(agentName: string): EveTarget | null {
   const explicit = process.env.EVE_BASE_URL;
   if (explicit && explicit.trim().length > 0) return { kind: "standalone", base: explicit.replace(/\/+$/, "") };
   // A deployed environment routes to its own origin. The dev-server state file
@@ -68,15 +98,23 @@ function eveTarget(): EveTarget | null {
   // the canonical one (key `url`) but is intermittently skipped on restart;
   // `next-dev-server.json` (key `origin`) is always written. A stale file can
   // outlive its server after a crash, so each URL is probed before use.
+  //
+  // The files are per agent: each mount under eve/ boots its own server and
+  // writes its own state. Resolving every agent against polymath's file sent
+  // the specialist's eval sessions to the polymath server — a mount with no
+  // orchestrator_eval tools, where the assessor judged from the chat agent's
+  // toolset and every assessment expired unread — so the agent name picks the
+  // state directory here.
   try {
     // ponytail: sync fs read at call time; fine at run-start frequency.
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const fs = require("fs") as typeof import("fs");
     for (const file of ["dev-server-state.v1.json", "next-dev-server.json"]) {
       try {
-        const parsed = JSON.parse(
-          fs.readFileSync(`${process.cwd()}/eve/polymath/.eve/${file}`, "utf8"),
-        ) as { url?: string; origin?: string };
+        const parsed = JSON.parse(fs.readFileSync(eveStateFile(agentName, file), "utf8")) as {
+          url?: string;
+          origin?: string;
+        };
         const base = (parsed.url ?? parsed.origin)?.replace(/\/+$/, "");
         if (base && isEveAlive(base)) return { kind: "standalone", base };
       } catch {
@@ -94,7 +132,7 @@ function eveTarget(): EveTarget | null {
 }
 
 function eveMount(agentName: string): string {
-  const target = eveTarget();
+  const target = eveTarget(agentName);
   if (!target) {
     throw new Error(
       "Eve is not reachable from this environment: set EVE_BASE_URL, start the eve dev server, or deploy where VERCEL_URL is set.",
@@ -137,6 +175,15 @@ export function eveBridgeUnavailableReason(): string | null {
   }
   return null;
 }
+
+/**
+ * Control-plane calls are bounded: a hung eve (half-open socket, wedged dev
+ * server) must fail the caller — the effects machinery recovers the leased
+ * work — instead of wedging the caller's loop forever. Found by the wave-1
+ * end-to-end verification: a worker pass wedged on a fetch to a dead eve and
+ * every later pass (sweep, dispatch) stopped running.
+ */
+const EVE_CONTROL_TIMEOUT_MS = 30_000;
 
 /** The Authorization header for one Eve call, minted from the caller's verified context. */
 function bridgeHeaders(
@@ -204,6 +251,7 @@ export function createEveDriver(agentName = "polymath"): SessionDriver {
       });
       const response = await fetch(`${eveMount(agentName)}/session`, {
         method: "POST",
+        signal: AbortSignal.timeout(EVE_CONTROL_TIMEOUT_MS),
         headers: { "content-type": "application/json", ...headers },
         body: JSON.stringify({
           // The objective IS the first message: eve only starts a turn when
@@ -227,7 +275,9 @@ export function createEveDriver(agentName = "polymath"): SessionDriver {
         throw new Error(`eve session create failed: ${response.status} ${await response.text()}`);
       }
       const { sessionId: ref } = z.object({ sessionId: z.string().min(1) }).parse(await response.json());
-      await db.update(agentRuns).set({ sessionRef: ref })
+      await db
+        .update(agentRuns)
+        .set({ sessionRef: ref })
         .where(and(eq(agentRuns.id, sessionId), eq(agentRuns.workspaceId, auth.workspaceId)));
     },
     async signal(sessionId, signal, auth) {
@@ -247,6 +297,7 @@ export function createEveDriver(agentName = "polymath"): SessionDriver {
       const model = modelOfSnapshot(run.policySnapshot);
       const response = await fetch(`${eveMount(agentName)}/session/${ref}`, {
         method: "POST",
+        signal: AbortSignal.timeout(EVE_CONTROL_TIMEOUT_MS),
         headers: {
           "content-type": "application/json",
           ...bridgeHeaders(auth, {
@@ -272,6 +323,8 @@ export function createEveDriver(agentName = "polymath"): SessionDriver {
       }
     },
     async cancel(sessionId, auth) {
+      // Bounded: a hung eve must fail (or no-op) here, never wedge the
+      // caller's loop forever (see EVE_CONTROL_TIMEOUT_MS).
       const [run] = await db
         .select({ sessionRef: agentRuns.sessionRef })
         .from(agentRuns)
@@ -287,6 +340,7 @@ export function createEveDriver(agentName = "polymath"): SessionDriver {
       }
       await fetch(`${mount}/session/${ref}/cancel`, {
         method: "POST",
+        signal: AbortSignal.timeout(EVE_CONTROL_TIMEOUT_MS),
         headers: bridgeHeaders(auth),
       }).catch(() => undefined);
     },
