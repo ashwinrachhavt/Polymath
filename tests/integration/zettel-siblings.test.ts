@@ -138,6 +138,12 @@ const semanticPairs = async (workspaceId: string) =>
       .where(and(eq(artifactLinks.workspaceId, workspaceId), eq(artifactLinks.linkType, "semantic")))
   ).map((r) => [r.artifactId, r.targetId].sort().join("|"));
 
+type RelatedEdge = { from: string; to: string; toType: string; label: string | null; context: string | null };
+const byFromTo = (a: RelatedEdge, b: RelatedEdge) => a.from.localeCompare(b.from) || a.to.localeCompare(b.to);
+// Row order from Postgres is undefined — sort both sides before comparing.
+const expectRelated = async (workspaceId: string, expected: RelatedEdge[]) =>
+  expect((await relatedEdges(workspaceId)).sort(byFromTo)).toEqual(expected.sort(byFromTo));
+
 suite("sibling seeding at accept (real Postgres)", () => {
   it("joins accepted cards of one document as each accept lands", async () => {
     const auth = await workspace();
@@ -147,15 +153,15 @@ suite("sibling seeding at accept (real Postgres)", () => {
     const p3 = await seedProposal(auth, { documentId: doc.id }, 3);
 
     const a1 = await acceptZettel(auth, { proposalId: p1.id });
-    expect(await relatedEdges(auth.workspaceId)).toEqual([]);
+    await expectRelated(auth.workspaceId, []);
 
     const a2 = await acceptZettel(auth, { proposalId: p2.id });
-    expect(await relatedEdges(auth.workspaceId)).toEqual([
+    await expectRelated(auth.workspaceId, [
       { from: a2.artifactId, to: a1.artifactId, toType: "zettel", label: "Claim 1", context: "From the same source" },
     ]);
 
     const a3 = await acceptZettel(auth, { proposalId: p3.id });
-    expect(await relatedEdges(auth.workspaceId)).toEqual([
+    await expectRelated(auth.workspaceId, [
       { from: a2.artifactId, to: a1.artifactId, toType: "zettel", label: "Claim 1", context: "From the same source" },
       { from: a3.artifactId, to: a1.artifactId, toType: "zettel", label: "Claim 1", context: "From the same source" },
       { from: a3.artifactId, to: a2.artifactId, toType: "zettel", label: "Claim 2", context: "From the same source" },
@@ -170,7 +176,7 @@ suite("sibling seeding at accept (real Postgres)", () => {
 
     const a1 = await acceptZettel(auth, { proposalId: p1.id });
     const a2 = await acceptZettel(auth, { proposalId: p2.id });
-    expect(await relatedEdges(auth.workspaceId)).toEqual([
+    await expectRelated(auth.workspaceId, [
       { from: a2.artifactId, to: a1.artifactId, toType: "zettel", label: "Claim 1", context: "From the same source" },
     ]);
   });
