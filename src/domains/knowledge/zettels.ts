@@ -451,6 +451,66 @@ export async function listZettelProposals(auth: AuthContext, documentId: string)
   };
 }
 
+/** A pending proposal as the Ideas surface's "In review" queue reads it: the
+ * claim, its verbatim quote, and the one source it was drawn from. */
+export type PendingZettelProposal = {
+  id: string;
+  title: string;
+  claim: string;
+  quote: string;
+  createdAt: Date;
+  duplicateOf: { id: string; title: string } | null;
+  source: { kind: "document" | "artifact"; id: string; title: string };
+};
+
+/**
+ * Every pending proposal in the workspace, newest first, across both source
+ * kinds — document extractions and filed conversations. The Ideas "In review"
+ * segment reads this; a decision removes the row, so the queue drains itself
+ * and no second registry has to be kept in step.
+ */
+export async function listPendingZettelProposals(auth: AuthContext): Promise<PendingZettelProposal[]> {
+  const flagged = alias(artifacts, "flagged_idea");
+  const documentSource = alias(documents, "document_source");
+  const artifactSource = alias(artifacts, "artifact_source");
+  const rows = await db
+    .select({
+      proposal: zettelProposals,
+      documentTitle: documentSource.title,
+      artifactTitle: artifactSource.title,
+      duplicateOf: { id: flagged.id, title: flagged.title },
+    })
+    .from(zettelProposals)
+    .leftJoin(documentSource, eq(documentSource.id, zettelProposals.documentId))
+    .leftJoin(artifactSource, eq(artifactSource.id, zettelProposals.sourceArtifactId))
+    .leftJoin(flagged, eq(flagged.id, zettelProposals.duplicateOfArtifactId))
+    .where(and(eq(zettelProposals.workspaceId, auth.workspaceId), eq(zettelProposals.status, "proposed")))
+    .orderBy(desc(zettelProposals.createdAt));
+  // The one-source check (num_nonnulls(document_id, source_artifact_id) = 1)
+  // means exactly one join matches and its title is not null; the foreign-key
+  // cascades mean a pending proposal's source row always exists.
+  return rows.map((row) => {
+    const base = {
+      id: row.proposal.id,
+      title: row.proposal.title,
+      claim: row.proposal.claim,
+      quote: row.proposal.quote,
+      createdAt: row.proposal.createdAt,
+      duplicateOf: row.duplicateOf?.id ? row.duplicateOf : null,
+    };
+    if (row.proposal.documentId) {
+      return {
+        ...base,
+        source: { kind: "document" as const, id: row.proposal.documentId, title: row.documentTitle ?? "" },
+      };
+    }
+    return {
+      ...base,
+      source: { kind: "artifact" as const, id: row.proposal.sourceArtifactId!, title: row.artifactTitle ?? "" },
+    };
+  });
+}
+
 /**
  * Accept: one transaction. The version-checked flip is the idempotency guard (a
  * second accept matches nothing). It then writes the concept (reusing an

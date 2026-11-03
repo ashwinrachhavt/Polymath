@@ -40,7 +40,13 @@ import { db } from "@/lib/db";
 
 const uuid = z.string().uuid();
 
-const revalidate = () => revalidatePath("/polymath/knowledge");
+// A decision is visible on two surfaces: the workbench and the Ideas "In
+// review" queue. One mutation revalidates both, so neither cache can show a
+// proposal the other just decided.
+const revalidate = () => {
+  revalidatePath("/polymath/knowledge");
+  revalidatePath("/polymath/ideas");
+};
 
 async function authorize(): Promise<AuthContext> {
   const auth = await getAuthContext();

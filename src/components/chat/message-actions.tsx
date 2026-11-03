@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { Check, Copy, FileText, Lightbulb, MessageSquare, Sparkles } from "lucide-react";
 import { MessageComments } from "./message-comments";
@@ -46,6 +47,9 @@ export function MessageActions({
   const [extracting, setExtracting] = useState<ExtractScope | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Where a successful extraction's review happens — the Ideas "In review"
+  // queue, which lists chat-sourced proposals the workbench cannot show.
+  const [reviewHref, setReviewHref] = useState<string | null>(null);
 
   async function copy() {
     try {
@@ -71,6 +75,7 @@ export function MessageActions({
     setExtracting(scope);
     setError(null);
     setNotice(null);
+    setReviewHref(null);
     const result = await zettelizeThreadAction({
       runId,
       scope,
@@ -88,6 +93,7 @@ export function MessageActions({
         ? `No new ideas proposed.${unread}`
         : `${result.proposed} idea${result.proposed === 1 ? "" : "s"} proposed for review.${unread}`,
     );
+    setReviewHref(result.proposed > 0 ? "/polymath/ideas#in-review" : null);
   }
 
   return (
@@ -173,7 +179,12 @@ export function MessageActions({
         </p>
       ) : !error && notice ? (
         <p role="status" className="text-muted-foreground mt-0.5 text-xs">
-          {notice}
+          {notice}{" "}
+          {reviewHref ? (
+            <Link href={reviewHref} className="text-foreground font-medium underline underline-offset-4">
+              Review in Ideas
+            </Link>
+          ) : null}
         </p>
       ) : null}
       {messageId && showComments ? <MessageComments messageId={messageId} initialComments={[]} /> : null}
