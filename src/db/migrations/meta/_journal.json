@@ -758,8 +758,8 @@
     {
       "idx": 282,
       "version": "7",
-      "when": 1793687660000,
-      "tag": "0282_audit_operation_id",
+      "when": 1793690000000,
+      "tag": "0282_onboarding_wizard_progress",
       "breakpoints": true
     },
     {
@@ -767,6 +767,13 @@
       "version": "7",
       "when": 1793690600000,
       "tag": "0283_superagent_reap_effect_kind",
+      "breakpoints": true
+    },
+    {
+      "idx": 284,
+      "version": "7",
+      "when": 1793700000000,
+      "tag": "0284_audit_operation_id",
       "breakpoints": true
     }
   ]
