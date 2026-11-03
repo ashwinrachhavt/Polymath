@@ -1,6 +1,8 @@
-import { and, desc, eq, lt, notInArray, or } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, lt, notInArray, or, type SQL } from "drizzle-orm";
 import { db } from "@/lib/db";
 import type { AuthContext } from "@/lib/auth";
+import { getUserDisplayNames } from "@/domains/identity/members";
+import { activityVisibleActions, actionsInCategory, type EventCategory } from "./events/registry";
 import { auditEvents } from "./schema";
 
 export type ActivityRow = {
@@ -191,14 +193,56 @@ export function decodeActivityCursor(cursor: string): ActivityCursor {
   return { createdAt: new Date(createdAt), id };
 }
 
+/**
+ * The Activity page's server-side filters, all optional and AND-composed.
+ * Category and visibility resolve through the registry (a SQL WHERE cannot
+ * call the registry, so they become `action IN (...)` over the registry's
+ * derived action lists). Search matches the stored summary or the action's
+ * constant name, which between them carry every projected sentence's text:
+ * legacy rows project the stored summary verbatim through the allowlist,
+ * payload-v1 rows store a stable code-authored sentence, and technical rows
+ * project the generic name derived from the action.
+ */
+export type ActivityEventFilters = {
+  category?: EventCategory;
+  actorId?: string;
+  /**
+   * Explicitly hide registry-technical rows (Tier 2 and unknown actions).
+   * Omitted or true: the read returns everything it scopes - hiding
+   * technical rows is the page's toggle policy, never this read's default.
+   */
+  includeTechnical?: boolean;
+  /** Case-insensitive substring over the stored summary and the action name. */
+  q?: string;
+};
+
+/** Escape SQL LIKE wildcards so a hand-typed "%", "_" or "\" matches itself. */
+function ilikePattern(q: string): string {
+  return `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+}
+
+function filterConditions(filters: ActivityEventFilters): SQL[] {
+  const conditions: SQL[] = [];
+  if (filters.includeTechnical === false) conditions.push(inArray(auditEvents.action, [...activityVisibleActions()]));
+  if (filters.category) conditions.push(inArray(auditEvents.action, [...actionsInCategory(filters.category)]));
+  if (filters.actorId) conditions.push(eq(auditEvents.actorId, filters.actorId));
+  if (filters.q) {
+    const pattern = ilikePattern(filters.q);
+    const textMatch = or(ilike(auditEvents.summary, pattern), ilike(auditEvents.action, pattern));
+    if (textMatch) conditions.push(textMatch);
+  }
+  return conditions;
+}
+
 export async function listActivityEvents(
   auth: AuthContext,
-  { limit = 50, cursor }: { limit?: number; cursor?: string | null } = {},
+  { limit = 50, cursor, filters = {} }: { limit?: number; cursor?: string | null; filters?: ActivityEventFilters } = {},
 ): Promise<ActivityEventPage> {
   const pageSize = Math.min(Math.max(limit, 1), 200);
   const conditions = [
     eq(auditEvents.workspaceId, auth.workspaceId),
     notInArray(auditEvents.subjectType, [...PRIVATE_SUBJECT_TYPES]),
+    ...filterConditions(filters),
   ];
   if (cursor) {
     const keyset = decodeActivityCursor(cursor);
@@ -234,4 +278,63 @@ export async function listActivityEvents(
     rows: page.map((row) => ({ ...row, actorKind: row.actorKind })),
     nextCursor: hasMore ? encodeActivityCursor(page[page.length - 1]) : null,
   };
+}
+
+/**
+ * One visible event by id, for the /activity?event=<id> deep link: a row this
+ * viewer cannot see (another workspace, a private thread subject) and a
+ * malformed id are both null, so the page renders the same honest
+ * not-available note instead of distinguishing them for the URL's author.
+ * Keyed reads by primary key; no pagination.
+ */
+export async function getActivityEvent(auth: AuthContext, id: string): Promise<ActivityEventRow | null> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return null;
+  const [row] = await db
+    .select({
+      id: auditEvents.id,
+      action: auditEvents.action,
+      actorId: auditEvents.actorId,
+      actorKind: auditEvents.actorKind,
+      subjectType: auditEvents.subjectType,
+      subjectId: auditEvents.subjectId,
+      operationId: auditEvents.operationId,
+      summary: auditEvents.summary,
+      createdAt: auditEvents.createdAt,
+    })
+    .from(auditEvents)
+    .where(
+      and(
+        eq(auditEvents.id, id),
+        eq(auditEvents.workspaceId, auth.workspaceId),
+        notInArray(auditEvents.subjectType, [...PRIVATE_SUBJECT_TYPES]),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
+export type ActivityActor = { id: string; label: string };
+
+/**
+ * The distinct user actors of the workspace's visible feed, for the Activity
+ * page's actor filter: you can filter by anyone who has acted. Names hydrate
+ * through the same batched read the presenter uses; an unnamed member stays
+ * filterable under a disambiguated fallback label.
+ */
+export async function listActivityActors(auth: AuthContext): Promise<ActivityActor[]> {
+  const rows = await db
+    .selectDistinct({ actorId: auditEvents.actorId })
+    .from(auditEvents)
+    .where(
+      and(
+        eq(auditEvents.workspaceId, auth.workspaceId),
+        eq(auditEvents.actorKind, "user"),
+        notInArray(auditEvents.subjectType, [...PRIVATE_SUBJECT_TYPES]),
+      ),
+    );
+  const ids = rows.map((row) => row.actorId).filter((id): id is string => id !== null);
+  const names = await getUserDisplayNames(ids);
+  return ids
+    .map((id) => ({ id, label: names.get(id)?.trim() || `Member ${id.slice(0, 4)}` }))
+    .sort((a, b) => a.label.localeCompare(b.label));
 }
