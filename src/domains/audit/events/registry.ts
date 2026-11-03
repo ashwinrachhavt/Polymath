@@ -27,13 +27,13 @@ import { z } from "zod";
  * server-side only. Raw metadata never serializes to any client surface.
  */
 
-type EventCategory = "knowledge" | "work" | "agents" | "connections" | "workspace";
+export type EventCategory = "knowledge" | "work" | "agents" | "connections" | "workspace";
 type EventVisibility = "activity" | "technical";
-type Attention = "none" | "in-progress" | "needs-action";
+export type Attention = "none" | "in-progress" | "needs-action";
 type OperationRole = "standalone" | "outcome" | "step";
 type ActorKind = "user" | "system" | "agent";
 
-type ActorRef = { label: string; kind: ActorKind };
+export type ActorRef = { label: string; kind: ActorKind };
 export type SubjectRef = { subjectType: string; subjectId: string | null };
 export type Destination = { label: string; href: string } | { state: "unavailable"; reason: "deleted" | "restricted" };
 
@@ -112,6 +112,48 @@ function actorSentence(actor: ActorRef, verbPhrase: string): string {
  * resolve from the subject routes; conversion-result destinations (payload
  * result refs) arrive with the conversion payload wave.
  */
+
+/*
+ * The conversion payload envelope (payload v1, the audit design's
+ * write-boundary section): what a conversion row carries so the presenter can make the
+ * outcome navigable without the stored summary naming a title. Rows written
+ * before payload versioning carry no version marker and never parse as v1,
+ * so they render through the legacy allowlist path. The writer wave and the
+ * presenter code against this one schema; the presenter tests pin it with
+ * fixtures.
+ */
+const conversionPayloadSchema = z.object({
+  version: z.literal(1),
+  resultType: z.string(),
+  resultId: z.string().uuid(),
+  displaySnapshot: z.object({ title: z.string() }).optional(),
+});
+export type ConversionPayload = z.infer<typeof conversionPayloadSchema>;
+
+/** Null when the metadata is not a v1 conversion payload (legacy rows included). */
+export function parseConversionPayload(metadata: unknown): ConversionPayload | null {
+  const parsed = conversionPayloadSchema.safeParse(metadata);
+  return parsed.success ? parsed.data : null;
+}
+
+/*
+ * Result destinations: where a conversion's outcome lives. "draft" routes
+ * with "note" because a draft conversion creates a note artifact
+ * (createNoteInTx in capture/commands.ts). An unknown resultType resolves to
+ * null - no link beats a wrong link, the same rule the subject routes follow.
+ */
+const RESULT_ROUTES: Record<string, (resultId: string) => Destination> = {
+  note: (id) => ({ label: "Open note", href: `/polymath/notes?id=${id}` }),
+  draft: (id) => ({ label: "Open note", href: `/polymath/notes?id=${id}` }),
+  task: (id) => ({ label: "Open task", href: `/neuralflow/work?task=${id}` }),
+  document: (id) => ({ label: "Open document", href: `/polymath/library/${id}` }),
+};
+
+export function conversionResultDestination(payload: ConversionPayload): Destination | null {
+  const route = RESULT_ROUTES[payload.resultType];
+  return route ? route(payload.resultId) : null;
+}
+
 type Tier1Spec = {
   action: string;
   category: EventCategory;
