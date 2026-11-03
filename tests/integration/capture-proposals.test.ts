@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { captureProposals } from "@/domains/capture/schema";
+import { auditEvents } from "@/domains/audit/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
@@ -73,9 +74,28 @@ suite("capture proposal decisions", () => {
     expect(decided.decidedBy).toBe(auth.userId);
     // The pending offer is gone and the capture carries the lineage edge.
     expect(await queries.listPendingCaptureProposals(auth, capture.id)).toHaveLength(0);
-    const [row] = await db.select().from((await import("@/domains/capture/schema")).captures).where(eq((await import("@/domains/capture/schema")).captures.id, capture.id));
+    const [row] = await db
+      .select()
+      .from((await import("@/domains/capture/schema")).captures)
+      .where(eq((await import("@/domains/capture/schema")).captures.id, capture.id));
     expect(row.processingState).toBe("converted");
     expect(row.convertedType).toBe("task");
+  });
+
+  it("threads one operationId through the conversion and decision rows", async () => {
+    const auth = await seed("proposal-operation");
+    const capture = await commands.createCapture(auth, { text: "Renew the passport before the trip" });
+    const proposal = await propose(auth, capture.id, "task");
+
+    await commands.acceptCaptureProposal(auth, { proposalId: proposal.id });
+
+    const rows = await db.select().from(auditEvents).where(eq(auditEvents.subjectId, capture.id));
+    // The pre-existing capture.created row is not part of the operation; the
+    // conversion and the acceptance share exactly one generated id.
+    const shared = rows.filter((r) => r.action !== "capture.created").map((r) => r.operationId);
+    expect(shared).toHaveLength(2);
+    expect(new Set(shared).size).toBe(1);
+    expect(shared[0]).toBeTruthy();
   });
 
   it("accepting a note proposal files the note with the original text kept", async () => {
@@ -99,7 +119,10 @@ suite("capture proposal decisions", () => {
     const accepted = await commands.acceptCaptureProposal(auth, { proposalId: proposal.id });
     expect(accepted).toMatchObject({ resultType: "discard", resultId: null });
 
-    const [row] = await db.select().from((await import("@/domains/capture/schema")).captures).where(eq((await import("@/domains/capture/schema")).captures.id, capture.id));
+    const [row] = await db
+      .select()
+      .from((await import("@/domains/capture/schema")).captures)
+      .where(eq((await import("@/domains/capture/schema")).captures.id, capture.id));
     expect(row.processingState).toBe("discarded");
   });
 
@@ -127,7 +150,10 @@ suite("capture proposal decisions", () => {
     await expect(commands.acceptCaptureProposal(auth, { proposalId: proposal.id })).rejects.toMatchObject({
       code: "conflict",
     });
-    const [row] = await db.select().from((await import("@/domains/capture/schema")).captures).where(eq((await import("@/domains/capture/schema")).captures.id, capture.id));
+    const [row] = await db
+      .select()
+      .from((await import("@/domains/capture/schema")).captures)
+      .where(eq((await import("@/domains/capture/schema")).captures.id, capture.id));
     expect(row.processingState).toBe("unprocessed");
   });
 

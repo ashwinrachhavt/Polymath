@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { auditEvents } from "@/domains/audit/schema";
+import { recordAudit } from "@/domains/audit/record";
 import type { AuthContext } from "@/domains/identity/resolve";
 import type { ExtractedField } from "@/integrations/extraction/provider";
 import { db } from "@/lib/db";
@@ -170,16 +170,17 @@ export async function acceptFieldProposal(
       }
     }
 
-    await tx.insert(auditEvents).values({
-      workspaceId: auth.workspaceId,
-      actorId: auth.userId,
-      actorKind: "user",
-      action: "field_proposal.accepted",
-      subjectType: "field_proposal",
-      subjectId: proposal.id,
-      summary: `Accepted ${proposal.fieldName}`,
-      metadata: { documentId: proposal.documentId, acceptedValue: typed },
-    });
+    await recordAudit(
+      auth,
+      {
+        action: "field_proposal.accepted",
+        subjectType: "field_proposal",
+        subjectId: proposal.id,
+        summary: `Accepted ${proposal.fieldName}`,
+        metadata: { documentId: proposal.documentId, acceptedValue: typed },
+      },
+      tx,
+    );
     return { id: proposal.id };
   });
 }
@@ -208,16 +209,17 @@ export async function rejectFieldProposal(
       .returning({ id: fieldProposals.id, fieldName: fieldProposals.fieldName, documentId: fieldProposals.documentId });
     if (!row) throw alreadyDecided();
 
-    await tx.insert(auditEvents).values({
-      workspaceId: auth.workspaceId,
-      actorId: auth.userId,
-      actorKind: "user",
-      action: "field_proposal.rejected",
-      subjectType: "field_proposal",
-      subjectId: row.id,
-      summary: `Rejected ${row.fieldName}`,
-      metadata: { documentId: row.documentId },
-    });
+    await recordAudit(
+      auth,
+      {
+        action: "field_proposal.rejected",
+        subjectType: "field_proposal",
+        subjectId: row.id,
+        summary: `Rejected ${row.fieldName}`,
+        metadata: { documentId: row.documentId },
+      },
+      tx,
+    );
     return { id: row.id };
   });
 }
@@ -239,10 +241,7 @@ export async function deferFieldProposal(
   if (!row) throw new Error("field proposal not found in workspace");
 
   // A single insert is its own transaction; there is no state change to pair it with.
-  await db.insert(auditEvents).values({
-    workspaceId: auth.workspaceId,
-    actorId: auth.userId,
-    actorKind: "user",
+  await recordAudit(auth, {
     action: "field_proposal.deferred",
     subjectType: "field_proposal",
     subjectId: row.id,
@@ -259,9 +258,7 @@ export function partyAttribute(fieldName: string, partyRole: string): string {
 
 /** Stable per document: same kind+name+value always maps to the same key. */
 export function fieldDedupeKey(field: Pick<ExtractedField, "fieldKind" | "fieldName" | "rawValue">) {
-  return createHash("sha256")
-    .update(`${field.fieldKind}:${field.fieldName}:${field.rawValue}`)
-    .digest("hex");
+  return createHash("sha256").update(`${field.fieldKind}:${field.fieldName}:${field.rawValue}`).digest("hex");
 }
 
 /*
@@ -274,10 +271,7 @@ export type NormalizedField = {
   note: string | null;
 };
 
-export function normalizeFieldValue(
-  field: ExtractedField,
-  currencyHint?: string,
-): NormalizedField {
+export function normalizeFieldValue(field: ExtractedField, currencyHint?: string): NormalizedField {
   switch (field.fieldKind) {
     case "date":
       return normalizeDate(field.rawValue);
@@ -356,8 +350,22 @@ export function normalizeMoney(raw: string, currencyHint?: string): NormalizedFi
 }
 
 const KNOWN_CURRENCIES = new Set([
-  "USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "NZD", "SEK", "NOK", "DKK",
-  "INR", "CNY", "SGD", "HKD", "ZAR",
+  "USD",
+  "EUR",
+  "GBP",
+  "JPY",
+  "CHF",
+  "CAD",
+  "AUD",
+  "NZD",
+  "SEK",
+  "NOK",
+  "DKK",
+  "INR",
+  "CNY",
+  "SGD",
+  "HKD",
+  "ZAR",
 ]);
 
 /** First number in a money string, separators stripped; null when none. One
@@ -395,10 +403,7 @@ export function flagConflicts(fields: ExtractedField[]): ExtractedField[] {
       f.fieldKind === "money" && (f === total || lineItems.includes(f))
         ? {
             ...f,
-            normalizationNote: [
-              f.normalizationNote,
-              `line items sum to ${sum} but stated total is ${totalValue}`,
-            ]
+            normalizationNote: [f.normalizationNote, `line items sum to ${sum} but stated total is ${totalValue}`]
               .filter(Boolean)
               .join("; "),
           }

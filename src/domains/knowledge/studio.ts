@@ -6,7 +6,7 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import type { AgentEngine } from "@/domains/agents/engine";
 import { agentRuns, runEvents } from "@/domains/agents/schema";
 import { withReceipt } from "@/domains/audit/receipt";
-import { auditEvents } from "@/domains/audit/schema";
+import { recordAudit } from "@/domains/audit/record";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { artifactLinks, artifactVersions, artifacts, notebookSources, notebooks, sources } from "./schema";
@@ -259,7 +259,7 @@ export async function saveGeneratedDraft(
   });
 }
 
-async function decide(auth: AuthContext, artifactId: string, status: "reviewed" | "archived", action: string) {
+async function decide(auth: AuthContext, artifactId: string, status: "reviewed" | "archived") {
   return withTransaction(async (tx) => {
     // Only a draft can be decided, so a saved or discarded one is never rewritten.
     const [row] = await tx
@@ -276,24 +276,25 @@ async function decide(auth: AuthContext, artifactId: string, status: "reviewed" 
       )
       .returning({ id: artifacts.id });
     if (!row) throw new StudioError("not_a_draft", "This draft was not found or was already decided.");
-    await tx.insert(auditEvents).values({
-      workspaceId: auth.workspaceId,
-      actorId: auth.userId,
-      actorKind: "user",
-      action,
-      subjectType: "artifact",
-      subjectId: artifactId,
-      summary: action === "draft.saved" ? "Saved generated draft" : "Discarded generated draft",
-    });
+    await recordAudit(
+      auth,
+      {
+        action: status === "reviewed" ? "draft.saved" : "draft.discarded",
+        subjectType: "artifact",
+        subjectId: artifactId,
+        summary: status === "reviewed" ? "Saved generated draft" : "Discarded generated draft",
+      },
+      tx,
+    );
   });
 }
 
 /** Keep the draft. It becomes "reviewed", never "published". */
 export const saveDraft = (auth: AuthContext, input: { artifactId: string }) =>
-  decide(auth, input.artifactId, "reviewed", "draft.saved");
+  decide(auth, input.artifactId, "reviewed");
 /** Throw it away: archived, hidden, versions kept for the record. */
 export const discardDraft = (auth: AuthContext, input: { artifactId: string }) =>
-  decide(auth, input.artifactId, "archived", "draft.discarded");
+  decide(auth, input.artifactId, "archived");
 
 /** The artifact each run produced, keyed by run id — so a run row can render its save/keep/discard state. */
 export async function draftsForRuns(auth: AuthContext, runIds: string[]) {
@@ -566,15 +567,16 @@ export async function editGeneratedDraft(
           .update(artifacts)
           .set({ currentVersionId: version.id, embedError: null })
           .where(and(eq(artifacts.id, input.artifactId), eq(artifacts.workspaceId, auth.workspaceId)));
-        await tx.insert(auditEvents).values({
-          workspaceId: auth.workspaceId,
-          actorId: auth.userId,
-          actorKind: "user",
-          action: "draft.edited",
-          subjectType: "artifact",
-          subjectId: input.artifactId,
-          summary: "Edited Studio draft",
-        });
+        await recordAudit(
+          auth,
+          {
+            action: "draft.edited",
+            subjectType: "artifact",
+            subjectId: input.artifactId,
+            summary: "Edited Studio draft",
+          },
+          tx,
+        );
         return { artifactId: input.artifactId, version: input.expectedVersion + 1 };
       },
     );

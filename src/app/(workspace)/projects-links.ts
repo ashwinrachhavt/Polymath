@@ -1,5 +1,5 @@
 import { and, desc, eq } from "drizzle-orm";
-import { auditEvents } from "@/domains/audit/schema";
+import { recordAudit } from "@/domains/audit/record";
 import { companies, contacts } from "@/domains/crm/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { artifactLinks, artifacts } from "@/domains/knowledge/schema";
@@ -21,7 +21,12 @@ export type DraftLinkTarget = (typeof DRAFT_LINK_TARGETS)[number];
 /** The picklist for the attach control: a few recent records of each kind. */
 export async function listLinkableRecords(auth: AuthContext) {
   const [taskRows, contactRows, companyRows, opportunityRows] = await Promise.all([
-    db.select({ id: tasks.id, title: tasks.title }).from(tasks).where(eq(tasks.workspaceId, auth.workspaceId)).orderBy(desc(tasks.updatedAt)).limit(12),
+    db
+      .select({ id: tasks.id, title: tasks.title })
+      .from(tasks)
+      .where(eq(tasks.workspaceId, auth.workspaceId))
+      .orderBy(desc(tasks.updatedAt))
+      .limit(12),
     db
       .select({ id: contacts.id, title: contacts.fullName })
       .from(contacts)
@@ -46,22 +51,41 @@ export async function listLinkableRecords(auth: AuthContext) {
 
 async function targetExists(workspaceId: string, targetType: DraftLinkTarget, targetId: string): Promise<boolean> {
   if (targetType === "task") {
-    const [row] = await db.select({ id: tasks.id }).from(tasks).where(and(eq(tasks.id, targetId), eq(tasks.workspaceId, workspaceId))).limit(1);
+    const [row] = await db
+      .select({ id: tasks.id })
+      .from(tasks)
+      .where(and(eq(tasks.id, targetId), eq(tasks.workspaceId, workspaceId)))
+      .limit(1);
     return !!row;
   }
   if (targetType === "contact") {
-    const [row] = await db.select({ id: contacts.id }).from(contacts).where(and(eq(contacts.id, targetId), eq(contacts.workspaceId, workspaceId))).limit(1);
+    const [row] = await db
+      .select({ id: contacts.id })
+      .from(contacts)
+      .where(and(eq(contacts.id, targetId), eq(contacts.workspaceId, workspaceId)))
+      .limit(1);
     return !!row;
   }
   if (targetType === "company") {
-    const [row] = await db.select({ id: companies.id }).from(companies).where(and(eq(companies.id, targetId), eq(companies.workspaceId, workspaceId))).limit(1);
+    const [row] = await db
+      .select({ id: companies.id })
+      .from(companies)
+      .where(and(eq(companies.id, targetId), eq(companies.workspaceId, workspaceId)))
+      .limit(1);
     return !!row;
   }
-  const [row] = await db.select({ id: opportunities.id }).from(opportunities).where(and(eq(opportunities.id, targetId), eq(opportunities.workspaceId, workspaceId))).limit(1);
+  const [row] = await db
+    .select({ id: opportunities.id })
+    .from(opportunities)
+    .where(and(eq(opportunities.id, targetId), eq(opportunities.workspaceId, workspaceId)))
+    .limit(1);
   return !!row;
 }
 
-export async function linkDraftToRecord(auth: AuthContext, input: { artifactId: string; targetType: DraftLinkTarget; targetId: string }) {
+export async function linkDraftToRecord(
+  auth: AuthContext,
+  input: { artifactId: string; targetType: DraftLinkTarget; targetId: string },
+) {
   const [artifact] = await db
     .select({ id: artifacts.id })
     .from(artifacts)
@@ -74,17 +98,24 @@ export async function linkDraftToRecord(auth: AuthContext, input: { artifactId: 
   await withTransaction(async (tx) => {
     await tx
       .insert(artifactLinks)
-      .values({ workspaceId: auth.workspaceId, artifactId: input.artifactId, targetType: input.targetType, targetId: input.targetId, label: null })
+      .values({
+        workspaceId: auth.workspaceId,
+        artifactId: input.artifactId,
+        targetType: input.targetType,
+        targetId: input.targetId,
+        label: null,
+      })
       .onConflictDoNothing({ target: [artifactLinks.artifactId, artifactLinks.targetType, artifactLinks.targetId] });
-    await tx.insert(auditEvents).values({
-      workspaceId: auth.workspaceId,
-      actorId: auth.userId,
-      actorKind: "user",
-      action: "draft.record.linked",
-      subjectType: "artifact",
-      subjectId: input.artifactId,
-      summary: `Attached Studio draft to a ${input.targetType}`,
-    });
+    await recordAudit(
+      auth,
+      {
+        action: "draft.record.linked",
+        subjectType: "artifact",
+        subjectId: input.artifactId,
+        summary: `Attached Studio draft to a ${input.targetType}`,
+      },
+      tx,
+    );
   });
 }
 
@@ -92,16 +123,23 @@ export async function unlinkDraftFromRecord(auth: AuthContext, input: { artifact
   await withTransaction(async (tx) => {
     await tx
       .delete(artifactLinks)
-      .where(and(eq(artifactLinks.id, input.linkId), eq(artifactLinks.artifactId, input.artifactId), eq(artifactLinks.workspaceId, auth.workspaceId)));
-    await tx.insert(auditEvents).values({
-      workspaceId: auth.workspaceId,
-      actorId: auth.userId,
-      actorKind: "user",
-      action: "draft.record.unlinked",
-      subjectType: "artifact",
-      subjectId: input.artifactId,
-      summary: "Detached Studio draft from a record",
-    });
+      .where(
+        and(
+          eq(artifactLinks.id, input.linkId),
+          eq(artifactLinks.artifactId, input.artifactId),
+          eq(artifactLinks.workspaceId, auth.workspaceId),
+        ),
+      );
+    await recordAudit(
+      auth,
+      {
+        action: "draft.record.unlinked",
+        subjectType: "artifact",
+        subjectId: input.artifactId,
+        summary: "Detached Studio draft from a record",
+      },
+      tx,
+    );
   });
 }
 
@@ -115,22 +153,34 @@ export async function resolveLinkTitles(auth: AuthContext, links: DraftLinkRow[]
   const titles = new Map<string, string>();
   const taskIds = byType.get("task") ?? [];
   if (taskIds.length) {
-    const rows = await db.select({ id: tasks.id, title: tasks.title }).from(tasks).where(eq(tasks.workspaceId, auth.workspaceId));
+    const rows = await db
+      .select({ id: tasks.id, title: tasks.title })
+      .from(tasks)
+      .where(eq(tasks.workspaceId, auth.workspaceId));
     for (const r of rows) if (taskIds.includes(r.id)) titles.set(r.id, r.title);
   }
   const companyIds = byType.get("company") ?? [];
   if (companyIds.length) {
-    const rows = await db.select({ id: companies.id, title: companies.name }).from(companies).where(eq(companies.workspaceId, auth.workspaceId));
+    const rows = await db
+      .select({ id: companies.id, title: companies.name })
+      .from(companies)
+      .where(eq(companies.workspaceId, auth.workspaceId));
     for (const r of rows) if (companyIds.includes(r.id)) titles.set(r.id, r.title);
   }
   const contactIds = byType.get("contact") ?? [];
   if (contactIds.length) {
-    const rows = await db.select({ id: contacts.id, title: contacts.fullName }).from(contacts).where(eq(contacts.workspaceId, auth.workspaceId));
+    const rows = await db
+      .select({ id: contacts.id, title: contacts.fullName })
+      .from(contacts)
+      .where(eq(contacts.workspaceId, auth.workspaceId));
     for (const r of rows) if (contactIds.includes(r.id)) titles.set(r.id, r.title);
   }
   const opportunityIds = byType.get("opportunity") ?? [];
   if (opportunityIds.length) {
-    const rows = await db.select({ id: opportunities.id, title: opportunities.title }).from(opportunities).where(eq(opportunities.workspaceId, auth.workspaceId));
+    const rows = await db
+      .select({ id: opportunities.id, title: opportunities.title })
+      .from(opportunities)
+      .where(eq(opportunities.workspaceId, auth.workspaceId));
     for (const r of rows) if (opportunityIds.includes(r.id)) titles.set(r.id, r.title);
   }
   for (const link of links) out[link.id] = titles.get(link.targetId) ?? "Untitled";
