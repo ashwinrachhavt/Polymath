@@ -27,7 +27,12 @@ async function authorize() {
 }
 
 export async function switchWorkspaceAction(input: { workspaceId: string }): Promise<Result<{ workspaceId: string }>> {
-  const auth = await authorize();
+  let auth;
+  try {
+    auth = await authorize();
+  } catch (error) {
+    return { ok: false, error: actionError(error, "Sign-in is not configured on this deployment.") };
+  }
   try {
     const role = await activeMembershipRole(input.workspaceId, auth.userId);
     if (!role) return { ok: false, error: "You are not a member of that workspace." };
