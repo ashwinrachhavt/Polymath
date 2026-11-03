@@ -31,7 +31,7 @@ export type EventCategory = "knowledge" | "work" | "agents" | "connections" | "w
 type EventVisibility = "activity" | "technical";
 export type Attention = "none" | "in-progress" | "needs-action";
 type OperationRole = "standalone" | "outcome" | "step";
-export type ActorKind = "user" | "system" | "agent";
+type ActorKind = "user" | "system" | "agent";
 
 export type ActorRef = { label: string; kind: ActorKind };
 export type SubjectRef = { subjectType: string; subjectId: string | null };
@@ -122,7 +122,7 @@ function actorSentence(actor: ActorRef, verbPhrase: string): string {
  * presenter code against this one schema; the presenter tests pin it with
  * fixtures.
  */
-export const conversionPayloadSchema = z.object({
+const conversionPayloadSchema = z.object({
   version: z.literal(1),
   resultType: z.string(),
   resultId: z.string().uuid(),
