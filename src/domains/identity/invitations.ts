@@ -1,4 +1,4 @@
-import { and, eq, gt, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, gt, isNull, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
 import { auditEvents } from "@/domains/audit/schema";
 import { requireRole } from "@/lib/auth/guards";
@@ -282,6 +282,40 @@ export async function changeMembership(
     );
     return { membershipId: target.id, status: nextStatus, role: nextRole };
   });
+}
+
+/**
+ * Open invitations addressed to one email — the switcher's pending row (spec
+ * D2). A display read like pendingInvitationForToken: acceptance still
+ * re-derives everything through acceptInvitation inside its transaction, and
+ * the raw token exists only in the link the inviter shared, so the most this
+ * row can offer is the workspace's name and how to join. An invitation whose
+ * workspace the recipient already re-joined is the caller's to drop.
+ */
+export async function openInvitationsForEmail(
+  email: string,
+  now: Date = new Date(),
+): Promise<{ workspaceId: string; workspaceName: string; role: string }[]> {
+  const normalized = normalizeEmail(email);
+  if (!normalized) return [];
+  return db
+    .select({
+      workspaceId: invitations.workspaceId,
+      workspaceName: workspaces.name,
+      role: invitations.role,
+    })
+    .from(invitations)
+    .innerJoin(workspaces, eq(workspaces.id, invitations.workspaceId))
+    .where(
+      and(
+        eq(invitations.email, normalized),
+        isNull(invitations.acceptedAt),
+        isNull(invitations.revokedAt),
+        gt(invitations.expiresAt, now),
+        isNull(workspaces.archivedAt),
+      ),
+    )
+    .orderBy(asc(invitations.createdAt));
 }
 
 /*
