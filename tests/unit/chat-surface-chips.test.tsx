@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { createElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChatState } from "@/components/chat/use-chat-stream";
+import { STAGE_META } from "@/components/superagent/view";
 
 /*
  * The chip send contract: the composer serializes what the chips already
@@ -122,5 +123,51 @@ describe("ChatSurface context chips", () => {
     expect(sendButton().disabled).toBe(true);
     expect(posts).toHaveLength(0);
     expect((screen.getByLabelText("Message") as HTMLTextAreaElement).value).toBe("Hey @Broken");
+  });
+});
+
+/*
+ * The stage chip's honesty contract: the Supervision panel is the honest
+ * surface — it classifies the run's own report and says "Failed" — and the
+ * conversation window's chip must agree with it, speaking the panel's word
+ * from the panel's table (STAGE_META). Whatever the stream's transport is
+ * doing, a failed stage never reads as "Working".
+ */
+describe("ChatSurface stage chip", () => {
+  it("renders the panel's failed vocabulary for a failed run, never Working", async () => {
+    // The defect's exact shape: the transport is mid-flight while the run's
+    // report is failed — a reconnect that has not replayed the end frame yet.
+    // The old chip read the transport here and said "Working".
+    mockChatState = () => ({ ...streamingState(), connection: "streaming", runFailed: true });
+    await renderSurface();
+    expect(screen.getByText(STAGE_META["person-failed"].label)).toBeTruthy();
+    expect(screen.queryByText("Working")).toBeNull();
+  });
+
+  it("renders the panel's failed vocabulary for a failed turn waiting on a person", async () => {
+    // The panel's ticketStage reads a failed report with no newer human
+    // message as person-failed; the chip says the same word.
+    mockChatState = () => ({ ...streamingState(), connection: "waiting", lastFailedTurn: true });
+    await renderSurface();
+    expect(screen.getByText(STAGE_META["person-failed"].label)).toBeTruthy();
+    expect(screen.queryByText("Working")).toBeNull();
+  });
+
+  it("keeps Working for a live stream whose run has not failed", async () => {
+    mockChatState = streamingState;
+    await renderSurface();
+    expect(screen.getByText(STAGE_META.working.label)).toBeTruthy();
+  });
+
+  it("carries the failed vocabulary to the headerless quiet line", async () => {
+    mockChatState = () => ({ ...streamingState(), connection: "waiting", lastFailedTurn: true });
+    render(
+      createElement((await import("@/components/chat/chat-surface")).ChatSurface, {
+        runId: "run-1",
+        subject: { type: "artifact", id: "run-1" },
+        showHeader: false,
+      }),
+    );
+    expect(screen.getByRole("status").textContent).toBe(STAGE_META["person-failed"].label);
   });
 });
