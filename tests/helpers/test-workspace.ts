@@ -13,7 +13,7 @@ import { memberships, users, workspaces } from "@/domains/identity/schema";
  * reliability.test.ts (which still owns its own truncating beforeAll).
  */
 
-export function makeTestDb() {
+export function makeTestDb(options: { max?: number } = {}) {
   const url = process.env.TEST_DATABASE_URL;
   // A missing database is a broken gate everywhere, not just on CI: the files
   // that use this report green while every invariant they exist to prove never
@@ -29,7 +29,7 @@ export function makeTestDb() {
   // src/lib/db-transaction.ts reads DATABASE_URL at module load; point it here
   // before anything lazy-imports that module.
   process.env.DATABASE_URL = url;
-  const client = postgres(url, { max: 3 });
+  const client = postgres(url, { max: options.max ?? 3 });
   return { client, db: drizzle(client) };
 }
 
