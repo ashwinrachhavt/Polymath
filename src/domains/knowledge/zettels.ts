@@ -8,7 +8,7 @@ import { escapeLike } from "@/lib/list-params";
 import { currentExtractionIdSubquery } from "./versions";
 import { mergeCandidates, type SectionCandidate } from "./zettel-merge";
 import { splitSections } from "./zettel-chunking";
-import { capForSize } from "./zettel-capacity";
+import { capForSize, SUGGESTED_LINKS_PER_COLLECTION_CARD } from "./zettel-capacity";
 import { defaultZettelExtractor, type ZettelExtractor } from "@/integrations/zettels/extractor";
 import { generationProvider } from "@/integrations/generation/provider";
 import {
@@ -809,7 +809,8 @@ export async function pageZettelCards(
     const suggestionsByCard = new Map<string, { targetId: string; targetTitle: string }[]>();
     for (const suggestion of suggestionRows) {
       const list = suggestionsByCard.get(suggestion.artifactId) ?? [];
-      if (list.length < 3) list.push({ targetId: suggestion.targetId, targetTitle: suggestion.label ?? "Untitled" });
+      if (list.length < SUGGESTED_LINKS_PER_COLLECTION_CARD)
+        list.push({ targetId: suggestion.targetId, targetTitle: suggestion.label ?? "Untitled" });
       suggestionsByCard.set(suggestion.artifactId, list);
     }
     return {

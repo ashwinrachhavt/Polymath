@@ -3,6 +3,7 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { artifactLinks, artifacts } from "./schema";
+import { SUGGESTED_LINKS_PER_DETAIL_PAGE } from "./zettel-capacity";
 
 /*
  * Semantic relations (ASH-174/ASH-184): the machine half of the knowledge
@@ -18,7 +19,12 @@ import { artifactLinks, artifacts } from "./schema";
  * embedding has no semantic relations; the explicit graph still answers.
  */
 
-const SEMANTIC_EDGE_LIMIT = 5;
+/*
+ * The detail-page budget for suggested links, named in the capacity module
+ * alongside the collection cap. Calibrated neighbour: the corpus-duplicate
+ * threshold ZETTEL_DUPLICATE_MAX_DISTANCE (0.15) — admission vs display.
+ */
+const SEMANTIC_EDGE_LIMIT = SUGGESTED_LINKS_PER_DETAIL_PAGE;
 export const SEMANTIC_EDGE_MAX_DISTANCE = 0.45;
 
 export type RelatedNote = {
