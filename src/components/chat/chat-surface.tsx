@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import type { DocumentCitation } from "@/domains/knowledge/agent-search";
 import type { ChatBlock } from "@/domains/agents/stream-contract";
 import { useChatStream } from "./use-chat-stream";
+import { stageChipLabel, stageChipStatus } from "./stage-chip";
 import { makePending, stillPending, type PendingMessage } from "./pending-messages";
 import { ComposerPlus, mentionAt, referenceLink, replaceMention, type RecordReference } from "./composer-plus";
 import { ChatTranscript } from "./chat-transcript";
@@ -219,6 +220,18 @@ export function ChatSurface({
   const forceScrollRef = useRef(false);
   const chat = useChatStream(runId, { onCitation, ...(initial?.length ? { initial: { blocks: initial } } : {}) });
   const busy = chat.connection === "connecting" || chat.connection === "streaming";
+  /*
+   * The stage chip: the run's own stage facts first (the same failed report
+   * the Supervision panel classifies), the transport state only as the live
+   * fallback — a failed run reads the panel's word for failed even while its
+   * stream is reconnecting.
+   */
+  const stageStatus = stageChipStatus({
+    connection: chat.connection,
+    runFailed: chat.runFailed,
+    lastFailedTurn: chat.lastFailedTurn,
+  });
+  const stageLabel = stageChipLabel(stageStatus);
   // The transcript renders the conversation: questions, answers, and the
   // model's rationale as its own collapsed pill. `transcript` (user/assistant
   // only) still drives optimistic-match, scroll, and pending-message logic.
@@ -402,21 +415,21 @@ export function ChatSurface({
             <p className="truncate text-[13px] font-medium">{title ?? `This ${subject.type}`}</p>
           </div>
           <div className="flex shrink-0 items-center gap-2 text-[11px] text-muted-foreground">
-            {chat.connection === "waiting" && <span>Waiting for a message</span>}
-            {busy && <span>Working</span>}
-            {chat.connection === "done" && <span>Finished</span>}
+            {stageLabel ? <span>{stageLabel}</span> : null}
           </div>
         </header>
       ) : null}
 
       {/*
-       * A page that hides the header still owes the reader the connection
-       * state, so it moves to a single quiet line above the transcript rather
-       * than vanishing with the chrome it used to share.
+       * A page that hides the header still owes the reader the run's stage,
+       * so it moves to a single quiet line above the transcript rather than
+       * vanishing with the chrome it used to share. The waiting state stays
+       * header-only: a conversation idle for its next message is not worth a
+       * line of chrome on the headerless surfaces.
        */}
-      {!showHeader && (busy || chat.connection === "done") ? (
+      {!showHeader && stageLabel && stageStatus !== "waiting" ? (
         <p className="text-muted-foreground pt-1 pb-2 text-[11px]" role="status">
-          {busy ? "Working" : "Finished"}
+          {stageLabel}
         </p>
       ) : null}
 
