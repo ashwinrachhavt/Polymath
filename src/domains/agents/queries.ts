@@ -5,7 +5,7 @@ import { escapeLike } from "@/lib/list-params";
 // Onboarding's own module owns the machinery markers; importing them here is
 // cycle-free (nothing in onboarding's graph reads this module).
 import { ONBOARDING_OBJECTIVE_PREFIX } from "./onboarding";
-import { agentProfiles, agentRuns, messages, runEvents, toolCalls } from "./schema";
+import { agentPrincipals, agentProfiles, agentRuns, messages, runEvents, toolCalls } from "./schema";
 
 /*
  * The eve side resolves its run through the session reference, not the run id:
@@ -483,4 +483,22 @@ export async function listRunAttributions(workspaceId: string, runIds: string[])
     .leftJoin(agentProfiles, eq(agentRuns.agentProfileId, agentProfiles.id))
     .where(and(eq(agentRuns.workspaceId, workspaceId), inArray(agentRuns.id, runIds)));
   return new Map(rows.map((row) => [row.id, { objective: row.objective, profileName: row.profileName }]));
+}
+
+/*
+ * Batched principal labels for audit actor attribution, scoped to the
+ * workspace like every agents read here. An id absent from the result is one
+ * the caller renders with its neutral fallback ("Agent") - a revoked
+ * principal's row is gone, but the audit event still happened.
+ */
+export async function getAgentPrincipalLabels(
+  workspaceId: string,
+  principalIds: string[],
+): Promise<Map<string, string>> {
+  if (principalIds.length === 0) return new Map();
+  const rows = await db
+    .select({ id: agentPrincipals.id, label: agentPrincipals.label })
+    .from(agentPrincipals)
+    .where(and(eq(agentPrincipals.workspaceId, workspaceId), inArray(agentPrincipals.id, principalIds)));
+  return new Map(rows.map((row) => [row.id, row.label]));
 }

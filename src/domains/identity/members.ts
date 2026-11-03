@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { requireRole } from "@/lib/auth/guards";
 import type { AuthContext } from "./resolve";
@@ -105,4 +105,19 @@ export async function selfMembership(auth: AuthContext): Promise<MemberRow | nul
     )
     .limit(1);
   return row ?? null;
+}
+
+/*
+ * Batched display names for audit actor attribution: the presenter hydrates
+ * every user-kind actor on a page with one query instead of per-row reads.
+ * Names only, never emails, and no role gate - a workspace's audit rows are
+ * member-visible, so the actor's name rides the same visibility as the row.
+ */
+export async function getUserDisplayNames(userIds: string[]): Promise<Map<string, string | null>> {
+  if (userIds.length === 0) return new Map();
+  const rows = await db
+    .select({ id: users.id, displayName: users.displayName })
+    .from(users)
+    .where(inArray(users.id, userIds));
+  return new Map(rows.map((row) => [row.id, row.displayName]));
 }
