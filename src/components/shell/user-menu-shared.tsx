@@ -8,11 +8,19 @@ import { Activity, Settings, UserRound } from "lucide-react";
 /* Shared account-menu pieces with no Clerk imports, so the anonymous menu
  * never pulls the Clerk runtime into the bundle. */
 
-export function MenuItem({ href, icon: Icon, children }: { href: string; icon: typeof Settings; children: React.ReactNode }) {
+export function MenuItem({
+  href,
+  icon: Icon,
+  children,
+}: {
+  href: string;
+  icon: typeof Settings;
+  children: React.ReactNode;
+}) {
   return (
     <Link
       href={href}
-      className="hover:bg-accent focus-visible:ring-ring flex h-7 items-center gap-2 rounded-md px-2 text-[13px] outline-none focus-visible:ring-3"
+      className="hover:bg-accent focus-visible:ring-ring flex h-7 items-center gap-2 rounded-md px-2 text-body-dense outline-none focus-visible:ring-3"
     >
       <Icon aria-hidden className="size-4 opacity-70" />
       {children}
@@ -34,9 +42,17 @@ export function AnonymousMenu({ signInSlot }: { signInSlot?: React.ReactNode }) 
         <UserRound aria-hidden className="size-4" />
       </Popover.Trigger>
       <Popover.Portal>
-        <Popover.Content align="end" sideOffset={6} className="panel bg-popover text-popover-foreground z-50 w-56 rounded-lg p-1 outline-none">
-          <MenuItem href="/settings" icon={Settings}>Settings</MenuItem>
-          <MenuItem href="/activity" icon={Activity}>Activity</MenuItem>
+        <Popover.Content
+          align="end"
+          sideOffset={6}
+          className="panel bg-popover text-popover-foreground z-50 w-56 rounded-lg p-1 outline-none"
+        >
+          <MenuItem href="/settings" icon={Settings}>
+            Settings
+          </MenuItem>
+          <MenuItem href="/activity" icon={Activity}>
+            Activity
+          </MenuItem>
           {signInSlot ?? null}
         </Popover.Content>
       </Popover.Portal>

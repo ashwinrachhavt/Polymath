@@ -15,16 +15,17 @@ export function PathBreadcrumb() {
   const destination = destinationForPath(pathname);
 
   if (!destination) {
-    return (
-      <span className="text-[13px] font-medium tracking-tight">Polymath</span>
-    );
+    return <span className="text-body-dense font-medium tracking-tight">Polymath</span>;
   }
 
   return (
     <nav aria-label="Breadcrumb" className="min-w-0">
-      <ol className="flex items-center gap-1.5 text-[13px]">
+      <ol className="flex items-center gap-1.5 text-body-dense">
         <li className="hidden sm:block">
-          <Link href={homeHref} className="text-muted-foreground hover:text-foreground -my-1 inline-flex min-h-6 items-center py-1">
+          <Link
+            href={homeHref}
+            className="text-muted-foreground hover:text-foreground -my-1 inline-flex min-h-6 items-center py-1"
+          >
             Polymath
           </Link>
         </li>

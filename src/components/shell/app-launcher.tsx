@@ -43,7 +43,9 @@ export function AppLauncher() {
           sideOffset={6}
           className="panel bg-popover text-popover-foreground shadow-raised z-50 w-[284px] rounded-xl p-2 outline-none"
         >
-          <p className="text-muted-foreground px-2 pt-1 pb-2 text-[11px] font-medium uppercase tracking-wider">Destinations</p>
+          <p className="text-muted-foreground px-2 pt-1 pb-2 text-data font-medium uppercase tracking-wider">
+            Destinations
+          </p>
           <div className="grid grid-cols-3 gap-1">
             {destinations.map(({ href, label, purpose, icon: Icon }) => {
               const active = activeHref === href;
@@ -61,7 +63,7 @@ export function AppLauncher() {
                   )}
                 >
                   <Icon aria-hidden className={cn("size-4", active && "text-app-accent")} />
-                  <span className="text-[11px] leading-tight font-medium">{label}</span>
+                  <span className="text-data leading-tight font-medium">{label}</span>
                 </Link>
               );
             })}

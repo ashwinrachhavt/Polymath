@@ -4,10 +4,11 @@ import { cn } from "cn";
 import { Slot } from "radix-ui";
 
 /*
- * Controls are the second half of the machined vocabulary. The ladder is 3px
- * inline, 6px controls and cards, 8px major surfaces — an upstream registry
- * would default these to 8px, which reads as a soft SaaS pill rather than a
- * milled part.
+ * Controls are the second half of the machined vocabulary. The ladder lives
+ * in globals.css as calc steps off --radius (12px): sm 6px for tight inner
+ * elements, md 9px for controls and cards, lg 12px for major surfaces,
+ * xl 18px for hero panels. An upstream registry would default these to 8px,
+ * which reads as a soft SaaS pill rather than a milled part.
  *
  * The primary button is the one place a gradient is allowed, and it is a light
  * gradient, not a brand wash: a 4% white-to-black ramp across the face plus an

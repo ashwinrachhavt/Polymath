@@ -281,7 +281,7 @@ export function NotificationsPanel({ feed }: { feed: TriageFeed }) {
         >
           <Bell aria-hidden className="size-4" />
           {feed.counts.inbox > 0 ? (
-            <span className="bg-primary text-primary-foreground absolute -top-0.5 -right-0.5 flex min-w-4 items-center justify-center rounded-full px-1 text-[10px] leading-4">
+            <span className="bg-primary text-primary-foreground absolute -top-0.5 -right-0.5 flex min-w-4 items-center justify-center rounded-full px-1 text-data leading-4 tabular-nums">
               {feed.counts.inbox > 99 ? "99+" : feed.counts.inbox}
             </span>
           ) : null}
@@ -290,7 +290,7 @@ export function NotificationsPanel({ feed }: { feed: TriageFeed }) {
       <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-md">
         <SheetHeader className="border-b border-border px-4 py-3">
           <SheetTitle className="text-[15px] font-medium">Notifications</SheetTitle>
-          <SheetDescription className="text-[11px] text-muted-foreground">
+          <SheetDescription className="text-data text-muted-foreground">
             What needs you, what an agent is working on, and what already finished.
           </SheetDescription>
         </SheetHeader>
@@ -307,11 +307,11 @@ export function NotificationsPanel({ feed }: { feed: TriageFeed }) {
             <TabsList className="w-full">
               <TabsTrigger value="inbox">
                 Inbox
-                <span className="readout text-[11px] text-muted-foreground">{feed.counts.inbox}</span>
+                <span className="readout text-data text-muted-foreground">{feed.counts.inbox}</span>
               </TabsTrigger>
               <TabsTrigger value="inFlight">
                 In-Flight
-                <span className="readout text-[11px] text-muted-foreground">{feed.counts.inFlight}</span>
+                <span className="readout text-data text-muted-foreground">{feed.counts.inFlight}</span>
               </TabsTrigger>
               <TabsTrigger value="activity">Activity</TabsTrigger>
             </TabsList>
@@ -322,7 +322,7 @@ export function NotificationsPanel({ feed }: { feed: TriageFeed }) {
             return (
               <TabsContent key={id} value={id} className="min-h-0 overflow-y-auto py-1">
                 {tabItems.length === 0 ? (
-                  <p className="px-4 py-8 text-center text-[12px] text-muted-foreground">{EMPTY_COPY[id]}</p>
+                  <p className="px-4 py-8 text-center text-label text-muted-foreground">{EMPTY_COPY[id]}</p>
                 ) : (
                   <div
                     role="listbox"
@@ -334,7 +334,7 @@ export function NotificationsPanel({ feed }: { feed: TriageFeed }) {
                   </div>
                 )}
                 {id === "activity" ? (
-                  <p className="px-4 py-3 text-[12px]">
+                  <p className="px-4 py-3 text-label">
                     {/* Audit telemetry lives here, not in the panel; the tab's
                         record is finished runs only. */}
                     <Link
