@@ -372,9 +372,10 @@ export async function createFileCapture(
  */
 export async function convertCaptureToTask(
   auth: AuthContext,
-  input: { captureId: string; expectedVersion: number; title?: string },
+  input: { captureId: string; expectedVersion: number; title?: string; operationId?: string },
 ) {
   return withTransaction(async (tx) => {
+    const operationId = input.operationId ?? crypto.randomUUID();
     const [capture] = await tx
       .select()
       .from(captures)
@@ -439,7 +440,17 @@ export async function convertCaptureToTask(
         action: "capture.converted",
         subjectType: "capture",
         subjectId: capture.id,
-        summary: `Capture became task: ${title}`,
+        operationId,
+        // Payload v1: the outcome is navigable from the metadata refs and the
+        // derived title travels as authorized display data. The stored summary
+        // stays a code-authored sentence - no scraped page text, ever.
+        summary: "Capture converted to task",
+        metadata: {
+          version: 1,
+          resultType: "task",
+          resultId: task.id,
+          displaySnapshot: { title },
+        },
       },
       tx,
     );
@@ -457,9 +468,10 @@ export async function convertCaptureToTask(
  */
 export async function convertCaptureToNote(
   auth: AuthContext,
-  input: { captureId: string; expectedVersion: number; title?: string },
+  input: { captureId: string; expectedVersion: number; title?: string; operationId?: string },
 ) {
   const result = await withTransaction(async (tx) => {
+    const operationId = input.operationId ?? crypto.randomUUID();
     const [capture] = await tx
       .select()
       .from(captures)
@@ -514,7 +526,14 @@ export async function convertCaptureToNote(
         action: "capture.converted",
         subjectType: "capture",
         subjectId: capture.id,
-        summary: `Capture became note: ${title}`,
+        operationId,
+        summary: "Capture converted to note",
+        metadata: {
+          version: 1,
+          resultType: "note",
+          resultId: note.id,
+          displaySnapshot: { title },
+        },
       },
       tx,
     );
@@ -547,8 +566,9 @@ export async function convertCaptureToNote(
  */
 export async function convertCaptureToDocument(
   auth: AuthContext,
-  input: { captureId: string; expectedVersion: number; title?: string },
+  input: { captureId: string; expectedVersion: number; title?: string; operationId?: string },
 ) {
+  const operationId = input.operationId ?? crypto.randomUUID();
   const [capture] = await db
     .select()
     .from(captures)
@@ -621,7 +641,14 @@ export async function convertCaptureToDocument(
             action: "capture.converted",
             subjectType: "capture",
             subjectId: capture.id,
-            summary: `Capture became document: ${title}`,
+            operationId,
+            summary: "Capture converted to document",
+            metadata: {
+              version: 1,
+              resultType: "document",
+              resultId: documentId,
+              displaySnapshot: { title },
+            },
           },
           tx,
         );
@@ -666,9 +693,10 @@ export async function convertCaptureToDocument(
  */
 export async function convertCaptureToDraft(
   auth: AuthContext,
-  input: { captureId: string; expectedVersion: number; template: DraftTemplate },
+  input: { captureId: string; expectedVersion: number; template: DraftTemplate; operationId?: string },
 ) {
   const result = await withTransaction(async (tx) => {
+    const operationId = input.operationId ?? crypto.randomUUID();
     const [capture] = await tx
       .select()
       .from(captures)
@@ -736,7 +764,17 @@ export async function convertCaptureToDraft(
         action: "capture.converted",
         subjectType: "capture",
         subjectId: capture.id,
-        summary: `Capture became ${DRAFT_TEMPLATE_LABEL[input.template].toLowerCase()}: ${title}`,
+        operationId,
+        // The template label is code-authored; the title is not, so it only
+        // rides in the payload's display snapshot. Drafts land as note-kind
+        // artifacts, so the result ref names that row type.
+        summary: `Capture converted to ${DRAFT_TEMPLATE_LABEL[input.template].toLowerCase()}`,
+        metadata: {
+          version: 1,
+          resultType: "note",
+          resultId: draft.id,
+          displaySnapshot: { title },
+        },
       },
       tx,
     );
@@ -1006,14 +1044,25 @@ export async function acceptCaptureProposal(
     .limit(1);
   if (!capture) throw new NotFoundError("That capture no longer exists. Reload the inbox.");
 
+  // One story: the conversion's rows and the decision row share an
+  // operationId, so the read side groups them without time-window heuristics.
+  const operationId = crypto.randomUUID();
   let resultType: AcceptedProposal["resultType"];
   let resultId: string | null;
   if (proposal.kind === "task") {
-    const { task } = await convertCaptureToTask(auth, { captureId: capture.id, expectedVersion: capture.version });
+    const { task } = await convertCaptureToTask(auth, {
+      captureId: capture.id,
+      expectedVersion: capture.version,
+      operationId,
+    });
     resultType = "task";
     resultId = task.id;
   } else if (proposal.kind === "note") {
-    const { note } = await convertCaptureToNote(auth, { captureId: capture.id, expectedVersion: capture.version });
+    const { note } = await convertCaptureToNote(auth, {
+      captureId: capture.id,
+      expectedVersion: capture.version,
+      operationId,
+    });
     resultType = "note";
     resultId = note.id;
   } else if (proposal.kind === "discard") {
@@ -1050,6 +1099,7 @@ export async function acceptCaptureProposal(
     action: "capture.proposal_accepted",
     subjectType: "capture",
     subjectId: capture.id,
+    operationId,
     summary: `Accepted ${proposal.kind} suggestion${resultType === "discard" ? "" : `; became ${resultType}`}`,
   });
   return { kind: proposal.kind, resultType, resultId };

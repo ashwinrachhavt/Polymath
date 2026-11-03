@@ -233,6 +233,10 @@ const TIER_1: Tier1Spec[] = [
   { action: "capture.zettels_requested", category: "knowledge", verbPhrase: "requested ideas from a capture" },
   { action: "capture.zettels_proposed", category: "knowledge", verbPhrase: "proposed ideas from a capture" },
   { action: "capture.transcribed", category: "knowledge", verbPhrase: "transcribed a voice capture" },
+  // Ideas (the accept/reject decisions on proposed zettels; the proposal's
+  // model-authored wording is reviewed before it becomes a card).
+  { action: "zettel.accepted", category: "knowledge", verbPhrase: "added an idea to the library" },
+  { action: "zettel.rejected", category: "knowledge", verbPhrase: "rejected a proposed idea" },
   // Run feedback (dynamic family: the owner's like/dislike on a run's reply).
   { action: "run.feedback.up", category: "agents", verbPhrase: "gave a run positive feedback" },
   { action: "run.feedback.down", category: "agents", verbPhrase: "gave a run negative feedback" },
@@ -313,6 +317,10 @@ const TIER_2_ACTIONS: { action: string; category: EventCategory }[] = [
   { action: "draft.edited", category: "knowledge" },
   { action: "draft.record.linked", category: "knowledge" },
   { action: "draft.record.unlinked", category: "knowledge" },
+  // Studio draft decisions (save/discard) - exposed to the scanner when the
+  // decide() helper migrated onto recordAudit with inline literals.
+  { action: "draft.saved", category: "knowledge" },
+  { action: "draft.discarded", category: "knowledge" },
   { action: "field_proposal.accepted", category: "work" },
   { action: "field_proposal.deferred", category: "work" },
   { action: "field_proposal.rejected", category: "work" },
@@ -395,7 +403,6 @@ const TIER_2_ACTIONS: { action: string; category: EventCategory }[] = [
   { action: "wiki.article_ingested", category: "knowledge" },
   { action: "wiki.article_updated", category: "knowledge" },
   { action: "writing.library_drafted", category: "knowledge" },
-  { action: "zettel.accepted", category: "knowledge" },
 ];
 
 function tier2Definition(action: string, category: EventCategory): EventDefinition {

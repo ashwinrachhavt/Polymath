@@ -127,6 +127,39 @@ suite("capture inbox", () => {
     expect(await auditCount(auth, capture.id)).toBe(2);
   });
 
+  it("records a payload v1 conversion: stable summary, navigable result, one operation", async () => {
+    const auth = await seed("capture-payload-v1");
+    // A scraped page grab: the first line is site chrome, not owner words.
+    const capture = await commands.createCapture(auth, {
+      text: "Vendor Directory | ExamplePortal\nQuarterly consolidation notes about regional suppliers",
+      title: "Q3 supplier consolidation",
+    });
+    const { note } = await commands.convertCaptureToNote(auth, {
+      captureId: capture.id,
+      expectedVersion: capture.version,
+    });
+
+    const rows = await db.select().from(auditEvents).where(eq(auditEvents.subjectId, capture.id));
+    const conversion = rows.find((row) => row.action === "capture.converted");
+    expect(conversion).toBeDefined();
+    // The stored summary is the code-authored sentence: no scraped chrome,
+    // no body text, nothing about the capture's contents.
+    expect(conversion!.summary).toBe("Capture converted to note");
+
+    const metadata = conversion!.metadata as {
+      version: number;
+      resultType: string;
+      resultId: string;
+      displaySnapshot: { title: string };
+    };
+    expect(metadata.version).toBe(1);
+    expect(metadata.resultType).toBe("note");
+    expect(metadata.resultId).toBe(note.id);
+    expect(metadata.displaySnapshot.title).toBe("Q3 supplier consolidation");
+    // The outcome is grouped by its operationId for the read side.
+    expect(conversion!.operationId).toBeTruthy();
+  });
+
   it("converts to a notebook note in one transaction, resolves wiki links, and refuses a second conversion", async () => {
     const auth = await seed("capture-note");
     // An existing note to link to: the capture body names it in [[...]].

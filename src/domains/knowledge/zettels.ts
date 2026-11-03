@@ -1,6 +1,7 @@
 import { and, asc, count, desc, eq, ilike, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { AuthContext } from "@/domains/identity/resolve";
+import { recordAudit } from "@/domains/audit/record";
 import { auditEvents } from "@/domains/audit/schema";
 import { db } from "@/lib/db";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
@@ -678,22 +679,23 @@ export async function acceptZettel(auth: AuthContext, input: { proposalId: strin
       .update(zettelProposals)
       .set({ conceptId: concept.id, claimId: claim.id, artifactId: card.id })
       .where(eq(zettelProposals.id, proposal.id));
-    await tx.insert(auditEvents).values({
-      workspaceId: auth.workspaceId,
-      actorId: auth.userId,
-      actorKind: "user",
-      action: "zettel.accepted",
-      subjectType: "zettel_proposal",
-      subjectId: proposal.id,
-      summary: `Accepted zettel "${proposal.title}"`,
-      metadata: {
-        conceptId: concept.id,
-        claimId: claim.id,
-        documentId: proposal.documentId,
-        sourceArtifactId: proposal.sourceArtifactId,
-        artifactId: card.id,
+    await recordAudit(
+      auth,
+      {
+        action: "zettel.accepted",
+        subjectType: "zettel_proposal",
+        subjectId: proposal.id,
+        summary: `Accepted zettel "${proposal.title}"`,
+        metadata: {
+          conceptId: concept.id,
+          claimId: claim.id,
+          documentId: proposal.documentId,
+          sourceArtifactId: proposal.sourceArtifactId,
+          artifactId: card.id,
+        },
       },
-    });
+      tx,
+    );
     return { conceptId: concept.id, claimId: claim.id, artifactId: card.id };
   }).then(async (value) => {
     // The new card joins the semantic graph best-effort; a failed or
@@ -845,23 +847,39 @@ export async function pageZettelCards(
 
 /** Reject: records the decision and nothing else. No concept, claim or evidence row is written. */
 export async function rejectZettel(auth: AuthContext, input: { proposalId: string }) {
-  const [row] = await db
-    .update(zettelProposals)
-    .set({
-      status: "rejected",
-      decidedAt: new Date(),
-      decidedBy: auth.userId,
-      updatedAt: new Date(),
-      version: sql`${zettelProposals.version} + 1`,
-    })
-    .where(
-      and(
-        eq(zettelProposals.id, input.proposalId),
-        eq(zettelProposals.workspaceId, auth.workspaceId),
-        eq(zettelProposals.status, "proposed"),
-      ),
-    )
-    .returning();
-  if (!row) throw new Error("zettel not found or already decided");
-  return row;
+  // The decision and its audit row commit together, like every other write:
+  // a rejected proposal with no record is a decision that never happened.
+  return withTransaction(async (tx) => {
+    const [row] = await tx
+      .update(zettelProposals)
+      .set({
+        status: "rejected",
+        decidedAt: new Date(),
+        decidedBy: auth.userId,
+        updatedAt: new Date(),
+        version: sql`${zettelProposals.version} + 1`,
+      })
+      .where(
+        and(
+          eq(zettelProposals.id, input.proposalId),
+          eq(zettelProposals.workspaceId, auth.workspaceId),
+          eq(zettelProposals.status, "proposed"),
+        ),
+      )
+      .returning();
+    if (!row) throw new Error("zettel not found or already decided");
+    await recordAudit(
+      auth,
+      {
+        action: "zettel.rejected",
+        subjectType: "zettel_proposal",
+        subjectId: row.id,
+        // No proposal wording here: the rejected title is model output the
+        // owner declined, not workspace-shared content.
+        summary: "Rejected zettel proposal",
+      },
+      tx,
+    );
+    return row;
+  });
 }

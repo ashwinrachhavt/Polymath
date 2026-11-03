@@ -1,6 +1,6 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
-import { auditEvents } from "@/domains/audit/schema";
+import { recordAudit } from "@/domains/audit/record";
 import { createTask } from "@/domains/work/commands";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
@@ -118,9 +118,7 @@ export async function acceptObligation(
       {
         title: obligation.note ?? obligation.kind,
         dueAt: input.dueAt, // only the human's explicit date, never dueFromDocument
-        links: [
-          { targetType: "document", targetId: obligation.documentId, label: obligation.kind },
-        ],
+        links: [{ targetType: "document", targetId: obligation.documentId, label: obligation.kind }],
       },
       tx,
     );
@@ -128,16 +126,17 @@ export async function acceptObligation(
       .update(documentObligations)
       .set({ taskId: task.id, updatedAt: new Date() })
       .where(eq(documentObligations.id, obligation.id));
-    await tx.insert(auditEvents).values({
-      workspaceId: auth.workspaceId,
-      actorId: auth.userId,
-      actorKind: "user",
-      action: "obligation.accepted",
-      subjectType: "document_obligation",
-      subjectId: obligation.id,
-      summary: `Accepted obligation "${obligation.kind}" and created task`,
-      metadata: { taskId: task.id, documentId: obligation.documentId },
-    });
+    await recordAudit(
+      auth,
+      {
+        action: "obligation.accepted",
+        subjectType: "document_obligation",
+        subjectId: obligation.id,
+        summary: `Accepted obligation "${obligation.kind}" and created task`,
+        metadata: { taskId: task.id, documentId: obligation.documentId },
+      },
+      tx,
+    );
 
     return { taskId: task.id };
   });
@@ -171,10 +170,7 @@ export async function rejectObligation(auth: AuthContext, input: { obligationId:
  * task because a document changed would be the machine taking control. If a
  * replacement task exists, the caller annotates the task instead.
  */
-export async function supersedeObligation(
-  auth: AuthContext,
-  input: { obligationId: string; supersededById: string },
-) {
+export async function supersedeObligation(auth: AuthContext, input: { obligationId: string; supersededById: string }) {
   const [obligation] = await db
     .update(documentObligations)
     .set({
@@ -206,10 +202,7 @@ export async function supersedeObligation(
  * obligation, keyed so re-running finds its twin. A doc type with no matching
  * rule proposes nothing — "unknown" is a valid outcome.
  */
-export async function proposeObligationsFromDocument(
-  auth: AuthContext,
-  input: { documentId: string },
-) {
+export async function proposeObligationsFromDocument(auth: AuthContext, input: { documentId: string }) {
   const [document] = await db
     .select({ id: documents.id, title: documents.title, docType: documents.docType })
     .from(documents)
@@ -224,9 +217,7 @@ export async function proposeObligationsFromDocument(
       fieldName: fieldProposals.fieldName,
     })
     .from(fieldProposals)
-    .where(
-      and(eq(fieldProposals.documentId, input.documentId), eq(fieldProposals.workspaceId, auth.workspaceId)),
-    );
+    .where(and(eq(fieldProposals.documentId, input.documentId), eq(fieldProposals.workspaceId, auth.workspaceId)));
 
   // kind -> the matched rule and the proposal that fired it (null when the
   // rule keys off the document itself, as the agreement title rule does).
@@ -240,8 +231,7 @@ export async function proposeObligationsFromDocument(
   // The accepted doc-type signal decides; the title regex survives only as
   // the fallback for rows classified before the signal existed (ASH-133 #1).
   const looksLikeAgreement =
-    document.docType === "agreement" ||
-    (document.docType == null && /agreement|contract/i.test(document.title));
+    document.docType === "agreement" || (document.docType == null && /agreement|contract/i.test(document.title));
   if (looksLikeAgreement && !ruleHits.has("review_agreement")) {
     ruleHits.set("review_agreement", {
       rule: RULES.find((r) => r.kind === "review_agreement")!,

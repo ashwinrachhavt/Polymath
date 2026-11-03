@@ -1,7 +1,7 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import type { AgentEngine } from "@/domains/agents/engine";
 import { agentRuns, runEvents } from "@/domains/agents/schema";
-import { auditEvents } from "@/domains/audit/schema";
+import { recordAudit } from "@/domains/audit/record";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
@@ -84,7 +84,10 @@ async function loadNote(auth: AuthContext, artifactId: string) {
     .where(and(eq(artifacts.id, artifactId), eq(artifacts.workspaceId, auth.workspaceId), eq(artifacts.kind, "note")))
     .limit(1);
   if (!note) throw new NoteAIError("note_not_found", "No such note.");
-  const markdown = note.content && typeof (note.content as { text?: unknown }).text === "string" ? ((note.content as { text: string }).text as string) : "";
+  const markdown =
+    note.content && typeof (note.content as { text?: unknown }).text === "string"
+      ? ((note.content as { text: string }).text as string)
+      : "";
   return { id: note.id, title: note.title, markdown };
 }
 
@@ -96,11 +99,19 @@ export async function startNoteAIRun(
 ) {
   const note = await loadNote(auth, input.artifactId);
   if (input.action === "ask" && !input.question?.trim()) throw new NoteAIError("empty_input", "Ask needs a question.");
-  if (input.action === "translate" && !input.language?.trim()) throw new NoteAIError("empty_input", "Translate needs a target language.");
+  if (input.action === "translate" && !input.language?.trim())
+    throw new NoteAIError("empty_input", "Translate needs a target language.");
   if (input.action !== "ask" && !input.selection?.trim() && !note.markdown.trim()) {
     throw new NoteAIError("empty_input", "The note is empty; there is nothing to work on.");
   }
-  const objective = buildNoteAIObjective({ action: input.action, noteTitle: note.title, noteMarkdown: note.markdown, selection: input.selection, question: input.question, language: input.language });
+  const objective = buildNoteAIObjective({
+    action: input.action,
+    noteTitle: note.title,
+    noteMarkdown: note.markdown,
+    selection: input.selection,
+    question: input.question,
+    language: input.language,
+  });
   return engine.start({
     auth,
     profileName: "polymath",
@@ -113,7 +124,12 @@ export async function startNoteAIRun(
 /** Recent Notebook AI runs on a note, newest first, with whatever output each has produced. */
 export async function listNoteAIRuns(auth: AuthContext, artifactId: string, limit = 5) {
   const runs = await db
-    .select({ id: agentRuns.id, state: agentRuns.state, objective: agentRuns.objective, createdAt: agentRuns.createdAt })
+    .select({
+      id: agentRuns.id,
+      state: agentRuns.state,
+      objective: agentRuns.objective,
+      createdAt: agentRuns.createdAt,
+    })
     .from(agentRuns)
     .where(
       and(
@@ -140,8 +156,15 @@ export async function getNoteAIRunOutput(auth: AuthContext, runId: string) {
     .from(runEvents)
     .where(and(eq(runEvents.runId, run.id), eq(runEvents.workspaceId, auth.workspaceId), eq(runEvents.type, "message")))
     .orderBy(desc(runEvents.sequence));
-  const last = events.map((e) => e.data as { role?: string; content?: unknown }).find((d) => d?.role === "assistant" && typeof d.content === "string");
-  return { runId: run.id, state: run.state, objective: run.objective, output: (last?.content as string | undefined) ?? null };
+  const last = events
+    .map((e) => e.data as { role?: string; content?: unknown })
+    .find((d) => d?.role === "assistant" && typeof d.content === "string");
+  return {
+    runId: run.id,
+    state: run.state,
+    objective: run.objective,
+    output: (last?.content as string | undefined) ?? null,
+  };
 }
 
 /**
@@ -167,7 +190,9 @@ export async function applyNoteAIResult(
     .where(and(eq(agentRuns.id, input.runId), eq(agentRuns.workspaceId, auth.workspaceId)))
     .limit(1);
   if (!run) throw new NoteAIError("run_not_found", "No such run.");
-  const bound = (Array.isArray(run.subjects) ? (run.subjects as Array<{ type?: string; id?: string }>) : []).some((s) => s?.type === "note" && s?.id === input.artifactId);
+  const bound = (Array.isArray(run.subjects) ? (run.subjects as Array<{ type?: string; id?: string }>) : []).some(
+    (s) => s?.type === "note" && s?.id === input.artifactId,
+  );
   if (!bound) throw new NoteAIError("run_mismatch", "That run was not started from this note.");
 
   const committed = await commitNoteSnapshot(auth, {
@@ -182,17 +207,24 @@ export async function applyNoteAIResult(
   await withTransaction(async (tx) => {
     await tx
       .insert(artifactLinks)
-      .values({ workspaceId: auth.workspaceId, artifactId: input.artifactId, targetType: "run", targetId: run.id, label: "ai draft applied" })
+      .values({
+        workspaceId: auth.workspaceId,
+        artifactId: input.artifactId,
+        targetType: "run",
+        targetId: run.id,
+        label: "ai draft applied",
+      })
       .onConflictDoNothing({ target: [artifactLinks.artifactId, artifactLinks.targetType, artifactLinks.targetId] });
-    await tx.insert(auditEvents).values({
-      workspaceId: auth.workspaceId,
-      actorId: auth.userId,
-      actorKind: "user",
-      action: "note.ai.applied",
-      subjectType: "artifact",
-      subjectId: input.artifactId,
-      summary: "Applied a Notebook AI draft",
-    });
+    await recordAudit(
+      auth,
+      {
+        action: "note.ai.applied",
+        subjectType: "artifact",
+        subjectId: input.artifactId,
+        summary: "Applied a Notebook AI draft",
+      },
+      tx,
+    );
   });
 
   return committed;
