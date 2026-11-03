@@ -340,7 +340,11 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      DATABASE_URL: postgresql://axiom:axiom@localhost:5432/axiom_e2e
+      # Per-shard private database: each leg provisions its own db (below) on
+      # its own postgres service and boots its server against it — a shard
+      # shares no ledger rows with its siblings or with a previous run.
+      DATABASE_URL: postgresql://axiom:axiom@localhost:5432/axiom_e2e_shard${{ matrix.shard }}
+      TEST_DATABASE_URL: postgresql://axiom:axiom@localhost:5432/axiom_e2e_shard${{ matrix.shard }}
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -356,13 +360,12 @@ jobs:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ hashFiles('pnpm-lock.yaml') }}
       - run: pnpm install --frozen-lockfile
-      # Canonical schema before the server starts: drizzle-kit migrate has a
-      # pre-existing identifier-truncation issue on 0000-0002, so the SQL
-      # files are applied directly, in journal order.
-      - run: |
-          for f in src/db/migrations/*.sql; do
-            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$f"
-          done
+      # Provision this shard's private database exactly the way local runs do
+      # (tests/e2e/README.md): scripts/reset-test-db.sh drops, recreates and
+      # migrates the db named by TEST_DATABASE_URL — raw SQL applied in journal
+      # order, because drizzle-kit migrate has a pre-existing
+      # identifier-truncation issue on 0000-0002.
+      - run: sh scripts/reset-test-db.sh
       # Only chromium is configured; downloading the rest is wasted minutes.
       - run: pnpm exec playwright install --with-deps chromium
       # playwright.config.ts builds and starts the server itself. Each matrix
