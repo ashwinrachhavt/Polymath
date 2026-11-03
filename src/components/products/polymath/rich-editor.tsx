@@ -430,7 +430,9 @@ function RichMarkdownEditor({
     },
   });
   useEffect(() => {
-    editor?.setEditable(editable);
+    // Silent: setEditable emits an update by default, which would hand the
+    // editor's re-serialized Markdown to onChange and rewrite untouched notes.
+    if (editor && editor.isEditable !== editable) editor.setEditable(editable, false);
   }, [editor, editable]);
   const slashMatches = slash ? filterBlockCommands(slash.query) : [];
   const linkMatches = link ? candidates(link.query) : [];
