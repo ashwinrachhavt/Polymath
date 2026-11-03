@@ -16,6 +16,7 @@ import { updateDefaultProfileBrief } from "@/domains/agents/commands";
 import { actionError } from "@/lib/action-error";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
+import type { AuthContext } from "@/domains/identity/resolve";
 
 /*
  * Settings writes (D23). One save action for every preference panel: the
@@ -24,6 +25,14 @@ import { requireRole } from "@/lib/auth/guards";
  */
 
 type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
+
+// Invitations are admin+ (ASH-121). The domain re-checks; this action-layer
+// guard keeps the authorization legible where the action sweep looks.
+async function authorize(): Promise<AuthContext> {
+  const auth = await getAuthContext();
+  requireRole(auth, "admin");
+  return auth;
+}
 
 export async function loadPreferencesAction(): Promise<Result<{ preferences: LoadedPreferences }>> {
   let auth;
@@ -160,7 +169,7 @@ export async function createInvitationAction(input: {
 }): Promise<Result<{ invitationId: string; token: string; invitePath: string; expiresAt: Date }>> {
   let auth;
   try {
-    auth = await getAuthContext();
+    auth = await authorize();
   } catch (error) {
     return { ok: false, error: actionError(error, "Sign-in is not configured on this deployment.") };
   }
@@ -183,7 +192,7 @@ export async function createInvitationAction(input: {
 export async function revokeInvitationAction(invitationId: string): Promise<Result<{ revoked: boolean }>> {
   let auth;
   try {
-    auth = await getAuthContext();
+    auth = await authorize();
   } catch (error) {
     return { ok: false, error: actionError(error, "Sign-in is not configured on this deployment.") };
   }

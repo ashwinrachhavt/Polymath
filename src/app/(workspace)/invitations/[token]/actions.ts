@@ -11,6 +11,13 @@ import { sessionVerifiedEmail } from "./session-email";
 // which tokens exist (the domain's own probe-resistance rule).
 const INVALID = "This invitation is not valid. Ask for a fresh link.";
 
+// Acceptance has no role gate by design: the acceptor is not a member yet.
+// Its authorization is the invitation's own email match, enforced by the
+// domain; authorize() only resolves the session that match runs against.
+async function authorize() {
+  return getAuthContext();
+}
+
 /*
  * The accept half of spec D4. The domain stays the enforcement surface:
  * acceptInvitation re-checks the pending state, matches the verified email,
@@ -23,7 +30,7 @@ export async function acceptInvitationAction(
 ): Promise<{ ok: true; workspaceId: string; role: string; replayed: boolean } | { ok: false; error: string }> {
   let auth;
   try {
-    auth = await getAuthContext();
+    auth = await authorize();
   } catch {
     return { ok: false, error: INVALID };
   }
