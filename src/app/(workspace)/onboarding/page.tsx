@@ -5,9 +5,11 @@ import { getAuthContext } from "@/lib/auth";
 import {
   findLatestOnboardingRun,
   findLiveOnboardingRun,
+  getOnboardingSession,
   isWorkspaceOnboarded,
   readOnboardingRun,
 } from "@/domains/agents/onboarding";
+import { readWizardState } from "@/domains/agents/onboarding-assist";
 import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { OnboardingConversation } from "./onboarding-conversation";
 import { OnboardingStatusCard } from "./onboarding-status-card";
@@ -31,9 +33,10 @@ const surfaceWrap = (node: React.ReactNode) => (
  *
  * The page is the reload anchor. It re-derives where the flow stands from the
  * database on every load — an open interview run resumes, a finished run with
- * a valid brief goes straight to the card, a failed run lands on its failure
- * card or the pre-filled form (never an auto-start) — so no client state is
- * ever load-bearing.
+ * a valid brief goes straight to the review card, a failed run lands on its
+ * failure card or the pre-filled form (never an auto-start), and a wizard in
+ * progress resumes at its persisted step — so no client state is ever
+ * load-bearing.
  */
 async function OnboardingSurface() {
   await io();
@@ -62,26 +65,29 @@ async function OnboardingSurface() {
     return surfaceWrap(<OnboardingConversation initialRunId={live.id} />);
   }
 
-  // A finished interview the person never confirmed: the brief (or the
-  // salvageable pieces of it) still leads. A failed run never auto-restarts
-  // (F5): what it captured routes to the form, and a failed run with nothing
-  // salvageable lands on the failure card, whose Retry makes the next run
-  // explicit — a reload can no longer mint run rows, sessions, and spend
-  // reservations behind the reader's back.
+  // An interrupted flow the person is returning to. The decision is pure
+  // data (resolveReloadSurface): a finished run's brief is the review step;
+  // everything else lands on the wizard — a mid-wizard reload at its
+  // persisted step, a legacy interview run's restart with what its thread
+  // could salvage. A failed run never auto-restarts (F5). The wizard kind
+  // maps onto the surfaces it replaces for now (the staged wizard UI lands
+  // next): salvage restarts as the pre-filled form, a restart notice as the
+  // island's error card, otherwise the island itself.
   const latest = await findLatestOnboardingRun(auth.workspaceId);
-  if (latest) {
-    const surface = resolveReloadSurface(latest, await readOnboardingRun(auth, latest.id));
-    if (surface.kind === "confirm") {
-      return surfaceWrap(<OnboardingConfirm initial={surface.brief} profileVersion={surface.profileVersion} />);
-    }
-    if (surface.kind === "interview") {
-      return surfaceWrap(<OnboardingInterview initial={surface.prefill} notice={surface.notice} />);
-    }
-    if (surface.kind === "retry") {
-      return surfaceWrap(<OnboardingConversation initialError={surface.message} />);
-    }
+  const surface = resolveReloadSurface(
+    latest,
+    latest ? await readOnboardingRun(auth, latest.id) : null,
+    readWizardState(await getOnboardingSession(auth.workspaceId)),
+  );
+  if (surface.kind === "review") {
+    return surfaceWrap(<OnboardingConfirm initial={surface.brief} profileVersion={surface.profileVersion} />);
   }
-
+  if (surface.prefill && Object.keys(surface.prefill).length > 0) {
+    return surfaceWrap(<OnboardingInterview initial={surface.prefill} notice={surface.notice ?? undefined} />);
+  }
+  if (surface.notice) {
+    return surfaceWrap(<OnboardingConversation initialError={surface.notice} />);
+  }
   return surfaceWrap(<OnboardingConversation />);
 }
 
@@ -91,7 +97,13 @@ async function OnboardingSurface() {
  */
 export default function OnboardingPage() {
   return (
-    <Suspense fallback={<p role="status" className="p-6 text-[13px] text-muted-foreground">Loading…</p>}>
+    <Suspense
+      fallback={
+        <p role="status" className="p-6 text-[13px] text-muted-foreground">
+          Loading…
+        </p>
+      }
+    >
       <OnboardingSurface />
     </Suspense>
   );
