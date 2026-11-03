@@ -175,7 +175,11 @@ export function MembersTable({
           <th className="py-2 font-medium">Role</th>
           <th className="py-2 font-medium">Status</th>
           <th className="py-2 font-medium">Since</th>
-          {canManage && <th className="py-2 font-medium" aria-label="Actions" />}
+          {canManage && (
+            <th className="py-2 font-medium">
+              <span className="sr-only">Actions</span>
+            </th>
+          )}
         </tr>
       </thead>
       <tbody>
