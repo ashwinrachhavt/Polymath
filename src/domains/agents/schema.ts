@@ -833,8 +833,8 @@ export const onboardingSessions = pgTable(
     step: text("step").notNull().default("role"),
     role: text("role"),
     /** Tool names the person lives in: Notion, Gmail, Calendly, Excel, … */
-    tools: jsonb("tools"),
-    priorities: jsonb("priorities"),
+    tools: jsonb("tools").$type<string[]>(),
+    priorities: jsonb("priorities").$type<string[]>(),
     personifiedBrief: text("personified_brief"),
     /** The wizard's in-progress draft: partial brief fields plus their freeform words. */
     draft: jsonb("draft"),

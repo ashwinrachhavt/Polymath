@@ -4,13 +4,14 @@ import { redirect } from "next/navigation";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { getAuthContext } from "@/lib/auth";
-import { isWorkspaceOnboarded } from "@/domains/agents/onboarding";
+import { findUnwelcomedOnboardingSession, isWorkspaceOnboarded } from "@/domains/agents/onboarding";
 import { getProfileModelPolicy, listRecentRuns } from "@/domains/agents/queries";
 import { availableModels, resolveModelId } from "@/domains/agents/models";
 import { listSkills } from "@/domains/skills/queries";
 import { displayTitle } from "@/lib/display-text";
 import { stripMentionContext } from "@/components/chat/mention-context";
 import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
+import { markOnboardingWelcomedAction } from "@/app/(workspace)/onboarding/actions";
 import type { PickableSkill } from "./skills/slash-skill-menu";
 import { groupHistory, type HistoryRow } from "./history";
 import { HomeSurface } from "./home-surface";
@@ -51,10 +52,10 @@ export async function PolymathSurface() {
   if (!(await isWorkspaceOnboarded(auth.workspaceId))) {
     redirect("/onboarding");
   }
-  // The history read and the model policy are independent: issue them together
-  // so the page costs one round trip per query rather than one per query in
-  // sequence.
-  const [runs, skillRows, modelPolicy] = await Promise.all([
+  // The history read, the model policy, and the one-time welcome check are
+  // independent: issue them together so the page costs one round trip per
+  // query rather than one per query in sequence.
+  const [runs, skillRows, modelPolicy, unwelcomed] = await Promise.all([
     // Every conversation on this surface is a run, so runs are the history.
     // Fifty is a bounded read, not the whole table, and it is deep enough that
     // the grouped list still reaches "Older" for a regular user. Onboarding
@@ -63,6 +64,10 @@ export async function PolymathSurface() {
     // Only enabled skills can be pinned; the engine refuses anything else.
     listSkills(auth, { enabled: true }),
     getProfileModelPolicy(auth.workspaceId, "polymath"),
+    // The one-time welcome: a completed onboarding session the person has not
+    // been welcomed on yet. Null forever after the stamp, so this read doubles
+    // as the "show it at all" decision.
+    findUnwelcomedOnboardingSession(auth.workspaceId),
   ]);
   const skills: PickableSkill[] = skillRows.map((skill) => ({
     id: skill.id,
@@ -90,6 +95,17 @@ export async function PolymathSurface() {
       models={models}
       currentModel={currentModel}
       notice={unavailable}
+      welcome={
+        unwelcomed
+          ? {
+              role: unwelcomed.role,
+              tools: unwelcomed.tools ?? [],
+              priorities: unwelcomed.priorities ?? [],
+              personifiedBrief: unwelcomed.personifiedBrief,
+              onShown: markOnboardingWelcomedAction,
+            }
+          : undefined
+      }
     />
   );
 }
