@@ -22,6 +22,7 @@ export const workspaceSegments: readonly string[] = [
   "artifacts",
   "command-center",
   "dev",
+  "invitations",
   "learn",
   "more",
   "neuralflow",

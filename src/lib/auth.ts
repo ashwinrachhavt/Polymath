@@ -1,5 +1,6 @@
 import { cache } from "react";
 import { auth } from "@clerk/nextjs/server";
+import { cookies } from "next/headers";
 import { io } from "next/cache";
 import { resolveAuthContext, type AuthContext } from "@/domains/identity/resolve";
 import { resolveCompanionToken, resolveMachineClient } from "@/domains/identity/machine";
@@ -19,6 +20,28 @@ import { problemResponse } from "./problems";
  */
 
 export type { AuthContext };
+
+const DEV_USER_COOKIE = "polymath_dev_user";
+const DEV_USER_ID = /^[a-zA-Z0-9_-]{1,64}$/;
+
+/*
+ * Dev-harness session switch, keyless mode only: the e2e invitation journey
+ * needs two concurrent sessions and the fixed dev owner cannot be two people
+ * at once, so the cookie may point the fallback at any provisioned dev user
+ * (tests/e2e/global-setup.ts seeds dev-user-2). Unreachable in production
+ * three ways over - the devFallback guard at each call site, the NODE_ENV
+ * check, and the VITEST check - and a real Clerk session still wins before
+ * this is ever consulted. A missing or malformed value keeps the fixed dev
+ * owner; no request scope (scripts) does the same.
+ */
+async function devSessionClerkUserId(): Promise<string> {
+  try {
+    const candidate = (await cookies()).get(DEV_USER_COOKIE)?.value ?? "";
+    return DEV_USER_ID.test(candidate) ? candidate : "dev-user";
+  } catch {
+    return "dev-user";
+  }
+}
 
 export class UnauthorizedError extends Error {
   readonly code = "unauthorized";
@@ -63,7 +86,7 @@ export const getAuthContext = cache(async (): Promise<AuthContext> => {
         // No mounted middleware: the bypass owns this request.
       }
     }
-    return resolveAuthContext("dev-user");
+    return resolveAuthContext(await devSessionClerkUserId());
   }
   const { userId } = await auth();
   if (!userId) throw new UnauthorizedError();
@@ -71,9 +94,7 @@ export const getAuthContext = cache(async (): Promise<AuthContext> => {
 });
 
 /** Every server action begins withAuth(async (auth, input) => ...). */
-export function withAuth<A extends unknown[]>(
-  fn: (auth: AuthContext, ...args: A) => Promise<unknown>,
-) {
+export function withAuth<A extends unknown[]>(fn: (auth: AuthContext, ...args: A) => Promise<unknown>) {
   return async (...args: A) => {
     const ctx = await getAuthContext();
     return fn(ctx, ...args);
@@ -138,7 +159,7 @@ export const getAnyAuthContext = cache(async (request?: Request): Promise<AuthCo
         // No mounted middleware: the bypass owns this request.
       }
     }
-    return resolveAuthContext("dev-user");
+    return resolveAuthContext(await devSessionClerkUserId());
   }
   const session = await auth({ acceptsToken: ["session_token", "m2m_token", "api_key"] });
   if (session.isAuthenticated) {
@@ -146,8 +167,7 @@ export const getAnyAuthContext = cache(async (request?: Request): Promise<AuthCo
       return resolveAuthContext(session.userId);
     }
     // An m2m/api-key subject: "machineId" for m2m_token, "id" for api_key.
-    const subject =
-      "machineId" in session ? session.machineId : "id" in session ? session.id : null;
+    const subject = "machineId" in session ? session.machineId : "id" in session ? session.id : null;
     if (subject) {
       const resolved = await resolveMachineClient(subject);
       if (!resolved.ok) throw new ForbiddenError(resolved.reason);
@@ -163,9 +183,7 @@ export const getAnyAuthContext = cache(async (request?: Request): Promise<AuthCo
 });
 
 /** For /api/v1/** route handlers; webhooks keep their HMAC auth instead. */
-export function authedHandler<C = unknown>(
-  fn: (auth: AuthContext, request: Request, ctx: C) => Promise<Response>,
-) {
+export function authedHandler<C = unknown>(fn: (auth: AuthContext, request: Request, ctx: C) => Promise<Response>) {
   return async (request: Request, ctx: C): Promise<Response> => {
     try {
       const auth = await getAnyAuthContext(request);
