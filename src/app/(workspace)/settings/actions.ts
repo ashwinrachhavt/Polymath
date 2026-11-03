@@ -10,13 +10,14 @@ import {
   type MotionValue,
   type Preferences,
 } from "@/domains/identity/preferences";
+import { changeMembership, createInvitation, revokeInvitation } from "@/domains/identity/invitations";
 import { getDefaultProfile } from "@/domains/agents/queries";
 import { updateDefaultProfileBrief } from "@/domains/agents/commands";
-import { changeMembership } from "@/domains/identity/invitations";
 import { selfMembership } from "@/domains/identity/members";
 import { actionError } from "@/lib/action-error";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
+import type { AuthContext } from "@/domains/identity/resolve";
 
 /*
  * Settings writes (D23). One save action for every preference panel: the
@@ -25,6 +26,14 @@ import { requireRole } from "@/lib/auth/guards";
  */
 
 type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
+
+// Invitations are admin+ (ASH-121). The domain re-checks; this action-layer
+// guard keeps the authorization legible where the action sweep looks.
+async function authorize(): Promise<AuthContext> {
+  const auth = await getAuthContext();
+  requireRole(auth, "admin");
+  return auth;
+}
 
 export async function loadPreferencesAction(): Promise<Result<{ preferences: LoadedPreferences }>> {
   let auth;
@@ -220,5 +229,57 @@ export async function leaveWorkspaceAction(): Promise<Result<{ left: true }>> {
     return { ok: true, left: true };
   } catch (error) {
     return { ok: false, error: actionError(error, "Could not leave the workspace.") };
+  }
+}
+
+/*
+ * Invitation lifecycle (spec D4): the first wired callers of the ASH-121
+ * domain. The domain is the enforcement surface - createInvitation and
+ * revokeInvitation require an admin, scope every write to the caller's
+ * workspace, and record the audit entries - so these actions only resolve
+ * the context, shape the result, and refresh the console. The raw token
+ * crosses exactly once, to the admin who can share the link; only its
+ * digest is stored.
+ */
+
+export async function createInvitationAction(input: {
+  email: string;
+  role?: string;
+}): Promise<Result<{ invitationId: string; token: string; invitePath: string; expiresAt: Date }>> {
+  let auth;
+  try {
+    auth = await authorize();
+  } catch (error) {
+    return { ok: false, error: actionError(error, "Sign-in is not configured on this deployment.") };
+  }
+  const role = input.role === "admin" || input.role === "viewer" ? input.role : "member";
+  try {
+    const invitation = await createInvitation(auth, { email: String(input.email), role });
+    revalidatePath("/settings/access");
+    return {
+      ok: true,
+      invitationId: invitation.invitationId,
+      token: invitation.token,
+      invitePath: `/invitations/${invitation.token}`,
+      expiresAt: invitation.expiresAt,
+    };
+  } catch (error) {
+    return { ok: false, error: actionError(error, "Could not send the invitation.") };
+  }
+}
+
+export async function revokeInvitationAction(invitationId: string): Promise<Result<{ revoked: boolean }>> {
+  let auth;
+  try {
+    auth = await authorize();
+  } catch (error) {
+    return { ok: false, error: actionError(error, "Sign-in is not configured on this deployment.") };
+  }
+  try {
+    const result = await revokeInvitation(auth, String(invitationId));
+    revalidatePath("/settings/access");
+    return { ok: true, revoked: result.revoked };
+  } catch (error) {
+    return { ok: false, error: actionError(error, "Could not revoke the invitation.") };
   }
 }

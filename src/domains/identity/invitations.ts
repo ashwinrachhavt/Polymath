@@ -1,18 +1,21 @@
-import { and, eq, gt, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, gt, isNull, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
 import { ForbiddenRoleError, requireRole } from "@/lib/auth/guards";
+import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { sha256Hex } from "@/lib/hash";
 import type { AuthContext } from "./resolve";
-import { invitations, memberships } from "./schema";
+import { invitations, memberships, workspaces } from "./schema";
 
 /*
- * ASH-121 AC02: membership and invitation lifecycle. Default off - no route
- * calls this yet and guards.ts RANK stays the enforcement surface. What this
- * slice proves: invitations are single-use, expiring, revocable and bound to a
- * recipient email; acceptance needs a VERIFIED email (the identity provider's
- * claim, never a self-asserted one); and the last active owner can never be
- * suspended, removed or demoted, even under concurrent requests.
+ * ASH-121 AC02: membership and invitation lifecycle, routed by spec D4 - the
+ * settings actions (create/revoke) and the /invitations/[token] acceptance
+ * page are the only callers, and guards.ts RANK stays the enforcement
+ * surface. What this slice proves: invitations are single-use, expiring,
+ * revocable and bound to a recipient email; acceptance needs a VERIFIED email
+ * (the identity provider's claim, never a self-asserted one); and the last
+ * active owner can never be suspended, removed or demoted, even under
+ * concurrent requests.
  */
 
 export class MembershipLifecycleError extends Error {
@@ -39,7 +42,10 @@ export async function createInvitation(
   auth: AuthContext,
   input: { email: string; role?: "admin" | "member" | "viewer"; ttlHours?: number },
 ): Promise<{ invitationId: string; token: string; expiresAt: Date }> {
-  requireRole(auth, "owner");
+  // Spec D4: admins and owners invite; members and viewers cannot. The invited
+  // role caps at admin - `owner` is not in the input union and the
+  // invitations_role_check constraint backs it in the database.
+  requireRole(auth, "admin");
   const email = normalizeEmail(input.email);
   if (!EMAIL.test(email)) throw new MembershipLifecycleError("invitation_input", "Enter a valid email address.");
   const ttl = input.ttlHours ?? DEFAULT_TTL_HOURS;
@@ -102,7 +108,7 @@ export async function createInvitation(
 }
 
 export async function revokeInvitation(auth: AuthContext, invitationId: string): Promise<{ revoked: boolean }> {
-  requireRole(auth, "owner");
+  requireRole(auth, "admin"); // Spec D4: same rank as createInvitation.
   return withTransaction(async (tx) => {
     const rows = await tx
       .update(invitations)
@@ -289,4 +295,71 @@ export async function changeMembership(
     );
     return { membershipId: target.id, status: nextStatus, role: nextRole };
   });
+}
+
+/**
+ * Open invitations addressed to one email — the switcher's pending row (spec
+ * D2). A display read like pendingInvitationForToken: acceptance still
+ * re-derives everything through acceptInvitation inside its transaction, and
+ * the raw token exists only in the link the inviter shared, so the most this
+ * row can offer is the workspace's name and how to join. An invitation whose
+ * workspace the recipient already re-joined is the caller's to drop.
+ */
+export async function openInvitationsForEmail(
+  email: string,
+  now: Date = new Date(),
+): Promise<{ workspaceId: string; workspaceName: string; role: string }[]> {
+  const normalized = normalizeEmail(email);
+  if (!normalized) return [];
+  return db
+    .select({
+      workspaceId: invitations.workspaceId,
+      workspaceName: workspaces.name,
+      role: invitations.role,
+    })
+    .from(invitations)
+    .innerJoin(workspaces, eq(workspaces.id, invitations.workspaceId))
+    .where(
+      and(
+        eq(invitations.email, normalized),
+        isNull(invitations.acceptedAt),
+        isNull(invitations.revokedAt),
+        gt(invitations.expiresAt, now),
+        isNull(workspaces.archivedAt),
+      ),
+    )
+    .orderBy(asc(invitations.createdAt));
+}
+
+/*
+ * Display read for the /invitations/[token] page (spec D4): the open
+ * invitation a token names, joined with its workspace's name. This only
+ * decides what the page renders - acceptance re-derives everything through
+ * acceptInvitation inside its transaction, so an invitation that expires or
+ * is revoked between render and click cannot be joined; it just renders the
+ * same not-valid state as any other dead token.
+ */
+export async function pendingInvitationForToken(token: string) {
+  if (!token) return null;
+  const [invitation] = await db
+    .select({
+      id: invitations.id,
+      workspaceId: invitations.workspaceId,
+      workspaceName: workspaces.name,
+      email: invitations.email,
+      role: invitations.role,
+      expiresAt: invitations.expiresAt,
+    })
+    .from(invitations)
+    .innerJoin(workspaces, eq(workspaces.id, invitations.workspaceId))
+    .where(
+      and(
+        eq(invitations.tokenHash, await sha256Hex(token)),
+        isNull(invitations.acceptedAt),
+        isNull(invitations.revokedAt),
+        gt(invitations.expiresAt, new Date()),
+      ),
+    )
+    .limit(1);
+  return invitation ?? null;
 }
