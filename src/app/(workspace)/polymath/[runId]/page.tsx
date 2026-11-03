@@ -171,7 +171,7 @@ async function ConversationSurface({ runId }: { runId: string }) {
        * competing with it.
        */}
       <header className="bg-background/95 sticky top-0 z-10 backdrop-blur">
-        <div className="mx-auto flex h-12 w-full max-w-3xl items-center gap-1 px-4 md:px-0">
+        <div className="mx-auto flex h-12 w-full max-w-[var(--measure-prose)] items-center gap-1 px-4 md:px-0">
           <HistoryMenu groups={historyGroups} label="Chats" />
           <Link
             href="/polymath"
@@ -195,12 +195,15 @@ async function ConversationSurface({ runId }: { runId: string }) {
 
       {/*
        * One centered reading column for the whole surface: the header row, the
-       * transcript and the composer all share the same 768px measure, so nothing
-       * reads as anchored to a different axis. `.page-content` only supplies the
-       * page's gutters; the width is set here.
+       * transcript and the composer all share the shared --measure-prose
+       * reading measure, so nothing reads as anchored to a different axis.
+       * `.page-content` only supplies the page's gutters; the width is set here.
        */}
       <div className="page-content flex min-h-0 flex-1 flex-col gap-4">
-        <section aria-label="Conversation" className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col gap-3 py-4">
+        <section
+          aria-label="Conversation"
+          className="mx-auto flex min-h-0 w-full max-w-[var(--measure-prose)] flex-1 flex-col gap-3 py-4"
+        >
           {/*
            * A live run streams; a finished one keeps the stored transcript.
            * Rendering the snapshot for a running run was the whole reason a new

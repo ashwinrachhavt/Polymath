@@ -322,7 +322,7 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
           // Same reading column as the editor and empty states: ranked
           // results get full titles, snippets and why-ranked chips instead of
           // the sidebar's truncation next to an empty editor.
-          <div className="mx-auto w-full max-w-[708px] px-6 pb-16 pt-10 md:pt-14">
+          <div className="mx-auto w-full max-w-[var(--measure-prose)] px-6 pb-16 pt-12">
             <div className="mb-8 flex h-8 items-center">
               <NotebookListToggle />
             </div>
@@ -335,7 +335,7 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
             />
           </div>
         ) : found.total === 0 ? (
-          <div className="mx-auto w-full max-w-[708px] px-6 pb-16 pt-10 md:pt-14">
+          <div className="mx-auto w-full max-w-[var(--measure-prose)] px-6 pb-16 pt-12">
             <div className="mb-8 flex h-8 items-center">
               <NotebookListToggle />
             </div>
@@ -350,7 +350,7 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
             </div>
           </div>
         ) : (
-          <div className="mx-auto w-full max-w-[708px] px-6 pb-16 pt-10 md:pt-14">
+          <div className="mx-auto w-full max-w-[var(--measure-prose)] px-6 pb-16 pt-12">
             <div className="mb-8 flex h-8 items-center">
               <NotebookListToggle />
             </div>
@@ -376,11 +376,32 @@ export default function NotesPage(props: { searchParams: Promise<RawSearchParams
 }
 
 function NotesSkeleton() {
+  // Shape-matches the loaded workspace — the notes rail beside the shared
+  // --measure-prose reading column at the canvas offset — so the stream-in
+  // never reflows the page it becomes.
   return (
-    <div role="status" aria-label="Loading Notes" className="flex flex-1 flex-col gap-4 p-6">
-      <Skeleton className="h-6 w-40" />
-      <Skeleton className="h-4 w-full max-w-xl" />
-      <Skeleton className="h-40" />
+    <div role="status" aria-label="Loading Notes" className="flex items-start gap-6">
+      <div className="hidden w-72 shrink-0 flex-col gap-3 pt-12 lg:flex">
+        <Skeleton className="h-8 w-full" />
+        <Skeleton className="h-24 w-full" />
+        <div className="mt-2 flex flex-col gap-2">
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-12 w-[88%]" />
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-12 w-[94%]" />
+          <Skeleton className="h-12 w-full" />
+        </div>
+      </div>
+      <div className="mx-auto w-full max-w-[var(--measure-prose)] flex-1 px-6 pt-12">
+        <Skeleton className="h-8 w-24" />
+        <Skeleton className="mt-8 h-9 w-2/3" />
+        <div className="mt-10 flex flex-col gap-6">
+          <Skeleton className="h-5 w-full" />
+          <Skeleton className="h-5 w-[94%]" />
+          <Skeleton className="h-5 w-full" />
+          <Skeleton className="h-5 w-[72%]" />
+        </div>
+      </div>
     </div>
   );
 }

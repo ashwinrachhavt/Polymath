@@ -35,7 +35,8 @@ function textOf(node: unknown): string {
 /** The body as blocks, so the claim and the quote can be told apart. Both the
  *  editor's doc JSON and a plain `{ text }` note render through here. */
 function blocksOf(content: NoteContent | null): Block[] {
-  const nodes = content && Array.isArray((content as DocNode).content) ? ((content as DocNode).content as DocNode[]) : [];
+  const nodes =
+    content && Array.isArray((content as DocNode).content) ? ((content as DocNode).content as DocNode[]) : [];
   if (nodes.length === 0) {
     const text = content && typeof content.text === "string" ? content.text : "";
     return text
@@ -102,7 +103,9 @@ export async function IdeaDetailSurface({ params }: { params: Promise<{ id: stri
   if (!idea) return <MissingIdea />;
 
   const [related, linked] = await Promise.all([relatedNotes(auth, idea.id), linkedNotes(auth, idea.id)]);
-  const suggestions = related.filter((card) => !card.alreadyLinked).map((card) => ({ targetId: card.id, targetTitle: card.title }));
+  const suggestions = related
+    .filter((card) => !card.alreadyLinked)
+    .map((card) => ({ targetId: card.id, targetTitle: card.title }));
   // Blocks render in document order: the claim reads first, the evidence quote
   // sits under it, and a body someone wrote longer than one paragraph keeps
   // every paragraph instead of being truncated to the first.
@@ -118,7 +121,7 @@ export async function IdeaDetailSurface({ params }: { params: Promise<{ id: stri
       }
     >
       <Panel>
-        <article className="mx-auto flex w-full max-w-[720px] flex-col gap-4">
+        <article className="mx-auto flex w-full max-w-[var(--measure-prose)] flex-col gap-4">
           {blocks.map((block, index) =>
             block.quote ? (
               <blockquote

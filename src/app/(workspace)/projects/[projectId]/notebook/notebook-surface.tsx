@@ -207,11 +207,17 @@ export default function NotebookSurface({
     setResearching(true);
     setMessage(null);
     try {
-      const result = await researchDossierCompanyAction({ projectId: notebook.projectId, companyName, idempotencyKey: crypto.randomUUID() });
+      const result = await researchDossierCompanyAction({
+        projectId: notebook.projectId,
+        companyName,
+        idempotencyKey: crypto.randomUUID(),
+      });
       if (!result.ok) throw new Error(result.error);
       setCompanyName("");
       router.refresh();
-      setMessage(`Case study drafted from ${result.manifestSize} pinned ${result.manifestSize === 1 ? "source" : "sources"}.`);
+      setMessage(
+        `Case study drafted from ${result.manifestSize} pinned ${result.manifestSize === 1 ? "source" : "sources"}.`,
+      );
     } catch (cause) {
       setMessage(cause instanceof Error ? cause.message : "The research pass failed.");
     } finally {
@@ -237,9 +243,7 @@ export default function NotebookSurface({
               <li key={source.documentId} className="px-1 py-1.5">
                 <div className="flex items-baseline justify-between gap-2">
                   <p className="min-w-0 truncate text-[13px]">{source.title}</p>
-                  <span className="shrink-0 text-xs text-muted-foreground">
-                    {READINESS_LABEL[source.readiness]}
-                  </span>
+                  <span className="shrink-0 text-xs text-muted-foreground">{READINESS_LABEL[source.readiness]}</span>
                 </div>
                 <p className="text-xs break-words text-muted-foreground">
                   {source.kind === "video" ? "Video" : "Document"}
@@ -331,7 +335,9 @@ export default function NotebookSurface({
                 // The thread's first user entry is the run's grounding
                 // objective, not something the person typed; history starts
                 // with the question they actually asked.
-                const visible = activeChat.thread.filter((entry) => entry.kind === "user" || entry.kind === "assistant");
+                const visible = activeChat.thread.filter(
+                  (entry) => entry.kind === "user" || entry.kind === "assistant",
+                );
                 const shown = visible.length > 0 && visible[0].kind === "user" ? visible.slice(1) : visible;
                 return shown.length === 0 ? (
                   <p className="text-[13px] text-muted-foreground">This conversation has no messages yet.</p>
@@ -339,11 +345,17 @@ export default function NotebookSurface({
                   <div className="space-y-4">
                     {shown.map((entry, index) =>
                       entry.kind === "user" ? (
-                        <div key={index} className="ml-auto max-w-[85%] rounded-lg bg-muted px-3 py-2 text-[13px] leading-6">
+                        <div
+                          key={index}
+                          className="ml-auto max-w-[85%] rounded-lg bg-muted px-3 py-2 text-[13px] leading-6"
+                        >
                           {entry.text}
                         </div>
                       ) : (
-                        <div key={index} className="prose-reading max-w-[72ch] font-[family-name:var(--font-reading)]">
+                        <div
+                          key={index}
+                          className="prose-reading max-w-[var(--measure-prose)] font-[family-name:var(--font-reading)]"
+                        >
                           <Markdown text={entry.text} />
                         </div>
                       ),
@@ -480,7 +492,9 @@ export default function NotebookSurface({
               {runs.map((run) => (
                 <li key={run.id} className="flex flex-col gap-1 border-b border-border pb-2 last:border-0 last:pb-0">
                   <div className="flex items-baseline justify-between gap-2">
-                    <p className="min-w-0 line-clamp-1 text-[13px]">{displayTitle(stripMentionContext(run.objective)) || "Untitled run"}</p>
+                    <p className="min-w-0 line-clamp-1 text-[13px]">
+                      {displayTitle(stripMentionContext(run.objective)) || "Untitled run"}
+                    </p>
                     <Badge variant="secondary" className="shrink-0 font-normal">
                       {run.state === "waiting_input" ? "Answered" : run.state}
                     </Badge>
