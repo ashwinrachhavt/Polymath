@@ -400,6 +400,7 @@ const TIER_2_ACTIONS: { action: string; category: EventCategory }[] = [
   { action: "task.subtask_created", category: "work" },
   { action: "task.updated", category: "work" },
   { action: "task.waiting_on_added", category: "work" },
+  { action: "workspace.created", category: "workspace" },
   { action: "wiki.article_ingested", category: "knowledge" },
   { action: "wiki.article_updated", category: "knowledge" },
   { action: "writing.library_drafted", category: "knowledge" },

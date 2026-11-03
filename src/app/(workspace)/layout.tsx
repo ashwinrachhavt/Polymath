@@ -3,11 +3,15 @@ import { io } from "next/cache";
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
+import { sessionVerifiedEmail } from "@/app/(workspace)/invitations/[token]/session-email";
 import { ClerkAuthProvider } from "@/components/auth/clerk-auth-provider";
 import { AppShell } from "@/components/shell/app-shell";
+import type { WorkspaceSwitcherData } from "@/components/shell/workspace-switcher";
 import { clerkConfigured, devAuthBypass } from "@/lib/clerk";
 import { getAuthContext } from "@/lib/auth";
 import { getPreferences, resolveInterfaceMode } from "@/domains/identity/preferences";
+import { openInvitationsForEmail } from "@/domains/identity/invitations";
+import { listSwitchableWorkspaces, type AuthContext } from "@/domains/identity/resolve";
 import { listTriageFeed, type TriageFeed } from "@/domains/notifications/feed";
 
 /*
@@ -35,12 +39,34 @@ import { listTriageFeed, type TriageFeed } from "@/domains/notifications/feed";
  * sign-in mid-stream — an e2e suite that ran against such an environment
  * watched every page replace itself under it.
  */
+/*
+ * The switcher's rows (spec D2): every workspace the session may switch to,
+ * plus any open invitation addressed to the session's verified email. An
+ * invitation for a workspace already held is noise — an active membership
+ * always outranks a stale invite — so it is filtered out here, where both
+ * lists are in hand. A read failure leaves the switcher out of the shell
+ * rather than taking the layout down, the same honesty rule as the feed.
+ */
+async function loadWorkspaceSwitcher(auth: AuthContext): Promise<WorkspaceSwitcherData> {
+  const [memberships, email] = await Promise.all([listSwitchableWorkspaces(auth.userId), sessionVerifiedEmail(auth)]);
+  const held = new Set(memberships.map((membership) => membership.workspaceId));
+  const invitations = email ? await openInvitationsForEmail(email) : [];
+  return {
+    currentWorkspaceId: auth.workspaceId,
+    memberships,
+    pendingInvitations: invitations.filter((invitation) => !held.has(invitation.workspaceId)),
+  };
+}
+
 export default async function WorkspaceLayout({ children }: { children: ReactNode }) {
   let storageScope = "anonymous";
   // The notifications panel is chrome, so its feed is read here once for the
   // whole workspace rather than per page. A read failure must never take the
   // shell down with it: an empty feed is honest, a blank app is not.
   let notifications: TriageFeed = { items: [], counts: { inbox: 0, inFlight: 0, activity: 0 } };
+  // The workspace switcher is chrome too: the layout is the one place that
+  // already resolves auth per request, so its rows ride the same read.
+  let workspaceSwitcher: WorkspaceSwitcherData | null = null;
   // ASH-312: the interface language is an account preference resolved on the
   // server, so every destination renders in the owner's mode on first paint -
   // no client flash, and "auto" settles in the owner's timezone. The public
@@ -55,12 +81,14 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
     await io();
     const authContext = await getAuthContext();
     if (authContext) {
-      const [preferences, feed] = await Promise.all([
+      const [preferences, feed, switcher] = await Promise.all([
         getPreferences(authContext),
         listTriageFeed(authContext).catch(() => notifications),
+        loadWorkspaceSwitcher(authContext).catch(() => null),
       ]);
       interfaceMode = resolveInterfaceMode(preferences.interfaceMode, preferences.timezone);
       notifications = feed;
+      workspaceSwitcher = switcher;
     }
   } catch {
     // A preference read failure never blocks the workspace; default mode.
@@ -86,6 +114,7 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
         clerkConfigured={false}
         interfaceMode={interfaceMode}
         notifications={notifications}
+        workspaceSwitcher={workspaceSwitcher}
       >
         {children}
       </AppShell>
@@ -93,7 +122,13 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
   }
   return (
     <ClerkAuthProvider>
-      <AppShell storageScope={storageScope} clerkConfigured interfaceMode={interfaceMode} notifications={notifications}>
+      <AppShell
+        storageScope={storageScope}
+        clerkConfigured
+        interfaceMode={interfaceMode}
+        notifications={notifications}
+        workspaceSwitcher={workspaceSwitcher}
+      >
         {children}
       </AppShell>
     </ClerkAuthProvider>

@@ -22,6 +22,7 @@ export const workspaceSegments: readonly string[] = [
   "artifacts",
   "command-center",
   "dev",
+  "invitations",
   "learn",
   "more",
   "neuralflow",
@@ -31,6 +32,7 @@ export const workspaceSegments: readonly string[] = [
   "reviews",
   "settings",
   "supervision",
+  "workspaces",
 ];
 
 // Public page segments (also mirrored as publicPatterns in src/proxy.ts).

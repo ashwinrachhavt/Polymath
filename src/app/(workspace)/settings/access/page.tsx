@@ -4,6 +4,8 @@ import { Empty, Panel, Screen, Status } from "@/components/workspace/ui";
 import { listInvitations, listMembers } from "@/domains/identity/members";
 import { ForbiddenRoleError } from "@/lib/auth/guards";
 import { getAuthContext } from "@/lib/auth";
+import { InviteForm } from "./invite-form";
+import { RevokeInvitation } from "./revoke-invitation";
 import { MembersTable } from "./members-table";
 
 export const metadata = { title: "Access · Polymath" };
@@ -12,7 +14,8 @@ const dateFormat = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeZ
 
 async function Access() {
   await io();
-  const description = "Who belongs to this workspace and which invitations are open.";
+  const description =
+    "Who belongs to this workspace and which invitations are open. Invitations go out as shareable links.";
   if (!process.env.DATABASE_URL?.trim()) {
     return (
       <Screen title="Access" description={description}>
@@ -57,23 +60,31 @@ async function Access() {
       <Panel title="Invitations" description="An invitation is single-use, expires, and is tied to one email address.">
         {invites === null ? (
           <Empty title="Admins only" description="Only workspace admins see pending invitations." />
-        ) : invites.length === 0 ? (
-          <Empty title="No invitations" description="Nothing has been sent from this workspace." />
         ) : (
-          <ul className="divide-y">
-            {invites.map((i) => (
-              <li key={i.id} className="flex items-center justify-between gap-3 py-2 text-[13px]">
-                <span>
-                  <span className="font-medium">{i.email}</span>
-                  <span className="ml-2 text-xs capitalize text-muted-foreground">{i.role}</span>
-                </span>
-                <span className="flex items-center gap-3">
-                  <span className="text-xs text-muted-foreground">expires {dateFormat.format(i.expiresAt)}</span>
-                  <Status>{i.state}</Status>
-                </span>
-              </li>
-            ))}
-          </ul>
+          <>
+            <div className="mb-4">
+              <InviteForm />
+            </div>
+            {invites.length === 0 ? (
+              <Empty title="No invitations" description="Nothing has been sent from this workspace." />
+            ) : (
+              <ul className="divide-y">
+                {invites.map((i) => (
+                  <li key={i.id} className="flex items-center justify-between gap-3 py-2 text-[13px]">
+                    <span>
+                      <span className="font-medium">{i.email}</span>
+                      <span className="ml-2 text-xs capitalize text-muted-foreground">{i.role}</span>
+                    </span>
+                    <span className="flex items-center gap-3">
+                      <span className="text-xs text-muted-foreground">expires {dateFormat.format(i.expiresAt)}</span>
+                      <Status>{i.state}</Status>
+                      {i.state === "pending" ? <RevokeInvitation invitationId={i.id} /> : null}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
         )}
       </Panel>
     </Screen>
