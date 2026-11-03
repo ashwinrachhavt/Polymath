@@ -60,6 +60,19 @@ export async function listRecentRuns(
         // Discarded runs are retired: hidden from conversation surfaces,
         // still present for audit.
         isNull(agentRuns.discardedAt),
+        // Machinery runs are the superagent domain's own sessions — the
+        // assessor judging an admission, the ticket workers doing accepted
+        // work. Nobody types into them: their objectives are machine prose
+        // ("You are judging one candidate for admission…"), and listing one
+        // as a conversation promised a chat the person never had. The run
+        // rows already carry the marker — their subjects name the machinery
+        // namespace (`superagent_*`: assessor/eve.ts assessmentSubjects,
+        // executor/eve.ts ticketRunSubjects) — so the predicate reads the
+        // row, not its words. A namespace prefix, not an enumerated type
+        // list: the next machinery subject type the domain adds is excluded
+        // by the same line, the way the onboarding prefix below predates its
+        // script's exact wording.
+        sql`not exists (select 1 from jsonb_array_elements(${agentRuns.subjects}) as s where position('superagent_' in s->>'type') = 1)`,
         options.excludeOnboarding
           ? // Prefix, not the exact current script: the script's text has
             // changed before (the default agent's name rides in its last
