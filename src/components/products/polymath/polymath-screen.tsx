@@ -4,11 +4,17 @@ import dynamic from "next/dynamic";
 import type { ComponentType } from "react";
 import PolymathStorageWarning from "./feature-storage-warning";
 
-const loading = () => <p role="status" className="p-6 text-[13px] text-muted-foreground">Loading Alfred workspace…</p>;
+const loading = () => (
+  <p role="status" className="p-6 text-[13px] text-muted-foreground">
+    Loading Alfred workspace…
+  </p>
+);
 const screens: Record<string, ComponentType<{ initialId?: string }>> = {
   dashboard: dynamic(() => import("./dashboard"), { loading }),
   library: dynamic(() => import("./library"), { loading }),
-  zettels: dynamic(() => import("./zettels"), { loading }),
+  // zettels has no entry: the /polymath/knowledge/zettels/** route redirects
+  // to /polymath/ideas and the dead screen component is deleted; the map is
+  // never consulted with screen="zettels" for the same reason as notebook.
   dossiers: dynamic(() => import("./dossiers"), { loading }),
   // notebook has no entry: /apps/polymath/notebook redirects to the canonical
   // /polymath/notes surface before this map is ever consulted.
@@ -24,5 +30,10 @@ const screens: Record<string, ComponentType<{ initialId?: string }>> = {
 };
 export default function PolymathScreen({ screen, initialId }: { screen: string; initialId?: string }) {
   const Component = screens[screen];
-  return Component ? <><PolymathStorageWarning /><Component initialId={initialId} /></> : null;
+  return Component ? (
+    <>
+      <PolymathStorageWarning />
+      <Component initialId={initialId} />
+    </>
+  ) : null;
 }

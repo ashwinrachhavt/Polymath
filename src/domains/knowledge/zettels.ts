@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { auditEvents } from "@/domains/audit/schema";
@@ -7,7 +7,8 @@ import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { escapeLike } from "@/lib/list-params";
 import { currentExtractionIdSubquery } from "./versions";
 import { mergeCandidates, type SectionCandidate } from "./zettel-merge";
-import { ZETTEL_MERGE_MAX_PER_SOURCE, splitSections } from "./zettel-chunking";
+import { splitSections } from "./zettel-chunking";
+import { capForSize, SUGGESTED_LINKS_PER_COLLECTION_CARD } from "./zettel-capacity";
 import { defaultZettelExtractor, type ZettelExtractor } from "@/integrations/zettels/extractor";
 import { generationProvider } from "@/integrations/generation/provider";
 import {
@@ -48,7 +49,6 @@ import {
  * structured provenance underneath it.
  */
 
-const ZETTEL_MAX_PER_SOURCE = ZETTEL_MERGE_MAX_PER_SOURCE;
 const MAX_TITLE = 120;
 const MAX_CLAIM = 400;
 
@@ -316,6 +316,12 @@ export async function proposeZettels(auth: AuthContext, input: ZettelSourceInput
 
   const extractor = input.extractor ?? defaultZettelExtractor(auth.workspaceId);
 
+  // One size-derived cap for the whole pass, computed once from the resolved
+  // source text: every seam below (extractor prompt, response schema, merge,
+  // final slice) reads the same number. A ceiling only — zero proposals stays
+  // an honest answer when the source makes no clear claims.
+  const cap = capForSize(source.text.length);
+
   // The source is read in bounded sections; a section is never truncated by
   // the extractor's input cap, and anything past the section cap is counted,
   // not dropped.
@@ -323,7 +329,7 @@ export async function proposeZettels(auth: AuthContext, input: ZettelSourceInput
 
   const survivors: SectionCandidate[] = [];
   for (const [sectionIndex, section] of sections.entries()) {
-    const candidates = await extractor.extract(section.text);
+    const candidates = await extractor.extract(section.text, { max: cap });
     for (const c of candidates) {
       const title = c.title?.trim();
       const claim = c.claim?.trim();
@@ -348,7 +354,7 @@ export async function proposeZettels(auth: AuthContext, input: ZettelSourceInput
   // fit one section is the extractor's own single call, capped flat below.
   let merged = survivors;
   if (sections.length > 1 && survivors.length > 1) {
-    merged = await mergeCandidates(survivors, { provider: generationProvider() });
+    merged = await mergeCandidates(survivors, { provider: generationProvider(), max: cap });
   }
 
   // Re-zettelize dedup: the thread's own earlier proposals for this artifact
@@ -379,7 +385,7 @@ export async function proposeZettels(auth: AuthContext, input: ZettelSourceInput
 
   const proposals = [];
   let dedupDegraded = false;
-  for (const z of merged.slice(0, ZETTEL_MAX_PER_SOURCE)) {
+  for (const z of merged.slice(0, cap)) {
     if (await isRepeatProposal(z, earlier)) continue;
     // Corpus-aware dedup flags twins; it decides nothing. Without an embedding
     // provider the pass degrades to unflagged proposals rather than failing —
@@ -627,6 +633,47 @@ export async function acceptZettel(auth: AuthContext, input: { proposalId: strin
       label: sourceLabel,
       context: proposal.quote,
     });
+    /*
+     * Sibling seeding: accepted cards from the same source are joined the
+     * moment this accept commits — durable `related` edges written inside
+     * this transaction. The semantic pass skips explicitly-linked pairs, so
+     * these edges survive re-embeds; without them, same-source cards stay
+     * strangers until an embedding pass happens to find them similar. The
+     * schema's one-source check (document XOR source artifact) makes both
+     * filters null impossible; the guard keeps that failure mode at "no
+     * edges", never "edges to everything".
+     */
+    const sameSource = and(
+      proposal.documentId ? eq(zettelProposals.documentId, proposal.documentId) : undefined,
+      proposal.sourceArtifactId ? eq(zettelProposals.sourceArtifactId, proposal.sourceArtifactId) : undefined,
+    );
+    if (sameSource) {
+      const siblings = await tx
+        .select({ artifactId: zettelProposals.artifactId, title: zettelProposals.title })
+        .from(zettelProposals)
+        .where(
+          and(
+            eq(zettelProposals.workspaceId, auth.workspaceId),
+            sameSource,
+            eq(zettelProposals.status, "accepted"),
+            isNotNull(zettelProposals.artifactId),
+            ne(zettelProposals.id, proposal.id),
+          ),
+        );
+      if (siblings.length > 0) {
+        await tx.insert(artifactLinks).values(
+          siblings.map((s) => ({
+            workspaceId: auth.workspaceId,
+            artifactId: card.id,
+            targetType: "zettel",
+            targetId: s.artifactId!,
+            linkType: "related",
+            label: s.title,
+            context: "From the same source",
+          })),
+        );
+      }
+    }
     await tx
       .update(zettelProposals)
       .set({ conceptId: concept.id, claimId: claim.id, artifactId: card.id })
@@ -762,7 +809,8 @@ export async function pageZettelCards(
     const suggestionsByCard = new Map<string, { targetId: string; targetTitle: string }[]>();
     for (const suggestion of suggestionRows) {
       const list = suggestionsByCard.get(suggestion.artifactId) ?? [];
-      if (list.length < 3) list.push({ targetId: suggestion.targetId, targetTitle: suggestion.label ?? "Untitled" });
+      if (list.length < SUGGESTED_LINKS_PER_COLLECTION_CARD)
+        list.push({ targetId: suggestion.targetId, targetTitle: suggestion.label ?? "Untitled" });
       suggestionsByCard.set(suggestion.artifactId, list);
     }
     return {
