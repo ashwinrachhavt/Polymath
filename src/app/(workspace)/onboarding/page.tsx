@@ -1,20 +1,17 @@
 import { io } from "next/cache";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { getAuthContext } from "@/lib/auth";
 import {
   findLatestOnboardingRun,
-  findLiveOnboardingRun,
-  getOnboardingSession,
   isWorkspaceOnboarded,
+  getOnboardingSession,
+  readOnboardingProfileVersion,
   readOnboardingRun,
 } from "@/domains/agents/onboarding";
 import { readWizardState } from "@/domains/agents/onboarding-assist";
-import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
-import { OnboardingConversation } from "./onboarding-conversation";
-import { OnboardingStatusCard } from "./onboarding-status-card";
-import { OnboardingConfirm } from "./onboarding-confirm";
-import { OnboardingInterview } from "./onboarding-interview";
+import { OnboardingWizard } from "./onboarding-wizard";
 import { resolveReloadSurface } from "./reload-surface";
 
 export const metadata = { title: "Meet your agent · Polymath" };
@@ -26,17 +23,21 @@ const surfaceWrap = (node: React.ReactNode) => (
 );
 
 /*
- * First-run onboarding: one short conversation with the workspace's future
- * agent, then an editable confirm card, then the commit path every onboarding
- * shares (completeOnboarding). The form component survives as the
- * extraction-failure fallback, not as the front door.
+ * First-run onboarding: a four-step wizard — role, tools and priorities, the
+ * person's own words with one quiet assist, then an editable review — and
+ * the commit path every onboarding shape shares (completeOnboarding). There
+ * is no run anywhere in the flow itself: the questions are forms, the assist
+ * is one awaited action, and nothing polls or streams.
  *
- * The page is the reload anchor. It re-derives where the flow stands from the
- * database on every load — an open interview run resumes, a finished run with
- * a valid brief goes straight to the review card, a failed run lands on its
- * failure card or the pre-filled form (never an auto-start), and a wizard in
- * progress resumes at its persisted step — so no client state is ever
- * load-bearing.
+ * The page is the reload anchor. It re-derives where the flow stands from
+ * the database on every load — a mid-wizard reload resumes at its persisted
+ * step and draft, a finished run's brief opens the review step, a failed
+ * legacy run lands on the wizard with what its thread could salvage (never
+ * an auto-start, F5) — so no client state is ever load-bearing. A legacy
+ * in-flight interview run resolves through the same decision: its brief (if
+ * the final turn landed) opens review; otherwise the wizard restarts with
+ * the salvage as prefilled fields, and completeOnboarding's sweep retires
+ * the dead run row when the wizard commits.
  */
 async function OnboardingSurface() {
   await io();
@@ -45,34 +46,6 @@ async function OnboardingSurface() {
     redirect("/polymath");
   }
 
-  // A hard block, not a form: without the runtime there is no agent to
-  // personify, and collecting a brief for one would be a lie about what
-  // this deployment is.
-  const unavailable = eveBridgeUnavailableReason();
-  if (unavailable) {
-    return surfaceWrap(<OnboardingStatusCard reason={unavailable} />);
-  }
-
-  // An open interview resumes on the same run — continue signals it, never a
-  // second run. Its thread may already carry the brief (the final turn landed
-  // while the tab was away); then the card renders immediately.
-  const live = await findLiveOnboardingRun(auth.workspaceId);
-  if (live) {
-    const reading = await readOnboardingRun(auth, live.id);
-    if (reading?.brief) {
-      return surfaceWrap(<OnboardingConfirm initial={reading.brief} profileVersion={reading.profileVersion} />);
-    }
-    return surfaceWrap(<OnboardingConversation initialRunId={live.id} />);
-  }
-
-  // An interrupted flow the person is returning to. The decision is pure
-  // data (resolveReloadSurface): a finished run's brief is the review step;
-  // everything else lands on the wizard — a mid-wizard reload at its
-  // persisted step, a legacy interview run's restart with what its thread
-  // could salvage. A failed run never auto-restarts (F5). The wizard kind
-  // maps onto the surfaces it replaces for now (the staged wizard UI lands
-  // next): salvage restarts as the pre-filled form, a restart notice as the
-  // island's error card, otherwise the island itself.
   const latest = await findLatestOnboardingRun(auth.workspaceId);
   const surface = resolveReloadSurface(
     latest,
@@ -80,15 +53,20 @@ async function OnboardingSurface() {
     readWizardState(await getOnboardingSession(auth.workspaceId)),
   );
   if (surface.kind === "review") {
-    return surfaceWrap(<OnboardingConfirm initial={surface.brief} profileVersion={surface.profileVersion} />);
+    // A run's validated brief, with the profile version its card races on.
+    return surfaceWrap(
+      <OnboardingWizard step="review" draft={{ ...surface.brief }} profileVersion={surface.profileVersion} />,
+    );
   }
-  if (surface.prefill && Object.keys(surface.prefill).length > 0) {
-    return surfaceWrap(<OnboardingInterview initial={surface.prefill} notice={surface.notice ?? undefined} />);
-  }
-  if (surface.notice) {
-    return surfaceWrap(<OnboardingConversation initialError={surface.notice} />);
-  }
-  return surfaceWrap(<OnboardingConversation />);
+  return surfaceWrap(
+    <OnboardingWizard
+      step={surface.step}
+      draft={surface.draft}
+      prefill={surface.prefill}
+      notice={surface.notice}
+      profileVersion={await readOnboardingProfileVersion(auth.workspaceId)}
+    />,
+  );
 }
 
 /*
@@ -97,14 +75,30 @@ async function OnboardingSurface() {
  */
 export default function OnboardingPage() {
   return (
-    <Suspense
-      fallback={
-        <p role="status" className="p-6 text-[13px] text-muted-foreground">
-          Loading…
-        </p>
-      }
-    >
+    <Suspense fallback={<OnboardingSkeleton />}>
       <OnboardingSurface />
     </Suspense>
+  );
+}
+
+/*
+ * Shape-matched to step one — title, description line, chip row, field,
+ * continue — so the fallback resolves into the wizard instead of into a
+ * jump (the knowledge page's skeleton is the pattern).
+ */
+function OnboardingSkeleton() {
+  return (
+    <div role="status" aria-label="Loading onboarding" className="mx-auto flex w-full max-w-xl flex-col gap-6 pt-16">
+      <Skeleton className="h-8 w-2/3" />
+      <Skeleton className="h-4 w-full max-w-md" />
+      <div className="flex flex-wrap gap-1.5">
+        <Skeleton className="h-7 w-20 rounded-full" />
+        <Skeleton className="h-7 w-24 rounded-full" />
+        <Skeleton className="h-7 w-16 rounded-full" />
+        <Skeleton className="h-7 w-28 rounded-full" />
+      </div>
+      <Skeleton className="h-9 w-full" />
+      <Skeleton className="h-8 w-24" />
+    </div>
   );
 }

@@ -10,6 +10,7 @@ import { HistoryMenu } from "./history-menu";
 import type { HistoryGroup } from "./history";
 import { ModelPicker } from "./model-picker";
 import { NewConversation } from "./new-conversation";
+import { OnboardingWelcome, type OnboardingWelcomeData } from "./onboarding-welcome";
 import { continueConversation } from "./continue-actions";
 import type { PickableSkill } from "./skills/slash-skill-menu";
 
@@ -34,6 +35,7 @@ export function HomeSurface({
   models,
   currentModel,
   notice,
+  welcome,
 }: {
   history: HistoryGroup[];
   skills: PickableSkill[];
@@ -41,6 +43,8 @@ export function HomeSurface({
   currentModel: string;
   /** A bridge problem, stated once under the composer. */
   notice: string | null;
+  /** The one-time post-onboarding welcome; the session stamp decides, the page passes it or nothing. */
+  welcome?: OnboardingWelcomeData;
 }) {
   const [started, setStarted] = useState<{ runId: string; message?: string } | null>(null);
   const router = useRouter();
@@ -97,7 +101,11 @@ export function HomeSurface({
 
   return (
     <div className="page-content flex flex-1 flex-col gap-12 pt-[12vh] pb-16">
-      <h1 className="screen-title text-center">What would you like to work on?</h1>
+      {welcome ? (
+        <OnboardingWelcome {...welcome} />
+      ) : (
+        <h1 className="screen-title text-center">What would you like to work on?</h1>
+      )}
 
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-2">
         <NewConversation skills={skills} onStarted={setStarted} />
@@ -125,9 +133,7 @@ export function HomeSurface({
                       className="hover:bg-muted/70 focus-visible:ring-ring -mx-2 flex h-9 items-center gap-3 rounded-md px-2 text-[13px] transition-colors outline-none focus-visible:ring-2"
                     >
                       <span className="min-w-0 flex-1 truncate">{row.title}</span>
-                      <span className="text-muted-foreground shrink-0 text-[11px] tabular-nums">
-                        {row.time}
-                      </span>
+                      <span className="text-muted-foreground shrink-0 text-[11px] tabular-nums">{row.time}</span>
                     </Link>
                   </li>
                 ))}
