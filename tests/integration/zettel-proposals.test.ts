@@ -205,17 +205,35 @@ suite("proposeZettels (real Postgres)", () => {
     );
   });
 
-  it("caps proposals per document", async () => {
+  it("caps proposals per document by source size", async () => {
     const auth = await workspace();
-    // The flat per-source bound is 20 (was 8 before the chunked pipeline): a
-    // single-section source keeps everything up to the cap without a merge.
+    // The per-source bound is size-derived now (capForSize): this source is
+    // ~1.2k chars, so the small band caps it at 2 — the flat 20 is gone.
     const sentences = Array.from({ length: 25 }, (_, i) => `Clause number ${i} states a distinct obligation.`);
     const doc = await seed(auth, sentences.join(" "));
     const { proposals: rows } = await proposeZettels(auth, {
       documentId: doc.id,
       extractor: extractor(sentences.map((q, i) => ({ title: `T${i}`, claim: "c", quote: q }))),
     });
-    expect(rows).toHaveLength(20);
+    expect(rows).toHaveLength(2);
+  });
+
+  it("caps a medium single-section source at 5 without a merge", async () => {
+    const auth = await workspace();
+    // ~11k chars, one section (under the 12k section cap): the medium band
+    // applies — 25 located candidates, the final slice keeps 5.
+    const sentences = Array.from(
+      { length: 25 },
+      (_, i) => `Clause number ${i} ${"padding text ".repeat(30)}states a distinct obligation.`,
+    );
+    expect(sentences.join(" ").length).toBeGreaterThan(2_000);
+    expect(sentences.join(" ").length).toBeLessThanOrEqual(12_000);
+    const doc = await seed(auth, sentences.join(" "));
+    const { proposals: rows } = await proposeZettels(auth, {
+      documentId: doc.id,
+      extractor: extractor(sentences.map((q, i) => ({ title: `T${i}`, claim: "c", quote: q }))),
+    });
+    expect(rows).toHaveLength(5);
   });
 });
 

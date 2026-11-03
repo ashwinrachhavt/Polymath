@@ -26,30 +26,44 @@ export type ZettelCandidate = { title: string; claim: string; quote: string };
 export interface ZettelExtractor {
   /** Stored on the proposal, e.g. "openrouter:openai/gpt-4o-mini". */
   readonly name: string;
-  extract(text: string): Promise<ZettelCandidate[]>;
+  /**
+   * `options.max` is the size-derived proposal cap (capForSize) for the whole
+   * source, applied to every section call of one pass. A model returning more
+   * than the cap fails the parse and the pass retries — the cap is enforced,
+   * not asked. The flat default is the historical prompt cap.
+   */
+  extract(text: string, options?: { max?: number }): Promise<ZettelCandidate[]>;
 }
 
 const MAX_INPUT_CHARS = 12_000;
 const DEFAULT_MODEL = "openai/gpt-4o-mini";
 
-const response = z.object({
-  zettels: z.array(z.object({ title: z.string(), claim: z.string(), quote: z.string() })),
-});
+const DEFAULT_CAP = 8;
 
-const SYSTEM = `You extract atomic notes from a document. Return JSON with exactly this shape: {"zettels":[{"title","claim","quote"}]}.
+const responseItem = z.object({ title: z.string(), claim: z.string(), quote: z.string() });
+
+/** The response contract at one call's cap: `.max` makes the cap enforced rather than asked. */
+const responseSchema = (max: number) => z.object({ zettels: z.array(responseItem).max(max) });
+
+const systemPrompt = (max: number) =>
+  `You extract atomic notes from a document. Return JSON with exactly this shape: {"zettels":[{"title","claim","quote"}]}.
 Each zettel is ONE claim the document actually makes - one idea per note, no compound claims.
 "title": a short noun phrase (max 8 words) naming the claim.
 "claim": the document's assertion in your own words, stated as a standalone sentence.
 "quote": copied VERBATIM from the document - the exact passage that supports the claim, never paraphrased, never reconstructed from memory. If you cannot find a supporting passage, drop the claim.
-Return at most 8, strongest claims first. Return {"zettels":[]} when the document makes no clear claims - never invent a claim to fill the shape. ${untrustedDataClauseJsonSafe("document")}`;
+Return at most ${max}, strongest claims first. Return {"zettels":[]} when the document makes no clear claims - never invent a claim to fill the shape. ${untrustedDataClauseJsonSafe("document")}`;
 
-function fromGeneration(provider: GenerationProvider, run: (input: { system: string; prompt: string }) => Promise<{ text: string }>): ZettelExtractor {
+function fromGeneration(
+  provider: GenerationProvider,
+  run: (input: { system: string; prompt: string }) => Promise<{ text: string }>,
+): ZettelExtractor {
   return {
     name: provider.name,
-    async extract(text) {
+    async extract(text, options) {
+      const max = options?.max ?? DEFAULT_CAP;
       let out: { text: string };
       try {
-        out = await run({ system: SYSTEM, prompt: text.slice(0, MAX_INPUT_CHARS) });
+        out = await run({ system: systemPrompt(max), prompt: text.slice(0, MAX_INPUT_CHARS) });
       } catch (cause) {
         if (cause instanceof GenerationRequestError) {
           throw new Error(`Zettel extraction failed (HTTP ${cause.status}).`);
@@ -57,7 +71,7 @@ function fromGeneration(provider: GenerationProvider, run: (input: { system: str
         throw cause;
       }
       try {
-        return response.parse(JSON.parse(out.text)).zettels;
+        return responseSchema(max).parse(JSON.parse(out.text)).zettels;
       } catch {
         throw new Error("Zettel extraction returned an unreadable answer.");
       }

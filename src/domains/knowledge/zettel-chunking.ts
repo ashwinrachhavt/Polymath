@@ -10,7 +10,7 @@
 
 export const ZETTEL_SECTION_MAX_CHARS = 12_000;
 export const ZETTEL_MAX_SECTIONS = 12;
-/** The cap the merge pass may keep per source; replaces the flat 8. */
+/** The merge pass's fallback ceiling when no size-derived cap is passed; proposeZettels passes capForSize(source text). */
 export const ZETTEL_MERGE_MAX_PER_SOURCE = 20;
 
 export type ZettelSection = { text: string; start: number; end: number };
