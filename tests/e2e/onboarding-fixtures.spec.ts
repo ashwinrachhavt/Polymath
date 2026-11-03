@@ -7,35 +7,63 @@ import { expect, test } from "@playwright/test";
  * component the page branch renders, in the same wrapper.
  *
  * The artifacts land in test-results/onboarding-pixels/ and upload as the
- * onboarding-pixels CI artifact for review. The `island` shot is the one
- * state that touches the server: the island auto-starts its run, which fails
- * fast to the status card in the keyless harness (no Eve) - that transition
- * IS the bridge-down journey, so the settled card is asserted as well.
+ * onboarding-pixels CI artifact for review. The interaction states —
+ * assist pending, assist failed, confirm conflict — are driven here against
+ * the REAL server actions: the fixture route's confirm always loses the
+ * version guard (profileVersion -1), so a conflict is the DB telling the
+ * truth, and the assist is staged at the transport (aborted or dangled
+ * POST), which is exactly the failure surface a dead network gives a user.
  */
 
 const HIDE_DEV_CHROME = { style: "nextjs-portal { display: none }" } as const;
 
 /*
  * First-hit dev compiles are the slow step on a cold server: the fixture
- * route, the island chunk, and the underlying pages each take tens of seconds
- * to compile on first request, and the 30s defaults read that as a test
- * failure (QA F10 — 3 specs failed cold, passed warm, zero code changes).
- * Both ceilings ride up together: the goto timeouts so the compile itself
- * waits, the test timeout so the goto's headroom exists. The ceiling must
- * cover the worst case in one test — goto(90s) plus the island test's 5s
- * evidence pause plus its 60s settle — so 240s, not merely the goto's 90.
+ * route, the wizard chunk, and the underlying pages each take tens of
+ * seconds to compile on first request, and the 30s defaults read that as a
+ * test failure (QA F10 — 3 specs failed cold, passed warm, zero code
+ * changes). Both ceilings ride up together: the goto timeouts so the
+ * compile itself waits, the test timeout so the goto's headroom exists.
  */
 test.setTimeout(240_000);
 
 const GOTO = { timeout: 90_000 } as const;
 
 const states = [
-  { state: "confirm", ready: (page: import("@playwright/test").Page) => page.getByRole("button", { name: /confirm/i }) },
-  { state: "status", ready: (page: import("@playwright/test").Page) => page.getByText(/agent runtime is not reachable/i) },
-  { state: "form", ready: (page: import("@playwright/test").Page) => page.getByRole("button", { name: /start working/i }) },
   {
-    state: "form-salvage",
-    ready: (page: import("@playwright/test").Page) => page.getByText(/summary could not be read/i),
+    state: "fresh",
+    ready: (page: import("@playwright/test").Page) =>
+      page.getByRole("heading", { name: /What will your Polymath agent do/ }),
+  },
+  {
+    state: "s1",
+    ready: (page: import("@playwright/test").Page) =>
+      page.getByRole("switch", { name: /Founder at a two-person climate studio/ }),
+  },
+  {
+    state: "s2",
+    ready: (page: import("@playwright/test").Page) =>
+      page.getByRole("heading", { name: /What tools does Founder work run on/ }),
+  },
+  {
+    state: "s3",
+    ready: (page: import("@playwright/test").Page) => page.getByRole("textbox", { name: /In a few sentences/ }),
+  },
+  {
+    state: "review",
+    ready: (page: import("@playwright/test").Page) => page.getByRole("heading", { name: /Review and confirm/ }),
+  },
+  {
+    state: "salvage",
+    ready: (page: import("@playwright/test").Page) => page.getByText(/The interview could not finish/i),
+  },
+  {
+    state: "status",
+    ready: (page: import("@playwright/test").Page) => page.getByText(/agent runtime is not reachable/i),
+  },
+  {
+    state: "welcome",
+    ready: (page: import("@playwright/test").Page) => page.getByText(/Your agent is ready/i),
   },
 ] as const;
 
@@ -48,132 +76,66 @@ for (const { state, ready } of states) {
   });
 }
 
-/*
- * The island mid-conversation. The stream endpoint is Eve-backed, so the spec
- * answers it with fabricated ChatFrames (the wire contract from
- * src/domains/agents/stream-contract.ts): a snapshot of the turns so far and
- * the turn marker that leaves the conversation open. What renders is the real
- * ChatSurface and its accumulator - only the transport is staged, which is
- * also why this can never be evidence the Eve path itself works.
- */
-test("the island renders a live conversation", async ({ page }) => {
-  const frames = [
-    {
-      type: "snapshot",
-      runId: "fixture-success-run",
-      blocks: [
-        { id: "b1", kind: "user", text: "I'm a solo founder and my inbox runs my day.", done: true },
-        {
-          id: "b2",
-          kind: "assistant",
-          text: "That is exactly what I am here to take off your plate. Which tools do you live in - Gmail, Linear, Calendar, something else?",
-          done: true,
-        },
-        { id: "b3", kind: "user", text: "Gmail and Linear, mostly. Calendar for the external meetings.", done: true },
-        {
-          id: "b4",
-          kind: "assistant",
-          text: "Got it. Last one: what should I watch first - what would make tomorrow morning feel different?",
-          done: true,
-        },
-      ],
-      cursor: 4,
-    },
-    { type: "turn", runId: "fixture-success-run", state: "waiting", cursor: 5 },
-  ];
-  await page.route("**/api/v1/runs/fixture-success-run/stream", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/x-ndjson; charset=utf-8",
-      body: frames.map((frame) => JSON.stringify(frame)).join("\n") + "\n",
-    });
+test("a role choice unlocks the tools step", async ({ page }) => {
+  await page.goto("/dev/onboarding-fixtures?state=fresh", GOTO);
+  await page.getByRole("switch", { name: /Founder or executive/ }).click();
+  await expect(page.getByRole("button", { name: "Continue" })).toBeEnabled();
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByRole("heading", { name: /What tools does Founder or executive work run on/ })).toBeVisible({
+    timeout: 15_000,
   });
-  await page.goto("/dev/onboarding-fixtures?state=island-success", GOTO);
-  await expect(page.getByText("what would make tomorrow morning feel different?")).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText("Something went wrong")).toHaveCount(0);
-  await page.screenshot({ path: "test-results/onboarding-pixels/island-conversation.png", fullPage: true, ...HIDE_DEV_CHROME });
-});
-
-test("the island settles on a labelled failure surface when no runtime is reachable", async ({ page }) => {
-  await page.goto("/dev/onboarding-fixtures?state=island", GOTO);
-  // Evidence for the state the island is in before it settles: if the start
-  // never returns, this is the shot that shows it.
-  await page.waitForTimeout(5_000);
-  await page.screenshot({ path: "test-results/onboarding-pixels/island-starting.png", fullPage: true, ...HIDE_DEV_CHROME });
-  // The island mounts and starts its run. How far it gets depends on the
-  // harness env: no bridge secret fails the start outright (the island's own
-  // error card); a secret without a reachable Eve starts the run and the
-  // stream answers with a labelled error inside the chat. Both are the
-  // bridge-down journey - the assertion is a named failure, never a spinner
-  // or an error boundary.
-  await expect(
-    page
-      .getByText(
-        // The three named bridge-down surfaces, and only those: the island's
-        // own error card, the bridge-reason copy, or the stream's labelled
-        // failure frame. Anything else failing still fails this test.
-        /The interview could not start|not reachable from this deployment|no agent session|Agent execution is unavailable/,
-      )
-      .first(),
-  ).toBeVisible({ timeout: 60_000 });
-  await expect(page.getByText("Something went wrong")).toHaveCount(0);
-  await page.screenshot({ path: "test-results/onboarding-pixels/island-settled.png", fullPage: true, ...HIDE_DEV_CHROME });
-});
-
-/*
- * The page's landing for a failed interview run with nothing salvageable
- * (QA F5): the failure card renders at once, with Retry and the form fallback
- * — and no "Starting the interview…" spinner, because a failed run must never
- * auto-mint a replacement run, session, and spend reservation on reload.
- */
-test("a failed run with nothing salvageable lands on the failure card, not an auto-start", async ({ page }) => {
-  await page.goto("/dev/onboarding-fixtures?state=retry-card", GOTO);
-  await expect(page.getByRole("heading", { name: "The interview could not start" })).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText("Starting the interview")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /answer as a form instead/i })).toBeVisible();
-  await page.screenshot({ path: "test-results/onboarding-pixels/retry-card.png", fullPage: true, ...HIDE_DEV_CHROME });
-});
-
-/*
- * The terminal failure inside the conversation (QA F6): the real ChatSurface
- * on a run whose stream reports turn failed AND the run ended failed. The
- * failure line must carry the terminal truth with a working fresh-start Retry
- * — never the turn-failure lie ("You can send another message") that no send
- * can satisfy on a closed session.
- */
-test("a terminally failed run reconciles the failure line with the ended composer", async ({ page }) => {
-  const frames = [
-    {
-      type: "snapshot",
-      runId: "fixture-failed-run",
-      blocks: [
-        { id: "b1", kind: "user", text: "I'm a solo founder and my inbox runs my day.", done: true },
-        { id: "b2", kind: "assistant", text: "Got it. Which tools do you live in?", done: true },
-      ],
-      cursor: 2,
-    },
-    { type: "turn", runId: "fixture-failed-run", state: "failed", cursor: 3 },
-    { type: "end", runId: "fixture-failed-run", state: "failed", cursor: 3 },
-  ];
-  await page.route("**/api/v1/runs/fixture-failed-run/stream", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/x-ndjson; charset=utf-8",
-      body: frames.map((frame) => JSON.stringify(frame)).join("\n") + "\n",
-    });
-  });
-  await page.goto("/dev/onboarding-fixtures?state=island-failed", GOTO);
-  // The terminal truth replaces the turn-failure line, and its Retry is the
-  // island's fresh start (the same mechanism the error card's Retry uses).
-  await expect(page.getByText("This run failed. Retry it to start a new run.")).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText("You can send another message")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
-  // The composer agrees the run is over: no input, just the honest ended
-  // state - the contradiction QA caught (sendable + guarded at once) is gone.
-  await expect(page.getByText("This conversation has ended.")).toBeVisible();
   await page.screenshot({
-    path: "test-results/onboarding-pixels/island-terminal-failed.png",
+    path: "test-results/onboarding-pixels/advance-to-tools.png",
+    fullPage: true,
+    ...HIDE_DEV_CHROME,
+  });
+});
+
+test("the assist pending state is a quiet status line, not a spinner", async ({ page }) => {
+  await page.goto("/dev/onboarding-fixtures?state=s3", GOTO);
+  await page.getByRole("textbox", { name: /In a few sentences/ }).waitFor();
+  // Dangle every server-action POST: the request never answers, so the
+  // wizard sits in its pending state for as long as the transport does.
+  await page.route("**/dev/onboarding-fixtures**", (route) =>
+    route.request().method() === "POST" ? new Promise(() => {}) : route.continue(),
+  );
+  await page.getByRole("button", { name: /Polish with Polymath/ }).click();
+  await expect(page.getByRole("status")).toHaveText(/Reading your answers/, { timeout: 15_000 });
+  await page.screenshot({
+    path: "test-results/onboarding-pixels/s3-assist-pending.png",
+    fullPage: true,
+    ...HIDE_DEV_CHROME,
+  });
+});
+
+test("a failed assist shows a labelled error and keeps the draft", async ({ page }) => {
+  await page.goto("/dev/onboarding-fixtures?state=s3", GOTO);
+  await page.getByRole("textbox", { name: /In a few sentences/ }).waitFor();
+  const words = await page.getByRole("textbox", { name: /In a few sentences/ }).inputValue();
+  // Abort the transport: the assist fetch throws, and the wizard owes the
+  // person a labelled error — with their words exactly where they left them.
+  await page.route("**/dev/onboarding-fixtures**", (route) =>
+    route.request().method() === "POST" ? route.abort("connectionreset") : route.continue(),
+  );
+  await page.getByRole("button", { name: /Polish with Polymath/ }).click();
+  await expect(page.getByRole("alert")).toHaveText(/The assist did not run/, { timeout: 15_000 });
+  await expect(page.getByRole("textbox", { name: /In a few sentences/ })).toHaveValue(words);
+  await page.screenshot({
+    path: "test-results/onboarding-pixels/s3-assist-failed.png",
+    fullPage: true,
+    ...HIDE_DEV_CHROME,
+  });
+});
+
+test("confirm on the fixture route loses the version race and keeps the draft", async ({ page }) => {
+  await page.goto("/dev/onboarding-fixtures?state=review", GOTO);
+  await page.getByRole("button", { name: "Confirm and finish" }).click();
+  await expect(page.getByRole("alert")).toHaveText(/edited since you opened this page/, { timeout: 15_000 });
+  // The draft survives: the review fields still hold what the brief proposed.
+  await expect(page.getByRole("textbox", { name: "What should your agent be called?" })).toHaveValue("Polymath");
+  await page.screenshot({
+    path: "test-results/onboarding-pixels/review-conflict.png",
     fullPage: true,
     ...HIDE_DEV_CHROME,
   });
