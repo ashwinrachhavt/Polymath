@@ -169,6 +169,10 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
               view={filter}
               selectedId={effectiveSelectedId}
               rawQuery={query}
+              zettelProviderReady={generation?.configured ?? false}
+              zettelProviderReason={
+                generation?.reason ?? "Zettel proposals need a model. Set OPENROUTER_API_KEY or GEMINI_API_KEY."
+              }
               rows={rows.map((capture) => ({
                 id: capture.id,
                 processingState: capture.processingState,
