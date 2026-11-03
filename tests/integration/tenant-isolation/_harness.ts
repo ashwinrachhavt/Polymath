@@ -1246,7 +1246,6 @@ export {
   TABLE_REGISTRY,
   seenIds,
   sweepDirection,
-  identityOf,
   a,
   b,
   dayStart,
@@ -1256,6 +1255,4 @@ export {
   auditQueries,
   captureQueries,
   type Fixture,
-  type ModuleEntry,
-  type TenantTable,
 };
