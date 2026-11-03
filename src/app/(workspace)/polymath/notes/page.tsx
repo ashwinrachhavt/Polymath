@@ -3,7 +3,15 @@ import { Suspense } from "react";
 import { io } from "next/cache";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Status } from "@/components/workspace/ui";
-import { getNote, listNoteBacklinks, listNoteOutlinks, listNoteTags, listNoteVersions, pageNotes, type NoteContent } from "@/domains/knowledge/notes";
+import {
+  getNote,
+  listNoteBacklinks,
+  listNoteOutlinks,
+  listNoteTags,
+  listNoteVersions,
+  pageNotes,
+  type NoteContent,
+} from "@/domains/knowledge/notes";
 import { listNoteComments } from "@/domains/knowledge/note-comments";
 import { relatedNotes } from "@/domains/knowledge/relations";
 import { getAuthContext } from "@/lib/auth";
@@ -48,7 +56,13 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
   const id = typeof raw.id === "string" ? raw.id : undefined;
   // The list is a narrow sidebar: a short page keeps it scannable.
   const list = parseListParams(raw, {
-    filters: { view: ["drafts"], layout: ["kanban"], kind: [...SEARCH_KINDS], edited: ["day", "week", "month"], source: ["agent", "not-agent"] },
+    filters: {
+      view: ["drafts"],
+      layout: ["kanban"],
+      kind: [...SEARCH_KINDS],
+      edited: ["day", "week", "month"],
+      source: ["agent", "not-agent"],
+    },
     defaultPageSize: 10,
   });
   // Search-only scope: kind narrows the searched kinds, edited is a rolling
@@ -98,28 +112,66 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
         relatedNotes(auth, selected.id),
         listNoteComments(auth, selected.id).catch(() => []),
       ])
-    : [[] as Awaited<ReturnType<typeof listNoteVersions>>, [] as Awaited<ReturnType<typeof listNoteOutlinks>>, [] as Awaited<ReturnType<typeof listNoteBacklinks>>, [] as Awaited<ReturnType<typeof relatedNotes>>, [] as Awaited<ReturnType<typeof listNoteComments>>];
+    : [
+        [] as Awaited<ReturnType<typeof listNoteVersions>>,
+        [] as Awaited<ReturnType<typeof listNoteOutlinks>>,
+        [] as Awaited<ReturnType<typeof listNoteBacklinks>>,
+        [] as Awaited<ReturnType<typeof relatedNotes>>,
+        [] as Awaited<ReturnType<typeof listNoteComments>>,
+      ];
 
   const noteList = (
     <div className="flex flex-col gap-3">
       <div>
         <h2 className="text-[13px] font-medium">Notes</h2>
         <p className="mt-0.5 text-xs text-muted-foreground">
-          {list.q && !kanban ? "Ranked by keyword and meaning" : `${found.total} ${list.q || list.filters.view ? "matching" : "in this workspace"}`}
+          {list.q && !kanban
+            ? "Ranked by keyword and meaning"
+            : `${found.total} ${list.q || list.filters.view ? "matching" : "in this workspace"}`}
         </p>
       </div>
       <ListToolbar
         searchPlaceholder="Search notes"
         filters={[
-          { key: "view", label: "Show", allLabel: "All notes", options: [{ value: "drafts", label: "With unsaved draft" }] },
+          {
+            key: "view",
+            label: "Show",
+            allLabel: "All notes",
+            options: [{ value: "drafts", label: "With unsaved draft" }],
+          },
           { key: "layout", label: "Layout", allLabel: "List", options: [{ value: "kanban", label: "Kanban by tag" }] },
           // Search filters render only while a query is active: they filter
           // results, not the plain list, and an inert control would lie.
           ...(list.q
             ? [
-                { key: "kind", label: "Kind", allLabel: "All kinds", options: SEARCH_KINDS.map((k) => ({ value: k as string, label: k === "transcript" ? "Conversation" : k[0].toUpperCase() + k.slice(1) })) },
-                { key: "edited", label: "Edited", allLabel: "Any time", options: [{ value: "day", label: "Last 24 hours" }, { value: "week", label: "Last 7 days" }, { value: "month", label: "Last 30 days" }] },
-                { key: "source", label: "Provenance", allLabel: "Any provenance", options: [{ value: "agent", label: "Agent-generated" }, { value: "not-agent", label: "Not agent-generated" }] },
+                {
+                  key: "kind",
+                  label: "Kind",
+                  allLabel: "All kinds",
+                  options: SEARCH_KINDS.map((k) => ({
+                    value: k as string,
+                    label: k === "transcript" ? "Conversation" : k[0].toUpperCase() + k.slice(1),
+                  })),
+                },
+                {
+                  key: "edited",
+                  label: "Edited",
+                  allLabel: "Any time",
+                  options: [
+                    { value: "day", label: "Last 24 hours" },
+                    { value: "week", label: "Last 7 days" },
+                    { value: "month", label: "Last 30 days" },
+                  ],
+                },
+                {
+                  key: "source",
+                  label: "Provenance",
+                  allLabel: "Any provenance",
+                  options: [
+                    { value: "agent", label: "Agent-generated" },
+                    { value: "not-agent", label: "Not agent-generated" },
+                  ],
+                },
               ]
             : []),
         ]}
@@ -142,7 +194,15 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
         // While a note is open the ranked results stay in the sidebar so the
         // reader can jump between hits; with nothing selected they take the
         // working column below instead of truncating into 16rem.
-        selected ? (<SearchResults auth={auth} q={list.q} scope={searchScope} selectedId={selected.id} hrefFor={(hitId) => listHref(BASE, raw, { id: hitId })} />) : null
+        selected ? (
+          <SearchResults
+            auth={auth}
+            q={list.q}
+            scope={searchScope}
+            selectedId={selected.id}
+            hrefFor={(hitId) => listHref(BASE, raw, { id: hitId })}
+          />
+        ) : null
       ) : notes.length === 0 ? (
         <NoResults
           filtered={Boolean(list.q || list.filters.view)}
@@ -178,7 +238,11 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
                           {note.hasDraft && <Status>draft</Status>}
                         </span>
                       </span>
-                      {note.excerpt && <span className="mt-0.5 block truncate text-xs text-muted-foreground">{markdownToPlainText(note.excerpt)}</span>}
+                      {note.excerpt && (
+                        <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                          {markdownToPlainText(note.excerpt)}
+                        </span>
+                      )}
                     </Link>
                   </li>
                 ))}
@@ -201,18 +265,24 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
                     {note.hasDraft && <Status>draft</Status>}
                   </span>
                 </span>
-                {note.excerpt && <span className="mt-0.5 block truncate text-xs text-muted-foreground">{markdownToPlainText(note.excerpt)}</span>}
+                {note.excerpt && (
+                  <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                    {markdownToPlainText(note.excerpt)}
+                  </span>
+                )}
               </Link>
             </li>
           ))}
         </ul>
       )}
-      {!kanban && !list.q && <Pagination basePath={BASE} raw={raw} page={list.page} pageSize={list.pageSize} total={found.total} compact />}
+      {!kanban && !list.q && (
+        <Pagination basePath={BASE} raw={raw} page={list.page} pageSize={list.pageSize} total={found.total} compact />
+      )}
     </div>
   );
 
   return (
-    <div className="suite-screen">
+    <div className="suite-screen h-full overflow-y-auto">
       {/* No page header: the note's own top row carries the list toggle and
           its actions, and the empty states carry the one action they offer.
           A "Notes" title above the column would only repeat the list's. */}
@@ -253,22 +323,43 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
           // results get full titles, snippets and why-ranked chips instead of
           // the sidebar's truncation next to an empty editor.
           <div className="mx-auto w-full max-w-[708px] px-6 pb-16 pt-10 md:pt-14">
-            <div className="mb-8 flex h-8 items-center"><NotebookListToggle /></div>
+            <div className="mb-8 flex h-8 items-center">
+              <NotebookListToggle />
+            </div>
             <h1 className="sr-only">Search results</h1>
-            <SearchResults auth={auth} q={list.q} scope={searchScope} hrefFor={(hitId) => listHref(BASE, raw, { id: hitId })} />
+            <SearchResults
+              auth={auth}
+              q={list.q}
+              scope={searchScope}
+              hrefFor={(hitId) => listHref(BASE, raw, { id: hitId })}
+            />
           </div>
         ) : found.total === 0 ? (
           <div className="mx-auto w-full max-w-[708px] px-6 pb-16 pt-10 md:pt-14">
-            <div className="mb-8 flex h-8 items-center"><NotebookListToggle /></div>
-            <h1 className="text-lg" style={{ fontFamily: "var(--font-display)" }}>Write your first page.</h1>
-            <p className="mt-2 text-[13px] text-muted-foreground">It autosaves as you type, and every checkpoint becomes an immutable version.</p>
-            <div className="mt-5"><NewNoteButton /></div>
+            <div className="mb-8 flex h-8 items-center">
+              <NotebookListToggle />
+            </div>
+            <h1 className="text-lg" style={{ fontFamily: "var(--font-display)" }}>
+              Write your first page.
+            </h1>
+            <p className="mt-2 text-[13px] text-muted-foreground">
+              It autosaves as you type, and every checkpoint becomes an immutable version.
+            </p>
+            <div className="mt-5">
+              <NewNoteButton />
+            </div>
           </div>
         ) : (
           <div className="mx-auto w-full max-w-[708px] px-6 pb-16 pt-10 md:pt-14">
-            <div className="mb-8 flex h-8 items-center"><NotebookListToggle /></div>
-            <h1 className="text-lg" style={{ fontFamily: "var(--font-display)" }}>No note selected</h1>
-            <div className="mt-5"><NewNoteButton /></div>
+            <div className="mb-8 flex h-8 items-center">
+              <NotebookListToggle />
+            </div>
+            <h1 className="text-lg" style={{ fontFamily: "var(--font-display)" }}>
+              No note selected
+            </h1>
+            <div className="mt-5">
+              <NewNoteButton />
+            </div>
           </div>
         )}
       </NotebookWorkspace>
