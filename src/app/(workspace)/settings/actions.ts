@@ -146,11 +146,13 @@ export async function saveAssistantProfileAction(input: {
 }
 
 /*
- * D5 membership management. The console's three verbs delegate to the
- * identity domain's changeMembership — the enforcement surface for rank
- * (admins manage, members leave), the owner-row matrix, and the last-owner
- * invariant. Actions validate shape, translate errors into authored copy,
- * and revalidate the console; they add no policy of their own.
+ * D5 membership management. Each verb opens with its own rank guard — the
+ * sweep (ASH-121 AC05) pins the boundary, and a viewer must be refused
+ * before any domain query runs — then delegates to the identity domain's
+ * changeMembership, the enforcement surface for the owner-row matrix and
+ * the last-owner invariant. Actions validate shape, translate errors into
+ * authored copy, and revalidate the console; they add no policy beyond
+ * that floor.
  */
 
 const ROLES = ["owner", "admin", "member", "viewer"] as const;
@@ -170,6 +172,7 @@ export async function changeMemberRoleAction(input: {
   if (!membershipId) return { ok: false, error: "Choose a member to update." };
   if (!ROLES.includes(role)) return { ok: false, error: "Choose a role from the list." };
   try {
+    requireRole(auth, "admin");
     const changed = await changeMembership(auth, { membershipId, role });
     revalidatePath("/settings/access");
     return { ok: true, ...changed };
@@ -190,6 +193,7 @@ export async function removeMemberAction(input: {
   const membershipId = String(input?.membershipId ?? "").trim();
   if (!membershipId) return { ok: false, error: "Choose a member to remove." };
   try {
+    requireRole(auth, "admin");
     const changed = await changeMembership(auth, { membershipId, status: "removed" });
     revalidatePath("/settings/access");
     return { ok: true, ...changed };
@@ -208,6 +212,7 @@ export async function leaveWorkspaceAction(): Promise<Result<{ left: true }>> {
   try {
     // The row comes from the session, never from the client: a member could
     // otherwise aim the leave verb at someone else's membership id.
+    requireRole(auth, "member");
     const self = await selfMembership(auth);
     if (!self) return { ok: false, error: "You are not a member of this workspace." };
     await changeMembership(auth, { membershipId: self.membershipId, status: "removed" });
