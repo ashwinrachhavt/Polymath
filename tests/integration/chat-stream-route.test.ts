@@ -349,6 +349,43 @@ suite("chat stream route (real Postgres)", () => {
     }
   });
 
+  it("follows a starting run that has no frames yet instead of erroring", async () => {
+    // A fresh composer submit: the person's message is stored, the machinery
+    // hasn't written anything, and there is no session (the judge's run owns
+    // one — the person's never does). The stream must hold silently; the
+    // first cut of the replay guard errored here ("This run has no agent
+    // session.") and told the surface the conversation had ended before the
+    // machinery could answer. (Caught on the live cutover drive.)
+    const runId = await makeRun(a.workspaceId, "running", null);
+    await holder.db!.insert(runEvents).values({
+      workspaceId: a.workspaceId,
+      runId,
+      sequence: 1,
+      type: "message",
+      data: { role: "user", content: "What daybook entries exist for today? Reply in one sentence." },
+    });
+
+    const response = await streamOf(runId);
+    const reader = response.body!.getReader();
+    let got = "";
+    const bail = setTimeout(() => {
+      void reader.cancel().catch(() => undefined);
+    }, 3000);
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        got += new TextDecoder().decode(value);
+        if (got.length > 0) break;
+      }
+    } catch {
+      // Cancelled by the bail timer — silence is the assertion.
+    } finally {
+      clearTimeout(bail);
+    }
+    expect(got).toBe("");
+  });
+
   it("answers 404 for a foreign or malformed run and 503 without a bridge secret, without calling Eve", async () => {
     const runId = await makeRun(a.workspaceId, "running", "wrun_private");
     const fetchMock = vi.fn();

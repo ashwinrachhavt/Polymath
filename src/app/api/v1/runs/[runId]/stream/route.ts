@@ -91,7 +91,19 @@ export const GET = authedHandler<Ctx>(async (auth, request, ctx) => {
   const replayed = run.sessionRef
     ? { frames: [], cursor: startIndex }
     : await durableReplay(runId, startIndex, suppressObjectiveText);
-  if (!run.sessionRef && replayed.frames.length > 0) {
+  // Machinery-driven runs have no Eve session by design: the engine writes
+  // run_events directly, and a composer-started run never allocates one — only
+  // the judge and ticket workers do. So a missing sessionRef is not itself a
+  // failed start. A live run with no frames yet is STARTING, not broken — the
+  // engine writes rows as it goes (the live drive caught the first cut of this
+  // guard erroring on a run whose judge hadn't answered yet) — so it follows
+  // by poll. The error frame below is reserved for a finished run with
+  // nothing to show: no session and no event that folds into a frame, the
+  // failed start. Treating every session-less run as broken rendered
+  // "This run has no agent session." over a thread whose answers existed, and
+  // the synthetic end told the surface the conversation had ended while the
+  // run was waiting on the person.
+  if (!run.sessionRef && (replayed.frames.length > 0 || !finished)) {
     const stream = new ReadableStream<Uint8Array>({
       async start(controller) {
         const encoder = new TextEncoder();
