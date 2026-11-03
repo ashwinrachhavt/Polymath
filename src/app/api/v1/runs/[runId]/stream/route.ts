@@ -1,4 +1,4 @@
-import { and, eq, gt } from "drizzle-orm";
+import { and, desc, eq, gt, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { authedHandler } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
@@ -85,6 +85,25 @@ export const GET = authedHandler<Ctx>(async (auth, request, ctx) => {
 
   const emit = (frame: ChatFrame) => encodeFrame(frame);
 
+  // The run's own durable stage facts, emitted as the head frame of every
+  // connection — including the error paths below. A reconnect over an
+  // unreachable bridge must still carry what the rows know, or the client
+  // keeps reading transport state as the run's truth. `lastTurnFailed` is
+  // "the newest turn boundary is a turn failure": a newer message (the person
+  // speaking again), turn completion, or cancel supersedes an older failure,
+  // the same rule the supervision panel applies to a failed ticket.
+  const [lastBoundary] = await db
+    .select({ type: runEvents.type })
+    .from(runEvents)
+    .where(and(eq(runEvents.runId, runId), inArray(runEvents.type, TURN_BOUNDARY_EVENT_TYPES)))
+    .orderBy(desc(runEvents.sequence))
+    .limit(1);
+  const runFacts = {
+    state: run.state,
+    lastTurnFailed: lastBoundary?.type === "turn.failed",
+  } as const;
+  const runFrame = (cursor: number): ChatFrame => ({ type: "run", runId, ...runFacts, cursor });
+
   // A finished run has nothing live to follow. Replay its durable tail instead
   // of holding a connection open forever.
   const finished = isFinished(run.state);
@@ -117,6 +136,9 @@ export const GET = authedHandler<Ctx>(async (auth, request, ctx) => {
           }
         };
         try {
+          // The run's durable stage facts first: every connection opens with
+          // what the rows know, before any replayed event.
+          push(encodeFrame(runFrame(startIndex)));
           for (const frame of replayed.frames) push(encodeFrame(frame));
           let cursor = replayed.cursor;
           let state = run.state;
@@ -170,6 +192,7 @@ export const GET = authedHandler<Ctx>(async (auth, request, ctx) => {
     // create). Say so as a frame rather than a transport error: the surface
     // shows it inside the chat.
     return ndjsonResponse([
+      emit(runFrame(startIndex)),
       emit({
         type: "error",
         runId,
@@ -200,6 +223,7 @@ export const GET = authedHandler<Ctx>(async (auth, request, ctx) => {
     });
   } catch {
     return ndjsonResponse([
+      emit(runFrame(startIndex)),
       emit({
         type: "error",
         runId,
@@ -216,6 +240,7 @@ export const GET = authedHandler<Ctx>(async (auth, request, ctx) => {
     // state comes from the run row, never from the transport: a failed run that
     // answers 409 must not be reported as succeeded.
     return ndjsonResponse([
+      emit(runFrame(startIndex)),
       emit({
         type: "error",
         runId,
@@ -253,6 +278,9 @@ export const GET = authedHandler<Ctx>(async (auth, request, ctx) => {
         }
       };
       try {
+        // The run's durable stage facts first: every connection opens with
+        // what the rows know, before Eve's replay begins.
+        push(encodeFrame(runFrame(startIndex)));
         for await (const chunk of upstream.body as unknown as AsyncIterable<Uint8Array>) {
           buffer += decoder.decode(chunk, { stream: true });
           const { lines, rest } = splitLines(buffer);
@@ -321,6 +349,14 @@ function terminalStateOf(state: string): "succeeded" | "failed" | "cancelled" {
   if (state === "failed") return "failed";
   return "succeeded";
 }
+
+/**
+ * The event types that carry or supersede a turn's outcome, newest wins: the
+ * person's message (a new turn), a turn's completion, failure, or cancel. The
+ * stream's run frame reads the newest of these to say whether the run's latest
+ * turn failed — the panel's "no newer human message" rule on the run's rows.
+ */
+const TURN_BOUNDARY_EVENT_TYPES = ["message", "turn.completed", "turn.failed", "turn.cancelled"];
 
 /** How often the session-less follow polls the run's rows, and how long it holds one connection. */
 const POLL_MS = 2_000;

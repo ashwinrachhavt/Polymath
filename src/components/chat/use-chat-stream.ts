@@ -23,7 +23,12 @@ import { StreamHttpError, describeStreamFailure } from "./stream-errors";
  * terminal frame arrives. There is no polling and no second source of truth.
  */
 
-export type ChatConnection = "connecting" | "streaming" | "waiting" | "done" | "error";
+/**
+ * The transport's own state. "reconnecting" is a drop being retried — the
+ * reconnect-pause: the durable stream keeps the run's events, so the surface
+ * reads the pause as a pause, never as the run's failure.
+ */
+export type ChatConnection = "connecting" | "streaming" | "waiting" | "reconnecting" | "done" | "error";
 
 export type ChatState = {
   blocks: ChatBlock[];
@@ -144,7 +149,14 @@ export function useChatStream(runId: string | null, options: UseChatStreamOption
     const connect = async () => {
       if (cancelled) return;
       controller = new AbortController();
-      setState((prev) => ({ ...prev, connection: "connecting", error: null, retryable: true }));
+      // A re-attempt inside the ladder is a reconnect — the paused transport —
+      // while a fresh effect's first attempt is a plain attach.
+      setState((prev) => ({
+        ...prev,
+        connection: attempt === 0 ? "connecting" : "reconnecting",
+        error: null,
+        retryable: true,
+      }));
       try {
         const response = await fetch(`/api/v1/runs/${encodeURIComponent(runId)}/stream`, {
           headers: { "x-chat-cursor": String(cursorRef.current) },
@@ -183,6 +195,26 @@ export function useChatStream(runId: string | null, options: UseChatStreamOption
             if (frame.type === "citations" && frame.citations.length > 0) {
               setState((prev) => ({ ...prev, citations: frame.citations }));
               onCitationRef.current?.(frame.citations);
+            }
+            if (frame.type === "run") {
+              // The connection's head frame: the run's durable stage facts.
+              // A failed row is terminal truth — states never un-fail, so the
+              // pin is monotone. lastTurnFailed is the durable
+              // newest-turn-boundary fact; a newer connection's frame may
+              // legitimately clear a stale one (the person followed up while
+              // this tab was away), exactly as the panel supersedes a failed
+              // ticket once the person speaks again.
+              setState((prev) => ({
+                ...prev,
+                runFailed: prev.runFailed || frame.state === "failed",
+                lastFailedTurn: frame.lastTurnFailed,
+              }));
+            }
+            if (frame.type === "message" && frame.role === "user") {
+              // The person's own words are the one live fact that supersedes a
+              // failed turn: the next turn now owns the stage, so the failed
+              // vocabulary yields (the panel drops person-failed the same way).
+              setState((prev) => (prev.lastFailedTurn ? { ...prev, lastFailedTurn: false } : prev));
             }
             if (frame.type === "tool") {
               setState((prev) => ({
@@ -294,7 +326,7 @@ export function useChatStream(runId: string | null, options: UseChatStreamOption
         }));
         return;
       }
-      setState((prev) => ({ ...prev, connection: "connecting", error: message ?? prev.error }));
+      setState((prev) => ({ ...prev, connection: "reconnecting", error: message ?? prev.error }));
       const delay = Math.min(BASE_BACKOFF_MS * 2 ** (attempt - 1), MAX_BACKOFF_MS);
       timer = window.setTimeout(connect, delay);
     };
