@@ -761,6 +761,13 @@
       "when": 1793690000000,
       "tag": "0282_onboarding_wizard_progress",
       "breakpoints": true
+    },
+    {
+      "idx": 283,
+      "version": "7",
+      "when": 1793690600000,
+      "tag": "0283_superagent_reap_effect_kind",
+      "breakpoints": true
     }
   ]
 }
