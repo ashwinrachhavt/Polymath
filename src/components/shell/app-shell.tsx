@@ -11,6 +11,7 @@ import type { TriageFeed } from "@/domains/notifications/triage";
 import { isConversationSurface, isBrowserPreviewPath } from "@/lib/navigation";
 import { FocusDock } from "@/components/shell/focus-dock";
 import { Skeleton } from "@/components/ui/skeleton";
+import type { WorkspaceSwitcherData } from "@/components/shell/workspace-switcher";
 
 const subscribeToHydration = () => () => {};
 
@@ -33,12 +34,14 @@ export function AppShell({
   clerkConfigured = false,
   interfaceMode = "action",
   notifications,
+  workspaceSwitcher = null,
 }: {
   children: ReactNode;
   storageScope?: string;
   clerkConfigured?: boolean;
   interfaceMode?: "library" | "action";
   notifications: TriageFeed;
+  workspaceSwitcher?: WorkspaceSwitcherData | null;
 }) {
   const pathname = usePathname();
   const hydrated = useSyncExternalStore(
@@ -69,7 +72,12 @@ export function AppShell({
         <SideNav />
         <div className={cn("flex min-w-0 flex-1 flex-col", headerless && "min-h-0")}>
           {!headerless ? (
-            <TopBar clerkConfigured={clerkConfigured} interfaceMode={interfaceMode} notifications={notifications} />
+            <TopBar
+              clerkConfigured={clerkConfigured}
+              interfaceMode={interfaceMode}
+              notifications={notifications}
+              workspaceSwitcher={workspaceSwitcher}
+            />
           ) : null}
           <main
             id="content"
