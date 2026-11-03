@@ -30,8 +30,21 @@ export type ThreadEntry = {
 const TERMINAL = ["succeeded", "failed", "cancelled"] as const;
 export const isFinished = (state: string) => (TERMINAL as readonly string[]).includes(state);
 
-function toEntry(row: { sequence: number; type: string; data: unknown; createdAt: Date; feedback?: string | null }): ThreadEntry | null {
-  const data = (row.data ?? {}) as { role?: string; content?: unknown; detail?: unknown; text?: unknown; turnId?: unknown };
+function toEntry(row: {
+  sequence: number;
+  type: string;
+  data: unknown;
+  createdAt: Date;
+  feedback?: string | null;
+}): ThreadEntry | null {
+  const data = (row.data ?? {}) as {
+    role?: string;
+    content?: unknown;
+    detail?: unknown;
+    text?: unknown;
+    turnId?: unknown;
+    message?: unknown;
+  };
   // The engine's seeded objective on a machinery run (a scripted interview):
   // audit-only. It is what the run was told, not anything the person said, so
   // it never renders as thread content — the event stays for the run's record.
@@ -46,12 +59,31 @@ function toEntry(row: { sequence: number; type: string; data: unknown; createdAt
       feedback: data.role === "assistant" ? ((row.feedback as "up" | "down" | null) ?? null) : undefined,
     };
   }
+  // The superagent reply lane's result: the reply sender (wiring.ts
+  // chatReplySender) records the specialist's answer on the sessionless
+  // conversation run as a `message.completed` event — the turn vocabulary Eve
+  // streams, persisted by a lane that never had a live session. Session-bearing
+  // runs never persist that kind (their bridge writes `message` events), so
+  // this mapping cannot double-render a live turn; without it the conversation
+  // page replays the person's words and drops the one answer the machinery
+  // produced for them.
+  if (row.type === "message.completed" && typeof data.message === "string" && data.message.trim() !== "") {
+    return {
+      sequence: row.sequence,
+      kind: "assistant",
+      text: data.message,
+      at: row.createdAt,
+      turnId: typeof data.turnId === "string" ? data.turnId : null,
+      feedback: (row.feedback as "up" | "down" | null) ?? null,
+    };
+  }
   // The model's visible rationale, persisted by the bridge so a reload keeps
   // what the live stream already showed.
   if (row.type === "reasoning" && typeof data.text === "string" && data.text.trim() !== "") {
     return { sequence: row.sequence, kind: "reasoning", text: data.text, at: row.createdAt };
   }
-  if (row.type === "cancelled") return { sequence: row.sequence, kind: "cancelled", text: "Cancelled", at: row.createdAt };
+  if (row.type === "cancelled")
+    return { sequence: row.sequence, kind: "cancelled", text: "Cancelled", at: row.createdAt };
   if (row.type === "step.failed") {
     return { sequence: row.sequence, kind: "status", text: "A step failed", at: row.createdAt };
   }
@@ -71,7 +103,14 @@ export async function listThreads(workspaceId: string, runIds: string[]): Promis
   const out = new Map<string, ThreadEntry[]>();
   if (runIds.length === 0) return out;
   const rows = await db
-    .select({ runId: runEvents.runId, sequence: runEvents.sequence, type: runEvents.type, data: runEvents.data, createdAt: runEvents.createdAt, feedback: runEvents.feedback })
+    .select({
+      runId: runEvents.runId,
+      sequence: runEvents.sequence,
+      type: runEvents.type,
+      data: runEvents.data,
+      createdAt: runEvents.createdAt,
+      feedback: runEvents.feedback,
+    })
     .from(runEvents)
     .where(and(eq(runEvents.workspaceId, workspaceId), inArray(runEvents.runId, runIds)))
     .orderBy(asc(runEvents.runId), asc(runEvents.sequence));
@@ -83,8 +122,7 @@ export async function listThreads(workspaceId: string, runIds: string[]): Promis
 }
 
 export type FollowUpResult =
-  | { ok: true }
-  | { ok: false; code: "not_found" | "run_finished" | "empty"; message: string };
+  { ok: true } | { ok: false; code: "not_found" | "run_finished" | "empty"; message: string };
 
 /**
  * A follow-up on a live run: persisted first, then signalled to Eve. A finished
@@ -111,7 +149,11 @@ export async function sendFollowUp(auth: AuthContext, runId: string, text: strin
     // message is kept in run_events. Answer 409 so the surface tells them to
     // retry (a new run) instead of a bare 500 that reads as "their" failure.
     if (cause instanceof SessionNotActiveError) {
-      return { ok: false, code: "run_finished", message: "This conversation's session ended. Retry it to continue in a new run." };
+      return {
+        ok: false,
+        code: "run_finished",
+        message: "This conversation's session ended. Retry it to continue in a new run.",
+      };
     }
     throw cause;
   }
@@ -119,8 +161,7 @@ export async function sendFollowUp(auth: AuthContext, runId: string, text: strin
 }
 
 export type RetryResult =
-  | { ok: true; runId: string }
-  | { ok: false; code: "not_found" | "run_active"; message: string };
+  { ok: true; runId: string } | { ok: false; code: "not_found" | "run_active"; message: string };
 
 /** Retry creates a NEW run id from a finished run's objective; the old thread is left as it was. */
 export async function retryRun(auth: AuthContext, runId: string): Promise<RetryResult> {
