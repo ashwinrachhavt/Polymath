@@ -43,6 +43,7 @@ export default function RichEditor({
   findLinkTargets,
   chrome = "full",
   compact = false,
+  editable = true,
   mode: controlledMode,
   onModeChange,
   onStructuredPasteDropped,
@@ -54,6 +55,8 @@ export default function RichEditor({
   chrome?: "full" | "minimal";
   /** Short inline editor (task cards) instead of the full-page writing height. */
   compact?: boolean;
+  /** False renders the document for reading: no caret, no typing, no chrome. */
+  editable?: boolean;
   mode?: MarkdownEditorMode;
   onModeChange?: (mode: MarkdownEditorMode) => void;
   /** A paste arrived with structure rich text cannot keep; it was inserted literally. */
@@ -150,6 +153,7 @@ export default function RichEditor({
           onSelectionChange={ai ? setSelection : undefined}
           hidePlaceholderAI={!!ai}
           compact={compact}
+          editable={editable}
           onEmptySpace={ai?.onOpenChange ? () => ai.onOpenChange!(true) : undefined}
           floating={minimal}
           onStructuredPasteDropped={onStructuredPasteDropped}
@@ -230,9 +234,11 @@ function RichMarkdownEditor({
   findLinkTargets,
   floating,
   compact,
+  editable = true,
   onStructuredPasteDropped,
 }: {
   compact?: boolean;
+  editable?: boolean;
   findLinkTargets?: FindLinkTargets;
   content: string;
   onChange: (content: string) => void;
@@ -298,6 +304,7 @@ function RichMarkdownEditor({
     content,
     contentType: "markdown",
     immediatelyRender: false,
+    editable,
     editorProps: {
       handleKeyDown: (_view, event) => {
         // Space on an empty paragraph is the AI affordance (Notion-style): open
@@ -387,13 +394,13 @@ function RichMarkdownEditor({
         role: "textbox",
         "aria-label": "Rich note content",
         "aria-multiline": "true",
-        class: `${compact ? "min-h-24 p-2 text-[13px] leading-6" : floating ? "prose-reading min-h-[55vh] font-[family-name:var(--font-reading)] text-foreground" : "min-h-72 max-w-[75ch] p-4 text-sm leading-7"} writing-surface outline-none [&_p]:mb-4 [&_h1]:text-2xl [&_h2]:text-xl [&_h2]:mb-3 [&_h3]:text-lg [&_h3]:mb-2 [&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-6 [&_ol]:pl-6 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-4 [&_blockquote]:italic [&_pre]:overflow-auto [&_pre]:bg-muted [&_pre]:p-3 [&_a]:text-primary [&_a]:underline`,
+        class: `${compact ? "min-h-24 p-2 text-[13px] leading-6" : floating ? "prose-reading min-h-[55vh] font-[family-name:var(--font-reading)] text-foreground" : "min-h-72 max-w-[75ch] p-4 text-sm leading-7"} ${editable ? "writing-surface outline-none" : "outline-none [&_*]:cursor-text"} [&_p]:mb-4 [&_h1]:text-2xl [&_h2]:text-xl [&_h2]:mb-3 [&_h3]:text-lg [&_h3]:mb-2 [&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-6 [&_ol]:pl-6 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-4 [&_blockquote]:italic [&_pre]:overflow-auto [&_pre]:bg-muted [&_pre]:p-3 [&_a]:text-primary [&_a]:underline`,
       },
     },
     onSelectionUpdate: ({ editor }) => {
       const sel = editor.state.selection;
       onSelectionChange?.(sel.empty ? "" : editor.state.doc.textBetween(sel.from, sel.to, " "));
-      if (!floating) return;
+      if (!floating || !editable) return;
       if (sel.empty) {
         setFloatAt(null);
         return;
@@ -422,6 +429,11 @@ function RichMarkdownEditor({
       if (linkText !== undefined) setLinkActive(0);
     },
   });
+  useEffect(() => {
+    // Silent: setEditable emits an update by default, which would hand the
+    // editor's re-serialized Markdown to onChange and rewrite untouched notes.
+    if (editor && editor.isEditable !== editable) editor.setEditable(editable, false);
+  }, [editor, editable]);
   const slashMatches = slash ? filterBlockCommands(slash.query) : [];
   const linkMatches = link ? candidates(link.query) : [];
   const formatting = useEditorState({
@@ -623,7 +635,7 @@ function RichMarkdownEditor({
           </div>
         </div>
       )}
-      {floating ? (
+      {floating && editable ? (
         floatAt ? (
           <div
             role="toolbar"
@@ -661,7 +673,7 @@ function RichMarkdownEditor({
             {recordDialog}
           </div>
         ) : null
-      ) : (
+      ) : editable ? (
         <div role="toolbar" aria-label="Formatting" className="flex flex-wrap gap-1 border-b border-border p-2">
           {formatButtons.map(({ label, icon: Icon, active, run }) => (
             <Button
@@ -717,7 +729,7 @@ function RichMarkdownEditor({
                 <Button type="button" variant="ghost">
                   Ask AI
                 </Button>
-              </DialogTrigger>
+              </DialogTrigger>{" "}
               <DialogContent>
                 <DialogTitle>Contextual writing assistance</DialogTitle>
                 <DialogDescription>
@@ -750,7 +762,7 @@ function RichMarkdownEditor({
             </Dialog>
           )}
         </div>
-      )}
+      ) : null}
       <EditorContent editor={editor} />
     </div>
   );
