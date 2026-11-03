@@ -31,7 +31,7 @@ Migrations: 108 files, highest `0281_superagent_state`.
 
 ## Tests
 
-532 `.test.ts` and 47 `.spec.ts` files (unit: 312, integration: 217, e2e: 47).
+533 `.test.ts` and 48 `.spec.ts` files (unit: 312, integration: 218, e2e: 48).
 ## Domains
 
 24 folders; 19 own tables.
