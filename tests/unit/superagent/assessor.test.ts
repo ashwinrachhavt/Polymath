@@ -124,9 +124,15 @@ function harness(
 ) {
   const repos = new MemoryRepositories();
   const eve = new FakeEvalEve();
-  const enqueued: { kind: string; key: string; payload: Record<string, unknown> }[] = [];
+  const enqueued: (
+    | { kind: "assessment"; key: string; payload: Record<string, unknown> }
+    | { kind: "reap"; key: string; availableAt: string }
+  )[] = [];
   /** Every effect ever enqueued — the working queue above is drained, this is the record. */
-  const seen: { kind: string; key: string; payload: Record<string, unknown> }[] = [];
+  const seen: (
+    | { kind: "assessment"; key: string; payload: Record<string, unknown> }
+    | { kind: "reap"; key: string; availableAt: string }
+  )[] = [];
   const deferred: (() => Promise<void>)[] = [];
 
   const host: AssessorHost = {
@@ -180,6 +186,10 @@ function harness(
     for (;;) {
       const effect = enqueued.shift();
       if (!effect) return;
+      // The real reap handler ticks the workspace (evaluateDue + flush); the
+      // expiry tests below drive that tick themselves, so the harness only
+      // consumes the effect.
+      if (effect.kind === "reap") continue;
       await assessor.handleAssessment(effect.payload as unknown as AssessmentPayload);
     }
   };
@@ -651,5 +661,22 @@ describe("expiry — requeues twice, cancels the stale session, then records una
     await s.decide();
     await h.drainAfterCommit();
     expect(h.eve.cancels).toEqual([]);
+  });
+});
+
+describe("scheduleReap — the deadline's observer", () => {
+  it("enqueues a reap effect when the candidate is delivered, due exactly at the deadline its policy set", async () => {
+    const h = harness();
+    await h.personSends("1");
+    const assessmentId = h.requests()[0]!.assessmentId;
+    const thread = h.repos.threads.get("chat:t1")!;
+    // The candidate's delivery — the session reporting through the drained
+    // assessment effect — schedules the deadline's observer itself: one reap
+    // effect, coalesced on the assessment, due exactly at the stored deadline.
+    expect(h.seen.filter((effect) => effect.kind === "reap")).toEqual([
+      { kind: "reap", key: assessmentId, availableAt: thread.evaluating!.deadline },
+    ]);
+    // And the observed deadline counts from the delivery, not the request.
+    expect(Date.parse(thread.evaluating!.deadline) - Date.parse(thread.evaluating!.delivered!)).toBe(60_000);
   });
 });

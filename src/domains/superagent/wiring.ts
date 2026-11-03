@@ -538,6 +538,15 @@ export async function superagentEffectHandlers(): Promise<EffectHandlers> {
     ...effectHandlers({ rawClient: queueClient(), sender: chatReceiptSender }),
     assessment: (effect) =>
       dispatchEffect(effect, (host) => host.assessor.handleAssessment(effect.payload as unknown as AssessmentPayload)),
+    // The expiry reap: the tick that observes an eval's deadline. evaluateDue
+    // expires what is past due (requeue twice, then unavailable) and starts
+    // whatever else is due; follow-up effects it enqueues are claimed by the
+    // drain's next pass.
+    reap: (effect) =>
+      dispatchEffect(effect, async (host) => {
+        host.engine.evaluateDue();
+        await host.flush();
+      }),
     launch: (effect) =>
       dispatchEffect(effect, (host) => host.executor.handleLaunch(effect.payload as unknown as LaunchPayload)),
     delivery: (effect) =>

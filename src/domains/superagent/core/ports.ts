@@ -72,6 +72,14 @@ export interface Assessor {
   request(candidate: Candidate): void;
   /** Called whenever an eval ends, decided or not, so the assessor drops what it kept for it. */
   release?(assessmentId: string): void;
+  /**
+   * Called when a candidate is delivered, with the deadline now counting from
+   * the delivery: the assessor schedules the tick that later expires the eval.
+   * Without it the deadline is bookkeeping nothing observes — a session that
+   * finishes in prose (no more candidate turns, no report) strands its thread
+   * in `evaluating` forever.
+   */
+  scheduleReap?(assessmentId: string, deadlineAt: string): void;
 }
 
 /**
