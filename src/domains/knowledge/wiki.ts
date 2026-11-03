@@ -1,7 +1,7 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { AuthContext } from "@/domains/identity/resolve";
-import { auditEvents } from "@/domains/audit/schema";
+import { recordAudit } from "@/domains/audit/record";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { currentExtractionIdSubquery } from "./versions";
@@ -71,7 +71,10 @@ async function createArtifact(
       createdBy: auth.userId,
     })
     .returning({ id: artifactVersions.id });
-  await tx.update(artifacts).set({ currentVersionId: version.id, embedError: null }).where(eq(artifacts.id, artifact.id));
+  await tx
+    .update(artifacts)
+    .set({ currentVersionId: version.id, embedError: null })
+    .where(eq(artifacts.id, artifact.id));
   return artifact.id;
 }
 
@@ -162,7 +165,14 @@ async function ensureTopicHub(tx: Tx, auth: AuthContext, slug: string): Promise<
   });
   await tx
     .insert(wikiPages)
-    .values({ workspaceId: auth.workspaceId, role: "topic", topicSlug: slug, artifactId, createdBy: auth.userId, updatedBy: auth.userId })
+    .values({
+      workspaceId: auth.workspaceId,
+      role: "topic",
+      topicSlug: slug,
+      artifactId,
+      createdBy: auth.userId,
+      updatedBy: auth.userId,
+    })
     .onConflictDoNothing({ target: [wikiPages.workspaceId, wikiPages.topicSlug], where: sql`role = 'topic'` });
   const [row] = await tx
     .select({ artifactId: wikiPages.artifactId })
@@ -192,8 +202,14 @@ async function regenerateTopicHub(tx: Tx, auth: AuthContext, slug: string) {
   await appendVersion(tx, auth, hubArtifactId, body);
   await tx
     .update(wikiPages)
-    .set({ summary: `${rows.length} article${rows.length === 1 ? "" : "s"}`, updatedAt: new Date(), updatedBy: auth.userId })
-    .where(and(eq(wikiPages.workspaceId, auth.workspaceId), eq(wikiPages.role, "topic"), eq(wikiPages.topicSlug, slug)));
+    .set({
+      summary: `${rows.length} article${rows.length === 1 ? "" : "s"}`,
+      updatedAt: new Date(),
+      updatedBy: auth.userId,
+    })
+    .where(
+      and(eq(wikiPages.workspaceId, auth.workspaceId), eq(wikiPages.role, "topic"), eq(wikiPages.topicSlug, slug)),
+    );
 }
 
 /** The index is derived too: every topic with its count, plus the totals. */
@@ -233,9 +249,15 @@ async function appendLog(tx: Tx, auth: AuthContext, line: string) {
     .limit(1);
   if (!logPage) return;
   const existing = await currentText(tx, logPage.artifactId);
-  const kept = existing.split("\n").filter((l) => !l.startsWith("- ")).concat(
-    existing.split("\n").filter((l) => l.startsWith("- ")).slice(-(MAX_LOG_LINES - 1)),
-  );
+  const kept = existing
+    .split("\n")
+    .filter((l) => !l.startsWith("- "))
+    .concat(
+      existing
+        .split("\n")
+        .filter((l) => l.startsWith("- "))
+        .slice(-(MAX_LOG_LINES - 1)),
+    );
   await appendVersion(tx, auth, logPage.artifactId, `${kept.join("\n").replace(/\n*$/, "\n")}${line}\n`);
 }
 
@@ -260,7 +282,13 @@ export async function ingestDocument(
   const [doc] = await db
     .select({ id: documents.id, title: documents.title })
     .from(documents)
-    .where(and(eq(documents.id, input.documentId), eq(documents.workspaceId, auth.workspaceId), sql`${documents.archivedAt} is null`))
+    .where(
+      and(
+        eq(documents.id, input.documentId),
+        eq(documents.workspaceId, auth.workspaceId),
+        sql`${documents.archivedAt} is null`,
+      ),
+    )
     .limit(1);
   if (!doc) throw new WikiError("document_not_found", "No such document in this workspace.");
   // The restored version is what the document reads as, so wiki reads it too.
@@ -298,13 +326,23 @@ export async function ingestDocument(
     const [existing] = await tx
       .select({ id: wikiPages.id, artifactId: wikiPages.artifactId, pinnedContentHash: wikiPages.pinnedContentHash })
       .from(wikiPages)
-      .where(and(eq(wikiPages.workspaceId, auth.workspaceId), eq(wikiPages.role, "article"), eq(wikiPages.documentId, doc.id)))
+      .where(
+        and(
+          eq(wikiPages.workspaceId, auth.workspaceId),
+          eq(wikiPages.role, "article"),
+          eq(wikiPages.documentId, doc.id),
+        ),
+      )
       .limit(1);
 
     let artifactId: string;
     let changed: boolean;
     if (!existing) {
-      artifactId = await createArtifact(tx, auth, { title: summary.title, text: summary.body, tags: ["wiki", "wiki:article"] });
+      artifactId = await createArtifact(tx, auth, {
+        title: summary.title,
+        text: summary.body,
+        tags: ["wiki", "wiki:article"],
+      });
       await tx
         .insert(wikiPages)
         .values({
@@ -321,7 +359,13 @@ export async function ingestDocument(
         .onConflictDoNothing({ target: [wikiPages.workspaceId, wikiPages.documentId], where: sql`role = 'article'` });
       await tx
         .insert(artifactLinks)
-        .values({ workspaceId: auth.workspaceId, artifactId, targetType: "document", targetId: doc.id, label: "source" })
+        .values({
+          workspaceId: auth.workspaceId,
+          artifactId,
+          targetType: "document",
+          targetId: doc.id,
+          label: "source",
+        })
         .onConflictDoNothing({ target: [artifactLinks.artifactId, artifactLinks.targetType, artifactLinks.targetId] });
       changed = true;
     } else {
@@ -339,7 +383,13 @@ export async function ingestDocument(
         .where(eq(artifacts.id, artifactId));
       await tx
         .update(wikiPages)
-        .set({ topicSlugs: topics, summary: summary.summary, pinnedContentHash: extraction.contentHash, updatedAt: new Date(), updatedBy: auth.userId })
+        .set({
+          topicSlugs: topics,
+          summary: summary.summary,
+          pinnedContentHash: extraction.contentHash,
+          updatedAt: new Date(),
+          updatedBy: auth.userId,
+        })
         .where(eq(wikiPages.id, existing.id));
     }
 
@@ -350,15 +400,16 @@ export async function ingestDocument(
       auth,
       `- ${new Date().toISOString().slice(0, 10)} ${existing ? "updated" : "ingested"} "${summary.title}" (topics: ${topics.join(", ")}; ${summarizer.name})`,
     );
-    await tx.insert(auditEvents).values({
-      workspaceId: auth.workspaceId,
-      actorId: auth.userId,
-      actorKind: "user",
-      action: existing ? "wiki.article_updated" : "wiki.article_ingested",
-      subjectType: "artifact",
-      subjectId: artifactId,
-      summary: `Wiki ${existing ? "updated" : "ingested"}: ${summary.title}`,
-    });
+    await recordAudit(
+      auth,
+      {
+        action: existing ? "wiki.article_updated" : "wiki.article_ingested",
+        subjectType: "artifact",
+        subjectId: artifactId,
+        summary: `Wiki ${existing ? "updated" : "ingested"}: ${summary.title}`,
+      },
+      tx,
+    );
     return { artifactId, title: summary.title, topics, changed };
   });
 }
@@ -391,25 +442,46 @@ export async function lintWiki(auth: AuthContext): Promise<WikiLintFinding[]> {
     if (row.role === "index") hasIndex = true;
     if (row.role === "log") hasLog = true;
     if (row.artifactArchivedAt) {
-      findings.push({ code: "archived_page", message: `A ${row.role} page is archived but still registered.`, artifactId: row.artifactId });
+      findings.push({
+        code: "archived_page",
+        message: `A ${row.role} page is archived but still registered.`,
+        artifactId: row.artifactId,
+      });
       continue;
     }
     if (row.role === "article") {
       if (row.documentArchivedAt) {
-        findings.push({ code: "source_archived", message: "An article's source document is archived; the article may be stale.", artifactId: row.artifactId });
+        findings.push({
+          code: "source_archived",
+          message: "An article's source document is archived; the article may be stale.",
+          artifactId: row.artifactId,
+        });
       }
       const slugs = Array.isArray(row.topicSlugs) ? (row.topicSlugs as string[]) : [];
       if (slugs.length === 0) {
-        findings.push({ code: "uncategorized", message: "An article belongs to no topic.", artifactId: row.artifactId });
+        findings.push({
+          code: "uncategorized",
+          message: "An article belongs to no topic.",
+          artifactId: row.artifactId,
+        });
       }
       for (const slug of slugs) articlesByTopic.set(slug, (articlesByTopic.get(slug) ?? 0) + 1);
     }
   }
-  if (!hasIndex) findings.push({ code: "missing_index", message: "The wiki index page is missing; ingest any document to rebuild it." });
-  if (!hasLog) findings.push({ code: "missing_log", message: "The wiki log page is missing; ingest any document to rebuild it." });
+  if (!hasIndex)
+    findings.push({
+      code: "missing_index",
+      message: "The wiki index page is missing; ingest any document to rebuild it.",
+    });
+  if (!hasLog)
+    findings.push({ code: "missing_log", message: "The wiki log page is missing; ingest any document to rebuild it." });
   for (const row of rows) {
     if (row.role === "topic" && row.topicSlug && !row.artifactArchivedAt && !articlesByTopic.get(row.topicSlug)) {
-      findings.push({ code: "empty_topic", message: `Topic "${row.topicSlug}" has no articles.`, artifactId: row.artifactId });
+      findings.push({
+        code: "empty_topic",
+        message: `Topic "${row.topicSlug}" has no articles.`,
+        artifactId: row.artifactId,
+      });
     }
   }
   return findings;
@@ -460,7 +532,11 @@ export async function getWikiOverview(auth: AuthContext): Promise<WikiOverview |
         .innerJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
         .where(eq(artifacts.id, p.artifactId))
         .limit(1);
-      logTail = (v?.plainText ?? "").split("\n").filter((l) => l.startsWith("- ")).slice(-10).reverse();
+      logTail = (v?.plainText ?? "")
+        .split("\n")
+        .filter((l) => l.startsWith("- "))
+        .slice(-10)
+        .reverse();
     } else if (p.role === "topic" && p.topicSlug) {
       topics.push({ slug: p.topicSlug, summary: p.summary, artifactId: p.artifactId });
     } else if (p.role === "article") {
@@ -481,7 +557,12 @@ export async function getWikiPageText(auth: AuthContext, artifactId: string) {
   // the same "no page here" as any other miss (see getDraftDetail).
   if (!z.string().uuid().safeParse(artifactId).success) return null;
   const [row] = await db
-    .select({ title: artifacts.title, plainText: artifactVersions.plainText, versionNumber: artifactVersions.versionNumber, updatedAt: artifacts.updatedAt })
+    .select({
+      title: artifacts.title,
+      plainText: artifactVersions.plainText,
+      versionNumber: artifactVersions.versionNumber,
+      updatedAt: artifacts.updatedAt,
+    })
     .from(artifacts)
     .innerJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
     .innerJoin(wikiPages, eq(wikiPages.artifactId, artifacts.id))

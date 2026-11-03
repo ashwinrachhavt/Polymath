@@ -1,6 +1,7 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
-import { auditEvents, blobObjects } from "@/domains/audit/schema";
+import { recordAudit } from "@/domains/audit/record";
+import { blobObjects } from "@/domains/audit/schema";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { sha256Hex } from "@/lib/hash";
@@ -265,14 +266,19 @@ export async function syncNotionAccount(
       lastSyncedAt: new Date(),
       lastError: failed ? `${failed} page${failed === 1 ? "" : "s"} failed` : null,
     });
-    await db.insert(auditEvents).values({
-      workspaceId: auth.workspaceId,
-      actorId: auth.userId,
-      actorKind: "user",
-      action: "integration.notion_synced",
-      subjectType: "external_account",
-      subjectId: account.id,
-      summary: `Notion sync: ${pages.length} page${pages.length === 1 ? "" : "s"} seen, ${failed} failed`,
+    // Its own transaction instead of a bare auto-commit insert, like every
+    // other audit write in the codebase.
+    await withTransaction(async (tx) => {
+      await recordAudit(
+        auth,
+        {
+          action: "integration.notion_synced",
+          subjectType: "external_account",
+          subjectId: account.id,
+          summary: `Notion sync: ${pages.length} page${pages.length === 1 ? "" : "s"} seen, ${failed} failed`,
+        },
+        tx,
+      );
     });
     return {
       externalAccountId: account.id,

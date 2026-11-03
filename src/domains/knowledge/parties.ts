@@ -1,6 +1,6 @@
 import { and, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
-import { auditEvents } from "@/domains/audit/schema";
+import { recordAudit } from "@/domains/audit/record";
 import { db } from "@/lib/db";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { companies, contactCompanies, contacts } from "../crm/schema";
@@ -85,23 +85,13 @@ export async function proposeParties(
     ? await db
         .select({ id: contacts.id, primaryEmail: contacts.primaryEmail })
         .from(contacts)
-        .where(
-          and(
-            eq(contacts.workspaceId, auth.workspaceId),
-            inArray(sql`lower(${contacts.primaryEmail})`, emails),
-          ),
-        )
+        .where(and(eq(contacts.workspaceId, auth.workspaceId), inArray(sql`lower(${contacts.primaryEmail})`, emails)))
     : [];
   const companiesByDomain = domains.length
     ? await db
         .select({ id: companies.id, domain: companies.domain })
         .from(companies)
-        .where(
-          and(
-            eq(companies.workspaceId, auth.workspaceId),
-            inArray(sql`lower(${companies.domain})`, domains),
-          ),
-        )
+        .where(and(eq(companies.workspaceId, auth.workspaceId), inArray(sql`lower(${companies.domain})`, domains)))
     : [];
 
   let proposed = 0;
@@ -127,17 +117,13 @@ export async function proposeParties(
     let companyId: string | null = null;
     let status: "unresolved" | "matched" = "unresolved";
     if (candidate.partyKind === "contact" && candidate.email) {
-      const match = contactsByEmail.find(
-        (c) => c.primaryEmail?.toLowerCase() === candidate.email!.toLowerCase(),
-      );
+      const match = contactsByEmail.find((c) => c.primaryEmail?.toLowerCase() === candidate.email!.toLowerCase());
       if (match) {
         contactId = match.id;
         status = "matched";
       }
     } else if (candidate.partyKind === "company" && candidate.domain) {
-      const match = companiesByDomain.find(
-        (c) => c.domain?.toLowerCase() === candidate.domain!.toLowerCase(),
-      );
+      const match = companiesByDomain.find((c) => c.domain?.toLowerCase() === candidate.domain!.toLowerCase());
       if (match) {
         companyId = match.id;
         status = "matched";
@@ -195,12 +181,7 @@ export async function resolvePartyCandidates(
   const parties = await db
     .select()
     .from(documentParties)
-    .where(
-      and(
-        eq(documentParties.documentId, input.documentId),
-        eq(documentParties.workspaceId, auth.workspaceId),
-      ),
-    );
+    .where(and(eq(documentParties.documentId, input.documentId), eq(documentParties.workspaceId, auth.workspaceId)));
   if (parties.length === 0) return [];
 
   // Name-only option lookups, one round trip per kind. Case-insensitive on
@@ -213,10 +194,7 @@ export async function resolvePartyCandidates(
         .select({ id: contacts.id, fullName: contacts.fullName })
         .from(contacts)
         .where(
-          and(
-            eq(contacts.workspaceId, auth.workspaceId),
-            or(...contactNames.map((n) => ilike(contacts.fullName, n))),
-          ),
+          and(eq(contacts.workspaceId, auth.workspaceId), or(...contactNames.map((n) => ilike(contacts.fullName, n)))),
         )
     : [];
   const companiesByName = companyNames.length
@@ -224,10 +202,7 @@ export async function resolvePartyCandidates(
         .select({ id: companies.id, name: companies.name })
         .from(companies)
         .where(
-          and(
-            eq(companies.workspaceId, auth.workspaceId),
-            or(...companyNames.map((n) => ilike(companies.name, n))),
-          ),
+          and(eq(companies.workspaceId, auth.workspaceId), or(...companyNames.map((n) => ilike(companies.name, n)))),
         )
     : [];
 
@@ -334,9 +309,7 @@ export async function acceptParty(
   const [party] = await db
     .select()
     .from(documentParties)
-    .where(
-      and(eq(documentParties.id, input.partyId), eq(documentParties.workspaceId, auth.workspaceId)),
-    )
+    .where(and(eq(documentParties.id, input.partyId), eq(documentParties.workspaceId, auth.workspaceId)))
     .limit(1);
   if (!party) throw new Error("party not found in workspace");
 
@@ -414,9 +387,7 @@ export async function acceptParty(
         const [existing] = await tx
           .select({ id: contacts.id })
           .from(contacts)
-          .where(
-            and(eq(contacts.workspaceId, auth.workspaceId), eq(contacts.primaryEmail, primaryEmail)),
-          )
+          .where(and(eq(contacts.workspaceId, auth.workspaceId), eq(contacts.primaryEmail, primaryEmail)))
           .limit(1);
         if (existing) return existing.id;
       }
@@ -431,16 +402,17 @@ export async function acceptParty(
         })
         .returning({ id: contacts.id });
 
-      await tx.insert(auditEvents).values({
-        workspaceId: auth.workspaceId,
-        actorId: auth.userId,
-        actorKind: "user",
-        action: "contact.created_from_document",
-        subjectType: "contact",
-        subjectId: created.id,
-        summary: `Created contact ${fullName} from document party ${party.displayName}`,
-        metadata: { documentId: party.documentId, partyId: party.id },
-      });
+      await recordAudit(
+        auth,
+        {
+          action: "contact.created_from_document",
+          subjectType: "contact",
+          subjectId: created.id,
+          summary: `Created contact ${fullName} from document party ${party.displayName}`,
+          metadata: { documentId: party.documentId, partyId: party.id },
+        },
+        tx,
+      );
       return created.id;
     });
 
@@ -476,16 +448,17 @@ export async function acceptParty(
       })
       .returning({ id: companies.id });
 
-    await tx.insert(auditEvents).values({
-      workspaceId: auth.workspaceId,
-      actorId: auth.userId,
-      actorKind: "user",
-      action: "company.created_from_document",
-      subjectType: "company",
-      subjectId: created.id,
-      summary: `Created company ${name} from document party ${party.displayName}`,
-      metadata: { documentId: party.documentId, partyId: party.id },
-    });
+    await recordAudit(
+      auth,
+      {
+        action: "company.created_from_document",
+        subjectType: "company",
+        subjectId: created.id,
+        summary: `Created company ${name} from document party ${party.displayName}`,
+        metadata: { documentId: party.documentId, partyId: party.id },
+      },
+      tx,
+    );
     return created.id;
   });
 
@@ -529,9 +502,7 @@ export async function acceptAssertions(
     .limit(1);
   if (!document) throw new Error("document not found in workspace");
 
-  const sourceAttribution = document.mimeType
-    ? `${document.title} (${document.mimeType})`
-    : document.title;
+  const sourceAttribution = document.mimeType ? `${document.title} (${document.mimeType})` : document.title;
 
   const conflicts: AssertionConflict[] = [];
 
@@ -568,7 +539,11 @@ export async function acceptAssertions(
       // No supersede pointer and an active row already says something else:
       // keep both, and surface the conflict rather than picking a winner.
       const activeRows = await tx
-        .select({ id: reviewedAssertions.id, value: reviewedAssertions.value, sourceAttribution: reviewedAssertions.sourceAttribution })
+        .select({
+          id: reviewedAssertions.id,
+          value: reviewedAssertions.value,
+          sourceAttribution: reviewedAssertions.sourceAttribution,
+        })
         .from(reviewedAssertions)
         .where(
           and(
@@ -672,7 +647,9 @@ async function projectEmploymentRole(
       endedAt: assertion.effectiveTo ? new Date(`${assertion.effectiveTo}T00:00:00Z`) : null,
       isCurrent: !assertion.effectiveTo,
     })
-    .onConflictDoNothing({ target: [contactCompanies.contactId, contactCompanies.companyId, contactCompanies.startedAt] });
+    .onConflictDoNothing({
+      target: [contactCompanies.contactId, contactCompanies.companyId, contactCompanies.startedAt],
+    });
 }
 
 export type AssertionHistoryEntry = {

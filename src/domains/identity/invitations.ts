@@ -1,6 +1,5 @@
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
-import { auditEvents } from "@/domains/audit/schema";
 import { ForbiddenRoleError, requireRole } from "@/lib/auth/guards";
 import { withTransaction } from "@/lib/db-transaction";
 import { sha256Hex } from "@/lib/hash";
@@ -195,15 +194,18 @@ export async function acceptInvitation(input: {
         },
       })
       .returning({ id: memberships.id, role: memberships.role });
-    await tx.insert(auditEvents).values({
-      workspaceId: invite.workspaceId,
-      actorId: input.userId,
-      actorKind: "user",
-      action: "invitation.accepted",
-      subjectType: "invitation",
-      subjectId: invite.id,
-      summary: `Accepted an invitation as ${member.role}`,
-    });
+    // No AuthContext exists yet: the invitee is joining. The row names the
+    // workspace being joined and the acceptor's user id directly.
+    await recordAudit(
+      { workspaceId: invite.workspaceId, userId: input.userId },
+      {
+        action: "invitation.accepted",
+        subjectType: "invitation",
+        subjectId: invite.id,
+        summary: `Accepted an invitation as ${member.role}`,
+      },
+      tx,
+    );
     return { workspaceId: invite.workspaceId, membershipId: member.id, role: member.role, replayed: false };
   });
 }
