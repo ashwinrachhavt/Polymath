@@ -201,6 +201,7 @@ const TIER_1: Tier1Spec[] = [
   // Workspace-level lifecycle and proposals.
   { action: "inventory.imported", category: "workspace", verbPhrase: "imported inventory" },
   { action: "onboarding.completed", category: "workspace", verbPhrase: "completed onboarding" },
+  { action: "onboarding.assisted", category: "workspace", verbPhrase: "assisted onboarding" },
   { action: "spending_policy.created", category: "work", verbPhrase: "created a spending policy" },
   { action: "meeting.debriefed", category: "knowledge", verbPhrase: "debriefed a meeting" },
   { action: "note.snapshot", category: "knowledge", verbPhrase: "saved a note snapshot" },
