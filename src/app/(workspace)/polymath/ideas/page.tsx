@@ -4,8 +4,9 @@ import { io } from "next/cache";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Panel, Screen } from "@/components/workspace/ui";
 import { listNoteTags } from "@/domains/knowledge/notes";
-import { pageZettelCards } from "@/domains/knowledge/zettels";
+import { listPendingZettelProposals, pageZettelCards } from "@/domains/knowledge/zettels";
 import { IdeaGrid, type IdeaView } from "@/components/polymath/ideas/idea-grid";
+import { InReview } from "@/components/polymath/ideas/in-review";
 import { getAuthContext } from "@/lib/auth";
 import { destinations } from "@/lib/navigation";
 import { redirectPastEnd } from "@/components/list/clamp";
@@ -20,7 +21,9 @@ export const metadata = { title: "Ideas · Polymath" };
  * The Ideas surface: every saved idea, read through the four views the old
  * zettel collection offered. One read, many projections — cards, table,
  * timeline and dictionary are sorts over the same rows, so the count, the
- * tags and the titles can never disagree between them.
+ * tags and the titles can never disagree between them. Above the views sits
+ * the In-review queue: every pending proposal from both source kinds, the one
+ * place a decision finds its reviewer.
  */
 
 const BASE = "/polymath/ideas";
@@ -84,11 +87,15 @@ export async function IdeasSurface({ searchParams }: { searchParams: Promise<Raw
   });
   redirectPastEnd(BASE, raw, list.page, list.pageSize, found.total);
   const allTags = await listNoteTags(auth);
+  const pending = await listPendingZettelProposals(auth);
   const filtered = Boolean(list.q || tag);
 
   return (
     <Screen title="Ideas" description={purpose()}>
       <Panel>
+        {/* The working queue first. Absent when empty — the anchor the chat
+            notice links to falls through to the page top, which is honest. */}
+        {pending.length > 0 ? <InReview proposals={pending} /> : null}
         <ViewTabs view={view} raw={raw} />
         <div className="mb-3">
           <ListToolbar searchPlaceholder="Search ideas" />
