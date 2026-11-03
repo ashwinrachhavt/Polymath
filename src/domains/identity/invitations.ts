@@ -8,22 +8,20 @@ import type { AuthContext } from "./resolve";
 import { invitations, memberships } from "./schema";
 
 /*
- * ASH-121 AC02: membership and invitation lifecycle. Default off - no route
- * calls this yet and guards.ts RANK stays the enforcement surface. What this
- * slice proves: invitations are single-use, expiring, revocable and bound to a
- * recipient email; acceptance needs a VERIFIED email (the identity provider's
- * claim, never a self-asserted one); and the last active owner can never be
- * suspended, removed or demoted, even under concurrent requests.
+ * ASH-121 AC02: membership and invitation lifecycle, routed by spec D4 - the
+ * settings actions (create/revoke) and the /invitations/[token] acceptance
+ * page are the only callers, and guards.ts RANK stays the enforcement
+ * surface. What this slice proves: invitations are single-use, expiring,
+ * revocable and bound to a recipient email; acceptance needs a VERIFIED email
+ * (the identity provider's claim, never a self-asserted one); and the last
+ * active owner can never be suspended, removed or demoted, even under
+ * concurrent requests.
  */
 
 export class MembershipLifecycleError extends Error {
   constructor(
     public readonly code:
-      | "invitation_input"
-      | "invitation_invalid"
-      | "invitation_exists"
-      | "membership_not_found"
-      | "last_owner",
+      "invitation_input" | "invitation_invalid" | "invitation_exists" | "membership_not_found" | "last_owner",
     message: string,
   ) {
     super(message);
@@ -44,12 +42,18 @@ export async function createInvitation(
   auth: AuthContext,
   input: { email: string; role?: "admin" | "member" | "viewer"; ttlHours?: number },
 ): Promise<{ invitationId: string; token: string; expiresAt: Date }> {
-  requireRole(auth, "owner");
+  // Spec D4: admins and owners invite; members and viewers cannot. The invited
+  // role caps at admin - `owner` is not in the input union and the
+  // invitations_role_check constraint backs it in the database.
+  requireRole(auth, "admin");
   const email = normalizeEmail(input.email);
   if (!EMAIL.test(email)) throw new MembershipLifecycleError("invitation_input", "Enter a valid email address.");
   const ttl = input.ttlHours ?? DEFAULT_TTL_HOURS;
   if (!(ttl > 0) || ttl > MAX_TTL_HOURS) {
-    throw new MembershipLifecycleError("invitation_input", `An invitation lasts between 1 hour and ${MAX_TTL_HOURS} hours.`);
+    throw new MembershipLifecycleError(
+      "invitation_input",
+      `An invitation lasts between 1 hour and ${MAX_TTL_HOURS} hours.`,
+    );
   }
   const token = `inv_${crypto.randomUUID().replaceAll("-", "")}${crypto.randomUUID().replaceAll("-", "")}`;
   const expiresAt = new Date(Date.now() + ttl * 3600_000);
@@ -60,13 +64,15 @@ export async function createInvitation(
     await tx
       .update(invitations)
       .set({ revokedAt: new Date(), revokedBy: auth.userId, updatedAt: new Date() })
-      .where(and(
-        eq(invitations.workspaceId, auth.workspaceId),
-        eq(invitations.email, email),
-        isNull(invitations.acceptedAt),
-        isNull(invitations.revokedAt),
-        sql`${invitations.expiresAt} <= now()`,
-      ));
+      .where(
+        and(
+          eq(invitations.workspaceId, auth.workspaceId),
+          eq(invitations.email, email),
+          isNull(invitations.acceptedAt),
+          isNull(invitations.revokedAt),
+          sql`${invitations.expiresAt} <= now()`,
+        ),
+      );
     const inserted = await tx
       .insert(invitations)
       .values({
@@ -81,39 +87,52 @@ export async function createInvitation(
       .onConflictDoNothing()
       .returning({ id: invitations.id });
     if (inserted.length === 0) {
-      throw new MembershipLifecycleError("invitation_exists", "That address already has a pending invitation. Revoke it to send another.");
+      throw new MembershipLifecycleError(
+        "invitation_exists",
+        "That address already has a pending invitation. Revoke it to send another.",
+      );
     }
-    await recordAudit(auth, {
-      action: "invitation.created",
-      subjectType: "invitation",
-      subjectId: inserted[0].id,
-      summary: `Invited ${email} as ${input.role ?? "member"}`,
-      metadata: { email, role: input.role ?? "member", expiresAt },
-    }, tx);
+    await recordAudit(
+      auth,
+      {
+        action: "invitation.created",
+        subjectType: "invitation",
+        subjectId: inserted[0].id,
+        summary: `Invited ${email} as ${input.role ?? "member"}`,
+        metadata: { email, role: input.role ?? "member", expiresAt },
+      },
+      tx,
+    );
     return { invitationId: inserted[0].id, token, expiresAt };
   });
 }
 
 export async function revokeInvitation(auth: AuthContext, invitationId: string): Promise<{ revoked: boolean }> {
-  requireRole(auth, "owner");
+  requireRole(auth, "admin"); // Spec D4: same rank as createInvitation.
   return withTransaction(async (tx) => {
     const rows = await tx
       .update(invitations)
       .set({ revokedAt: new Date(), revokedBy: auth.userId, updatedAt: new Date() })
-      .where(and(
-        eq(invitations.id, invitationId),
-        eq(invitations.workspaceId, auth.workspaceId),
-        isNull(invitations.acceptedAt),
-        isNull(invitations.revokedAt),
-      ))
+      .where(
+        and(
+          eq(invitations.id, invitationId),
+          eq(invitations.workspaceId, auth.workspaceId),
+          isNull(invitations.acceptedAt),
+          isNull(invitations.revokedAt),
+        ),
+      )
       .returning({ id: invitations.id });
     if (rows.length === 0) return { revoked: false };
-    await recordAudit(auth, {
-      action: "invitation.revoked",
-      subjectType: "invitation",
-      subjectId: invitationId,
-      summary: "Revoked an invitation",
-    }, tx);
+    await recordAudit(
+      auth,
+      {
+        action: "invitation.revoked",
+        subjectType: "invitation",
+        subjectId: invitationId,
+        summary: "Revoked an invitation",
+      },
+      tx,
+    );
     return { revoked: true };
   });
 }
@@ -139,13 +158,15 @@ export async function acceptInvitation(input: {
     const claimed = await tx
       .update(invitations)
       .set({ acceptedAt: new Date(), acceptedBy: input.userId, updatedAt: new Date() })
-      .where(and(
-        eq(invitations.tokenHash, tokenHash),
-        eq(invitations.email, email),
-        isNull(invitations.acceptedAt),
-        isNull(invitations.revokedAt),
-        gt(invitations.expiresAt, new Date()),
-      ))
+      .where(
+        and(
+          eq(invitations.tokenHash, tokenHash),
+          eq(invitations.email, email),
+          isNull(invitations.acceptedAt),
+          isNull(invitations.revokedAt),
+          gt(invitations.expiresAt, new Date()),
+        ),
+      )
       .returning();
     if (claimed.length === 0) {
       const [prior] = await tx
@@ -159,7 +180,8 @@ export async function acceptInvitation(input: {
           .from(memberships)
           .where(and(eq(memberships.workspaceId, prior.workspaceId), eq(memberships.userId, input.userId)))
           .limit(1);
-        if (existing) return { workspaceId: prior.workspaceId, membershipId: existing.id, role: existing.role, replayed: true };
+        if (existing)
+          return { workspaceId: prior.workspaceId, membershipId: existing.id, role: existing.role, replayed: true };
       }
       throw invalid();
     }
@@ -199,7 +221,11 @@ export async function acceptInvitation(input: {
  */
 export async function changeMembership(
   auth: AuthContext,
-  input: { membershipId: string; status?: "active" | "suspended" | "removed"; role?: "owner" | "admin" | "member" | "viewer" },
+  input: {
+    membershipId: string;
+    status?: "active" | "suspended" | "removed";
+    role?: "owner" | "admin" | "member" | "viewer";
+  },
 ): Promise<{ membershipId: string; status: string; role: string }> {
   requireRole(auth, "owner");
   if (!input.status && !input.role) {
@@ -209,7 +235,13 @@ export async function changeMembership(
     const owners = await tx
       .select({ id: memberships.id })
       .from(memberships)
-      .where(and(eq(memberships.workspaceId, auth.workspaceId), eq(memberships.role, "owner"), eq(memberships.status, "active")))
+      .where(
+        and(
+          eq(memberships.workspaceId, auth.workspaceId),
+          eq(memberships.role, "owner"),
+          eq(memberships.status, "active"),
+        ),
+      )
       .orderBy(memberships.id)
       .for("update");
     const [target] = await tx
@@ -221,21 +253,32 @@ export async function changeMembership(
 
     const nextStatus = input.status ?? target.status;
     const nextRole = input.role ?? target.role;
-    const losesOwner = target.role === "owner" && target.status === "active" && (nextStatus !== "active" || nextRole !== "owner");
+    const losesOwner =
+      target.role === "owner" && target.status === "active" && (nextStatus !== "active" || nextRole !== "owner");
     if (losesOwner && owners.length <= 1) {
       throw new MembershipLifecycleError("last_owner", "A workspace needs at least one active owner.");
     }
     await tx
       .update(memberships)
-      .set({ status: nextStatus, role: nextRole, updatedBy: auth.userId, updatedAt: new Date(), version: sql`${memberships.version} + 1` })
+      .set({
+        status: nextStatus,
+        role: nextRole,
+        updatedBy: auth.userId,
+        updatedAt: new Date(),
+        version: sql`${memberships.version} + 1`,
+      })
       .where(eq(memberships.id, target.id));
-    await recordAudit(auth, {
-      action: "membership.changed",
-      subjectType: "membership",
-      subjectId: target.id,
-      summary: `Membership ${target.status}/${target.role} -> ${nextStatus}/${nextRole}`,
-      metadata: { from: { status: target.status, role: target.role }, to: { status: nextStatus, role: nextRole } },
-    }, tx);
+    await recordAudit(
+      auth,
+      {
+        action: "membership.changed",
+        subjectType: "membership",
+        subjectId: target.id,
+        summary: `Membership ${target.status}/${target.role} -> ${nextStatus}/${nextRole}`,
+        metadata: { from: { status: target.status, role: target.role }, to: { status: nextStatus, role: nextRole } },
+      },
+      tx,
+    );
     return { membershipId: target.id, status: nextStatus, role: nextRole };
   });
 }

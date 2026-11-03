@@ -4,6 +4,8 @@ import { Empty, Panel, Screen, Status } from "@/components/workspace/ui";
 import { listInvitations, listMembers } from "@/domains/identity/members";
 import { ForbiddenRoleError } from "@/lib/auth/guards";
 import { getAuthContext } from "@/lib/auth";
+import { InviteForm } from "./invite-form";
+import { RevokeInvitation } from "./revoke-invitation";
 
 export const metadata = { title: "Access · Polymath" };
 
@@ -11,11 +13,15 @@ const dateFormat = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeZ
 
 async function Access() {
   await io();
-  const description = "Who belongs to this workspace and which invitations are open. Read-only for now.";
+  const description =
+    "Who belongs to this workspace and which invitations are open. Invitations go out as shareable links.";
   if (!process.env.DATABASE_URL?.trim()) {
     return (
       <Screen title="Access" description={description}>
-        <Empty title="Storage is not configured" description="Set DATABASE_URL and apply the database migrations to see members." />
+        <Empty
+          title="Storage is not configured"
+          description="Set DATABASE_URL and apply the database migrations to see members."
+        />
       </Screen>
     );
   }
@@ -54,7 +60,9 @@ async function Access() {
                   {m.displayName && m.email && <p className="text-xs text-muted-foreground">{m.email}</p>}
                 </td>
                 <td className="py-2 capitalize">{m.role}</td>
-                <td className="py-2"><Status>{m.status}</Status></td>
+                <td className="py-2">
+                  <Status>{m.status}</Status>
+                </td>
                 <td className="py-2 text-muted-foreground">{dateFormat.format(m.since)}</td>
               </tr>
             ))}
@@ -62,6 +70,9 @@ async function Access() {
         </table>
       </Panel>
       <Panel title="Invitations" description="An invitation is single-use, expires, and is tied to one email address.">
+        <div className="mb-4">
+          <InviteForm />
+        </div>
         {invites.length === 0 ? (
           <Empty title="No invitations" description="Nothing has been sent from this workspace." />
         ) : (
@@ -75,6 +86,7 @@ async function Access() {
                 <span className="flex items-center gap-3">
                   <span className="text-xs text-muted-foreground">expires {dateFormat.format(i.expiresAt)}</span>
                   <Status>{i.state}</Status>
+                  {i.state === "pending" ? <RevokeInvitation invitationId={i.id} /> : null}
                 </span>
               </li>
             ))}
@@ -88,7 +100,13 @@ async function Access() {
 /* io() must sit inside a Suspense boundary; see settings/page.tsx. */
 export default function AccessPage() {
   return (
-    <Suspense fallback={<p role="status" className="p-6 text-[13px] text-muted-foreground">Loading access…</p>}>
+    <Suspense
+      fallback={
+        <p role="status" className="p-6 text-[13px] text-muted-foreground">
+          Loading access…
+        </p>
+      }
+    >
       <Access />
     </Suspense>
   );
