@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { auditEvents } from "@/domains/audit/schema";
@@ -633,6 +633,47 @@ export async function acceptZettel(auth: AuthContext, input: { proposalId: strin
       label: sourceLabel,
       context: proposal.quote,
     });
+    /*
+     * Sibling seeding: accepted cards from the same source are joined the
+     * moment this accept commits — durable `related` edges written inside
+     * this transaction. The semantic pass skips explicitly-linked pairs, so
+     * these edges survive re-embeds; without them, same-source cards stay
+     * strangers until an embedding pass happens to find them similar. The
+     * schema's one-source check (document XOR source artifact) makes both
+     * filters null impossible; the guard keeps that failure mode at "no
+     * edges", never "edges to everything".
+     */
+    const sameSource = and(
+      proposal.documentId ? eq(zettelProposals.documentId, proposal.documentId) : undefined,
+      proposal.sourceArtifactId ? eq(zettelProposals.sourceArtifactId, proposal.sourceArtifactId) : undefined,
+    );
+    if (sameSource) {
+      const siblings = await tx
+        .select({ artifactId: zettelProposals.artifactId, title: zettelProposals.title })
+        .from(zettelProposals)
+        .where(
+          and(
+            eq(zettelProposals.workspaceId, auth.workspaceId),
+            sameSource,
+            eq(zettelProposals.status, "accepted"),
+            isNotNull(zettelProposals.artifactId),
+            ne(zettelProposals.id, proposal.id),
+          ),
+        );
+      if (siblings.length > 0) {
+        await tx.insert(artifactLinks).values(
+          siblings.map((s) => ({
+            workspaceId: auth.workspaceId,
+            artifactId: card.id,
+            targetType: "zettel",
+            targetId: s.artifactId!,
+            linkType: "related",
+            label: s.title,
+            context: "From the same source",
+          })),
+        );
+      }
+    }
     await tx
       .update(zettelProposals)
       .set({ conceptId: concept.id, claimId: claim.id, artifactId: card.id })
