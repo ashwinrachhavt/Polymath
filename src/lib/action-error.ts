@@ -37,9 +37,25 @@ const AUTH_FORBIDDEN_SHAPES = [
   /^This API key does not carry the [a-z0-9:_-]{1,64} scope\.$/,
 ];
 
+// MembershipLifecycleError's codes are a closed enum and every message is a
+// fixed constant in the domain (no user input is ever interpolated into one),
+// so recognizing the class by name+code pins the domain's authored copy —
+// "A workspace needs at least one active owner." — without importing the
+// domain into lib. SQLSTATEs are five characters and cannot collide.
+const LIFECYCLE_CODES = new Set([
+  "invitation_input",
+  "invitation_invalid",
+  "invitation_exists",
+  "membership_not_found",
+  "last_owner",
+]);
+
 function authRejectionCopy(error: unknown): string | undefined {
   if (!(error instanceof Error)) return undefined;
   const code = (error as { code?: unknown }).code;
+  if (error.name === "MembershipLifecycleError" && LIFECYCLE_CODES.has(String(code))) {
+    return error.message;
+  }
   switch (code) {
     case "unauthorized":
       return "No signed-in session.";
@@ -48,9 +64,7 @@ function authRejectionCopy(error: unknown): string | undefined {
     case "AUTH_WORKSPACE_MISMATCH":
       return "Record belongs to another workspace.";
     case "AUTH_FORBIDDEN":
-      return AUTH_FORBIDDEN_SHAPES.some((shape) => shape.test(error.message))
-        ? error.message
-        : FORBIDDEN_FALLBACK;
+      return AUTH_FORBIDDEN_SHAPES.some((shape) => shape.test(error.message)) ? error.message : FORBIDDEN_FALLBACK;
     default:
       return undefined;
   }

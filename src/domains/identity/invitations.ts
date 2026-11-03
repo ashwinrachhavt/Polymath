@@ -1,7 +1,7 @@
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
 import { auditEvents } from "@/domains/audit/schema";
-import { requireRole } from "@/lib/auth/guards";
+import { ForbiddenRoleError, requireRole } from "@/lib/auth/guards";
 import { withTransaction } from "@/lib/db-transaction";
 import { sha256Hex } from "@/lib/hash";
 import type { AuthContext } from "./resolve";
@@ -19,11 +19,7 @@ import { invitations, memberships } from "./schema";
 export class MembershipLifecycleError extends Error {
   constructor(
     public readonly code:
-      | "invitation_input"
-      | "invitation_invalid"
-      | "invitation_exists"
-      | "membership_not_found"
-      | "last_owner",
+      "invitation_input" | "invitation_invalid" | "invitation_exists" | "membership_not_found" | "last_owner",
     message: string,
   ) {
     super(message);
@@ -49,7 +45,10 @@ export async function createInvitation(
   if (!EMAIL.test(email)) throw new MembershipLifecycleError("invitation_input", "Enter a valid email address.");
   const ttl = input.ttlHours ?? DEFAULT_TTL_HOURS;
   if (!(ttl > 0) || ttl > MAX_TTL_HOURS) {
-    throw new MembershipLifecycleError("invitation_input", `An invitation lasts between 1 hour and ${MAX_TTL_HOURS} hours.`);
+    throw new MembershipLifecycleError(
+      "invitation_input",
+      `An invitation lasts between 1 hour and ${MAX_TTL_HOURS} hours.`,
+    );
   }
   const token = `inv_${crypto.randomUUID().replaceAll("-", "")}${crypto.randomUUID().replaceAll("-", "")}`;
   const expiresAt = new Date(Date.now() + ttl * 3600_000);
@@ -60,13 +59,15 @@ export async function createInvitation(
     await tx
       .update(invitations)
       .set({ revokedAt: new Date(), revokedBy: auth.userId, updatedAt: new Date() })
-      .where(and(
-        eq(invitations.workspaceId, auth.workspaceId),
-        eq(invitations.email, email),
-        isNull(invitations.acceptedAt),
-        isNull(invitations.revokedAt),
-        sql`${invitations.expiresAt} <= now()`,
-      ));
+      .where(
+        and(
+          eq(invitations.workspaceId, auth.workspaceId),
+          eq(invitations.email, email),
+          isNull(invitations.acceptedAt),
+          isNull(invitations.revokedAt),
+          sql`${invitations.expiresAt} <= now()`,
+        ),
+      );
     const inserted = await tx
       .insert(invitations)
       .values({
@@ -81,15 +82,22 @@ export async function createInvitation(
       .onConflictDoNothing()
       .returning({ id: invitations.id });
     if (inserted.length === 0) {
-      throw new MembershipLifecycleError("invitation_exists", "That address already has a pending invitation. Revoke it to send another.");
+      throw new MembershipLifecycleError(
+        "invitation_exists",
+        "That address already has a pending invitation. Revoke it to send another.",
+      );
     }
-    await recordAudit(auth, {
-      action: "invitation.created",
-      subjectType: "invitation",
-      subjectId: inserted[0].id,
-      summary: `Invited ${email} as ${input.role ?? "member"}`,
-      metadata: { email, role: input.role ?? "member", expiresAt },
-    }, tx);
+    await recordAudit(
+      auth,
+      {
+        action: "invitation.created",
+        subjectType: "invitation",
+        subjectId: inserted[0].id,
+        summary: `Invited ${email} as ${input.role ?? "member"}`,
+        metadata: { email, role: input.role ?? "member", expiresAt },
+      },
+      tx,
+    );
     return { invitationId: inserted[0].id, token, expiresAt };
   });
 }
@@ -100,20 +108,26 @@ export async function revokeInvitation(auth: AuthContext, invitationId: string):
     const rows = await tx
       .update(invitations)
       .set({ revokedAt: new Date(), revokedBy: auth.userId, updatedAt: new Date() })
-      .where(and(
-        eq(invitations.id, invitationId),
-        eq(invitations.workspaceId, auth.workspaceId),
-        isNull(invitations.acceptedAt),
-        isNull(invitations.revokedAt),
-      ))
+      .where(
+        and(
+          eq(invitations.id, invitationId),
+          eq(invitations.workspaceId, auth.workspaceId),
+          isNull(invitations.acceptedAt),
+          isNull(invitations.revokedAt),
+        ),
+      )
       .returning({ id: invitations.id });
     if (rows.length === 0) return { revoked: false };
-    await recordAudit(auth, {
-      action: "invitation.revoked",
-      subjectType: "invitation",
-      subjectId: invitationId,
-      summary: "Revoked an invitation",
-    }, tx);
+    await recordAudit(
+      auth,
+      {
+        action: "invitation.revoked",
+        subjectType: "invitation",
+        subjectId: invitationId,
+        summary: "Revoked an invitation",
+      },
+      tx,
+    );
     return { revoked: true };
   });
 }
@@ -139,13 +153,15 @@ export async function acceptInvitation(input: {
     const claimed = await tx
       .update(invitations)
       .set({ acceptedAt: new Date(), acceptedBy: input.userId, updatedAt: new Date() })
-      .where(and(
-        eq(invitations.tokenHash, tokenHash),
-        eq(invitations.email, email),
-        isNull(invitations.acceptedAt),
-        isNull(invitations.revokedAt),
-        gt(invitations.expiresAt, new Date()),
-      ))
+      .where(
+        and(
+          eq(invitations.tokenHash, tokenHash),
+          eq(invitations.email, email),
+          isNull(invitations.acceptedAt),
+          isNull(invitations.revokedAt),
+          gt(invitations.expiresAt, new Date()),
+        ),
+      )
       .returning();
     if (claimed.length === 0) {
       const [prior] = await tx
@@ -159,7 +175,8 @@ export async function acceptInvitation(input: {
           .from(memberships)
           .where(and(eq(memberships.workspaceId, prior.workspaceId), eq(memberships.userId, input.userId)))
           .limit(1);
-        if (existing) return { workspaceId: prior.workspaceId, membershipId: existing.id, role: existing.role, replayed: true };
+        if (existing)
+          return { workspaceId: prior.workspaceId, membershipId: existing.id, role: existing.role, replayed: true };
       }
       throw invalid();
     }
@@ -196,12 +213,21 @@ export async function acceptInvitation(input: {
  * change that could leave the workspace without an active owner takes a row
  * lock on the workspace's owner memberships first, so two concurrent
  * demotions serialize and the second sees the first's result.
+ *
+ * Rank (D5): admins manage the directory — change roles and remove members.
+ * Leaving is the one self-service verb: the caller's own row, status-only,
+ * to "removed", at member rank. Two moves stay owner-only: touching an
+ * owner's membership at all, and granting the owner role (an admin could
+ * otherwise mint a second owner past the people who hold the workspace).
  */
 export async function changeMembership(
   auth: AuthContext,
-  input: { membershipId: string; status?: "active" | "suspended" | "removed"; role?: "owner" | "admin" | "member" | "viewer" },
+  input: {
+    membershipId: string;
+    status?: "active" | "suspended" | "removed";
+    role?: "owner" | "admin" | "member" | "viewer";
+  },
 ): Promise<{ membershipId: string; status: string; role: string }> {
-  requireRole(auth, "owner");
   if (!input.status && !input.role) {
     throw new MembershipLifecycleError("invitation_input", "Nothing to change.");
   }
@@ -209,33 +235,56 @@ export async function changeMembership(
     const owners = await tx
       .select({ id: memberships.id })
       .from(memberships)
-      .where(and(eq(memberships.workspaceId, auth.workspaceId), eq(memberships.role, "owner"), eq(memberships.status, "active")))
+      .where(
+        and(
+          eq(memberships.workspaceId, auth.workspaceId),
+          eq(memberships.role, "owner"),
+          eq(memberships.status, "active"),
+        ),
+      )
       .orderBy(memberships.id)
       .for("update");
     const [target] = await tx
-      .select({ id: memberships.id, role: memberships.role, status: memberships.status })
+      .select({ id: memberships.id, userId: memberships.userId, role: memberships.role, status: memberships.status })
       .from(memberships)
       .where(and(eq(memberships.id, input.membershipId), eq(memberships.workspaceId, auth.workspaceId)))
       .limit(1);
     if (!target) throw new MembershipLifecycleError("membership_not_found", "No such member in this workspace.");
 
+    const selfLeave = target.userId === auth.userId && input.role === undefined && input.status === "removed";
+    requireRole(auth, selfLeave ? "member" : "admin");
+    if (!selfLeave && (target.role === "owner" || input.role === "owner") && auth.role !== "owner") {
+      throw new ForbiddenRoleError("AUTH_FORBIDDEN", `Requires owner; this member is ${auth.role}.`);
+    }
+
     const nextStatus = input.status ?? target.status;
     const nextRole = input.role ?? target.role;
-    const losesOwner = target.role === "owner" && target.status === "active" && (nextStatus !== "active" || nextRole !== "owner");
+    const losesOwner =
+      target.role === "owner" && target.status === "active" && (nextStatus !== "active" || nextRole !== "owner");
     if (losesOwner && owners.length <= 1) {
       throw new MembershipLifecycleError("last_owner", "A workspace needs at least one active owner.");
     }
     await tx
       .update(memberships)
-      .set({ status: nextStatus, role: nextRole, updatedBy: auth.userId, updatedAt: new Date(), version: sql`${memberships.version} + 1` })
+      .set({
+        status: nextStatus,
+        role: nextRole,
+        updatedBy: auth.userId,
+        updatedAt: new Date(),
+        version: sql`${memberships.version} + 1`,
+      })
       .where(eq(memberships.id, target.id));
-    await recordAudit(auth, {
-      action: "membership.changed",
-      subjectType: "membership",
-      subjectId: target.id,
-      summary: `Membership ${target.status}/${target.role} -> ${nextStatus}/${nextRole}`,
-      metadata: { from: { status: target.status, role: target.role }, to: { status: nextStatus, role: nextRole } },
-    }, tx);
+    await recordAudit(
+      auth,
+      {
+        action: "membership.changed",
+        subjectType: "membership",
+        subjectId: target.id,
+        summary: `Membership ${target.status}/${target.role} -> ${nextStatus}/${nextRole}`,
+        metadata: { from: { status: target.status, role: target.role }, to: { status: nextStatus, role: nextRole } },
+      },
+      tx,
+    );
     return { membershipId: target.id, status: nextStatus, role: nextRole };
   });
 }

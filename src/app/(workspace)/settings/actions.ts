@@ -12,6 +12,8 @@ import {
 } from "@/domains/identity/preferences";
 import { getDefaultProfile } from "@/domains/agents/queries";
 import { updateDefaultProfileBrief } from "@/domains/agents/commands";
+import { changeMembership } from "@/domains/identity/invitations";
+import { selfMembership } from "@/domains/identity/members";
 import { actionError } from "@/lib/action-error";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
@@ -80,7 +82,9 @@ export async function savePreferencesAction(input: {
  * the workspace; writes need a member, and the domain compare-and-sets on
  * the rendered version. Retire = save empty, recorded as retired in audit.
  */
-export async function loadAssistantProfileAction(): Promise<Result<{ profile: { name: string; description: string | null; instructions: string | null; version: number } | null }>> {
+export async function loadAssistantProfileAction(): Promise<
+  Result<{ profile: { name: string; description: string | null; instructions: string | null; version: number } | null }>
+> {
   let auth;
   try {
     auth = await getAuthContext();
@@ -104,7 +108,11 @@ export async function saveAssistantProfileAction(input: {
   description?: string;
   instructions?: string;
   expectedVersion: number;
-}): Promise<Result<{ profile: { name: string; description: string | null; instructions: string | null; version: number } }> & { kind?: "conflict" | "validation" | "not_found" }> {
+}): Promise<
+  Result<{ profile: { name: string; description: string | null; instructions: string | null; version: number } }> & {
+    kind?: "conflict" | "validation" | "not_found";
+  }
+> {
   let auth;
   try {
     auth = await getAuthContext();
@@ -116,13 +124,96 @@ export async function saveAssistantProfileAction(input: {
     requireRole(auth, "owner");
     const result = await updateDefaultProfileBrief(auth, input);
     if (!result.ok) {
-      if (result.kind === "conflict") return { ok: false, kind: "conflict", error: "The assistant profile changed elsewhere. Reloaded the latest - review and save again." };
-      if (result.kind === "not_found") return { ok: false, kind: "not_found", error: "No assistant profile exists yet. It is created when the assistant first runs." };
+      if (result.kind === "conflict")
+        return {
+          ok: false,
+          kind: "conflict",
+          error: "The assistant profile changed elsewhere. Reloaded the latest - review and save again.",
+        };
+      if (result.kind === "not_found")
+        return {
+          ok: false,
+          kind: "not_found",
+          error: "No assistant profile exists yet. It is created when the assistant first runs.",
+        };
       return { ok: false, kind: "validation", error: result.error };
     }
     revalidatePath("/settings");
     return { ok: true, profile: result.profile };
   } catch (error) {
     return { ok: false, error: actionError(error, "Could not save the assistant profile.") };
+  }
+}
+
+/*
+ * D5 membership management. The console's three verbs delegate to the
+ * identity domain's changeMembership — the enforcement surface for rank
+ * (admins manage, members leave), the owner-row matrix, and the last-owner
+ * invariant. Actions validate shape, translate errors into authored copy,
+ * and revalidate the console; they add no policy of their own.
+ */
+
+const ROLES = ["owner", "admin", "member", "viewer"] as const;
+
+export async function changeMemberRoleAction(input: {
+  membershipId: string;
+  role: string;
+}): Promise<Result<{ membershipId: string; status: string; role: string }>> {
+  let auth;
+  try {
+    auth = await getAuthContext();
+  } catch (error) {
+    return { ok: false, error: actionError(error, "Sign-in is not configured on this deployment.") };
+  }
+  const membershipId = String(input?.membershipId ?? "").trim();
+  const role = String(input?.role ?? "").trim() as (typeof ROLES)[number];
+  if (!membershipId) return { ok: false, error: "Choose a member to update." };
+  if (!ROLES.includes(role)) return { ok: false, error: "Choose a role from the list." };
+  try {
+    const changed = await changeMembership(auth, { membershipId, role });
+    revalidatePath("/settings/access");
+    return { ok: true, ...changed };
+  } catch (error) {
+    return { ok: false, error: actionError(error, "Could not change the role.") };
+  }
+}
+
+export async function removeMemberAction(input: {
+  membershipId: string;
+}): Promise<Result<{ membershipId: string; status: string; role: string }>> {
+  let auth;
+  try {
+    auth = await getAuthContext();
+  } catch (error) {
+    return { ok: false, error: actionError(error, "Sign-in is not configured on this deployment.") };
+  }
+  const membershipId = String(input?.membershipId ?? "").trim();
+  if (!membershipId) return { ok: false, error: "Choose a member to remove." };
+  try {
+    const changed = await changeMembership(auth, { membershipId, status: "removed" });
+    revalidatePath("/settings/access");
+    return { ok: true, ...changed };
+  } catch (error) {
+    return { ok: false, error: actionError(error, "Could not remove the member.") };
+  }
+}
+
+export async function leaveWorkspaceAction(): Promise<Result<{ left: true }>> {
+  let auth;
+  try {
+    auth = await getAuthContext();
+  } catch (error) {
+    return { ok: false, error: actionError(error, "Sign-in is not configured on this deployment.") };
+  }
+  try {
+    // The row comes from the session, never from the client: a member could
+    // otherwise aim the leave verb at someone else's membership id.
+    const self = await selfMembership(auth);
+    if (!self) return { ok: false, error: "You are not a member of this workspace." };
+    await changeMembership(auth, { membershipId: self.membershipId, status: "removed" });
+    revalidatePath("/settings/access");
+    return { ok: true, left: true };
+  } catch (error) {
+    return { ok: false, error: actionError(error, "Could not leave the workspace.") };
   }
 }
