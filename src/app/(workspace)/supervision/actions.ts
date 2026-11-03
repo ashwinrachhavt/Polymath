@@ -15,6 +15,7 @@ import {
 } from "@/domains/superagent/core";
 import { SourceRegistry } from "@/domains/superagent/sources";
 import { createSuperagentStore, getPolicy, savePolicy, storedPolicyConfig } from "@/domains/superagent/store";
+import { evictSuperagentHost } from "@/domains/superagent/wiring";
 import { db } from "@/lib/db";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
@@ -119,6 +120,11 @@ export async function savePolicyAction(input: SavePolicyInput): Promise<ActionRe
       })),
     );
     revalidatePath("/supervision");
+    // This process's composition still holds the policy the gate just
+    // replaced; drop it so the next intake rebuilds from the saved
+    // document. Other processes (the worker) refresh by version in the
+    // sweep (evictStaleSuperagentHost).
+    evictSuperagentHost(auth.workspaceId);
     return { ok: true };
   } catch (error) {
     return {
