@@ -23,7 +23,11 @@ import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace"
 const handle = makeTestDb();
 const suite = handle ? describe : describe.skip;
 const holder: { db: ReturnType<typeof drizzle> | undefined } = { db: undefined };
-vi.mock("@/lib/db", () => ({ get db() { return holder.db; } }));
+vi.mock("@/lib/db", () => ({
+  get db() {
+    return holder.db;
+  },
+}));
 vi.mock("@/lib/db-transaction", () => ({
   get withTransaction() {
     return (fn: Parameters<typeof import("@/lib/db-transaction").withTransaction>[0]) =>
@@ -41,7 +45,8 @@ import {
 import type { ClaimedOutboxEvent } from "@/domains/audit/outbox";
 import type { ZettelExtractor } from "@/integrations/zettels/extractor";
 
-const BODY = "Atomic notes compound. A zettel carries one idea, verbatim evidence, and links to its neighbours. Writing them daily turns reading into thinking.";
+const BODY =
+  "Atomic notes compound. A zettel carries one idea, verbatim evidence, and links to its neighbours. Writing them daily turns reading into thinking.";
 const Q1 = "A zettel carries one idea, verbatim evidence";
 const Q2 = "Writing them daily turns reading into thinking.";
 
@@ -69,17 +74,26 @@ const ownerAuthFor = (workspaceId: string) => async () => ownerAuth(workspaceOf.
 const workspaceOf = new Map<string, string>();
 
 async function seed(slug: string) {
-  const { userId, workspaceId } = await seedWorkspace(holder.db!, `zgen-${slug}-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`);
+  const { userId, workspaceId } = await seedWorkspace(
+    holder.db!,
+    `zgen-${slug}-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`,
+  );
   workspaceOf.set(workspaceId, userId);
   return ownerAuth(userId, workspaceId);
 }
 
 async function addCapture(
   auth: { workspaceId: string; userId: string },
-  row: { text?: string | null; kind?: "text" | "file" | "url"; state?: "unprocessed" | "converted" | "discarded"; convertedType?: string; convertedId?: string },
+  row: {
+    text?: string | null;
+    kind?: "text" | "file" | "url";
+    state?: "unprocessed" | "converted" | "discarded";
+    convertedType?: string;
+    convertedId?: string;
+  },
 ) {
-  const [created] = await holder.db!
-    .insert(captures)
+  const [created] = await holder
+    .db!.insert(captures)
     .values({
       workspaceId: auth.workspaceId,
       kind: row.kind ?? "text",
@@ -97,7 +111,14 @@ async function addCapture(
 }
 
 function event(auth: { workspaceId: string }, captureId: string): ClaimedOutboxEvent {
-  return { id: crypto.randomUUID(), workspaceId: auth.workspaceId, topic: ZETTEL_GENERATION_TOPIC, payload: { captureId }, attempts: 0, leaseToken: crypto.randomUUID() };
+  return {
+    id: crypto.randomUUID(),
+    workspaceId: auth.workspaceId,
+    topic: ZETTEL_GENERATION_TOPIC,
+    payload: { captureId },
+    attempts: 0,
+    leaseToken: crypto.randomUUID(),
+  };
 }
 
 suite("zettel generation from the inbox", () => {
@@ -106,21 +127,26 @@ suite("zettel generation from the inbox", () => {
     const withText = await addCapture(auth, { text: BODY });
     await addCapture(auth, { text: "   " });
     await addCapture(auth, { text: null, kind: "file" });
-    const alreadyFiled = await addCapture(auth, { text: BODY, state: "converted", convertedType: "task", convertedId: crypto.randomUUID() });
+    const alreadyFiled = await addCapture(auth, {
+      text: BODY,
+      state: "converted",
+      convertedType: "task",
+      convertedId: crypto.randomUUID(),
+    });
 
     expect(await countZettelSourceCaptures(auth)).toBe(1);
     const queued = await requestZettelGeneration(auth, { idempotencyKey: crypto.randomUUID() });
     expect(queued.queued).toBe(1);
     expect(queued.captureIds).toEqual([withText.id]);
 
-    const rows = await holder.db!
-      .select()
+    const rows = await holder
+      .db!.select()
       .from(outboxEvents)
       .where(and(eq(outboxEvents.workspaceId, auth.workspaceId), eq(outboxEvents.topic, ZETTEL_GENERATION_TOPIC)));
     expect(rows.map((r) => (r.payload as { captureId: string }).captureId)).toEqual([withText.id]);
 
-    const audits = await holder.db!
-      .select()
+    const audits = await holder
+      .db!.select()
       .from(auditEvents)
       .where(and(eq(auditEvents.workspaceId, auth.workspaceId), eq(auditEvents.action, "capture.zettels_requested")));
     expect(audits.map((a) => a.subjectId)).toEqual([withText.id]);
@@ -140,8 +166,8 @@ suite("zettel generation from the inbox", () => {
     expect(first.queued).toBe(1);
     expect(second).toMatchObject({ queued: 1, replayed: true });
 
-    const rows = await holder.db!
-      .select()
+    const rows = await holder
+      .db!.select()
       .from(outboxEvents)
       .where(and(eq(outboxEvents.workspaceId, auth.workspaceId), eq(outboxEvents.topic, ZETTEL_GENERATION_TOPIC)));
     expect(rows).toHaveLength(1);
@@ -168,8 +194,8 @@ suite("zettel generation from the inbox", () => {
     const [doc] = await holder.db!.select().from(documents).where(eq(documents.id, row.convertedId!));
     expect(doc.workspaceId).toBe(auth.workspaceId);
 
-    const proposals = await holder.db!
-      .select()
+    const proposals = await holder
+      .db!.select()
       .from(zettelProposals)
       .where(and(eq(zettelProposals.workspaceId, auth.workspaceId), eq(zettelProposals.documentId, doc.id)));
     expect(proposals).toHaveLength(2);
@@ -178,8 +204,8 @@ suite("zettel generation from the inbox", () => {
     expect(proposals.every((p) => p.artifactId === null && p.claimId === null)).toBe(true);
     expect(proposals.map((p) => p.quote).sort()).toEqual([Q1, Q2].sort());
 
-    const audits = await holder.db!
-      .select()
+    const audits = await holder
+      .db!.select()
       .from(auditEvents)
       .where(and(eq(auditEvents.workspaceId, auth.workspaceId), eq(auditEvents.action, "capture.zettels_proposed")));
     expect(audits).toHaveLength(1);
@@ -190,13 +216,16 @@ suite("zettel generation from the inbox", () => {
   it("proposes nothing on a second pass over the same document", async () => {
     const auth = await seed("second-pass");
     const capture = await addCapture(auth, { text: BODY });
-    const deps = { auth: ownerAuthFor(auth.workspaceId), extractor: extractor([{ title: "One idea", claim: "One idea.", quote: Q1 }]) };
+    const deps = {
+      auth: ownerAuthFor(auth.workspaceId),
+      extractor: extractor([{ title: "One idea", claim: "One idea.", quote: Q1 }]),
+    };
 
     expect((await runZettelGenerationRequested(event(auth, capture.id), deps)).proposed).toBe(1);
     expect((await runZettelGenerationRequested(event(auth, capture.id), deps)).proposed).toBe(0);
 
-    const proposals = await holder.db!
-      .select()
+    const proposals = await holder
+      .db!.select()
       .from(zettelProposals)
       .where(eq(zettelProposals.workspaceId, auth.workspaceId));
     expect(proposals).toHaveLength(1);
@@ -206,7 +235,10 @@ suite("zettel generation from the inbox", () => {
     const auth = await seed("skip");
     const file = await addCapture(auth, { text: null, kind: "file" });
     const archived = await addCapture(auth, { text: BODY, state: "discarded" });
-    const deps = { auth: ownerAuthFor(auth.workspaceId), extractor: extractor([{ title: "One idea", claim: "One idea.", quote: Q1 }]) };
+    const deps = {
+      auth: ownerAuthFor(auth.workspaceId),
+      extractor: extractor([{ title: "One idea", claim: "One idea.", quote: Q1 }]),
+    };
 
     expect((await runZettelGenerationRequested(event(auth, file.id), deps)).proposed).toBe(0);
     expect((await runZettelGenerationRequested(event(auth, archived.id), deps)).proposed).toBe(0);
@@ -223,5 +255,48 @@ suite("zettel generation from the inbox", () => {
     const queued = await requestZettelGeneration(auth, { idempotencyKey: crypto.randomUUID(), captureIds: [first.id] });
     expect(queued.captureIds).toEqual([first.id]);
     expect(queued.skipped).toBe(0);
+  });
+
+  it("queues exactly one capture when the request names one (the detail verb's call)", async () => {
+    const auth = await seed("single");
+    const capture = await addCapture(auth, { text: BODY });
+    await addCapture(auth, { text: `${BODY} Another open capture.` });
+
+    const queued = await requestZettelGeneration(auth, {
+      idempotencyKey: crypto.randomUUID(),
+      captureIds: [capture.id],
+    });
+    expect(queued.queued).toBe(1);
+    expect(queued.captureIds).toEqual([capture.id]);
+    expect(queued.skipped).toBe(0);
+
+    // Only the named capture enters the queue, even though another open
+    // capture carries text: the verb acts on one capture, never the inbox.
+    const rows = await holder
+      .db!.select()
+      .from(outboxEvents)
+      .where(and(eq(outboxEvents.workspaceId, auth.workspaceId), eq(outboxEvents.topic, ZETTEL_GENERATION_TOPIC)));
+    expect(rows.map((r) => (r.payload as { captureId: string }).captureId)).toEqual([capture.id]);
+  });
+
+  it("counts ineligible named captures as skipped instead of queueing them", async () => {
+    const auth = await seed("bulk");
+    const eligible = await addCapture(auth, { text: BODY });
+    const alreadyFiled = await addCapture(auth, {
+      text: BODY,
+      state: "converted",
+      convertedType: "note",
+      convertedId: crypto.randomUUID(),
+    });
+    const archived = await addCapture(auth, { text: BODY, state: "discarded" });
+    const unread = await addCapture(auth, { text: null, kind: "file" });
+
+    const queued = await requestZettelGeneration(auth, {
+      idempotencyKey: crypto.randomUUID(),
+      captureIds: [eligible.id, alreadyFiled.id, archived.id, unread.id],
+    });
+    expect(queued.queued).toBe(1);
+    expect(queued.captureIds).toEqual([eligible.id]);
+    expect(queued.skipped).toBe(3);
   });
 });

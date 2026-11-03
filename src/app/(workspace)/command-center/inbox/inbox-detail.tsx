@@ -19,6 +19,7 @@ import type { PriorWriting } from "@/domains/knowledge/prior-writing";
 import { Sparkles } from "lucide-react";
 import { CaptureBody } from "./capture-body";
 import { captureDetailHeading, captureKindLabel, captureStateLabel, captureTitle, type InboxRow } from "./inbox-list";
+import { generateZettelsAction } from "./zettel-actions";
 
 /*
  * The detail pane: a view of the selected capture row (D12/D14). URL captures
@@ -120,6 +121,8 @@ export function InboxDetail({
   capture,
   priorWriting,
   proposals = [],
+  zettelProviderReady,
+  zettelProviderReason,
 }: {
   proposals?: CaptureSuggestion[];
   capture:
@@ -138,6 +141,14 @@ export function InboxDetail({
     | null;
   /** What the workspace already holds about this capture's URL; null for non-URL captures. */
   priorWriting?: PriorWriting | null;
+  /**
+   * Whether a model is configured to read the capture (the same capability the
+   * list column's controls read). Off disables the Zettelize verb with the
+   * reason in its title rather than failing on the click.
+   */
+  zettelProviderReady: boolean;
+  /** Safe sentence naming what turns generation on; shown when it is off. */
+  zettelProviderReason: string;
 }) {
   const [optimisticState, decide] = useOptimistic(
     capture?.processingState ?? null,
@@ -151,9 +162,14 @@ export function InboxDetail({
   // for derive-on-prop-change) rather than in an effect.
   const [decidedSuggestions, setDecidedSuggestions] = useState<Set<string>>(new Set());
   const [suggestionsFor, setSuggestionsFor] = useState<string | null>(capture?.id ?? null);
+  // The per-capture zettelize verb: a queued pass is one per capture until the
+  // outbox worker files it, so the verb disables itself once queued and the
+  // outcome line carries the review link. Selecting another capture resets it.
+  const [zettel, setZettel] = useState<{ awaitingReview: number } | null>(null);
   if ((capture?.id ?? null) !== suggestionsFor) {
     setSuggestionsFor(capture?.id ?? null);
     setDecidedSuggestions(new Set());
+    setZettel(null);
   }
   const headingRef = useRef<HTMLHeadingElement>(null);
   // Seeded with the capture rendered on arrival: a page load with ?id= is not
@@ -176,6 +192,11 @@ export function InboxDetail({
       : [];
   // A voice note without its transcript yet has no words to convert (ASH-298).
   const voiceWithoutTranscript = capture?.kind === "voice" && !(capture.cleanText ?? capture.text)?.trim();
+  // The Zettelize verb reads the same words Save to library reads: an open
+  // capture's text. A file whose reading landed qualifies; a voice note still
+  // without its transcript does not.
+  const hasReadableText = Boolean((capture?.cleanText ?? capture?.text)?.trim());
+  const zettelEligible = Boolean(capture) && !voiceWithoutTranscript && hasReadableText;
 
   function decideSuggestion(suggestion: CaptureSuggestion, decision: "accept" | "reject") {
     setError(null);
@@ -256,6 +277,27 @@ export function InboxDetail({
       decide("converted");
       const result = await makeDraftAction({ captureId: capture!.id, expectedVersion: capture!.version, template });
       if (!result.ok) setError(result.error);
+    });
+  }
+
+  /*
+   * The per-capture zettelize verb: queue one proposal pass for this capture.
+   * The capture is filed to the library as a side effect (the worker converts
+   * it before extracting), so the title says so up front; the answer is
+   * "queued", never "created" - proposals appear in Ideas for review.
+   */
+  function zettelize() {
+    setError(null);
+    startTransition(async () => {
+      const result = await generateZettelsAction({
+        captureIds: [capture!.id],
+        idempotencyKey: crypto.randomUUID(),
+      });
+      if (!result.ok) {
+        setError(result.message);
+        return;
+      }
+      setZettel({ awaitingReview: result.awaitingReview });
     });
   }
 
@@ -413,6 +455,16 @@ export function InboxDetail({
         </p>
       ) : null}
 
+      {zettel ? (
+        <p className="text-muted-foreground mt-3 text-[13px]" role="status">
+          Queued for zettel proposals.{" "}
+          {zettel.awaitingReview ? `Already in review: ${zettel.awaitingReview} waiting — ` : ""}
+          <Link href="/polymath/ideas#in-review" className="text-foreground font-medium underline underline-offset-4">
+            Review ideas
+          </Link>
+        </p>
+      ) : null}
+
       {suggestions.length > 0 ? (
         <section aria-label="Suggestions" className="mt-6 flex flex-col gap-2">
           {suggestions.map((suggestion) => {
@@ -482,6 +534,23 @@ export function InboxDetail({
                 Save to library
               </Button>
             )}
+            {zettelEligible ? (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={pending || zettel !== null || !zettelProviderReady}
+                onClick={zettelize}
+                title={
+                  !zettelProviderReady
+                    ? zettelProviderReason
+                    : zettel !== null
+                      ? "Queued - the proposals land in Ideas for review."
+                      : "Files this capture to your library, then proposes ideas for review."
+                }
+              >
+                Zettelize
+              </Button>
+            ) : null}
             {voiceWithoutTranscript ? null : (
               <Button size="sm" variant="outline" disabled={pending} onClick={() => act("converted")}>
                 Make task
