@@ -476,9 +476,10 @@
 }
 /* The Notion feel (owner direction 2026-10-28; Notion Design System §5): the
    shared reading typography for content-first surfaces — capture, notes,
-   conversations, documents. One ~70ch measure, 16px body at 1.65, 24px block
-   rhythm, one treatment per element. The 13px cockpit scale stays for
-   operational surfaces and never touches a .prose-reading subtree.
+   conversations, documents. One prose measure (--measure-prose), 16px body
+   at 1.65, 24px block rhythm, one treatment per element. The 13px cockpit
+   scale stays for operational surfaces and never touches a .prose-reading
+   subtree.
    Unlayered so these rules beat the Tailwind utilities the shared markdown
    renderer and the editors carry (my-1, gap-1.5, list-disc). */
 .prose-reading {
