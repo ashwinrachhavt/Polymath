@@ -49,10 +49,18 @@ const LIFECYCLE_CODES = new Set([
   "last_owner",
 ]);
 
+// WorkspaceConflictError (identity/workspaces, spec D3): same contract -
+// authored constants only, so the slug conflict and input copy cross the
+// action boundary verbatim and nothing client-shaped rides with them.
+const WORKSPACE_CODES = new Set(["workspace_input", "workspace_slug_taken"]);
+
 function authRejectionCopy(error: unknown): string | undefined {
   if (!(error instanceof Error)) return undefined;
   const code = (error as { code?: unknown }).code;
   if (error.name === "MembershipLifecycleError" && LIFECYCLE_CODES.has(String(code))) {
+    return error.message;
+  }
+  if (error.name === "WorkspaceConflictError" && WORKSPACE_CODES.has(String(code))) {
     return error.message;
   }
   switch (code) {
