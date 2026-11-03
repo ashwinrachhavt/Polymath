@@ -64,13 +64,14 @@ test("interface mode is an account preference with two visual languages", async 
     await expect(title).toHaveText("Work");
     // The 2026-10-28 mockup pass retired the serif display face: both modes
     // speak sans, and the register now differs in weight, tracking, and the
-    // page's measure (library 52rem) rather than typeface.
+    // page's measure — library rides the shared --measure-prose token
+    // (72rem), action keeps its own tighter measure.
     const libraryWeight = await title.evaluate((el) => getComputedStyle(el).fontWeight);
     expect(Number(libraryWeight)).toBeGreaterThanOrEqual(700);
     const libraryWidth = await page
       .locator(".suite-screen")
       .evaluate((el) => getComputedStyle(el).getPropertyValue("--page-width").trim());
-    expect(libraryWidth).toBe("52rem");
+    expect(libraryWidth).toBe("72rem");
 
     await page.addStyleTag({ content: HIDE_DEV_CHROME });
     await page.screenshot({ path: `test-results/feature-pixels/interface-library-${vp.name}.png` });
@@ -81,7 +82,7 @@ test("interface mode is an account preference with two visual languages", async 
     const actionWidth = await page
       .locator(".suite-screen")
       .evaluate((el) => getComputedStyle(el).getPropertyValue("--page-width").trim());
-    expect(actionWidth).not.toBe("52rem");
+    expect(actionWidth).not.toBe("72rem");
     await page.screenshot({ path: `test-results/feature-pixels/interface-action-${vp.name}.png` });
 
     // The account, not the browser, holds the choice: a reload stays Action.
