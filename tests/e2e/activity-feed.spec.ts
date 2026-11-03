@@ -179,9 +179,13 @@ test("a grouped conversion renders one outcome row with a steps disclosure", asy
 
     await page.goto("/activity");
     // The outcome renders as one sentence; the step is folded underneath.
-    await expect(page.getByText("You converted a capture", { exact: true })).toBeVisible();
-    await expect(page.getByText(noteTitle)).toBeVisible();
-    await expect(page.getByText(`Show 1 recorded step`)).toBeVisible();
+    // Row-scoped: other real conversions in the shared QA database render the
+    // same sentence, so assertions anchor to this test's own outcome row.
+    const outcomeRow = page.locator("main li").filter({ hasText: noteTitle });
+    await expect(outcomeRow).toHaveCount(1);
+    await expect(outcomeRow).toContainText("You converted a capture");
+    await expect(outcomeRow).toContainText(noteTitle);
+    await expect(outcomeRow).toContainText("Show 1 recorded step");
     await expect(page.getByText(`Capture proposal accepted ${tag}`)).toBeHidden();
     // The note chip carries the verified destination.
     await expect(page.locator(`a[href$="/polymath/notes?id=${noteId}"]`).first()).toBeVisible();
@@ -193,7 +197,7 @@ test("a grouped conversion renders one outcome row with a steps disclosure", asy
   } finally {
     const ids = [outcomeId, stepId].filter(Boolean);
     if (client) {
-      if (ids.length) await client!`delete from audit_events where id = any(${client!(ids)})`;
+      if (ids.length) await client!`delete from audit_events where id in ${client!(ids)}`;
       if (noteId) await client`delete from artifacts where id = ${noteId}`;
       if (captureId) await client`delete from captures where id = ${captureId}`;
       await client.end();
@@ -220,9 +224,13 @@ test("Load more walks the keyset cursor to the end of a 55-row feed", async ({ p
       from generate_series(1, ${count}) g`;
 
     await page.goto(`/activity?q=${encodeURIComponent(`Load more ${tag}`)}`);
-    const entries = page.locator(`main >> text=Load more ${tag}`);
+    // Row-scoped: the toolbar echoes the query ("Search: …"), so a bare
+    // text= locator counts the chrome too.
+    const entries = page.locator("main li").filter({ hasText: `Load more ${tag}` });
     await expect(entries).toHaveCount(50);
-    await page.getByRole("link", { name: "Load 5 more events" }).click();
+    // The keyset peek cannot know the exact remaining count, so the link is
+    // plainly "Load more" (see page.tsx).
+    await page.getByRole("link", { name: "Load more" }).click();
     await expect(entries).toHaveCount(55);
   } finally {
     if (client) {
