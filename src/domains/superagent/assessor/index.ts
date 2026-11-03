@@ -59,7 +59,13 @@ export interface AssessorHost {
   workspaceId: string;
   repos: Repositories;
   engine: EngineForAssessor;
-  effects: { enqueue(effect: { kind: "assessment"; key: string; payload: Record<string, unknown> }): void };
+  effects: {
+    enqueue(
+      effect:
+        | { kind: "assessment"; key: string; payload: Record<string, unknown> }
+        | { kind: "reap"; key: string; availableAt: string },
+    ): void;
+  };
   eve: EveForAssessor;
   /** The Mercury Decide client, or null when the seam is not configured. */
   decide: DecideClient | null;
@@ -113,6 +119,8 @@ interface EvalTools {
 export interface SuperagentAssessor {
   request(candidate: Candidate): void;
   release(assessmentId: string): void;
+  /** The expiry tick the engine schedules when a candidate is delivered. */
+  scheduleReap(assessmentId: string, deadlineAt: string): void;
   /** The assessment effect's handler. */
   handleAssessment(payload: AssessmentPayload): Promise<void>;
   /** The eval tools an eval session's calls resolve to. */
@@ -202,6 +210,14 @@ export function createSuperagentAssessor(host: AssessorHost): SuperagentAssessor
         key: candidate.assessmentId,
         payload: { assessmentId: candidate.assessmentId, threadKey: candidate.thread.key } satisfies AssessmentPayload,
       });
+    },
+
+    scheduleReap(assessmentId: string, deadlineAt: string): void {
+      // The deadline's observer: a reap effect due exactly at it, coalesced on
+      // the assessment id. When it fires, the handler ticks the workspace and
+      // the engine expires whatever eval is past its deadline; a decided or
+      // reassessed assessment's reap is a no-op tick.
+      host.effects.enqueue({ kind: "reap", key: assessmentId, availableAt: deadlineAt });
     },
 
     release(assessmentId: string): void {

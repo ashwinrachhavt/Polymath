@@ -369,7 +369,7 @@ export const workSubscriptions = pgTable(
 /* ------------------------------------------------------------------ */
 
 /** Domain work the engine asks the host to perform after commit; `key` names the unit. */
-export type EffectKind = "assessment" | "launch" | "delivery" | "relay" | "notice" | "reply";
+export type EffectKind = "assessment" | "launch" | "delivery" | "relay" | "notice" | "reply" | "reap";
 
 /**
  * One row per kind+key while pending: the unique partial index coalesces bursts
@@ -402,7 +402,7 @@ export const workEffects = pgTable(
   (t) => [
     check(
       "work_effects_kind_check",
-      sql`${t.kind} in ('assessment', 'launch', 'delivery', 'relay', 'notice', 'reply')`,
+      sql`${t.kind} in ('assessment', 'launch', 'delivery', 'relay', 'notice', 'reply', 'reap')`,
     ),
     check("work_effects_status_check", sql`${t.status} in ('pending', 'done')`),
     index("work_effects_dispatch_idx").on(t.workspaceId, t.status, t.availableAt),

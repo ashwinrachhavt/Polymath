@@ -68,6 +68,13 @@ export class EvalsPart extends EnginePart {
     thread.evaluating.delivered = now;
     thread.evaluating.deadline = new Date(Date.parse(now) + policy.evalTimeoutMs).toISOString();
     this.repo.threads.save(thread);
+    // Schedule the tick that observes the deadline just set — without it the
+    // expiry machinery below never fires, and a session that stops reporting
+    // strands its thread in `evaluating` forever. Keyed on the assessment: a
+    // requeue starts a fresh one, with its own reap. Runs inside the same
+    // command as the deadline write, so the reap is durable exactly when the
+    // deadline is.
+    this.options.assessor.scheduleReap?.(assessmentId, thread.evaluating.deadline);
   }
   /**
    * An Eval past its deadline queues its Triggers again for a fresh Eval, up to `REQUEUES` times in a row, so a busy
