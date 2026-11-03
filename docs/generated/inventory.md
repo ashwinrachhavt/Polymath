@@ -31,7 +31,7 @@ Migrations: 109 files, highest `0282_onboarding_wizard_progress`.
 
 ## Tests
 
-527 `.test.ts` and 46 `.spec.ts` files (unit: 315, integration: 209, e2e: 46).
+528 `.test.ts` and 46 `.spec.ts` files (unit: 316, integration: 209, e2e: 46).
 ## Domains
 
 24 folders; 19 own tables.
