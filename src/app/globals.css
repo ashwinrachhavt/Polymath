@@ -482,7 +482,9 @@
    Unlayered so these rules beat the Tailwind utilities the shared markdown
    renderer and the editors carry (my-1, gap-1.5, list-disc). */
 .prose-reading {
-  max-width: 70ch;
+  /* Width belongs to the shared measure token, not the typography class —
+     every prose surface reads at --measure-prose. */
+  max-width: var(--measure-prose);
   font-size: 16px;
   line-height: 1.65;
   /* Paragraphs break for reading rhythm, not to fill the box. */
@@ -791,7 +793,9 @@ textarea {
   letter-spacing: -0.015em;
 }
 [data-interface-mode="library"] .suite-screen {
-  --page-width: 52rem;
+  /* 72rem: the notes rail (18rem) plus the 720px prose measure must both fit
+     or the writing canvas can never reach the shared --measure-prose token. */
+  --page-width: 72rem;
   padding-block: 40px 56px;
 }
 [data-interface-mode="library"] .suite-screen > header {
