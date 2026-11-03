@@ -65,7 +65,9 @@ export function InviteForm() {
           data-testid="invite-link"
         >
           <p className="font-medium">Share this invitation link - it is shown once.</p>
-          <p className="mt-1 break-all font-mono text-xs text-muted-foreground">{inviteLink}</p>
+          <p className="mt-1 break-all font-mono text-xs text-muted-foreground" data-testid="invite-link-url">
+            {inviteLink}
+          </p>
           <Button
             type="button"
             variant="outline"
