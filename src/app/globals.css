@@ -108,9 +108,10 @@
      dialogs, popovers). Warm-tinted to the ground, never grey-black. */
   --shadow: 0 1px 2px oklch(0.35 0.01 80 / 4%), 0 8px 24px oklch(0.35 0.01 80 / 6%);
 
-  /* One prose measure for reading surfaces (deslop spec §4.3). Workstream C
-     retires the competing widths (708px / 720px / 72ch / 75ch / max-w-3xl)
-     onto this token; defined here so those sweeps are token swaps. Plain
+  /* One prose measure for reading surfaces (deslop spec §4.3). The competing
+     widths (708px / 720px / 72ch / 75ch / max-w-3xl) are retired onto this
+     token: notes, artifacts, ideas detail, notebook assistant prose, the rich
+     editor's default mode, and the run transcript all read at 720px. Plain
      custom property (not @theme) so it is emitted even before it has a
      consumer. */
   --measure-prose: 720px;

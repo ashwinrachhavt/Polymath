@@ -25,15 +25,20 @@ async function WikiArtifactSurface({ params }: { params: Promise<{ artifactId: s
   return (
     <Screen title={page ? page.title : "Wiki page"}>
       {page ? (
-        <article className="mx-auto w-full max-w-[720px]">
+        <article className="mx-auto w-full max-w-[var(--measure-prose)]">
           <p className="mb-4 text-xs text-muted-foreground">
             Wiki page · version {page.versionNumber} · updated{" "}
-            {page.updatedAt.toLocaleString("en", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+            {page.updatedAt.toLocaleString("en", {
+              month: "short",
+              day: "numeric",
+              hour: "numeric",
+              minute: "2-digit",
+            })}
           </p>
           <div className="whitespace-pre-wrap text-[13px] leading-relaxed">{page.plainText}</div>
         </article>
       ) : (
-        <div className="mx-auto w-full max-w-[720px]">
+        <div className="mx-auto w-full max-w-[var(--measure-prose)]">
           <Empty
             title="This wiki page is not available."
             description="It may have been regenerated or removed."
@@ -55,7 +60,13 @@ async function WikiArtifactSurface({ params }: { params: Promise<{ artifactId: s
  */
 export default function WikiArtifactPage({ params }: { params: Promise<{ artifactId: string }> }) {
   return (
-    <Suspense fallback={<p role="status" className="p-6 text-[13px] text-muted-foreground">Loading page…</p>}>
+    <Suspense
+      fallback={
+        <p role="status" className="p-6 text-[13px] text-muted-foreground">
+          Loading page…
+        </p>
+      }
+    >
       <WikiArtifactSurface params={params} />
     </Suspense>
   );

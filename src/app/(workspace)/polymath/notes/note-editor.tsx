@@ -759,7 +759,7 @@ export function NoteEditor({
   return (
     <div className="flex min-w-0 flex-1 items-start gap-6">
       <div className="min-w-0 flex-1">
-        <div className="mx-auto flex w-full max-w-[708px] flex-col px-6 pb-24 pt-16 md:pt-28">
+        <div className="mx-auto flex w-full max-w-[var(--measure-prose)] flex-col px-6 pb-24 pt-16 md:pt-28">
           {/* The header zone: chrome fades in on pointer hover, always on for
               keyboard focus and coarse pointers. */}
           <div className="header-zone -mx-6 flex h-8 items-center justify-between px-6">

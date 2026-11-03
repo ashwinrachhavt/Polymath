@@ -21,7 +21,7 @@ export default function Loading() {
         <div className="ml-auto max-w-[85%]">
           <Skeleton className="h-10 w-64" />
         </div>
-        <div className="max-w-[72ch] flex flex-col gap-2">
+        <div className="max-w-[var(--measure-prose)] flex flex-col gap-2">
           <Skeleton className="h-4 w-full" />
           <Skeleton className="h-4 w-5/6" />
           <Skeleton className="h-4 w-2/3" />

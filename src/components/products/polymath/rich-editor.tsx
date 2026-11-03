@@ -394,7 +394,7 @@ function RichMarkdownEditor({
         role: "textbox",
         "aria-label": "Rich note content",
         "aria-multiline": "true",
-        class: `${compact ? "min-h-24 p-2 text-[13px] leading-6" : floating ? "prose-reading min-h-[55vh] font-[family-name:var(--font-reading)] text-foreground" : "min-h-72 max-w-[75ch] p-4 text-sm leading-7"} ${editable ? "writing-surface outline-none" : "outline-none [&_*]:cursor-text"} [&_p]:mb-4 [&_h1]:text-2xl [&_h2]:text-xl [&_h2]:mb-3 [&_h3]:text-lg [&_h3]:mb-2 [&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-6 [&_ol]:pl-6 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-4 [&_blockquote]:italic [&_pre]:overflow-auto [&_pre]:bg-muted [&_pre]:p-3 [&_a]:text-primary [&_a]:underline`,
+        class: `${compact ? "min-h-24 p-2 text-[13px] leading-6" : floating ? "prose-reading min-h-[55vh] font-[family-name:var(--font-reading)] text-foreground" : "min-h-72 max-w-[var(--measure-prose)] p-4 text-sm leading-7"} ${editable ? "writing-surface outline-none" : "outline-none [&_*]:cursor-text"} [&_p]:mb-4 [&_h1]:text-2xl [&_h2]:text-xl [&_h2]:mb-3 [&_h3]:text-lg [&_h3]:mb-2 [&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-6 [&_ol]:pl-6 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-4 [&_blockquote]:italic [&_pre]:overflow-auto [&_pre]:bg-muted [&_pre]:p-3 [&_a]:text-primary [&_a]:underline`,
       },
     },
     onSelectionUpdate: ({ editor }) => {

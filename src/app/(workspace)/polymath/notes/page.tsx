@@ -322,7 +322,7 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
           // Same reading column as the editor and empty states: ranked
           // results get full titles, snippets and why-ranked chips instead of
           // the sidebar's truncation next to an empty editor.
-          <div className="mx-auto w-full max-w-[708px] px-6 pb-16 pt-10 md:pt-14">
+          <div className="mx-auto w-full max-w-[var(--measure-prose)] px-6 pb-16 pt-10 md:pt-14">
             <div className="mb-8 flex h-8 items-center">
               <NotebookListToggle />
             </div>
@@ -335,7 +335,7 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
             />
           </div>
         ) : found.total === 0 ? (
-          <div className="mx-auto w-full max-w-[708px] px-6 pb-16 pt-10 md:pt-14">
+          <div className="mx-auto w-full max-w-[var(--measure-prose)] px-6 pb-16 pt-10 md:pt-14">
             <div className="mb-8 flex h-8 items-center">
               <NotebookListToggle />
             </div>
@@ -350,7 +350,7 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
             </div>
           </div>
         ) : (
-          <div className="mx-auto w-full max-w-[708px] px-6 pb-16 pt-10 md:pt-14">
+          <div className="mx-auto w-full max-w-[var(--measure-prose)] px-6 pb-16 pt-10 md:pt-14">
             <div className="mb-8 flex h-8 items-center">
               <NotebookListToggle />
             </div>
