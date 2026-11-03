@@ -23,7 +23,7 @@ export const ACTIVITY_CATEGORY_OPTIONS: Array<{ value: EventCategory; label: str
   { value: "workspace", label: "Workspace" },
 ];
 
-export function isEventCategory(value: string): value is EventCategory {
+function isEventCategory(value: string): value is EventCategory {
   return ACTIVITY_CATEGORY_OPTIONS.some((option) => option.value === value);
 }
 
