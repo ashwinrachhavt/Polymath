@@ -231,6 +231,12 @@ export const GET = authedHandler<Ctx>(async (auth, request, ctx) => {
         message: "The agent stream is unreachable.",
         cursor: startIndex,
       }),
+      // Same as the non-ok path below: a finished run's terminal state comes
+      // from the row, so the client settles instead of reconnecting forever
+      // against a bridge that will never answer.
+      ...(finished
+        ? [emit({ type: "end" as const, runId, state: terminalStateOf(run.state), cursor: startIndex })]
+        : []),
     ]);
   }
 

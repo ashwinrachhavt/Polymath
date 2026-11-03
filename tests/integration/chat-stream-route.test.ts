@@ -488,6 +488,15 @@ suite("chat stream route (real Postgres)", () => {
     const dark = await frames(await streamOf(live));
     expect(dark.map((frame) => frame.type)).toEqual(["run", "error"]);
     expect(dark[0]).toMatchObject({ type: "run", state: "running", lastTurnFailed: false });
+
+    // A finished run over a dead bridge still settles: the row's terminal
+    // state rides the end frame, so the surface pins the failure instead of
+    // reconnecting forever against a bridge that will never answer.
+    const finishedDark = await makeRun(a.workspaceId, "failed", "wrun_gone");
+    const settled = await frames(await streamOf(finishedDark));
+    expect(settled.map((frame) => frame.type)).toEqual(["run", "error", "end"]);
+    expect(settled[0]).toMatchObject({ type: "run", state: "failed", lastTurnFailed: false });
+    expect(settled[2]).toMatchObject({ type: "end", state: "failed" });
   });
 
   it("answers 404 for a foreign or malformed run and 503 without a bridge secret, without calling Eve", async () => {
