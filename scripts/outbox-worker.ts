@@ -1,6 +1,8 @@
 import postgres from "postgres";
 import { dispatchPendingOutbox, recoverStrandedOutbox } from "@/domains/audit/outbox";
 import { outboxHandlers } from "@/domains/audit/outbox-handlers";
+import { runSuperagentDispatch } from "@/domains/superagent/effects";
+import { superagentEffectHandlers, sweepSuperagentWorkspaces } from "@/domains/superagent/wiring";
 
 /*
  * The local queue drain (ASH-178).
@@ -71,6 +73,18 @@ async function main(): Promise<void> {
           `[${stamp()}] claimed ${result.claimed} dispatched ${result.dispatched} failed ${result.failed} ` +
             `parked ${result.parked} dead ${result.dead}`,
         );
+      }
+      // The superagent domain's lane rides the same pass, as it does on the
+      // dispatch and cron routes: the sweep first (the engine's serverless
+      // tick — start due evals — plus the ticket-run observer that reports
+      // completed turns), then the effects pass whose reply handlers send
+      // the reply lane. A superagent blip must not kill the loop, so it is
+      // guarded on its own and the next tick retries.
+      try {
+        await sweepSuperagentWorkspaces();
+        await runSuperagentDispatch(client, await superagentEffectHandlers(), { workerId });
+      } catch (cause) {
+        console.error(`[${stamp()}] superagent pass failed:`, cause instanceof Error ? cause.message : cause);
       }
     } catch (cause) {
       // A database blip should not kill the loop; the next tick retries.

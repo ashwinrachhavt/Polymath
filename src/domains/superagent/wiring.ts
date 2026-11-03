@@ -95,6 +95,8 @@ export type SuperagentHost = {
   store: SuperagentStore;
   registry: SourceRegistry;
   config: PolicyConfig;
+  /** The stored policy document's version hash this composition was built from ("" when none was stored). */
+  policyVersion: string;
   /** The stored policy document's per-Source config parts (the `listen` field lives here). */
   storedSources: Record<string, Record<string, unknown>>;
   engine: Engine;
@@ -134,6 +136,19 @@ export function evictSuperagentHost(workspaceId: string): void {
   hosts.delete(workspaceId);
 }
 
+/**
+ * Evict a composition built from an older policy document. A policy save
+ * evicts the saving process's cache; a separate worker process learns about
+ * the change here, by comparing the stored version against the stamp the
+ * composition was built from, once per sweep pass.
+ */
+export async function evictStaleSuperagentHost(workspaceId: string): Promise<void> {
+  const cached = await hosts.get(workspaceId);
+  if (!cached) return;
+  const stored = await getPolicy(db, workspaceId);
+  if (cached.policyVersion !== (stored?.policy.version ?? "")) evictSuperagentHost(workspaceId);
+}
+
 async function buildHost(workspaceId: string): Promise<SuperagentHost> {
   const store = createSuperagentStore(db, workspaceId);
 
@@ -154,8 +169,18 @@ async function buildHost(workspaceId: string): Promise<SuperagentHost> {
   registry.register(chatSourceKind);
   const policy = createPolicy(config, registry.scope());
 
-  /* The eve seams: one agents engine per surface, as the routes build them. */
-  const evalEngine: AgentEngine = createAgentsEngine(createEveDriver(eveAgentForProfile("polymath")));
+  /* The eve seams: one agents engine per surface, as the routes build them.
+   * Each seam resolves its own mount from the profile it actually starts: the
+   * assessor's eval sessions run on the specialist agent (the profile's
+   * charter rides the specialist brief), while the executor's ticket runs
+   * keep the polymath agent and its full toolset. Wiring both seams to one
+   * hardcoded mount ran the eval session with the chief-of-staff toolset —
+   * which has no orchestrator_eval* tools — so every assessment expired
+   * unread (found by the wave-1 end-to-end verification). */
+  const assessorConfig = parseAssessorConfig();
+  const executorConfig = parseExecutorConfig();
+  const evalEngine: AgentEngine = createAgentsEngine(createEveDriver(eveAgentForProfile(assessorConfig.profileName)));
+  const ticketEngine: AgentEngine = createAgentsEngine(createEveDriver(eveAgentForProfile(executorConfig.profileName)));
 
   const afterCommitQueue: (() => Promise<void>)[] = [];
   const afterCommit = (work: () => Promise<void>): void => {
@@ -179,9 +204,10 @@ async function buildHost(workspaceId: string): Promise<SuperagentHost> {
     decide: decideClientFromEnv(process.env),
     afterCommit,
     flush: () => flushHost(),
+    afterDecision: () => drainSuperagentInline(workspaceId).then(() => undefined),
     auth: () => backgroundAuth(workspaceId),
     policyView: () => ({ rules: config.rules, mode: config.mode }),
-    config: parseAssessorConfig(),
+    config: assessorConfig,
   };
   const assessor: SuperagentAssessor = createSuperagentAssessor(assessorHost);
 
@@ -190,11 +216,11 @@ async function buildHost(workspaceId: string): Promise<SuperagentHost> {
     repos: store.repositories,
     engine: undefined as unknown as EngineForExecutor,
     effects: { enqueue: store.effects.enqueue },
-    eve: createEveSeam(evalEngine),
+    eve: createEveSeam(ticketEngine),
     afterCommit,
     flush: () => flushHost(),
     auth: () => backgroundAuth(workspaceId),
-    config: parseExecutorConfig(),
+    config: executorConfig,
     acceptMode: (): AcceptMode => config.mode,
   };
   const executor: SuperagentExecutor = createSuperagentExecutor(executorHost);
@@ -222,6 +248,7 @@ async function buildHost(workspaceId: string): Promise<SuperagentHost> {
     store,
     registry,
     config,
+    policyVersion: stored?.policy.version ?? "",
     storedSources: (stored?.policy.sources ?? {}) as Record<string, Record<string, unknown>>,
     engine,
     assessor,
@@ -453,6 +480,10 @@ function queueClient(): RawClient {
  */
 async function tickWorkspace(workspaceId: string): Promise<void> {
   const host = await superagentForWorkspace(workspaceId);
+  // The sweep reaches this cold — a cron pass or the worker's loop has no
+  // warm host — and the engine's reads require hydration, so the tick that
+  // starts due evals would throw before observing anything.
+  await host.hydrate();
   host.engine.evaluateDue();
   await host.flush();
 }
@@ -520,10 +551,17 @@ export async function superagentEffectHandlers(): Promise<EffectHandlers> {
 /* ------------------------------------------------------------------ */
 
 /**
- * Watch the workspace's live ticket runs against their agent runs: a run
- * that reached a terminal state without the domain learning it is reported
- * exactly once (the observer's cursor in superagent_state guards the
- * report, and the executor's own recovery covers what this misses).
+ * Watch the workspace's live ticket runs against their agent runs. Two
+ * observations, both reported exactly once (the observer's cursor in
+ * superagent_state guards each):
+ *
+ * - A run row that reached a terminal state without the domain learning it
+ *   (a session that closed outright). The bridge's terminal vocabulary is
+ *   succeeded | failed | cancelled (event-bridge.ts).
+ * - A completed turn on a run whose row stays open — polymath runs are
+ *   create-once sessions that persist across turns, so the row alone never
+ *   signals "work happened". Each turn.completed is reported once, with the
+ *   turn's newest assistant answer as the ready summary.
  */
 async function observeWorkspace(workspaceId: string): Promise<void> {
   const host = await superagentForWorkspace(workspaceId);
@@ -539,7 +577,7 @@ async function observeWorkspace(workspaceId: string): Promise<void> {
 
   // The ticket run → agent run link is the executor's own subjects marker
   // (executor/eve.ts's byRunSubject), not a column: query it the same way.
-  const stateById = new Map<string, string>();
+  const agentRunById = new Map<string, { id: string; state: string }>();
   for (const { run } of live) {
     const rows = await db
       .select({ id: agentRuns.id, state: agentRuns.state })
@@ -552,7 +590,7 @@ async function observeWorkspace(workspaceId: string): Promise<void> {
       )
       .orderBy(desc(agentRuns.createdAt))
       .limit(1);
-    if (rows[0]) stateById.set(run.id, rows[0].state);
+    if (rows[0]) agentRunById.set(run.id, rows[0]);
   }
   const observedRows = await db
     .select({ key: superagentState.key })
@@ -561,30 +599,85 @@ async function observeWorkspace(workspaceId: string): Promise<void> {
   const alreadyObserved = new Set(observedRows.map((row) => row.key));
   let changed = false;
   for (const { ticket, run } of live) {
-    const state = stateById.get(run.id);
-    if (!state || alreadyObserved.has(observerKey(run.id))) continue;
-    const report = reportFor(state, run.id);
-    if (!report) continue;
+    const agentRun = agentRunById.get(run.id);
+    if (!agentRun) continue;
+    const report = reportFor(agentRun.state, agentRun.id);
+    if (report) {
+      if (alreadyObserved.has(observerKey(agentRun.id))) continue;
+      try {
+        host.engine.turnEnded(ticket.id, run.id);
+        host.engine.report(ticket.id, report);
+        // A closed run's result tells the outcome in the channel the ticket
+        // started in (the ready/completed rule), same as a turn's answer.
+        if (report.state === "ready") {
+          host.engine.reply({ purpose: "result", ticketId: ticket.id, text: report.summary });
+        }
+      } catch (error) {
+        // An ended ticket or an already-ended run means the domain moved on
+        // first; record the observation and let the next state win.
+        console.error(`[superagent] observer report failed for ticket ${ticket.id}:`, error);
+      }
+      await writeStateValue(db, workspaceId, observerKey(agentRun.id), agentRun.state);
+      changed = true;
+      continue;
+    }
+    const turn = await lastCompletedTurn(agentRun.id);
+    if (!turn || alreadyObserved.has(observerKey(agentRun.id, turn.eventId))) continue;
+    const turnReport: WorkerReport = turn.summary
+      ? { state: "ready", summary: turn.summary }
+      : { state: "waiting", summary: "The run's turn ended without an answer." };
     try {
       host.engine.turnEnded(ticket.id, run.id);
-      host.engine.report(ticket.id, report);
+      host.engine.report(ticket.id, turnReport);
+      // The turn's answer is the ticket's result: queue it back to the
+      // channel the ticket started in. The result rule allows it once the
+      // report settled the ticket (or its latest report is ready), and the
+      // reply's deterministic id keeps a replay from sending it twice.
+      if (turnReport.state === "ready" && turn.summary) {
+        host.engine.reply({ purpose: "result", ticketId: ticket.id, text: turn.summary });
+      }
     } catch (error) {
-      // An ended ticket or an already-ended run means the domain moved on
-      // first; record the observation and let the next state win.
       console.error(`[superagent] observer report failed for ticket ${ticket.id}:`, error);
     }
-    await writeStateValue(db, workspaceId, observerKey(run.id), state);
+    await writeStateValue(db, workspaceId, observerKey(agentRun.id, turn.eventId), "turn.completed");
     changed = true;
   }
   if (changed) await host.flush();
 }
 
 /** The observer's state key for one agent run: reported exactly once. */
-const observerKey = (agentRunId: string): string => `superagent:observed:${agentRunId}`;
+const observerKey = (agentRunId: string, turnEventId?: string): string =>
+  turnEventId === undefined
+    ? `superagent:observed:${agentRunId}`
+    : `superagent:observed:${agentRunId}:turn:${turnEventId}`;
+
+/**
+ * The run's newest completed turn and its newest assistant answer, or
+ * undefined while the run's newest event is not a turn end — mid-turn
+ * events (usage, streaming) must not report.
+ */
+async function lastCompletedTurn(agentRunId: string): Promise<{ eventId: string; summary?: string } | undefined> {
+  const events = await db
+    .select({ id: runEvents.id, type: runEvents.type, data: runEvents.data })
+    .from(runEvents)
+    .where(eq(runEvents.runId, agentRunId))
+    .orderBy(desc(runEvents.sequence))
+    .limit(6);
+  const newest = events[0];
+  if (!newest || newest.type !== "turn.completed") return undefined;
+  const answer = events.find(
+    (event) =>
+      event.type === "message" &&
+      (event.data as { role?: string } | null)?.role === "assistant" &&
+      typeof (event.data as { content?: string } | null)?.content === "string",
+  );
+  const text = ((answer?.data as { content?: string } | null)?.content ?? "").trim();
+  return { eventId: newest.id, ...(text ? { summary: text.slice(0, 400) } : {}) };
+}
 
 /** Map an agent run's terminal state to the worker report the domain records. */
 function reportFor(state: string, agentRunId: string): WorkerReport | undefined {
-  if (state === "completed") return { state: "ready", summary: `Run ${agentRunId} finished.` };
+  if (state === "succeeded") return { state: "ready", summary: `Run ${agentRunId} finished.` };
   if (state === "failed") return { state: "failed", summary: `Run ${agentRunId} failed.` };
   if (state === "cancelled") return { state: "failed", summary: `Run ${agentRunId} was cancelled.` };
   return undefined;
@@ -612,6 +705,7 @@ export async function sweepSuperagentWorkspaces(): Promise<void> {
   const workspaceIds = [...new Set([...threads, ...tickets].map((row) => row.workspaceId))];
   for (const workspaceId of workspaceIds) {
     try {
+      await evictStaleSuperagentHost(workspaceId);
       await tickWorkspace(workspaceId);
       await observeWorkspace(workspaceId);
     } catch (error) {

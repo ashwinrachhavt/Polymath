@@ -65,6 +65,13 @@ export interface AssessorHost {
   decide: DecideClient | null;
   afterCommit(work: () => Promise<void>): void;
   flush(): Promise<void>;
+  /**
+   * Runs after a decision's effects are durable: the launch effect this
+   * decision enqueued drains here, because the eval tools run inside the
+   * specialist's process — no send-path drain ever follows them, and a
+   * decision that stops at enqueue strands its ticket's launch until cron.
+   */
+  afterDecision?(): Promise<void>;
   auth(): Promise<AuthContext>;
   policyView(): PolicyView;
   config: AssessorConfig;
@@ -348,6 +355,9 @@ export function createSuperagentAssessor(host: AssessorHost): SuperagentAssessor
           };
         }
         await host.flush();
+        // The launch effect is durable now; drain it in this process (the
+        // specialist's), where no send-path drain will ever tick.
+        await host.afterDecision?.();
         return {
           outcome: record.final.kind,
           decidedBy: record.final.decidedBy,

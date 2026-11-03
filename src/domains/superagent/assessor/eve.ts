@@ -8,6 +8,7 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { agentProfiles, agentRuns } from "@/domains/agents/schema";
+import { ASSESSOR_MODEL_ID } from "@/domains/agents/models";
 import type { AgentEngine } from "@/domains/agents/engine";
 import type { AuthContext } from "@/domains/identity/resolve";
 
@@ -47,6 +48,11 @@ async function ensureAssessorProfile(workspaceId: string, profileName: string): 
       name: profileName,
       description: "The superagent assessor: judges admission candidates through the three eval tools.",
       instructions: ASSESSOR_CHARTER,
+      // Mercury-3 is the assessor's designed-in judge (spec §9): admission
+      // needs a model that weighs a candidate's intent instead of declining
+      // for tool restrictions. A workspace that prefers another model edits
+      // the profile in Settings — this seed never runs again for it.
+      modelPolicy: { primary: ASSESSOR_MODEL_ID },
       allowedTools: [...EVAL_TOOLS],
     })
     .onConflictDoNothing({ target: [agentProfiles.workspaceId, agentProfiles.name] });

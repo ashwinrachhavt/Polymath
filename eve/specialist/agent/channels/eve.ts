@@ -22,7 +22,16 @@ const bridgeAuth: AuthFn<Request> = async (request) => {
   const auth = await verifyWorkspaceBinding(claims);
   if (!auth) return null;
   return {
-    attributes: { workspaceId: auth.workspaceId },
+    // The claims ride the same signed token as the workspace, and the agent's
+    // dynamic model handler reads the frozen model from here (step.started):
+    // without it the specialist fell back to Gemini while the run row priced
+    // mercury-3 — the run row and the answering model disagreed.
+    attributes: {
+      workspaceId: auth.workspaceId,
+      ...(claims.runId !== undefined ? { runId: claims.runId } : {}),
+      ...(claims.skillId !== undefined ? { skillId: claims.skillId } : {}),
+      ...(claims.model !== undefined ? { model: claims.model } : {}),
+    },
     authenticator: "axiom-bridge",
     principalId: auth.userId,
     principalType: "user",
