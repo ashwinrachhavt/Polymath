@@ -26,21 +26,42 @@ export function NotebookListToggle() {
         aria-label={list.open ? "Hide the note list" : "Show the note list"}
         onClick={list.toggle}
       >
-        {list.open ? <PanelLeftClose aria-hidden className="text-muted-foreground" /> : <PanelLeftOpen aria-hidden className="text-muted-foreground" />}
+        {list.open ? (
+          <PanelLeftClose aria-hidden className="text-muted-foreground" />
+        ) : (
+          <PanelLeftOpen aria-hidden className="text-muted-foreground" />
+        )}
       </Button>
-      <Button type="button" variant="ghost" size="icon-sm" className="lg:hidden" aria-label="Open the note list" onClick={list.openOnMobile}>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        className="lg:hidden"
+        aria-label="Open the note list"
+        onClick={list.openOnMobile}
+      >
         <PanelLeftOpen aria-hidden className="text-muted-foreground" />
       </Button>
     </>
   );
 }
 
-export function NotebookWorkspace({ list, children, narrow = false }: { list: ReactNode; children: ReactNode; /** A note is open: the list rail shrinks to a quiet index instead of competing with the document. */ narrow?: boolean }) {
+export function NotebookWorkspace({
+  list,
+  children,
+  narrow = false,
+}: {
+  list: ReactNode;
+  children: ReactNode;
+  /** A note is open: the list rail shrinks to a quiet index instead of competing with the document. */ narrow?: boolean;
+}) {
   const [open, setOpen] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
   return (
-    <NotebookListContext.Provider value={{ open, toggle: () => setOpen((current) => !current), openOnMobile: () => setMobileOpen(true) }}>
-      <div className="flex min-h-[60vh] flex-1 items-start gap-6">
+    <NotebookListContext.Provider
+      value={{ open, toggle: () => setOpen((current) => !current), openOnMobile: () => setMobileOpen(true) }}
+    >
+      <div className="flex flex-1 items-start gap-6">
         {open && (
           <aside
             aria-label="Notes list"
@@ -55,7 +76,13 @@ export function NotebookWorkspace({ list, children, narrow = false }: { list: Re
           <SheetContent side="left" className="overflow-y-auto p-4 pt-12">
             <SheetTitle>Notes</SheetTitle>
             <SheetDescription className="sr-only">Search and select a note.</SheetDescription>
-            <div onClick={(event) => { if ((event.target as HTMLElement).closest("a")) setMobileOpen(false); }}>{list}</div>
+            <div
+              onClick={(event) => {
+                if ((event.target as HTMLElement).closest("a")) setMobileOpen(false);
+              }}
+            >
+              {list}
+            </div>
           </SheetContent>
         </Sheet>
         <div className="min-w-0 flex-1">{children}</div>

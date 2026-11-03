@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogTrigger } 
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { markdownEditorMode, markdownSourceReason, type MarkdownEditorMode } from "./markdown-preservation";
-import { SearchField, Unavailable } from "@/components/workspace/ui";
+import { SearchField } from "@/components/workspace/ui";
 import { artifactHref } from "./artifact-controls";
 import { NoteAIMenu, type NoteAIRequest } from "./note-ai-menu";
 
@@ -81,8 +81,11 @@ export default function RichEditor({
     );
   };
   const minimal = chrome === "minimal";
+  // The minimal chrome is flex-based so a host that stretches it (the notes
+  // column gives the canvas its --canvas-min floor) can hand the slack to the
+  // writing area itself; hosts without spare height are unaffected.
   return (
-    <div className={minimal ? "relative" : "space-y-3"}>
+    <div className={minimal ? "relative flex flex-1 flex-col" : "space-y-3"}>
       {minimal ? (
         ai ? (
           <div className="mb-2 flex justify-end">
@@ -137,7 +140,7 @@ export default function RichEditor({
           aria-label="Markdown source"
           className={
             minimal
-              ? "writing-surface min-h-[55vh] border-0 bg-transparent px-0 font-mono text-[13px] shadow-none focus-visible:ring-0"
+              ? "writing-surface min-h-24 flex-1 border-0 bg-transparent px-0 font-mono text-[13px] shadow-none focus-visible:ring-0"
               : "min-h-72 font-mono text-[13px]"
           }
           value={content}
@@ -151,7 +154,6 @@ export default function RichEditor({
           content={content}
           onChange={onChange}
           onSelectionChange={ai ? setSelection : undefined}
-          hidePlaceholderAI={!!ai}
           compact={compact}
           editable={editable}
           onEmptySpace={ai?.onOpenChange ? () => ai.onOpenChange!(true) : undefined}
@@ -229,7 +231,6 @@ function RichMarkdownEditor({
   content,
   onChange,
   onSelectionChange,
-  hidePlaceholderAI,
   onEmptySpace,
   findLinkTargets,
   floating,
@@ -243,7 +244,6 @@ function RichMarkdownEditor({
   content: string;
   onChange: (content: string) => void;
   onSelectionChange?: (text: string) => void;
-  hidePlaceholderAI?: boolean;
   onEmptySpace?: () => void;
   floating?: boolean;
   onStructuredPasteDropped?: () => void;
@@ -394,7 +394,7 @@ function RichMarkdownEditor({
         role: "textbox",
         "aria-label": "Rich note content",
         "aria-multiline": "true",
-        class: `${compact ? "min-h-24 p-2 text-[13px] leading-6" : floating ? "prose-reading min-h-[55vh] font-[family-name:var(--font-reading)] text-foreground" : "min-h-72 max-w-[var(--measure-prose)] p-4 text-sm leading-7"} ${editable ? "writing-surface outline-none" : "outline-none [&_*]:cursor-text"} [&_p]:mb-4 [&_h1]:text-2xl [&_h2]:text-xl [&_h2]:mb-3 [&_h3]:text-lg [&_h3]:mb-2 [&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-6 [&_ol]:pl-6 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-4 [&_blockquote]:italic [&_pre]:overflow-auto [&_pre]:bg-muted [&_pre]:p-3 [&_a]:text-primary [&_a]:underline`,
+        class: `${compact ? "min-h-24 p-2 text-[13px] leading-6" : floating ? "prose-reading flex-1 font-[family-name:var(--font-reading)] text-foreground" : "min-h-72 max-w-[var(--measure-prose)] p-4 text-sm leading-7"} ${editable ? "writing-surface outline-none" : "outline-none [&_*]:cursor-text"} [&_p]:mb-4 [&_h1]:text-2xl [&_h2]:text-xl [&_h2]:mb-3 [&_h3]:text-lg [&_h3]:mb-2 [&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-6 [&_ol]:pl-6 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-4 [&_blockquote]:italic [&_pre]:overflow-auto [&_pre]:bg-muted [&_pre]:p-3 [&_a]:text-primary [&_a]:underline`,
       },
     },
     onSelectionUpdate: ({ editor }) => {
@@ -723,47 +723,9 @@ function RichMarkdownEditor({
           >
             <Redo2 aria-hidden />
           </Button>
-          {hidePlaceholderAI ? null : (
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button type="button" variant="ghost">
-                  Ask AI
-                </Button>
-              </DialogTrigger>{" "}
-              <DialogContent>
-                <DialogTitle>Contextual writing assistance</DialogTitle>
-                <DialogDescription>
-                  Inline assistance controls are represented here, but no model-generated edits are simulated.
-                </DialogDescription>
-                <Unavailable feature="Inline writing AI" />
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    "Improve writing",
-                    "Fix spelling",
-                    "Make shorter",
-                    "Make longer",
-                    "Simplify",
-                    "Continue",
-                    "Summarize",
-                    "Extract action items",
-                    "Translate",
-                    "Change tone",
-                  ].map((label) => (
-                    <Button type="button" key={label} disabled variant="outline">
-                      {label}
-                    </Button>
-                  ))}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Production edits must be staged as a reviewable proposal before acceptance. No generated text has been
-                  inserted.
-                </p>
-              </DialogContent>
-            </Dialog>
-          )}
         </div>
       ) : null}
-      <EditorContent editor={editor} />
+      <EditorContent editor={editor} className={floating ? "flex flex-1 flex-col" : undefined} />
     </div>
   );
 }

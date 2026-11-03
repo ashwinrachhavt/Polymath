@@ -759,7 +759,7 @@ export function NoteEditor({
   return (
     <div className="flex min-w-0 flex-1 items-start gap-6">
       <div className="min-w-0 flex-1">
-        <div className="mx-auto flex w-full max-w-[var(--measure-prose)] flex-col px-6 pb-24 pt-16 md:pt-28">
+        <div className="mx-auto flex min-h-[var(--canvas-min)] w-full max-w-[var(--measure-prose)] flex-col px-6 pb-24 pt-12">
           {/* The header zone: chrome fades in on pointer hover, always on for
               keyboard focus and coarse pointers. */}
           <div className="header-zone -mx-6 flex h-8 items-center justify-between px-6">
@@ -863,7 +863,7 @@ export function NoteEditor({
                 onBlur={rename}
                 placeholder="Untitled note"
                 style={{ fontFamily: "var(--font-display)" }}
-                className="w-full min-w-0 bg-transparent text-[38px] font-semibold leading-[1.2] tracking-tight outline-none placeholder:text-muted-foreground/40"
+                className="w-full min-w-0 bg-transparent text-display font-semibold leading-[1.2] tracking-tight outline-none placeholder:text-muted-foreground/40"
               />
               <Button
                 type="button"
@@ -972,7 +972,7 @@ export function NoteEditor({
           </div>
           <div
             ref={noteColumnRef}
-            className="mt-8"
+            className="mt-8 flex flex-1 flex-col"
             onClick={() => {
               if (!editing) setEditing(true);
             }}
@@ -1110,7 +1110,7 @@ export function NoteEditor({
           costs the prose column nothing. The toggle controls both placements. */}
       {commentsOpen && (
         <aside aria-label="Comments margin" className="sticky top-0 hidden w-72 shrink-0 xl:block">
-          <div className="pt-28">
+          <div className="pt-20">
             <NoteCommentsPanel noteId={noteId} initialComments={comments} />
           </div>
         </aside>

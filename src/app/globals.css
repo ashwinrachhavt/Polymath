@@ -116,6 +116,14 @@
      consumer. */
   --measure-prose: 720px;
 
+  /* The writing canvas fills the first screen: viewport minus the top bar and
+     the suite page padding it sits in (24px top + 40px bottom, .suite-screen
+     below). A floor, not a frame — the column grows with content and the page
+     scrolls as a document; a short note simply owns the whole screen. The
+     48px resolves from --topbar-h set on <main> (0 on conversation surfaces,
+     which never host the editor). */
+  --canvas-min: calc(100dvh - var(--topbar-h, 48px) - 64px);
+
   /* Panel depth — where a surface needs lift instead of a hairline border.
      Three layers (contact, key, ambient) in the same warm charcoal as
      --shadow, one step softer. Dark mode re-points it next to --shadow. */
