@@ -122,6 +122,37 @@ async function provisionFirstSignIn(clerkUserId: string): Promise<AuthContext> {
   return { userId: user.id, workspaceId: workspace.id, role: "owner" };
 }
 
+/** One row of the workspace switcher (spec D2): an active membership's workspace. */
+export type SwitchableWorkspace = {
+  workspaceId: string;
+  name: string;
+  slug: string;
+  role: AuthRole;
+  isPersonal: boolean;
+};
+
+/**
+ * Every workspace the user may switch to (spec D2), keyed by the internal user
+ * id the layout already holds. Same filters as resolution — active membership,
+ * workspace not archived — so the switcher can never offer a row the resolver
+ * would refuse, and oldest first, so its order matches the resolver's
+ * fallback order (personal workspace first).
+ */
+export async function listSwitchableWorkspaces(userId: string): Promise<SwitchableWorkspace[]> {
+  return db
+    .select({
+      workspaceId: memberships.workspaceId,
+      name: workspaces.name,
+      slug: workspaces.slug,
+      role: memberships.role,
+      isPersonal: workspaces.isPersonal,
+    })
+    .from(memberships)
+    .innerJoin(workspaces, eq(workspaces.id, memberships.workspaceId))
+    .where(and(eq(memberships.userId, userId), eq(memberships.status, "active"), isNull(workspaces.archivedAt)))
+    .orderBy(asc(memberships.createdAt), asc(memberships.id));
+}
+
 /**
  * The role a user currently holds in a workspace, or null when they hold no
  * active membership or the workspace is archived. The gateway runs this on
