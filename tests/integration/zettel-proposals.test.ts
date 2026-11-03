@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { blobObjects } from "@/domains/audit/schema";
+import { auditEvents, blobObjects } from "@/domains/audit/schema";
 import { documents, files } from "@/domains/knowledge/schema";
 import type { ExtractionResult } from "@/integrations/extraction/provider";
 import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
@@ -288,6 +288,22 @@ suite("accept and reject (real Postgres)", () => {
     expect(await counts(auth.workspaceId)).toEqual([0, 0, 0]);
     expect((await holder.db!.select().from(sources).where(eq(sources.workspaceId, auth.workspaceId))).length).toBe(0);
     await expect(acceptZettel(auth, { proposalId: p.id })).rejects.toThrow("already decided");
+  });
+
+  it("decisions are audited: accept and reject each leave one row", async () => {
+    const { auth, p } = await one();
+    await acceptZettel(auth, { proposalId: p.id });
+    const accepted = await holder.db!.select().from(auditEvents).where(eq(auditEvents.subjectId, p.id));
+    expect(accepted.map((r) => r.action)).toEqual(["zettel.accepted"]);
+    expect(accepted[0]!.summary).toBe('Accepted zettel "Monthly rent"');
+
+    const second = await one();
+    await rejectZettel(second.auth, { proposalId: second.p.id });
+    const rejected = await holder.db!.select().from(auditEvents).where(eq(auditEvents.subjectId, second.p.id));
+    // No proposal wording in the reject row: the declined title is model
+    // output the owner rejected, not workspace-shared content.
+    expect(rejected.map((r) => r.action)).toEqual(["zettel.rejected"]);
+    expect(rejected[0]!.summary).toBe("Rejected zettel proposal");
   });
 
   it("another workspace cannot decide it", async () => {

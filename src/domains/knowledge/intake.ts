@@ -4,7 +4,8 @@ import { putBlob } from "@/integrations/object-store/object-store";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import type { FileValidationResult } from "@/lib/file-validation";
 import { sha256Hex } from "@/lib/hash";
-import { auditEvents, blobObjects, outboxEvents } from "../audit/schema";
+import { recordAudit } from "../audit/record";
+import { blobObjects, outboxEvents } from "../audit/schema";
 import { documentExtractions, documents, files } from "./schema";
 
 /*
@@ -168,31 +169,32 @@ export async function intakeFile(auth: AuthContext, input: IntakeInput): Promise
       });
     }
 
-    await tx.insert(auditEvents).values({
-      workspaceId: auth.workspaceId,
-      actorId: auth.userId,
-      actorKind: "user",
-      action: input.verdict.ok
-        ? input.origin === "url" || input.origin === "capture"
-          ? "file.captured"
-          : input.origin === "crawl"
-            ? "file.crawled"
-            : input.origin === "youtube"
-              ? "file.transcribed"
-              : "file.uploaded"
-        : "file.quarantined",
-      subjectType: input.verdict.ok ? "document" : "file",
-      subjectId: input.verdict.ok ? documentId : fileRow.id,
-      summary: input.verdict.ok
-        ? input.origin === "url" || input.origin === "capture"
-          ? `Captured ${input.sourceUrl ?? input.filename}`
-          : input.origin === "crawl"
-            ? `Crawled ${input.sourceUrl ?? input.filename}`
-            : input.origin === "youtube"
-              ? `Transcribed ${input.sourceUrl ?? input.filename}`
-              : `Uploaded ${input.filename}`
-        : `Quarantined ${input.filename}: content did not match the allowlist`,
-    });
+    await recordAudit(
+      auth,
+      {
+        action: input.verdict.ok
+          ? input.origin === "url" || input.origin === "capture"
+            ? "file.captured"
+            : input.origin === "crawl"
+              ? "file.crawled"
+              : input.origin === "youtube"
+                ? "file.transcribed"
+                : "file.uploaded"
+          : "file.quarantined",
+        subjectType: input.verdict.ok ? "document" : "file",
+        subjectId: input.verdict.ok && documentId ? documentId : fileRow.id,
+        summary: input.verdict.ok
+          ? input.origin === "url" || input.origin === "capture"
+            ? `Captured ${input.sourceUrl ?? input.filename}`
+            : input.origin === "crawl"
+              ? `Crawled ${input.sourceUrl ?? input.filename}`
+              : input.origin === "youtube"
+                ? `Transcribed ${input.sourceUrl ?? input.filename}`
+                : `Uploaded ${input.filename}`
+          : `Quarantined ${input.filename}: content did not match the allowlist`,
+      },
+      tx,
+    );
 
     await input.inTransaction?.(tx, { documentId, fileId: fileRow.id });
     return { documentId, fileId: fileRow.id };
