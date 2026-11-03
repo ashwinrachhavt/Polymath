@@ -2,10 +2,11 @@ import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
 import { auditEvents } from "@/domains/audit/schema";
 import { requireRole } from "@/lib/auth/guards";
+import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { sha256Hex } from "@/lib/hash";
 import type { AuthContext } from "./resolve";
-import { invitations, memberships } from "./schema";
+import { invitations, memberships, workspaces } from "./schema";
 
 /*
  * ASH-121 AC02: membership and invitation lifecycle, routed by spec D4 - the
@@ -281,4 +282,37 @@ export async function changeMembership(
     );
     return { membershipId: target.id, status: nextStatus, role: nextRole };
   });
+}
+
+/*
+ * Display read for the /invitations/[token] page (spec D4): the open
+ * invitation a token names, joined with its workspace's name. This only
+ * decides what the page renders - acceptance re-derives everything through
+ * acceptInvitation inside its transaction, so an invitation that expires or
+ * is revoked between render and click cannot be joined; it just renders the
+ * same not-valid state as any other dead token.
+ */
+export async function pendingInvitationForToken(token: string) {
+  if (!token) return null;
+  const [invitation] = await db
+    .select({
+      id: invitations.id,
+      workspaceId: invitations.workspaceId,
+      workspaceName: workspaces.name,
+      email: invitations.email,
+      role: invitations.role,
+      expiresAt: invitations.expiresAt,
+    })
+    .from(invitations)
+    .innerJoin(workspaces, eq(workspaces.id, invitations.workspaceId))
+    .where(
+      and(
+        eq(invitations.tokenHash, await sha256Hex(token)),
+        isNull(invitations.acceptedAt),
+        isNull(invitations.revokedAt),
+        gt(invitations.expiresAt, new Date()),
+      ),
+    )
+    .limit(1);
+  return invitation ?? null;
 }

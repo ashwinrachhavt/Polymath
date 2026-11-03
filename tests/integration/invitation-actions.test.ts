@@ -34,6 +34,7 @@ vi.mock("@/lib/db-transaction", () => ({
 }));
 
 import { createInvitationAction, revokeInvitationAction } from "@/app/(workspace)/settings/actions";
+import { acceptInvitationAction } from "@/app/(workspace)/invitations/[token]/actions";
 
 beforeAll(async () => {
   holder.db = handle?.db;
@@ -144,5 +145,102 @@ suite("invitation actions (spec D4)", () => {
 
     const [row] = await holder.db!.select().from(invitations).where(eq(invitations.workspaceId, a.workspaceId));
     expect(row.revokedAt).toBeNull();
+  });
+});
+
+suite("invitation acceptance (spec D4)", () => {
+  // The domain's authored copy crosses action-error recognition; the route's
+  // longer fallback is only for non-lifecycle failures.
+  const INVALID = "This invitation is not valid.";
+
+  async function seedInvitation() {
+    await truncateAll(handle!.client);
+    const seed = await seedWorkspace(holder.db!, `invact-${crypto.randomUUID()}`);
+    authHolder.ctx = { userId: seed.userId, workspaceId: seed.workspaceId, role: "owner" };
+    const created = await createInvitationAction({ email: "joiner@polymath.test", role: "member" });
+    expect(created.ok).toBe(true);
+    if (!created.ok) throw new Error("seed failed");
+    return { seed, created };
+  }
+
+  async function sessionUser(email: string) {
+    const [user] = await holder
+      .db!.insert(users)
+      .values({ clerkUserId: `tw_${crypto.randomUUID()}`, email })
+      .returning();
+    return user;
+  }
+
+  it("accepts a pending invitation for the session's email and seats the member", async () => {
+    const { seed, created } = await seedInvitation();
+    const joiner = await sessionUser("joiner@polymath.test");
+    authHolder.ctx = { userId: joiner.id, workspaceId: seed.workspaceId, role: "member" };
+
+    const result = await acceptInvitationAction(created.token);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.workspaceId).toBe(seed.workspaceId);
+    expect(result.role).toBe("member");
+    expect(result.replayed).toBe(false);
+
+    const [membership] = await holder
+      .db!.select()
+      .from(memberships)
+      .where(and(eq(memberships.workspaceId, seed.workspaceId), eq(memberships.userId, joiner.id)));
+    expect(membership.status).toBe("active");
+    expect(membership.role).toBe("member");
+
+    const audits = await holder.db!.select().from(auditEvents).where(eq(auditEvents.action, "invitation.accepted"));
+    expect(audits).toHaveLength(1);
+  });
+
+  it("matches a stored session email case-insensitively", async () => {
+    const { seed, created } = await seedInvitation();
+    const joiner = await sessionUser("Joiner@Polymath.TEST"); // invitations store lowercase
+    authHolder.ctx = { userId: joiner.id, workspaceId: seed.workspaceId, role: "member" };
+    const result = await acceptInvitationAction(created.token);
+    expect(result.ok).toBe(true);
+  });
+
+  it("replays the same user's own acceptance without new side effects", async () => {
+    const { seed, created } = await seedInvitation();
+    const joiner = await sessionUser("joiner@polymath.test");
+    authHolder.ctx = { userId: joiner.id, workspaceId: seed.workspaceId, role: "member" };
+
+    const first = await acceptInvitationAction(created.token);
+    expect(first.ok).toBe(true);
+    const replay = await acceptInvitationAction(created.token);
+    expect(replay.ok).toBe(true);
+    if (!replay.ok) return;
+    expect(replay.replayed).toBe(true);
+
+    const rows = await holder
+      .db!.select()
+      .from(memberships)
+      .where(and(eq(memberships.workspaceId, seed.workspaceId), eq(memberships.userId, joiner.id)));
+    expect(rows).toHaveLength(1);
+    const audits = await holder.db!.select().from(auditEvents).where(eq(auditEvents.action, "invitation.accepted"));
+    expect(audits).toHaveLength(1); // no second audit entry on replay
+  });
+
+  it("answers the same invalid copy for unknown, wrong-email, and revoked tokens", async () => {
+    const { seed, created } = await seedInvitation();
+
+    const joiner = await sessionUser("joiner@polymath.test");
+    authHolder.ctx = { userId: joiner.id, workspaceId: seed.workspaceId, role: "member" };
+
+    const unknown = await acceptInvitationAction(`inv_${"0".repeat(64)}`);
+    expect(unknown).toEqual({ ok: false, error: INVALID });
+
+    const stranger = await sessionUser("stranger@polymath.test");
+    authHolder.ctx = { userId: stranger.id, workspaceId: seed.workspaceId, role: "member" };
+    const wrongEmail = await acceptInvitationAction(created.token);
+    expect(wrongEmail).toEqual({ ok: false, error: INVALID });
+
+    authHolder.ctx = { userId: seed.userId, workspaceId: seed.workspaceId, role: "owner" };
+    await revokeInvitationAction(created.invitationId);
+    authHolder.ctx = { userId: joiner.id, workspaceId: seed.workspaceId, role: "member" };
+    const revoked = await acceptInvitationAction(created.token);
+    expect(revoked).toEqual({ ok: false, error: INVALID });
   });
 });
