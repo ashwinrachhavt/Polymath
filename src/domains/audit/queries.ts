@@ -1,4 +1,4 @@
-import { and, desc, eq, notInArray } from "drizzle-orm";
+import { and, desc, eq, lt, notInArray, or } from "drizzle-orm";
 import { db } from "@/lib/db";
 import type { AuthContext } from "@/lib/auth";
 import { auditEvents } from "./schema";
@@ -46,7 +46,7 @@ export type ActivityRow = {
  */
 const PRIVATE_SUBJECT_TYPES = ["thread"] as const;
 
-const SAFE_SUMMARY_ACTIONS = new Set([
+export const SAFE_SUMMARY_ACTIONS = new Set([
   // Calendar (member-visible calendar surfaces).
   "event.created",
   "event.time_blocked",
@@ -98,7 +98,7 @@ const SAFE_SUMMARY_ACTIONS = new Set([
 ]);
 
 /** Dynamic action families verified as code-authored over member-visible settings surfaces. */
-const SAFE_SUMMARY_PREFIXES = ["integration.account_"] as const;
+export const SAFE_SUMMARY_PREFIXES = ["integration.account_"] as const;
 
 export function isSafeSummaryAction(action: string): boolean {
   return SAFE_SUMMARY_ACTIONS.has(action) || SAFE_SUMMARY_PREFIXES.some((prefix) => action.startsWith(prefix));
@@ -123,7 +123,10 @@ export function projectSummary(action: string, summary: string): string {
   return sanitizeSummary(action, summary);
 }
 
-export async function listWorkspaceActivity(auth: AuthContext, { limit = 50 }: { limit?: number } = {}): Promise<ActivityRow[]> {
+export async function listWorkspaceActivity(
+  auth: AuthContext,
+  { limit = 50 }: { limit?: number } = {},
+): Promise<ActivityRow[]> {
   const rows = await db
     .select({
       action: auditEvents.action,
@@ -133,8 +136,102 @@ export async function listWorkspaceActivity(auth: AuthContext, { limit = 50 }: {
       createdAt: auditEvents.createdAt,
     })
     .from(auditEvents)
-    .where(and(eq(auditEvents.workspaceId, auth.workspaceId), notInArray(auditEvents.subjectType, [...PRIVATE_SUBJECT_TYPES])))
+    .where(
+      and(
+        eq(auditEvents.workspaceId, auth.workspaceId),
+        notInArray(auditEvents.subjectType, [...PRIVATE_SUBJECT_TYPES]),
+      ),
+    )
     .orderBy(desc(auditEvents.createdAt))
     .limit(limit);
   return rows.map((row) => ({ ...row, summary: projectSummary(row.action, row.summary) }));
+}
+
+/*
+ * The extended read model beside listWorkspaceActivity (consumers migrate
+ * before it is deleted). The wider row exists so the presenter can attribute
+ * actors, resolve destinations and group operations - the fields the legacy
+ * row never carried. The privacy invariants are unchanged and structural:
+ * workspace scope and the thread exclusion hold, and the metadata column is
+ * not selected at all, so raw metadata cannot reach a client surface through
+ * this function. When the presenter (a later wave) needs payloads, it reads
+ * metadata inside the domain and shows only registry-defined fields.
+ */
+export type ActivityEventRow = {
+  id: string;
+  action: string;
+  actorId: string | null;
+  actorKind: "user" | "system" | "agent";
+  subjectType: string;
+  subjectId: string | null;
+  operationId: string | null;
+  /** RAW stored summary: projection happens in the presenter, not here. */
+  summary: string;
+  createdAt: Date;
+};
+
+export type ActivityEventPage = { rows: ActivityEventRow[]; nextCursor: string | null };
+
+/** Keyset ordering is (created_at DESC, id DESC); the cursor carries both columns. */
+type ActivityCursor = { createdAt: Date; id: string };
+
+const CURSOR_SEPARATOR = "\n";
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function encodeActivityCursor(row: Pick<ActivityEventRow, "createdAt" | "id">): string {
+  return Buffer.from(`${row.createdAt.toISOString()}${CURSOR_SEPARATOR}${row.id}`, "utf8").toString("base64url");
+}
+
+/** A malformed cursor is a caller bug: throw (surfacing, never a silent page reset). */
+export function decodeActivityCursor(cursor: string): ActivityCursor {
+  const [createdAt, id] = Buffer.from(cursor, "base64url").toString("utf8").split(CURSOR_SEPARATOR);
+  if (!createdAt || !id || Number.isNaN(Date.parse(createdAt)) || !UUID_PATTERN.test(id)) {
+    throw new Error("Malformed activity cursor");
+  }
+  return { createdAt: new Date(createdAt), id };
+}
+
+export async function listActivityEvents(
+  auth: AuthContext,
+  { limit = 50, cursor }: { limit?: number; cursor?: string | null } = {},
+): Promise<ActivityEventPage> {
+  const pageSize = Math.min(Math.max(limit, 1), 200);
+  const conditions = [
+    eq(auditEvents.workspaceId, auth.workspaceId),
+    notInArray(auditEvents.subjectType, [...PRIVATE_SUBJECT_TYPES]),
+  ];
+  if (cursor) {
+    const keyset = decodeActivityCursor(cursor);
+    // created_at < cursor, or equal created_at with a smaller id: the rows
+    // after the last returned one in (created_at DESC, id DESC) order. The
+    // id tiebreak keeps same-timestamp rows from repeating or skipping a
+    // row that shares a timestamp with a page boundary.
+    const keysetCondition = or(
+      lt(auditEvents.createdAt, keyset.createdAt),
+      and(eq(auditEvents.createdAt, keyset.createdAt), lt(auditEvents.id, keyset.id)),
+    );
+    if (keysetCondition) conditions.push(keysetCondition);
+  }
+  const rows = await db
+    .select({
+      id: auditEvents.id,
+      action: auditEvents.action,
+      actorId: auditEvents.actorId,
+      actorKind: auditEvents.actorKind,
+      subjectType: auditEvents.subjectType,
+      subjectId: auditEvents.subjectId,
+      operationId: auditEvents.operationId,
+      summary: auditEvents.summary,
+      createdAt: auditEvents.createdAt,
+    })
+    .from(auditEvents)
+    .where(and(...conditions))
+    .orderBy(desc(auditEvents.createdAt), desc(auditEvents.id))
+    .limit(pageSize + 1);
+  const hasMore = rows.length > pageSize;
+  const page = hasMore ? rows.slice(0, pageSize) : rows;
+  return {
+    rows: page.map((row) => ({ ...row, actorKind: row.actorKind })),
+    nextCursor: hasMore ? encodeActivityCursor(page[page.length - 1]) : null,
+  };
 }

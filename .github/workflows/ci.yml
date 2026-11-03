@@ -109,6 +109,11 @@ jobs:
       # See docs/repo-hygiene.md.
       - name: Guard repo hygiene (size ceiling + generated-artifact blocklist)
         run: pnpm check:repo-hygiene
+      # Audit registry completeness: every action an emit site can write is
+      # defined in src/domains/audit/events/registry.ts. Source-only scan, no
+      # database - kept on this leg beside the other repo-invariant guards.
+      - name: Guard audit registry completeness
+        run: pnpm check:registry
       # Negative test: a guard that always passes is a no-op. Stage one blob a
       # byte over the ceiling and one blocklisted path, assert the guard
       # rejects both by name, then restore the index — the probes never leave
