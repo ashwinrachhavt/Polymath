@@ -453,6 +453,29 @@ suite("chat stream route (real Postgres)", () => {
     const again = await frames(await streamOf(superseded));
     expect(again[0]).toMatchObject({ type: "run", state: "failed", lastTurnFailed: false });
 
+    // The bridge dialect (machinery runs) writes the person's turn as
+    // `message.received` rather than a bare `message`; it supersedes the same
+    // way — one run's frame fact, two writers.
+    const echoed = await makeRun(a.workspaceId, "failed", null);
+    await holder.db!.insert(runEvents).values([
+      {
+        workspaceId: a.workspaceId,
+        runId: echoed,
+        sequence: 1,
+        type: "turn.failed",
+        data: {},
+      },
+      {
+        workspaceId: a.workspaceId,
+        runId: echoed,
+        sequence: 2,
+        type: "message.received",
+        data: { message: "Try again." },
+      },
+    ]);
+    const echoedFrames = await frames(await streamOf(echoed));
+    expect(echoedFrames[0]).toMatchObject({ type: "run", state: "failed", lastTurnFailed: false });
+
     // A live run whose bridge is unreachable still opens with the facts — the
     // reconnect must not retry blind.
     const live = await makeRun(a.workspaceId, "running", "wrun_dark");

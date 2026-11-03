@@ -352,11 +352,13 @@ function terminalStateOf(state: string): "succeeded" | "failed" | "cancelled" {
 
 /**
  * The event types that carry or supersede a turn's outcome, newest wins: the
- * person's message (a new turn), a turn's completion, failure, or cancel. The
- * stream's run frame reads the newest of these to say whether the run's latest
- * turn failed — the panel's "no newer human message" rule on the run's rows.
+ * person's message (a new turn — the thread writer's bare `message` and the
+ * bridge's `message.received` are the same person-turn in the two event
+ * dialects), a turn's completion, failure, or cancel. The stream's run frame
+ * reads the newest of these to say whether the run's latest turn failed — the
+ * panel's "no newer human message" rule on the run's rows.
  */
-const TURN_BOUNDARY_EVENT_TYPES = ["message", "turn.completed", "turn.failed", "turn.cancelled"];
+const TURN_BOUNDARY_EVENT_TYPES = ["message", "message.received", "turn.completed", "turn.failed", "turn.cancelled"];
 
 /** How often the session-less follow polls the run's rows, and how long it holds one connection. */
 const POLL_MS = 2_000;
