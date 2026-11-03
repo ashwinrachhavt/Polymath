@@ -102,6 +102,36 @@ suite("message comments", () => {
     });
   });
 
+  it("lists same-timestamp comments in a stable id order", async () => {
+    /*
+     * value: protects=margin-thread read determinism when two comments share
+     *   a timestamp (same-millisecond inserts have identical createdAt)
+     * fails_when=listMessageComments returns same-timestamp comments in an
+     *   order that varies between calls or ignores the id tiebreak
+     * why_new=no existing test pins order under a timestamp tie
+     *   (creates-and-lists filters by body; resolve/reopen uses one comment)
+     * seam=none
+     * no_claim=does not attribute a past CI flake to this site; pins only
+     *   the tiebreak contract
+     */
+    const { userId, workspaceId } = await seedWorkspace(db, `msgc-tie-${Date.now()}`);
+    const auth = ownerAuth(userId, workspaceId);
+    const { messageId } = await seedThread(workspaceId, userId);
+
+    const first = await domain.addMessageComment(auth, { messageId, body: "First." });
+    const second = await domain.addMessageComment(auth, { messageId, body: "Second." });
+
+    // Force the tie: two comments written in the same millisecond share a
+    // createdAt, and Postgres gives no relative order without a tiebreaker.
+    const tied = new Date("2026-11-03T00:00:00.000Z");
+    await db.update(messageComments).set({ createdAt: tied }).where(eq(messageComments.messageId, messageId));
+
+    // The id tiebreak makes the order stable: the same rows always list the
+    // same way, instead of whichever order the planner happens to return.
+    const listed = await domain.listMessageComments(auth, messageId);
+    expect(listed.map((c) => c.id)).toEqual([first.id, second.id].sort());
+  });
+
   it("keeps one workspace's comments invisible to another", async () => {
     const one = await seedWorkspace(db, `msgc-ten-a-${Date.now()}`);
     const two = await seedWorkspace(db, `msgc-ten-b-${Date.now()}`);
