@@ -81,6 +81,48 @@ export async function isWorkspaceOnboarded(workspaceId: string) {
 }
 
 /**
+ * The polymath profile's current version, for the wizard review's race guard
+ * (completeOnboarding's expectedVersion — the same guard the interview's
+ * confirm card carries). Null when no profile exists yet: a fresh
+ * workspace's first confirm has nothing to conflict with.
+ */
+export async function readOnboardingProfileVersion(workspaceId: string): Promise<number | null> {
+  const [profile] = await db
+    .select({ version: agentProfiles.version })
+    .from(agentProfiles)
+    .where(and(eq(agentProfiles.workspaceId, workspaceId), eq(agentProfiles.name, ONBOARDING_PROFILE_NAME)))
+    .limit(1);
+  return profile?.version ?? null;
+}
+
+/**
+ * The completed-but-not-yet-welcomed session, if one exists: the home
+ * surface's one-time welcome renders from this row and stamps it through
+ * markOnboardingWelcomed. Null the moment the stamp lands (and forever
+ * after), so the read doubles as the welcome's "should this show at all"
+ * decision.
+ */
+export async function findUnwelcomedOnboardingSession(workspaceId: string) {
+  const [session] = await db
+    .select({
+      role: onboardingSessions.role,
+      tools: onboardingSessions.tools,
+      priorities: onboardingSessions.priorities,
+      personifiedBrief: onboardingSessions.personifiedBrief,
+    })
+    .from(onboardingSessions)
+    .where(
+      and(
+        eq(onboardingSessions.workspaceId, workspaceId),
+        eq(onboardingSessions.status, "completed"),
+        isNull(onboardingSessions.welcomedAt),
+      ),
+    )
+    .limit(1);
+  return session ?? null;
+}
+
+/**
  * Record what onboarding learned and personify the supervisor agent in the
  * same commit. The profile description is replaced, not appended: it is the
  * personified brief, and a stale placeholder behind it would make the run's

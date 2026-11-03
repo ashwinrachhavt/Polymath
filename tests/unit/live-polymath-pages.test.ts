@@ -65,7 +65,12 @@ vi.mock("@/domains/agents/thread", () => ({
 vi.mock("@/domains/agents/eve-driver", () => ({ eveBridgeUnavailableReason: vi.fn() }));
 // The onboarding gate is a real database read on the page; these tests render
 // the page without a database, so it is stubbed like its neighbours.
-vi.mock("@/domains/agents/onboarding", () => ({ isWorkspaceOnboarded: vi.fn(async () => true) }));
+vi.mock("@/domains/agents/onboarding", () => ({
+  isWorkspaceOnboarded: vi.fn(async () => true),
+  // The one-time welcome read: null means nothing to welcome, so the home
+  // keeps its plain greeting in every fixture below.
+  findUnwelcomedOnboardingSession: vi.fn(async () => null),
+}));
 // The composer's skill picker reads the workspace's enabled skills; static
 // markup has no database, so the read is stubbed like every other one here.
 vi.mock("@/domains/skills/queries", () => ({ listSkills: vi.fn(async () => []) }));
