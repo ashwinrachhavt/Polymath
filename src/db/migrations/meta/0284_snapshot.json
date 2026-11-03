@@ -1,6 +1,6 @@
 {
-  "id": "f7bd882a-84ce-4b19-8031-55a7ca13c61d",
-  "prevId": "cbcd9bc4-5679-43b0-bda7-c2deb5ed93cb",
+  "id": "60215977-d916-4eb3-bb01-1f9daa8a6686",
+  "prevId": "f35f0c43-b8b8-4641-bd43-ed773bfa4d76",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -3770,6 +3770,13 @@
           "notNull": true,
           "default": "'in_progress'"
         },
+        "step": {
+          "name": "step",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'role'"
+        },
         "role": {
           "name": "role",
           "type": "text",
@@ -3794,8 +3801,20 @@
           "primaryKey": false,
           "notNull": false
         },
+        "draft": {
+          "name": "draft",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
         "completed_at": {
           "name": "completed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "welcomed_at": {
+          "name": "welcomed_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
@@ -5540,6 +5559,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "operation_id": {
+          "name": "operation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -5587,6 +5612,27 @@
             },
             {
               "expression": "subject_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "audit_events_operation_idx": {
+          "name": "audit_events_operation_idx",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "operation_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -27869,7 +27915,7 @@
       "checkConstraints": {
         "work_effects_kind_check": {
           "name": "work_effects_kind_check",
-          "value": "\"work_effects\".\"kind\" in ('assessment', 'launch', 'delivery', 'relay', 'notice', 'reply')"
+          "value": "\"work_effects\".\"kind\" in ('assessment', 'launch', 'delivery', 'relay', 'notice', 'reply', 'reap')"
         },
         "work_effects_status_check": {
           "name": "work_effects_status_check",

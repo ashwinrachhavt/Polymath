@@ -1,11 +1,9 @@
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
+import type { OnboardingDraft } from "@/domains/agents/onboarding-assist";
 import type { OnboardingBrief } from "@/domains/agents/onboarding-brief";
-import { OnboardingConfirm } from "../../onboarding/onboarding-confirm";
-import { OnboardingConversation } from "../../onboarding/onboarding-conversation";
-import { OnboardingInterview } from "../../onboarding/onboarding-interview";
-import { OnboardingStatusCard } from "../../onboarding/onboarding-status-card";
-import { RETRY_CARD_MESSAGE } from "../../onboarding/reload-surface";
+import { OnboardingWizard } from "../../onboarding/onboarding-wizard";
+import { OnboardingWelcome } from "../../polymath/onboarding-welcome";
 
 export const metadata = {
   title: "Onboarding fixtures",
@@ -21,10 +19,16 @@ export const metadata = {
  * marker moves, no Eve call, no spend. Development and CI only: a production
  * build answers 404.
  *
- * The `island` state is the one exception to "no Eve call": the conversation
- * island auto-starts its run on mount, which in the keyless harness fails
- * fast to the status card (EVE_BASE_URL unset) - the exact bridge-down
- * journey a first-run user hits on a runtime-less deployment.
+ * The wizard states are the page's reload decision rendered one by one:
+ * fresh, the three selection steps (s1-s3), the review, and the legacy-run
+ * salvage entry. Two more states are interactions, not mounts, and the e2e
+ * spec drives them from `s3` and `review`: `s3-assist-pending` (the assist
+ * POST is held) and `s3-assist-failed` (the assist POST is answered 500);
+ * `review-conflict` is what confirming here produces, because profileVersion
+ * -1 below always loses the race guard. No fixture can ever commit
+ * onboarding: the wizard's confirm goes through the real
+ * completeOnboardingAction, whose expectedVersion check fails against -1
+ * before any write lands.
  */
 
 const FIXTURE_BRIEF: OnboardingBrief = {
@@ -34,17 +38,27 @@ const FIXTURE_BRIEF: OnboardingBrief = {
   priorities: ["Keep the inbox at zero", "Never let a renewal surprise me"],
 };
 
+const S1_DRAFT: OnboardingDraft = { role: "Founder at a two-person climate studio" };
+
+const S2_DRAFT: OnboardingDraft = {
+  role: "Founder",
+  tools: ["Notion", "Gmail", "Google Calendar"],
+  priorities: ["Keep the inbox at zero"],
+};
+
+const S3_DRAFT: OnboardingDraft = {
+  role: "Founder",
+  tools: ["Notion"],
+  freeform: "I read long reports in the morning and want the claims pulled out before I'm at my desk.",
+};
+
 const SALVAGE_NOTICE =
-  "The interview's summary could not be read, so the form below carries what could be salvaged from the conversation - correct it and continue.";
+  "The interview could not finish. What it captured is pre-filled below — correct it and continue.";
 
-const BRIDGE_DOWN_REASON =
-  "The agent runtime is not reachable from this deployment (EVE_BASE_URL is not set), so the interview cannot start.";
+/** Always loses the confirm's race guard — the fixture can never commit. */
+const CONFLICT_VERSION = -1;
 
-export default function OnboardingFixturesPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ state?: string }>;
-}) {
+export default function OnboardingFixturesPage({ searchParams }: { searchParams: Promise<{ state?: string }> }) {
   // Production-inaccessibility is decided before any dynamic data loads.
   if (process.env.NODE_ENV === "production") notFound();
   // URL state under cacheComponents belongs inside a Suspense boundary.
@@ -55,55 +69,46 @@ export default function OnboardingFixturesPage({
   );
 }
 
-async function Fixture({
-  searchParams,
-}: {
-  searchParams: Promise<{ state?: string }>;
-}) {
-  const { state = "confirm" } = await searchParams;
+async function Fixture({ searchParams }: { searchParams: Promise<{ state?: string }> }) {
+  const { state = "fresh" } = await searchParams;
 
   const wrapper = (child: React.ReactNode) => (
     <div className="page-content flex flex-1 items-center justify-center pt-16">{child}</div>
   );
 
   switch (state) {
-    case "confirm":
-      return wrapper(<OnboardingConfirm initial={FIXTURE_BRIEF} profileVersion={0} />);
-    case "island":
-      return wrapper(<OnboardingConversation />);
+    case "fresh":
+      return wrapper(<OnboardingWizard step="role" draft={null} profileVersion={CONFLICT_VERSION} />);
+    case "s1":
+      return wrapper(<OnboardingWizard step="role" draft={S1_DRAFT} profileVersion={CONFLICT_VERSION} />);
+    case "s2":
+      return wrapper(<OnboardingWizard step="priorities" draft={S2_DRAFT} profileVersion={CONFLICT_VERSION} />);
+    case "s3":
+      return wrapper(<OnboardingWizard step="words" draft={S3_DRAFT} profileVersion={CONFLICT_VERSION} />);
+    case "review":
+      return wrapper(<OnboardingWizard step="review" draft={FIXTURE_BRIEF} profileVersion={CONFLICT_VERSION} />);
     /*
-     * The successful-conversation state. The island's thread is Eve-backed in
-     * production, so the e2e spec intercepts the run's stream endpoint and
-     * replays fabricated ChatFrames - the REAL ChatSurface and accumulator
-     * render the conversation, only the transport is staged. initialRunId
-     * skips the start action; the brief poll misses silently.
+     * The page's reload surface for a failed legacy interview run with
+     * salvage (QA F5): the notice leads and the salvage prefills step one's
+     * fields — never an auto-start.
      */
-    case "island-success":
-      return wrapper(<OnboardingConversation initialRunId="fixture-success-run" />);
-    /*
-     * The island on a run whose stream reports the run failed terminally
-     * (QA F6): the e2e spec intercepts this run's stream with turn.failed +
-     * end(failed) frames, so the real ChatSurface renders the terminal
-     * failure line and the fresh-start Retry wired by the island.
-     */
-    case "island-failed":
-      return wrapper(<OnboardingConversation initialRunId="fixture-failed-run" />);
-    /*
-     * The page's reload surface for a failed interview run with nothing
-     * salvageable (QA F5): the failure card renders at once and no start
-     * fires until its Retry is clicked.
-     */
-    case "retry-card":
-      return wrapper(<OnboardingConversation initialError={RETRY_CARD_MESSAGE} />);
-    case "status":
-      return wrapper(<OnboardingStatusCard reason={BRIDGE_DOWN_REASON} />);
-    case "form":
-      return wrapper(<OnboardingInterview />);
-    case "form-salvage":
+    case "salvage":
       return wrapper(
-        <OnboardingInterview
-          initial={{ agentName: "Polymath", role: "Chief of staff for a solo founder" }}
+        <OnboardingWizard
+          step="role"
+          draft={null}
+          prefill={{ agentName: "Polymath", role: "Chief of staff for a solo founder" }}
           notice={SALVAGE_NOTICE}
+          profileVersion={CONFLICT_VERSION}
+        />,
+      );
+    case "welcome":
+      return wrapper(
+        <OnboardingWelcome
+          role="Chief of staff for a solo founder"
+          tools={["Gmail", "Linear", "Google Calendar"]}
+          priorities={["Keep the inbox at zero", "Never let a renewal surprise me"]}
+          personifiedBrief={null}
         />,
       );
     default:

@@ -37,21 +37,30 @@ export default function SignedInMenu() {
         <Popover.Trigger
           aria-label="Open account menu"
           className={cn(
-            "text-muted-foreground hover:bg-muted hover:text-foreground flex size-7 items-center justify-center overflow-hidden rounded-full bg-muted text-[11px] font-medium uppercase outline-none",
+            "text-muted-foreground hover:bg-muted hover:text-foreground flex size-7 items-center justify-center overflow-hidden rounded-full bg-muted text-data font-medium uppercase outline-none",
             "focus-visible:ring-ring focus-visible:ring-3",
             "data-[state=open]:text-foreground",
           )}
         >
           {user.imageUrl ? (
             // eslint-disable-next-line @next/next/no-img-element -- Clerk hosts the avatar; next/image would need a remote-pattern entry per provider.
-            <img src={user.imageUrl} alt="" className="size-full rounded-full object-cover" referrerPolicy="no-referrer" />
+            <img
+              src={user.imageUrl}
+              alt=""
+              className="size-full rounded-full object-cover"
+              referrerPolicy="no-referrer"
+            />
           ) : (
             initial
           )}
         </Popover.Trigger>
         <Popover.Portal>
-          <Popover.Content align="end" sideOffset={6} className="panel bg-popover text-popover-foreground z-50 w-56 rounded-lg p-1 outline-none">
-            <p className="text-muted-foreground truncate px-2 py-1.5 text-[11px]">{name}</p>
+          <Popover.Content
+            align="end"
+            sideOffset={6}
+            className="panel bg-popover text-popover-foreground z-50 w-56 rounded-lg p-1 outline-none"
+          >
+            <p className="text-muted-foreground truncate px-2 py-1.5 text-data">{name}</p>
             <div aria-hidden className="bg-border my-1 h-px" />
             <button
               type="button"
@@ -59,19 +68,25 @@ export default function SignedInMenu() {
                 setMenuOpen(false);
                 setProfileOpen(true);
               }}
-              className="hover:bg-accent focus-visible:ring-ring flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] outline-none focus-visible:ring-3"
+              className="hover:bg-accent focus-visible:ring-ring flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-body-dense outline-none focus-visible:ring-3"
             >
               <IdCard aria-hidden className="size-4 opacity-70" />
               Manage account
             </button>
-            <MenuItem href="/settings" icon={Settings}>Settings</MenuItem>
-            <MenuItem href="/activity" icon={Activity}>Activity</MenuItem>
-            <MenuItem href="/landing" icon={Sparkles}>Landing page</MenuItem>
+            <MenuItem href="/settings" icon={Settings}>
+              Settings
+            </MenuItem>
+            <MenuItem href="/activity" icon={Activity}>
+              Activity
+            </MenuItem>
+            <MenuItem href="/landing" icon={Sparkles}>
+              Landing page
+            </MenuItem>
             <div aria-hidden className="bg-border my-1 h-px" />
             <SignOutButton redirectUrl="/">
               <button
                 type="button"
-                className="hover:bg-accent focus-visible:ring-ring flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] outline-none focus-visible:ring-3"
+                className="hover:bg-accent focus-visible:ring-ring flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-body-dense outline-none focus-visible:ring-3"
               >
                 <LogOut aria-hidden className="size-4 opacity-70" />
                 Sign out
@@ -93,7 +108,7 @@ function SignInSlot() {
       <SignInButton mode="modal">
         <button
           type="button"
-          className="hover:bg-accent focus-visible:ring-ring flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] outline-none focus-visible:ring-3"
+          className="hover:bg-accent focus-visible:ring-ring flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-body-dense outline-none focus-visible:ring-3"
         >
           Sign in
         </button>

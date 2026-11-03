@@ -1,7 +1,6 @@
 import { and, asc, eq, gt, isNull, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
-import { auditEvents } from "@/domains/audit/schema";
-import { requireRole } from "@/lib/auth/guards";
+import { ForbiddenRoleError, requireRole } from "@/lib/auth/guards";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { sha256Hex } from "@/lib/hash";
@@ -201,15 +200,18 @@ export async function acceptInvitation(input: {
         },
       })
       .returning({ id: memberships.id, role: memberships.role });
-    await tx.insert(auditEvents).values({
-      workspaceId: invite.workspaceId,
-      actorId: input.userId,
-      actorKind: "user",
-      action: "invitation.accepted",
-      subjectType: "invitation",
-      subjectId: invite.id,
-      summary: `Accepted an invitation as ${member.role}`,
-    });
+    // No AuthContext exists yet: the invitee is joining. The row names the
+    // workspace being joined and the acceptor's user id directly.
+    await recordAudit(
+      { workspaceId: invite.workspaceId, userId: input.userId },
+      {
+        action: "invitation.accepted",
+        subjectType: "invitation",
+        subjectId: invite.id,
+        summary: `Accepted an invitation as ${member.role}`,
+      },
+      tx,
+    );
     return { workspaceId: invite.workspaceId, membershipId: member.id, role: member.role, replayed: false };
   });
 }
@@ -219,6 +221,12 @@ export async function acceptInvitation(input: {
  * change that could leave the workspace without an active owner takes a row
  * lock on the workspace's owner memberships first, so two concurrent
  * demotions serialize and the second sees the first's result.
+ *
+ * Rank (D5): admins manage the directory — change roles and remove members.
+ * Leaving is the one self-service verb: the caller's own row, status-only,
+ * to "removed", at member rank. Two moves stay owner-only: touching an
+ * owner's membership at all, and granting the owner role (an admin could
+ * otherwise mint a second owner past the people who hold the workspace).
  */
 export async function changeMembership(
   auth: AuthContext,
@@ -228,7 +236,6 @@ export async function changeMembership(
     role?: "owner" | "admin" | "member" | "viewer";
   },
 ): Promise<{ membershipId: string; status: string; role: string }> {
-  requireRole(auth, "owner");
   if (!input.status && !input.role) {
     throw new MembershipLifecycleError("invitation_input", "Nothing to change.");
   }
@@ -246,11 +253,17 @@ export async function changeMembership(
       .orderBy(memberships.id)
       .for("update");
     const [target] = await tx
-      .select({ id: memberships.id, role: memberships.role, status: memberships.status })
+      .select({ id: memberships.id, userId: memberships.userId, role: memberships.role, status: memberships.status })
       .from(memberships)
       .where(and(eq(memberships.id, input.membershipId), eq(memberships.workspaceId, auth.workspaceId)))
       .limit(1);
     if (!target) throw new MembershipLifecycleError("membership_not_found", "No such member in this workspace.");
+
+    const selfLeave = target.userId === auth.userId && input.role === undefined && input.status === "removed";
+    requireRole(auth, selfLeave ? "member" : "admin");
+    if (!selfLeave && (target.role === "owner" || input.role === "owner") && auth.role !== "owner") {
+      throw new ForbiddenRoleError("AUTH_FORBIDDEN", `Requires owner; this member is ${auth.role}.`);
+    }
 
     const nextStatus = input.status ?? target.status;
     const nextRole = input.role ?? target.role;

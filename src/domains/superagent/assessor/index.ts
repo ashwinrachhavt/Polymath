@@ -59,12 +59,25 @@ export interface AssessorHost {
   workspaceId: string;
   repos: Repositories;
   engine: EngineForAssessor;
-  effects: { enqueue(effect: { kind: "assessment"; key: string; payload: Record<string, unknown> }): void };
+  effects: {
+    enqueue(
+      effect:
+        | { kind: "assessment"; key: string; payload: Record<string, unknown> }
+        | { kind: "reap"; key: string; availableAt: string },
+    ): void;
+  };
   eve: EveForAssessor;
   /** The Mercury Decide client, or null when the seam is not configured. */
   decide: DecideClient | null;
   afterCommit(work: () => Promise<void>): void;
   flush(): Promise<void>;
+  /**
+   * Runs after a decision's effects are durable: the launch effect this
+   * decision enqueued drains here, because the eval tools run inside the
+   * specialist's process — no send-path drain ever follows them, and a
+   * decision that stops at enqueue strands its ticket's launch until cron.
+   */
+  afterDecision?(): Promise<void>;
   auth(): Promise<AuthContext>;
   policyView(): PolicyView;
   config: AssessorConfig;
@@ -106,6 +119,8 @@ interface EvalTools {
 export interface SuperagentAssessor {
   request(candidate: Candidate): void;
   release(assessmentId: string): void;
+  /** The expiry tick the engine schedules when a candidate is delivered. */
+  scheduleReap(assessmentId: string, deadlineAt: string): void;
   /** The assessment effect's handler. */
   handleAssessment(payload: AssessmentPayload): Promise<void>;
   /** The eval tools an eval session's calls resolve to. */
@@ -195,6 +210,14 @@ export function createSuperagentAssessor(host: AssessorHost): SuperagentAssessor
         key: candidate.assessmentId,
         payload: { assessmentId: candidate.assessmentId, threadKey: candidate.thread.key } satisfies AssessmentPayload,
       });
+    },
+
+    scheduleReap(assessmentId: string, deadlineAt: string): void {
+      // The deadline's observer: a reap effect due exactly at it, coalesced on
+      // the assessment id. When it fires, the handler ticks the workspace and
+      // the engine expires whatever eval is past its deadline; a decided or
+      // reassessed assessment's reap is a no-op tick.
+      host.effects.enqueue({ kind: "reap", key: assessmentId, availableAt: deadlineAt });
     },
 
     release(assessmentId: string): void {
@@ -348,6 +371,9 @@ export function createSuperagentAssessor(host: AssessorHost): SuperagentAssessor
           };
         }
         await host.flush();
+        // The launch effect is durable now; drain it in this process (the
+        // specialist's), where no send-path drain will ever tick.
+        await host.afterDecision?.();
         return {
           outcome: record.final.kind,
           decidedBy: record.final.decidedBy,

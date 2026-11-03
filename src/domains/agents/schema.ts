@@ -825,12 +825,22 @@ export const onboardingSessions = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     /** in_progress | completed | abandoned. */
     status: text("status").notNull().default("in_progress"),
+    /**
+     * The wizard's persisted step. The detached onboarding flow asks its
+     * questions in forms, not in a chat run, so "where the person is" lives
+     * on the session row and a mid-wizard reload lands exactly there.
+     */
+    step: text("step").notNull().default("role"),
     role: text("role"),
     /** Tool names the person lives in: Notion, Gmail, Calendly, Excel, … */
-    tools: jsonb("tools"),
-    priorities: jsonb("priorities"),
+    tools: jsonb("tools").$type<string[]>(),
+    priorities: jsonb("priorities").$type<string[]>(),
     personifiedBrief: text("personified_brief"),
+    /** The wizard's in-progress draft: partial brief fields plus their freeform words. */
+    draft: jsonb("draft"),
     completedAt: timestamp("completed_at", { withTimezone: true }),
+    /** Set once when the home surface has shown the post-onboarding welcome. */
+    welcomedAt: timestamp("welcomed_at", { withTimezone: true }),
     ...mutable,
   },
   (t) => [

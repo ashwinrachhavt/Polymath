@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { blobObjects } from "@/domains/audit/schema";
+import { auditEvents, blobObjects } from "@/domains/audit/schema";
 import { documents, files } from "@/domains/knowledge/schema";
 import type { ExtractionResult } from "@/integrations/extraction/provider";
 import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
@@ -205,17 +205,35 @@ suite("proposeZettels (real Postgres)", () => {
     );
   });
 
-  it("caps proposals per document", async () => {
+  it("caps proposals per document by source size", async () => {
     const auth = await workspace();
-    // The flat per-source bound is 20 (was 8 before the chunked pipeline): a
-    // single-section source keeps everything up to the cap without a merge.
+    // The per-source bound is size-derived now (capForSize): this source is
+    // ~1.2k chars, so the small band caps it at 2 — the flat 20 is gone.
     const sentences = Array.from({ length: 25 }, (_, i) => `Clause number ${i} states a distinct obligation.`);
     const doc = await seed(auth, sentences.join(" "));
     const { proposals: rows } = await proposeZettels(auth, {
       documentId: doc.id,
       extractor: extractor(sentences.map((q, i) => ({ title: `T${i}`, claim: "c", quote: q }))),
     });
-    expect(rows).toHaveLength(20);
+    expect(rows).toHaveLength(2);
+  });
+
+  it("caps a medium single-section source at 5 without a merge", async () => {
+    const auth = await workspace();
+    // ~11k chars, one section (under the 12k section cap): the medium band
+    // applies — 25 located candidates, the final slice keeps 5.
+    const sentences = Array.from(
+      { length: 25 },
+      (_, i) => `Clause number ${i} ${"padding text ".repeat(30)}states a distinct obligation.`,
+    );
+    expect(sentences.join(" ").length).toBeGreaterThan(2_000);
+    expect(sentences.join(" ").length).toBeLessThanOrEqual(12_000);
+    const doc = await seed(auth, sentences.join(" "));
+    const { proposals: rows } = await proposeZettels(auth, {
+      documentId: doc.id,
+      extractor: extractor(sentences.map((q, i) => ({ title: `T${i}`, claim: "c", quote: q }))),
+    });
+    expect(rows).toHaveLength(5);
   });
 });
 
@@ -270,6 +288,22 @@ suite("accept and reject (real Postgres)", () => {
     expect(await counts(auth.workspaceId)).toEqual([0, 0, 0]);
     expect((await holder.db!.select().from(sources).where(eq(sources.workspaceId, auth.workspaceId))).length).toBe(0);
     await expect(acceptZettel(auth, { proposalId: p.id })).rejects.toThrow("already decided");
+  });
+
+  it("decisions are audited: accept and reject each leave one row", async () => {
+    const { auth, p } = await one();
+    await acceptZettel(auth, { proposalId: p.id });
+    const accepted = await holder.db!.select().from(auditEvents).where(eq(auditEvents.subjectId, p.id));
+    expect(accepted.map((r) => r.action)).toEqual(["zettel.accepted"]);
+    expect(accepted[0]!.summary).toBe('Accepted zettel "Monthly rent"');
+
+    const second = await one();
+    await rejectZettel(second.auth, { proposalId: second.p.id });
+    const rejected = await holder.db!.select().from(auditEvents).where(eq(auditEvents.subjectId, second.p.id));
+    // No proposal wording in the reject row: the declined title is model
+    // output the owner rejected, not workspace-shared content.
+    expect(rejected.map((r) => r.action)).toEqual(["zettel.rejected"]);
+    expect(rejected[0]!.summary).toBe("Rejected zettel proposal");
   });
 
   it("another workspace cannot decide it", async () => {

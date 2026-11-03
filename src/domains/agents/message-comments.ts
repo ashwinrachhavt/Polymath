@@ -85,7 +85,7 @@ export async function listMessageComments(auth: AuthContext, messageId: string):
           isNull(messageComments.archivedAt),
         ),
       )
-      .orderBy(asc(messageComments.createdAt));
+      .orderBy(asc(messageComments.createdAt), asc(messageComments.id));
   });
 }
 

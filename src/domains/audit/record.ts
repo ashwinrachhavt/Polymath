@@ -1,4 +1,3 @@
-import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import type { TxDrizzle } from "@/lib/db-transaction";
 import { auditEvents } from "./schema";
@@ -17,17 +16,33 @@ export type AuditInput = {
   summary: string;
   metadata?: Record<string, unknown>;
   actorKind?: "user" | "system" | "agent";
+  /**
+   * Groups the audit rows of one use case (a capture conversion and the
+   * proposal decision that drove it) so the read side can tell one story
+   * without time-window heuristics. Opt-in per use case: historical rows
+   * carry none and read conservatively.
+   */
+  operationId?: string;
 };
 
 /**
  * A system caller has no user: actorId is null and the audit row says so
- * (actorKind "system"). AuthContext cannot satisfy this type - it carries a
- * userId string - so a request surface cannot quietly audit as "system".
+ * (actorKind "system"). AuthContext still satisfies the door's context shape
+ * (its userId string widens to null), but a request surface that wants to
+ * audit as a person passes its AuthContext - the system shape stays a
+ * deliberate choice at the call site, not something a request falls into.
  */
 export type SystemAuditContext = { workspaceId: string; userId: null };
 
+/**
+ * The door's context is the minimal structural shape of an audit actor: the
+ * workspace the row names and the user who acted (null for system callers).
+ * AuthContext satisfies it structurally. One caller cannot: invitation
+ * acceptance runs before the invitee has any workspace context, and writes
+ * its row into the workspace being joined, naming the acceptor's id directly.
+ */
 export async function recordAudit(
-  auth: AuthContext | SystemAuditContext,
+  auth: { workspaceId: string; userId: string | null },
   input: AuditInput,
   tx: TxDrizzle | typeof db = db,
 ) {
@@ -40,5 +55,6 @@ export async function recordAudit(
     subjectId: input.subjectId,
     summary: input.summary,
     metadata: input.metadata ?? null,
+    operationId: input.operationId ?? null,
   });
 }

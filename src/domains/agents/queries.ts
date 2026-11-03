@@ -5,7 +5,7 @@ import { escapeLike } from "@/lib/list-params";
 // Onboarding's own module owns the machinery markers; importing them here is
 // cycle-free (nothing in onboarding's graph reads this module).
 import { ONBOARDING_OBJECTIVE_PREFIX } from "./onboarding";
-import { agentProfiles, agentRuns, messages, runEvents, toolCalls } from "./schema";
+import { agentPrincipals, agentProfiles, agentRuns, messages, runEvents, toolCalls } from "./schema";
 
 /*
  * The eve side resolves its run through the session reference, not the run id:
@@ -60,6 +60,19 @@ export async function listRecentRuns(
         // Discarded runs are retired: hidden from conversation surfaces,
         // still present for audit.
         isNull(agentRuns.discardedAt),
+        // Machinery runs are the superagent domain's own sessions — the
+        // assessor judging an admission, the ticket workers doing accepted
+        // work. Nobody types into them: their objectives are machine prose
+        // ("You are judging one candidate for admission…"), and listing one
+        // as a conversation promised a chat the person never had. The run
+        // rows already carry the marker — their subjects name the machinery
+        // namespace (`superagent_*`: assessor/eve.ts assessmentSubjects,
+        // executor/eve.ts ticketRunSubjects) — so the predicate reads the
+        // row, not its words. A namespace prefix, not an enumerated type
+        // list: the next machinery subject type the domain adds is excluded
+        // by the same line, the way the onboarding prefix below predates its
+        // script's exact wording.
+        sql`not exists (select 1 from jsonb_array_elements(${agentRuns.subjects}) as s where position('superagent_' in s->>'type') = 1)`,
         options.excludeOnboarding
           ? // Prefix, not the exact current script: the script's text has
             // changed before (the default agent's name rides in its last
@@ -470,4 +483,22 @@ export async function listRunAttributions(workspaceId: string, runIds: string[])
     .leftJoin(agentProfiles, eq(agentRuns.agentProfileId, agentProfiles.id))
     .where(and(eq(agentRuns.workspaceId, workspaceId), inArray(agentRuns.id, runIds)));
   return new Map(rows.map((row) => [row.id, { objective: row.objective, profileName: row.profileName }]));
+}
+
+/*
+ * Batched principal labels for audit actor attribution, scoped to the
+ * workspace like every agents read here. An id absent from the result is one
+ * the caller renders with its neutral fallback ("Agent") - a revoked
+ * principal's row is gone, but the audit event still happened.
+ */
+export async function getAgentPrincipalLabels(
+  workspaceId: string,
+  principalIds: string[],
+): Promise<Map<string, string>> {
+  if (principalIds.length === 0) return new Map();
+  const rows = await db
+    .select({ id: agentPrincipals.id, label: agentPrincipals.label })
+    .from(agentPrincipals)
+    .where(and(eq(agentPrincipals.workspaceId, workspaceId), inArray(agentPrincipals.id, principalIds)));
+  return new Map(rows.map((row) => [row.id, row.label]));
 }

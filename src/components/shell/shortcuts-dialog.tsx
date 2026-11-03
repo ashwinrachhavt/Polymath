@@ -79,10 +79,10 @@ export function ShortcutsDialog({ trigger }: { trigger?: React.ReactNode }) {
         </DialogDescription>
         {groups.map((group) => (
           <section key={group.name} className="mt-5">
-            <h3 className="text-[13px] font-medium">{group.name}</h3>
+            <h3 className="text-body-dense font-medium">{group.name}</h3>
             <dl className="mt-2 divide-y divide-border">
               {group.items.map((item) => (
-                <div key={item.keys} className="flex items-baseline justify-between gap-4 py-2 text-[13px]">
+                <div key={item.keys} className="flex items-baseline justify-between gap-4 py-2 text-body-dense">
                   <dt>{item.action}</dt>
                   <dd className="readout shrink-0 text-xs text-muted-foreground">{item.keys}</dd>
                 </div>

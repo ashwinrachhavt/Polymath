@@ -368,7 +368,7 @@ export function CommandLayer() {
               <Input
                 key="search"
                 autoFocus
-                className="h-11 border-transparent bg-muted/60 text-[14px] focus-visible:ring-1"
+                className="h-11 border-transparent bg-muted/60 text-body focus-visible:ring-1"
                 role="combobox"
                 aria-expanded="true"
                 aria-autocomplete="list"
@@ -399,7 +399,7 @@ export function CommandLayer() {
               <div className="flex gap-2">
                 <Button variant="outline" className="flex-1 justify-start" onClick={() => setMode("capture")}>
                   <Plus aria-hidden />
-                  Capture something<span className="readout ml-auto text-[11px]">Ctrl/⌘ Shift C</span>
+                  Capture something<span className="readout ml-auto text-data">Ctrl/⌘ Shift C</span>
                 </Button>
                 {/* The header stays quiet: the shortcuts list lives here, on the
                 keyboard surface, instead of a sixth header control. Shift+?
@@ -409,7 +409,7 @@ export function CommandLayer() {
                     <Button variant="outline" aria-label="Keyboard shortcuts">
                       <Keyboard aria-hidden />
                       <span className="hidden sm:inline">Shortcuts</span>
-                      <span className="readout ml-auto hidden text-[11px] sm:inline">Shift ?</span>
+                      <span className="readout ml-auto hidden text-data sm:inline">Shift ?</span>
                     </Button>
                   }
                 />
@@ -434,7 +434,7 @@ export function CommandLayer() {
                     <result.icon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
                     <span className="flex min-w-0 flex-1 flex-col items-start">
                       <span className="max-w-full truncate">{result.label}</span>
-                      <span className="text-[11px] text-muted-foreground">{result.context}</span>
+                      <span className="text-data text-muted-foreground">{result.context}</span>
                     </span>
                     <ArrowRight aria-hidden className="size-3 shrink-0 text-muted-foreground" />
                   </button>
@@ -453,7 +453,7 @@ export function CommandLayer() {
           ) : (
             <>
               <form id="quick-capture-form" onSubmit={saveCapture} className="flex flex-col gap-4">
-                <label className="flex flex-col gap-2 text-[13px] font-medium">
+                <label className="flex flex-col gap-2 text-body-dense font-medium">
                   Anything worth keeping
                   <Textarea
                     key="capture"
@@ -501,7 +501,7 @@ export function CommandLayer() {
                     {recording ? <Square aria-hidden /> : <Mic aria-hidden />}
                     {recording ? "Stop and save" : "Voice note"}
                   </Button>
-                  <span className="text-[11px] text-muted-foreground">
+                  <span className="text-data text-muted-foreground">
                     Up to {MAX_UPLOAD_LABEL}. Files are stored as-is; audio transcribes when that ships.
                   </span>
                 </div>
@@ -518,7 +518,7 @@ export function CommandLayer() {
                 }}
               />
               {saveError ? (
-                <p className="text-destructive text-[13px]" role="alert">
+                <p className="text-destructive text-body-dense" role="alert">
                   {saveError}
                   {saveErrorId ? (
                     <>

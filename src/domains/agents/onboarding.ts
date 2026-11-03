@@ -81,6 +81,48 @@ export async function isWorkspaceOnboarded(workspaceId: string) {
 }
 
 /**
+ * The polymath profile's current version, for the wizard review's race guard
+ * (completeOnboarding's expectedVersion — the same guard the interview's
+ * confirm card carries). Null when no profile exists yet: a fresh
+ * workspace's first confirm has nothing to conflict with.
+ */
+export async function readOnboardingProfileVersion(workspaceId: string): Promise<number | null> {
+  const [profile] = await db
+    .select({ version: agentProfiles.version })
+    .from(agentProfiles)
+    .where(and(eq(agentProfiles.workspaceId, workspaceId), eq(agentProfiles.name, ONBOARDING_PROFILE_NAME)))
+    .limit(1);
+  return profile?.version ?? null;
+}
+
+/**
+ * The completed-but-not-yet-welcomed session, if one exists: the home
+ * surface's one-time welcome renders from this row and stamps it through
+ * markOnboardingWelcomed. Null the moment the stamp lands (and forever
+ * after), so the read doubles as the welcome's "should this show at all"
+ * decision.
+ */
+export async function findUnwelcomedOnboardingSession(workspaceId: string) {
+  const [session] = await db
+    .select({
+      role: onboardingSessions.role,
+      tools: onboardingSessions.tools,
+      priorities: onboardingSessions.priorities,
+      personifiedBrief: onboardingSessions.personifiedBrief,
+    })
+    .from(onboardingSessions)
+    .where(
+      and(
+        eq(onboardingSessions.workspaceId, workspaceId),
+        eq(onboardingSessions.status, "completed"),
+        isNull(onboardingSessions.welcomedAt),
+      ),
+    )
+    .limit(1);
+  return session ?? null;
+}
+
+/**
  * Record what onboarding learned and personify the supervisor agent in the
  * same commit. The profile description is replaced, not appended: it is the
  * personified brief, and a stale placeholder behind it would make the run's
@@ -206,6 +248,119 @@ export async function completeOnboarding(
 }
 
 /* ------------------------------------------------------------------------- *
+ * The detached wizard's server pieces: persisted progress, the one assist,
+ * and the welcome stamp. The wizard asks its questions in forms, not in a
+ * chat run — no run row, no stream, no spend reservation — so its state is
+ * the session row alone, and its one model call is a direct structured
+ * output whose Zod schema is the whole response contract
+ * (onboarding-brief.ts). completeOnboarding above stays the single commit
+ * path; nothing here stamps onboarded_at.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * Persist where the person is between wizard steps. The session row is the
+ * only wizard state: a reload mid-wizard lands on this step with this draft,
+ * server-rendered. Claim-or-create mirrors completeOnboarding — the partial
+ * unique index keeps one live row per workspace, so a lost race surfaces as
+ * a labelled failure rather than a silent second row.
+ */
+export async function saveOnboardingProgress(
+  auth: AuthContext,
+  input: { step: OnboardingStep; draft?: OnboardingDraft },
+) {
+  const draft = input.draft ?? null;
+  const [existing] = await db
+    .select({ id: onboardingSessions.id, version: onboardingSessions.version })
+    .from(onboardingSessions)
+    .where(
+      and(
+        eq(onboardingSessions.workspaceId, auth.workspaceId),
+        eq(onboardingSessions.status, "in_progress"),
+        isNull(onboardingSessions.archivedAt),
+      ),
+    )
+    .limit(1);
+  if (existing) {
+    await db
+      .update(onboardingSessions)
+      .set({
+        step: input.step,
+        draft,
+        updatedBy: auth.userId,
+        updatedAt: new Date(),
+        version: existing.version + 1,
+      })
+      .where(eq(onboardingSessions.id, existing.id));
+    return;
+  }
+  await db.insert(onboardingSessions).values({
+    workspaceId: auth.workspaceId,
+    userId: auth.userId,
+    status: "in_progress",
+    step: input.step,
+    draft,
+    createdBy: auth.userId,
+    updatedBy: auth.userId,
+  });
+}
+
+/**
+ * The one assist ("Polish with Polymath"): compose the person's own words
+ * into a draft brief. This is a direct structured-output call, not a run —
+ * no agent_runs row, no stream, no spend reservation — so there is no
+ * transcript, no resume, and nothing to retire; the draft it returns is what
+ * the review step renders and edits, and the person's manual fields stay
+ * authoritative when it fails (the action owns that contract). The model
+ * comes in resolved-and-gated from the action, the same resolution order the
+ * eve runtime applies on a run's first turn.
+ */
+export async function refineOnboardingDraft(
+  auth: AuthContext,
+  model: ModelOption,
+  input: FreeformDraft,
+): Promise<OnboardingBrief> {
+  const { object } = await generateObject({
+    model: chatModel(model),
+    schema: onboardingBriefSchema,
+    system: ONBOARDING_ASSIST_SYSTEM,
+    prompt: composeAssistPrompt(input),
+  });
+  await recordAudit(auth, {
+    action: "onboarding.assisted",
+    subjectType: "workspace",
+    subjectId: auth.workspaceId,
+    summary: `Composed the onboarding brief with ${model.label}; the agent is named ${object.agentName}`,
+  });
+  return object;
+}
+
+/**
+ * The post-onboarding welcome shows exactly once: the home surface looks for
+ * a completed session with no welcomed_at, shows the welcome, and stamps it
+ * here. The where clause makes a second stamp match nothing, so the action
+ * is safely repeatable. A marker, not a versioned edit — the stamp bumps
+ * version because every row mutation here does, but nothing reads it for
+ * optimistic concurrency.
+ */
+export async function markOnboardingWelcomed(auth: AuthContext): Promise<void> {
+  await db
+    .update(onboardingSessions)
+    .set({
+      welcomedAt: new Date(),
+      updatedBy: auth.userId,
+      updatedAt: new Date(),
+      version: sql`${onboardingSessions.version} + 1`,
+    })
+    .where(
+      and(
+        eq(onboardingSessions.workspaceId, auth.workspaceId),
+        eq(onboardingSessions.status, "completed"),
+        isNull(onboardingSessions.welcomedAt),
+      ),
+    );
+}
+
+/* ------------------------------------------------------------------------- *
  * The agent-led interview (ASH-296).
  *
  * The interview is a real run through the engine — transcript in run_events,
@@ -218,11 +373,21 @@ export async function completeOnboarding(
  * ------------------------------------------------------------------------- */
 
 import { desc, inArray } from "drizzle-orm";
+import { generateObject } from "ai";
 import { createEngine, type SessionDriver } from "./engine";
 import { createEveDriver, eveAgentForProfile } from "./eve-driver";
+import { chatModel, type ModelOption } from "./models";
 import { listThreads, type ThreadEntry } from "./thread";
 import {
+  composeAssistPrompt,
+  ONBOARDING_ASSIST_SYSTEM,
+  type FreeformDraft,
+  type OnboardingDraft,
+  type OnboardingStep,
+} from "./onboarding-assist";
+import {
   extractOnboardingBrief,
+  onboardingBriefSchema,
   prefillOnboardingFromThread,
   ONBOARDING_BRIEF_FENCE,
   type OnboardingBrief,

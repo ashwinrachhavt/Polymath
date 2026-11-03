@@ -37,10 +37,11 @@ const AUTH_FORBIDDEN_SHAPES = [
   /^This API key does not carry the [a-z0-9:_-]{1,64} scope\.$/,
 ];
 
-// MembershipLifecycleError (identity/invitations) messages are authored
-// constants in the domain - unlike the guard shapes there is no variable
-// slot at all - so name plus code pins the message to one of the known
-// literals and nothing client-shaped can ride through.
+// MembershipLifecycleError's codes are a closed enum and every message is a
+// fixed constant in the domain (no user input is ever interpolated into one),
+// so recognizing the class by name+code pins the domain's authored copy —
+// "A workspace needs at least one active owner." — without importing the
+// domain into lib. SQLSTATEs are five characters and cannot collide.
 const LIFECYCLE_CODES = new Set([
   "invitation_input",
   "invitation_invalid",

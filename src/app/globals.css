@@ -63,40 +63,40 @@
   --popover-foreground: oklch(0.25 0.006 75);
 
   /* The product's one accent: a soft warm charcoal, Opal-style. */
-  --primary: oklch(0.30 0.010 75);
+  --primary: oklch(0.3 0.01 75);
   --primary-foreground: oklch(0.985 0.002 95);
 
   --secondary: oklch(0.958 0.003 95);
   --secondary-foreground: oklch(0.25 0.006 75);
 
   --muted: oklch(0.962 0.003 95);
-  --muted-foreground: oklch(0.50 0.007 80);
+  --muted-foreground: oklch(0.5 0.007 80);
 
-  --accent: oklch(0.950 0.003 95);
+  --accent: oklch(0.95 0.003 95);
   --accent-foreground: oklch(0.25 0.006 75);
 
   --destructive: oklch(0.53 0.15 25);
 
-  --success: oklch(0.50 0.11 155);
-  --info: oklch(0.50 0.11 245);
+  --success: oklch(0.5 0.11 155);
+  --info: oklch(0.5 0.11 245);
 
   --border: oklch(0.916 0.003 95);
   --input: oklch(0.916 0.003 95);
   --ring: oklch(0.38 0.012 75);
 
   --chart-1: oklch(0.45 0.02 75);
-  --chart-2: oklch(0.60 0.07 168);
+  --chart-2: oklch(0.6 0.07 168);
   --chart-3: oklch(0.55 0.08 268);
   --chart-4: oklch(0.65 0.09 96);
   --chart-5: oklch(0.58 0.08 330);
 
-  --sidebar: oklch(0.980 0.002 95);
+  --sidebar: oklch(0.98 0.002 95);
   --sidebar-foreground: oklch(0.25 0.006 75);
-  --sidebar-primary: oklch(0.30 0.010 75);
+  --sidebar-primary: oklch(0.3 0.01 75);
   --sidebar-primary-foreground: oklch(0.985 0.002 95);
   --sidebar-accent: oklch(0.944 0.003 95);
   --sidebar-accent-foreground: oklch(0.25 0.006 75);
-  --sidebar-border: oklch(0.920 0.003 95);
+  --sidebar-border: oklch(0.92 0.003 95);
   --sidebar-ring: oklch(0.38 0.012 75);
 
   /* Kept defined for any straggler referencing them; the flat panel no
@@ -108,6 +108,28 @@
      dialogs, popovers). Warm-tinted to the ground, never grey-black. */
   --shadow: 0 1px 2px oklch(0.35 0.01 80 / 4%), 0 8px 24px oklch(0.35 0.01 80 / 6%);
 
+  /* One prose measure for reading surfaces (deslop spec §4.3). The competing
+     widths (708px / 720px / 72ch / 75ch / max-w-3xl) are retired onto this
+     token: notes, artifacts, ideas detail, notebook assistant prose, the rich
+     editor's default mode, and the run transcript all read at 720px. Plain
+     custom property (not @theme) so it is emitted even before it has a
+     consumer. */
+  --measure-prose: 720px;
+
+  /* The writing canvas fills the first screen: viewport minus the top bar and
+     the suite page padding it sits in (24px top + 40px bottom, .suite-screen
+     below). A floor, not a frame — the column grows with content and the page
+     scrolls as a document; a short note simply owns the whole screen. The
+     48px resolves from --topbar-h set on <main> (0 on conversation surfaces,
+     which never host the editor). */
+  --canvas-min: calc(100dvh - var(--topbar-h, 48px) - 64px);
+
+  /* Panel depth — where a surface needs lift instead of a hairline border.
+     Three layers (contact, key, ambient) in the same warm charcoal as
+     --shadow, one step softer. Dark mode re-points it next to --shadow. */
+  --shadow-panel:
+    0 1px 2px oklch(0.35 0.01 80 / 5%), 0 4px 12px oklch(0.35 0.01 80 / 4%), 0 12px 40px oklch(0.35 0.01 80 / 7%);
+
   /* One product, one accent: a soft warm charcoal used everywhere. The
      --app-accent alias and the [data-app] scopes stay so components that
      read them keep working without knowing any app name. */
@@ -117,7 +139,8 @@
 
 @theme inline {
   --color-background: var(--background);
-  --color-foreground: var(--foreground);  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
@@ -173,6 +196,23 @@
   --radius-xl: calc(var(--radius) * 1.5);
 
   --shadow-raised: var(--shadow);
+
+  /* Text ramp — the named sizes every surface sweeps onto (deslop spec §4.4.1).
+     Sizes ONLY, no paired line-heights: the retired px literals set font-size
+     and left leading to the parent, and a paired line-height would re-render
+     every site that omits one. The map is 1:1 onto the retired literals:
+     text-[11px] -> text-data, text-[12px] -> text-label,
+     text-[13px] -> text-body-dense (the dense cockpit register), text-[14px] -> text-body,
+     text-[16px] -> text-ui, text-[20px] -> text-title, text-[28px] -> text-display
+     (headroom; no literal used it). The two 15px composer literals have no
+     ramp entry on purpose — they move with workstream C, not the ramp. */
+  --text-data: 11px;
+  --text-label: 12px;
+  --text-body-dense: 13px;
+  --text-body: 14px;
+  --text-ui: 16px;
+  --text-title: 20px;
+  --text-display: 28px;
 }
 
 .dark {
@@ -180,53 +220,54 @@
      breath lighter, hairlines at low alpha, the accent inverted to a soft
      off-white so dark mode stays the same product. */
   --background: oklch(0.185 0.002 80);
-  --foreground: oklch(0.930 0.003 85);
+  --foreground: oklch(0.93 0.003 85);
 
-  --card: oklch(0.220 0.003 80);
-  --card-foreground: oklch(0.930 0.003 85);
-  --popover: oklch(0.230 0.003 80);
-  --popover-foreground: oklch(0.930 0.003 85);
+  --card: oklch(0.22 0.003 80);
+  --card-foreground: oklch(0.93 0.003 85);
+  --popover: oklch(0.23 0.003 80);
+  --popover-foreground: oklch(0.93 0.003 85);
 
-  --primary: oklch(0.920 0.003 85);
+  --primary: oklch(0.92 0.003 85);
   --primary-foreground: oklch(0.235 0.004 78);
 
   --secondary: oklch(0.255 0.003 80);
-  --secondary-foreground: oklch(0.930 0.003 85);
+  --secondary-foreground: oklch(0.93 0.003 85);
 
   --muted: oklch(0.255 0.003 80);
-  --muted-foreground: oklch(0.680 0.006 82);
+  --muted-foreground: oklch(0.68 0.006 82);
 
-  --accent: oklch(0.270 0.003 80);
-  --accent-foreground: oklch(0.930 0.003 85);
+  --accent: oklch(0.27 0.003 80);
+  --accent-foreground: oklch(0.93 0.003 85);
 
   --destructive: oklch(0.65 0.15 25);
 
-  --success: oklch(0.70 0.11 155);
-  --info: oklch(0.70 0.11 245);
+  --success: oklch(0.7 0.11 155);
+  --info: oklch(0.7 0.11 245);
 
-  --border: oklch(0.290 0.003 80);
-  --input: oklch(0.290 0.003 80);
-  --ring: oklch(0.820 0.005 85);
+  --border: oklch(0.29 0.003 80);
+  --input: oklch(0.29 0.003 80);
+  --ring: oklch(0.82 0.005 85);
 
   --chart-1: oklch(0.85 0.01 85);
   --chart-2: oklch(0.76 0.08 168);
   --chart-3: oklch(0.72 0.09 268);
-  --chart-4: oklch(0.80 0.1 96);
+  --chart-4: oklch(0.8 0.1 96);
   --chart-5: oklch(0.74 0.09 330);
 
-  --sidebar: oklch(0.200 0.002 80);
-  --sidebar-foreground: oklch(0.930 0.003 85);
-  --sidebar-primary: oklch(0.920 0.003 85);
+  --sidebar: oklch(0.2 0.002 80);
+  --sidebar-foreground: oklch(0.93 0.003 85);
+  --sidebar-primary: oklch(0.92 0.003 85);
   --sidebar-primary-foreground: oklch(0.235 0.004 78);
-  --sidebar-accent: oklch(0.270 0.003 80);
-  --sidebar-accent-foreground: oklch(0.930 0.003 85);
-  --sidebar-border: oklch(0.290 0.003 80);
-  --sidebar-ring: oklch(0.820 0.005 85);
+  --sidebar-accent: oklch(0.27 0.003 80);
+  --sidebar-accent-foreground: oklch(0.93 0.003 85);
+  --sidebar-border: oklch(0.29 0.003 80);
+  --sidebar-ring: oklch(0.82 0.005 85);
 
   --edge-light: oklch(1 0 0 / 0%);
   --edge-shade: oklch(0 0 0 / 0%);
 
   --shadow: 0 1px 2px oklch(0 0 0 / 35%), 0 12px 32px oklch(0 0 0 / 40%);
+  --shadow-panel: 0 1px 2px oklch(0 0 0 / 40%), 0 4px 12px oklch(0 0 0 / 30%), 0 12px 40px oklch(0 0 0 / 45%);
 }
 
 @layer components {
@@ -267,20 +308,47 @@
     line-height: 1;
     white-space: nowrap;
   }
-  .pill-neutral { background: var(--muted); color: var(--muted-foreground); }
-  .pill-success { background: color-mix(in oklab, var(--success) 14%, transparent); color: var(--success); }
-  .pill-info { background: color-mix(in oklab, var(--info) 12%, transparent); color: var(--info); }
-  .pill-working { background: color-mix(in oklab, oklch(0.72 0.12 80) 16%, transparent); color: oklch(0.52 0.10 70); }
-  .pill-danger { background: color-mix(in oklab, var(--destructive) 10%, transparent); color: var(--destructive); }
+  .pill-neutral {
+    background: var(--muted);
+    color: var(--muted-foreground);
+  }
+  .pill-success {
+    background: color-mix(in oklab, var(--success) 14%, transparent);
+    color: var(--success);
+  }
+  .pill-info {
+    background: color-mix(in oklab, var(--info) 12%, transparent);
+    color: var(--info);
+  }
+  .pill-working {
+    background: color-mix(in oklab, oklch(0.72 0.12 80) 16%, transparent);
+    color: oklch(0.52 0.1 70);
+  }
+  .pill-danger {
+    background: color-mix(in oklab, var(--destructive) 10%, transparent);
+    color: var(--destructive);
+  }
   /* The full wheel, completed (owner direction 2026-10-29): every hue the
      product names gets one quiet tint at the same low chroma, so the rainbow
      lives in the system, not on the page. Violet for deferred/waiting states
      (the mockup's Waiting pill); teal as the wheel's remaining stop. Dark
      mode lifts the lightness so the tints read on the near-black ground. */
-  .pill-violet { background: color-mix(in oklab, oklch(0.62 0.11 300) 13%, transparent); color: oklch(0.52 0.11 300); }
-  .pill-teal { background: color-mix(in oklab, oklch(0.72 0.10 195) 13%, transparent); color: oklch(0.55 0.09 195); }
-  .dark .pill-violet { background: color-mix(in oklab, oklch(0.72 0.10 300) 16%, transparent); color: oklch(0.80 0.09 300); }
-  .dark .pill-teal { background: color-mix(in oklab, oklch(0.76 0.09 195) 16%, transparent); color: oklch(0.80 0.08 195); }
+  .pill-violet {
+    background: color-mix(in oklab, oklch(0.62 0.11 300) 13%, transparent);
+    color: oklch(0.52 0.11 300);
+  }
+  .pill-teal {
+    background: color-mix(in oklab, oklch(0.72 0.1 195) 13%, transparent);
+    color: oklch(0.55 0.09 195);
+  }
+  .dark .pill-violet {
+    background: color-mix(in oklab, oklch(0.72 0.1 300) 16%, transparent);
+    color: oklch(0.8 0.09 300);
+  }
+  .dark .pill-teal {
+    background: color-mix(in oklab, oklch(0.76 0.09 195) 16%, transparent);
+    color: oklch(0.8 0.08 195);
+  }
 
   /* Dotted section divider with a centered label (Artifacts "OCTOBER 2026",
      home "YOUR CONVERSATIONS"). A hairline says "regions"; the dotted rule
@@ -331,233 +399,265 @@
 }
 /* Both page systems use the same gutters, reading width and title rhythm. */
 .screen-heading {
-display: flex;
-flex-wrap: wrap;
-align-items: flex-start;
-justify-content: space-between;
-gap: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
 }
 .screen-heading > :first-child {
-flex-basis: 20rem;
+  flex-basis: 20rem;
 }
 .screen-title {
-font-family: var(--font-display);
-font-size: 26px;
-font-weight: 700;
-line-height: 1.2;
-letter-spacing: -0.015em;
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+  /* Two-line titles break at their best point instead of leaving an orphaned
+   last word at narrow viewports. */
+  text-wrap: balance;
 }
 .screen-description {
-margin-top: 6px;
-max-width: 42rem;
-font-size: 13px;
-line-height: 1.625;
-color: var(--muted-foreground);
+  margin-top: 6px;
+  max-width: 42rem;
+  font-size: 13px;
+  line-height: 1.625;
+  color: var(--muted-foreground);
 }
 .screen-actions {
-display: flex;
-flex-wrap: wrap;
-align-items: center;
-gap: 8px;
-max-width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
 }
 .suite-screen {
-min-width: 0;
-padding: 24px var(--page-gutter) 40px;
-font-size: 13px;
+  min-width: 0;
+  padding: 24px var(--page-gutter) 40px;
+  font-size: 13px;
 }
 .suite-screen > :is(header, div) {
-width: 100%;
-max-width: var(--page-width);
-margin-inline: auto;
+  width: 100%;
+  max-width: var(--page-width);
+  margin-inline: auto;
 }
 .suite-screen > header {
-padding-bottom: 24px;
+  padding-bottom: 24px;
 }
 .page-header {
-padding: 24px var(--page-gutter) 20px;
+  padding: 24px var(--page-gutter) 20px;
 }
 .page-header > .screen-heading {
-width: 100%;
-max-width: var(--page-width);
-margin-inline: auto;
+  width: 100%;
+  max-width: var(--page-width);
+  margin-inline: auto;
 }
 .page-content {
-width: 100%;
-max-width: calc(var(--page-width) + var(--page-gutter) * 2);
-min-width: 0;
-margin-inline: auto;
-padding: 24px var(--page-gutter);
+  width: 100%;
+  max-width: calc(var(--page-width) + var(--page-gutter) * 2);
+  min-width: 0;
+  margin-inline: auto;
+  padding: 24px var(--page-gutter);
 }
 /* Reading pages breathe: 96px clear above and below the text column on
    desktop, 48px on small screens. Only full-page reading surfaces opt in;
    operational pages keep .page-content's tighter padding. */
 .reading-page {
-padding-block: 48px;
+  padding-block: 48px;
 }
 @media (min-width: 768px) {
-:root { --page-gutter: 24px; }
-.reading-page { padding-block: 96px; }
+  :root {
+    --page-gutter: 24px;
+  }
+  .reading-page {
+    padding-block: 96px;
+  }
 }
 /* The Notion feel (owner direction 2026-10-28; Notion Design System §5): the
    shared reading typography for content-first surfaces — capture, notes,
-   conversations, documents. One ~70ch measure, 16px body at 1.65, 24px block
-   rhythm, one treatment per element. The 13px cockpit scale stays for
-   operational surfaces and never touches a .prose-reading subtree.
+   conversations, documents. One prose measure (--measure-prose), 16px body
+   at 1.65, 24px block rhythm, one treatment per element. The 13px cockpit
+   scale stays for operational surfaces and never touches a .prose-reading
+   subtree.
    Unlayered so these rules beat the Tailwind utilities the shared markdown
    renderer and the editors carry (my-1, gap-1.5, list-disc). */
 .prose-reading {
-max-width: 70ch;
-font-size: 16px;
-line-height: 1.65;
+  /* Width belongs to the shared measure token, not the typography class —
+     every prose surface reads at --measure-prose. */
+  max-width: var(--measure-prose);
+  font-size: 16px;
+  line-height: 1.65;
+  /* Paragraphs break for reading rhythm, not to fill the box. */
+  text-wrap: pretty;
 }
 .prose-reading p {
-margin: 0 0 24px;
+  margin: 0 0 24px;
 }
 .prose-reading :is(h1, h2) {
-margin: 48px 0 12px;
-font-size: 24px;
-font-weight: 600;
-line-height: 1.3;
+  margin: 48px 0 12px;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.3;
 }
 .prose-reading h3 {
-margin: 40px 0 8px;
-font-size: 18px;
-font-weight: 600;
-line-height: 1.35;
+  margin: 40px 0 8px;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.35;
 }
 .prose-reading h4 {
-margin: 40px 0 8px;
-font-size: 16px;
-font-weight: 600;
-line-height: 1.4;
+  margin: 40px 0 8px;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.4;
 }
 .prose-reading :is(ul, ol) {
-margin: 0 0 24px;
-padding-left: 24px;
+  margin: 0 0 24px;
+  padding-left: 24px;
 }
-.prose-reading ul { list-style: disc; }
-.prose-reading ol { list-style: decimal; }
+.prose-reading ul {
+  list-style: disc;
+}
+.prose-reading ol {
+  list-style: decimal;
+}
 /* Inside a reading surface the list rhythm is the block rhythm, so the
    renderer's my-1/gap-0.5 scale drops out. Outside one, the utilities win. */
 .prose-reading :is(ul, ol).prose-list {
-margin: 0 0 24px;
-gap: 4px;
+  margin: 0 0 24px;
+  gap: 4px;
 }
 .prose-reading li {
-margin: 0;
+  margin: 0;
 }
 .prose-reading blockquote {
-margin: 0 0 24px;
-padding-left: 16px;
-border-left: 2px solid var(--border);
-color: var(--muted-foreground);
+  margin: 0 0 24px;
+  padding-left: 16px;
+  border-left: 2px solid var(--border);
+  color: var(--muted-foreground);
 }
 .prose-reading hr {
-margin: 24px 0;
-border: 0;
-border-top: 1px solid var(--border);
+  margin: 24px 0;
+  border: 0;
+  border-top: 1px solid var(--border);
 }
 .prose-reading > pre {
-margin: 0 0 24px;
+  margin: 0 0 24px;
 }
 .prose-reading table {
-margin: 0 0 24px;
+  margin: 0 0 24px;
 }
 /* Notes header chrome (Notion feel): the top-row actions and the quiet
    action row fade in on pointer hover of the header zone and stay visible
    on keyboard focus. Coarse pointers (touch) have no hover, so the actions
-   remain visible there. Opacity, not display: layout never shifts. */
+   remain visible there. Opacity, not display: layout never shifts.
+   Scroll-away adds the recede state — once the reader is into the document
+   (the column sets .is-scrolled) the chrome fades until scrolling back or a
+   hover brings it back; the hover/focus rules come last so they win. The
+   quiet action row reveals on its own hover too — it sits outside the
+   header zone. */
 .header-actions {
-opacity: 1;
-}
-.header-zone:hover .header-actions,
-.header-zone:focus-within .header-actions {
-opacity: 1;
+  opacity: 1;
+  transition: opacity 150ms ease;
 }
 @media (hover: hover) and (pointer: fine) {
-.header-actions {
-opacity: 0;
-transition: opacity 150ms ease;
+  .header-actions {
+    opacity: 0;
+  }
 }
+.is-scrolled .header-actions,
+.quiet-actions.is-scrolled {
+  opacity: 0;
+}
+.header-zone:hover .header-actions,
+.header-zone:focus-within .header-actions,
+.quiet-actions:hover,
+.quiet-actions:focus-within {
+  opacity: 1;
 }
 .polymath-mark {
-display: flex;
-width: 28px;
-height: 28px;
-flex-shrink: 0;
-align-items: center;
-justify-content: center;
-border: 1px solid var(--foreground);
-border-radius: 6px;
-font-family: var(--font-mono);
-font-size: 21px;
+  display: flex;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--foreground);
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 21px;
 }
 .global-search {
-display: flex;
-width: min(260px, 28vw);
-height: 32px;
-align-items: center;
-gap: 10px;
-border: 1px solid var(--border);
-border-radius: 6px;
-padding-inline: 10px;
-background: var(--card);
-color: var(--muted-foreground);
-font-size: 12px;
-transition: border-color 150ms ease, background-color 150ms ease, color 150ms ease;
+  display: flex;
+  width: min(260px, 28vw);
+  height: 32px;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding-inline: 10px;
+  background: var(--card);
+  color: var(--muted-foreground);
+  font-size: 12px;
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease,
+    color 150ms ease;
 }
 .global-search:hover {
-border-color: color-mix(in oklab, var(--border) 55%, var(--foreground));
-color: var(--foreground);
+  border-color: color-mix(in oklab, var(--border) 55%, var(--foreground));
+  color: var(--foreground);
 }
 .command-result {
-display: flex;
-width: 100%;
-min-height: 44px;
-align-items: center;
-gap: 12px;
-border-radius: 6px;
-padding: 8px 10px;
-text-align: left;
-font-size: 13px;
-transition: background-color 120ms ease, color 120ms ease;
+  display: flex;
+  width: 100%;
+  min-height: 44px;
+  align-items: center;
+  gap: 12px;
+  border-radius: 6px;
+  padding: 8px 10px;
+  text-align: left;
+  font-size: 13px;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
 }
 .command-result:hover,
 .command-result[aria-selected="true"] {
-background: var(--muted);
-color: var(--foreground);
+  background: var(--muted);
+  color: var(--foreground);
 }
 .skip-link {
-position: fixed;
-top: -100px;
-left: 16px;
-z-index: 100;
-border: 1px solid var(--border);
-border-radius: 4px;
-padding: 8px 16px;
-background: var(--card);
-color: var(--foreground);
+  position: fixed;
+  top: -100px;
+  left: 16px;
+  z-index: 100;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px 16px;
+  background: var(--card);
+  color: var(--foreground);
 }
 .skip-link:focus {
-top: 8px;
+  top: 8px;
 }
 :focus-visible {
-outline: 2px solid var(--ring);
-outline-offset: 2px;
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
 /* The writing surface is the page itself: an editor-wide ring reads as a box
    around the canvas. Keyboard focus stays visible through the caret and a
    whisper outline in the border color. Unlayered so it beats the ring above. */
 .writing-surface:focus-visible {
-outline: 1px solid var(--border);
-outline-offset: -1px;
+  outline: 1px solid var(--border);
+  outline-offset: -1px;
 }
 /* A composer draws its focus ring on the surrounding panel
    (has-[:focus-visible]:ring-3); the textarea's own outline would double it.
    Unlayered so it beats the universal focus outline above. */
 .composer-input:focus-visible {
-outline: none;
+  outline: none;
 }
 /* Native selects that do not use the Select component keep a baseline. In the
    base layer so the component's height, padding, radius and type utilities win;
@@ -576,43 +676,43 @@ outline: none;
 }
 input,
 textarea {
-accent-color: var(--primary);
+  accent-color: var(--primary);
 }
 ::selection {
-background: color-mix(in oklab, var(--primary) 22%, transparent);
-color: var(--foreground);
+  background: color-mix(in oklab, var(--primary) 22%, transparent);
+  color: var(--foreground);
 }
 @media (max-width: 1023px) {
-.global-search {
-width: auto;
-border-color: transparent;
-background: transparent;
-}
-.global-search:hover {
-border-color: var(--border);
-background: var(--card);
-}
+  .global-search {
+    width: auto;
+    border-color: transparent;
+    background: transparent;
+  }
+  .global-search:hover {
+    border-color: var(--border);
+    background: var(--card);
+  }
 }
 @media (max-width: 767px) {
-.page-header {
-padding-top: 20px;
-}
-.suite-screen {
-padding: 20px 16px calc(28px + env(safe-area-inset-bottom));
-}
-.suite-screen > div {
-max-width: 100%;
-}
+  .page-header {
+    padding-top: 20px;
+  }
+  .suite-screen {
+    padding: 20px 16px calc(28px + env(safe-area-inset-bottom));
+  }
+  .suite-screen > div {
+    max-width: 100%;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
-*,
-*::before,
-*::after {
-scroll-behavior: auto !important;
-animation-duration: 0.01ms !important;
-animation-iteration-count: 1 !important;
-transition-duration: 0.01ms !important;
-}
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 @layer base {
@@ -690,41 +790,43 @@ transition-duration: 0.01ms !important;
    Action: the decision surface. Sans titles at a tighter track, denser
    rhythm, and focus rings a keyboard-first operator can track at speed. */
 [data-interface-mode="library"] .screen-title {
-font-weight: 700;
-letter-spacing: -0.015em;
+  font-weight: 700;
+  letter-spacing: -0.015em;
 }
 [data-interface-mode="library"] .suite-screen {
---page-width: 52rem;
-padding-block: 40px 56px;
+  /* 72rem: the notes rail (18rem) plus the 720px prose measure must both fit
+     or the writing canvas can never reach the shared --measure-prose token. */
+  --page-width: 72rem;
+  padding-block: 40px 56px;
 }
 [data-interface-mode="library"] .suite-screen > header {
-padding-bottom: 32px;
+  padding-bottom: 32px;
 }
 [data-interface-mode="library"] .screen-description {
-font-size: 14px;
-line-height: 1.7;
+  font-size: 14px;
+  line-height: 1.7;
 }
 [data-interface-mode="library"] .panel {
-padding: 20px;
+  padding: 20px;
 }
 [data-interface-mode="library"] main ::selection {
-background: var(--muted);
+  background: var(--muted);
 }
 
 [data-interface-mode="action"] .screen-title {
-font-size: 22px;
-font-weight: 700;
-letter-spacing: -0.015em;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
 }
 [data-interface-mode="action"] .suite-screen {
-padding-block: 16px 28px;
+  padding-block: 16px 28px;
 }
 [data-interface-mode="action"] .suite-screen > header {
-padding-bottom: 16px;
+  padding-bottom: 16px;
 }
 [data-interface-mode="action"] main :is(a, button, [role="button"], input, select, textarea, [tabindex]):focus-visible {
-outline: 2px solid var(--foreground);
-outline-offset: 2px;
+  outline: 2px solid var(--foreground);
+  outline-offset: 2px;
 }
 
 /* The conversation surface scrolls inside its transcript, never as a page.
@@ -734,30 +836,29 @@ outline-offset: 2px;
    plain CSS the browser cannot elide. min-height: 0 releases the flex item's
    content minimum so the height actually holds. */
 .shell-conversation {
-height: 100dvh;
-min-height: 0;
-overflow: hidden;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
 }
 /* The notes rail compacts the shared ListToolbar (spacing-system pass): the
    search field and selects share the rail's width instead of stacking, and
    controls drop to the 8px-grid compact height. Scoped so the full-width
    toolbar on every other surface is untouched. */
 .rail-compact [role="search"] {
-gap: 8px;
+  gap: 8px;
 }
 .rail-compact [role="search"] > div:first-child {
-min-width: 0;
+  min-width: 0;
 }
 .rail-compact [role="search"] select {
-width: calc(50% - 4px);
-flex: 1 1 auto;
+  width: calc(50% - 4px);
+  flex: 1 1 auto;
 }
 .rail-compact [role="search"] input[type="search"] {
-height: 32px;
+  height: 32px;
 }
 .rail-compact [role="search"] select {
-min-height: 32px;
-height: 32px;
-padding-block: 0;
+  min-height: 32px;
+  height: 32px;
+  padding-block: 0;
 }
-

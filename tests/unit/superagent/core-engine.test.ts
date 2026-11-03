@@ -53,6 +53,7 @@ function harness(policyOverrides: Partial<Policy> = {}, { emit, prepareTicket }:
       requests.push(candidate);
     }),
     release: vi.fn(),
+    scheduleReap: vi.fn(),
   };
   const launches: [Ticket, TicketRun][] = [];
   const deliveries = new Set<string>();
@@ -357,6 +358,24 @@ describe("eval", () => {
     expect(h.repo.threads.get("chat:t1")).toMatchObject({ pending: [] });
     expect(h.repo.threads.get("chat:t1")).not.toHaveProperty("evaluating");
     expect(h.repo.threads.get("chat:t1")).not.toHaveProperty("expired");
+  });
+  it("schedules the expiry reap when the candidate is delivered, at the deadline its policy set", () => {
+    const h = harness();
+    h.engine.receive(trigger("1"));
+    h.pump();
+    // Nothing schedules while the session has not taken the candidate.
+    expect(h.assessor.scheduleReap).not.toHaveBeenCalled();
+    // Delivery at clock 600: the deadline counts 60s from the delivery, not
+    // from the request — the same instant the eval's stored deadline sets.
+    h.tick(600);
+    h.engine.candidateDelivered(h.requests[0]!.assessmentId);
+    expect(h.assessor.scheduleReap).toHaveBeenCalledExactlyOnceWith(
+      h.requests[0]!.assessmentId,
+      new Date(Date.UTC(2026, 8, 23, 0, 0, 660)).toISOString(),
+    );
+    // Delivery reports once per eval: a replayed delivery does not reschedule.
+    h.engine.candidateDelivered(h.requests[0]!.assessmentId);
+    expect(h.assessor.scheduleReap).toHaveBeenCalledTimes(1);
   });
 });
 describe("subscription fan-out", () => {

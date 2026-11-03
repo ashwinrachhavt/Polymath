@@ -16,10 +16,7 @@ const barHrefs = ["/polymath", "/command-center/inbox", "/neuralflow/work", "/pr
 export function MobileNav() {
   const pathname = usePathname();
   const activeHref = destinationForPath(pathname)?.href;
-  const items = [
-    ...destinations.filter((d) => barHrefs.includes(d.href)),
-    moreDestination,
-  ];
+  const items = [...destinations.filter((d) => barHrefs.includes(d.href)), moreDestination];
 
   return (
     <nav
@@ -27,7 +24,8 @@ export function MobileNav() {
       className="border-border bg-background sticky bottom-0 z-20 flex shrink-0 border-t pb-[env(safe-area-inset-bottom)] md:hidden"
     >
       {items.map(({ href, label, icon: Icon }) => {
-        const active = "href" in moreDestination && href === moreDestination.href ? pathname === href : activeHref === href;
+        const active =
+          "href" in moreDestination && href === moreDestination.href ? pathname === href : activeHref === href;
         return (
           <Link
             key={href}
@@ -35,7 +33,7 @@ export function MobileNav() {
             aria-label={label}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "flex min-h-11 flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-[11px] outline-none",
+              "flex min-h-11 flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-data outline-none",
               "focus-visible:ring-ring focus-visible:ring-3",
               active ? "text-app-accent font-medium" : "text-muted-foreground",
             )}

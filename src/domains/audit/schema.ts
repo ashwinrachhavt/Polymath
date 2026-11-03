@@ -25,13 +25,7 @@ import { mutable, primaryId, recorded, tenantId } from "../../db/columns";
 
 export const actorKind = pgEnum("actor_kind", ["user", "system", "agent"]);
 export const outboxStatus = pgEnum("outbox_status", ["pending", "dispatched", "failed", "dead"]);
-export const webhookStatus = pgEnum("webhook_status", [
-  "received",
-  "processing",
-  "processed",
-  "failed",
-  "ignored",
-]);
+export const webhookStatus = pgEnum("webhook_status", ["received", "processing", "processed", "failed", "ignored"]);
 
 /** Idempotency: key + request hash in, stored response out. */
 export const requestReceipts = pgTable(
@@ -61,11 +55,14 @@ export const auditEvents = pgTable(
     subjectId: uuid("subject_id"),
     summary: text("summary").notNull(),
     metadata: jsonb("metadata"),
+    /** Groups the audit rows of one use case (a conversion and its steps) for story rendering. */
+    operationId: text("operation_id"),
     ...recorded,
   },
   (t) => [
     index("audit_events_workspace_created_idx").on(t.workspaceId, t.createdAt),
     index("audit_events_subject_idx").on(t.workspaceId, t.subjectType, t.subjectId),
+    index("audit_events_operation_idx").on(t.workspaceId, t.operationId),
   ],
 );
 
@@ -92,7 +89,9 @@ export const outboxEvents = pgTable(
   },
   (t) => [
     // Partial index: the queue is the pending rows, not the table.
-    index("outbox_events_pending_idx").on(t.availableAt).where(sql`status = 'pending'`),
+    index("outbox_events_pending_idx")
+      .on(t.availableAt)
+      .where(sql`status = 'pending'`),
     uniqueIndex("outbox_events_dispatch_key")
       .on(t.workspaceId, t.topic, t.dispatchKey)
       .where(sql`dispatch_key is not null`),
@@ -125,7 +124,9 @@ export const webhookInbox = pgTable(
   },
   (t) => [
     uniqueIndex("webhook_inbox_provider_delivery_key").on(t.provider, t.deliveryId),
-    index("webhook_inbox_unprocessed_idx").on(t.createdAt).where(sql`status in ('received', 'processing')`),
+    index("webhook_inbox_unprocessed_idx")
+      .on(t.createdAt)
+      .where(sql`status in ('received', 'processing')`),
   ],
 );
 
@@ -188,9 +189,15 @@ export const jobs = pgTable(
     unique("jobs_workspace_id_id_key").on(t.workspaceId, t.id),
     check("jobs_status_check", sql.raw(`status in (${jobStatuses.map((s) => `'${s}'`).join(", ")})`)),
     check("jobs_attempts_check", sql`attempts >= 0 and max_attempts >= 1`),
-    uniqueIndex("jobs_dedupe_key").on(t.workspaceId, t.kind, t.dedupeKey).where(sql`dedupe_key is not null`),
-    index("jobs_queue_idx").on(t.priority.desc(), t.availableAt).where(sql`status = 'queued'`),
-    index("jobs_lease_expiry_idx").on(t.leaseExpiresAt).where(sql`status = 'running'`),
+    uniqueIndex("jobs_dedupe_key")
+      .on(t.workspaceId, t.kind, t.dedupeKey)
+      .where(sql`dedupe_key is not null`),
+    index("jobs_queue_idx")
+      .on(t.priority.desc(), t.availableAt)
+      .where(sql`status = 'queued'`),
+    index("jobs_lease_expiry_idx")
+      .on(t.leaseExpiresAt)
+      .where(sql`status = 'running'`),
     index("jobs_workspace_created_idx").on(t.workspaceId, t.createdAt),
   ],
 );
@@ -214,7 +221,10 @@ export const jobAttempts = pgTable(
       columns: [t.workspaceId, t.jobId],
       foreignColumns: [jobs.workspaceId, jobs.id],
     }).onDelete("cascade"),
-    check("job_attempts_outcome_check", sql`outcome is null or outcome in ('succeeded', 'failed', 'lease_expired', 'cancelled', 'unknown')`),
+    check(
+      "job_attempts_outcome_check",
+      sql`outcome is null or outcome in ('succeeded', 'failed', 'lease_expired', 'cancelled', 'unknown')`,
+    ),
     uniqueIndex("job_attempts_generation_key").on(t.jobId, t.generation),
   ],
 );
