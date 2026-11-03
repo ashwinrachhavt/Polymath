@@ -12,6 +12,15 @@ import { tasks } from "@/domains/work/schema";
 import { focusBlocklist, focusSessions, focusStrictness, type FocusStrictness } from "./schema";
 import { TIMEOUT_PAUSE_LIMIT, abandonRemainingSeconds, elapsedSecondsAt, timeoutAutoResumeAt } from "./strictness";
 
+/**
+ * §1's early-finish sentence. Both counts singularize - a one-minute plan
+ * reads "the full 1 minute", not "the full 1 minutes".
+ */
+export function deepFocusGuardMessage(plannedMinutes: number, minutesLeft: number): string {
+  const word = (n: number) => `minute${n === 1 ? "" : "s"}`;
+  return `Deep focus holds for the full ${plannedMinutes} ${word(plannedMinutes)} - about ${minutesLeft} ${word(minutesLeft)} left.`;
+}
+
 /*
  * Focus session lifecycle (ASH-137 A09). The server clock is authoritative:
  * elapsed time is accumulatedSeconds plus, while running, the time since
@@ -330,9 +339,7 @@ export async function finishFocusSession(auth: AuthContext, input: LiveTransitio
       const elapsed = elapsedSecondsAt(current, now);
       if (elapsed < planned) {
         const minutesLeft = Math.ceil((planned - elapsed) / 60);
-        throw new ConflictError(
-          `Deep focus holds for the full ${current.plannedMinutes} minutes - about ${minutesLeft} minute${minutesLeft === 1 ? "" : "s"} left.`,
-        );
+        throw new ConflictError(deepFocusGuardMessage(current.plannedMinutes ?? 0, minutesLeft));
       }
     },
   );
