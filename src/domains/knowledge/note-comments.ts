@@ -66,8 +66,14 @@ export async function listNoteComments(auth: AuthContext, noteId: string): Promi
       })
       .from(noteComments)
       .leftJoin(users, eq(users.id, noteComments.createdBy))
-      .where(and(eq(noteComments.workspaceId, auth.workspaceId), eq(noteComments.noteId, noteId), isNull(noteComments.archivedAt)))
-      .orderBy(asc(noteComments.createdAt));
+      .where(
+        and(
+          eq(noteComments.workspaceId, auth.workspaceId),
+          eq(noteComments.noteId, noteId),
+          isNull(noteComments.archivedAt),
+        ),
+      )
+      .orderBy(asc(noteComments.createdAt), asc(noteComments.id));
   });
 }
 
@@ -80,7 +86,9 @@ export async function addNoteComment(
       const [note] = await tx
         .select({ id: artifacts.id })
         .from(artifacts)
-        .where(and(eq(artifacts.id, input.noteId), eq(artifacts.workspaceId, auth.workspaceId), eq(artifacts.kind, "note")))
+        .where(
+          and(eq(artifacts.id, input.noteId), eq(artifacts.workspaceId, auth.workspaceId), eq(artifacts.kind, "note")),
+        )
         .limit(1);
       if (!note) throw new NoteCommentError("That note does not exist in this workspace.");
       // Parse, then map a schema failure onto the domain error the action
@@ -90,7 +98,13 @@ export async function addNoteComment(
       const body = parsed.data;
       const [comment] = await tx
         .insert(noteComments)
-        .values({ workspaceId: auth.workspaceId, noteId: note.id, body, createdBy: auth.userId, updatedBy: auth.userId })
+        .values({
+          workspaceId: auth.workspaceId,
+          noteId: note.id,
+          body,
+          createdBy: auth.userId,
+          updatedBy: auth.userId,
+        })
         .returning({
           id: noteComments.id,
           body: noteComments.body,
@@ -107,7 +121,13 @@ export async function addNoteComment(
         .limit(1);
       await recordAudit(
         auth,
-        { action: "note.comment_added", subjectType: "artifact", subjectId: note.id, summary: "Commented on a note", metadata: { commentId: comment.id } },
+        {
+          action: "note.comment_added",
+          subjectType: "artifact",
+          subjectId: note.id,
+          summary: "Commented on a note",
+          metadata: { commentId: comment.id },
+        },
         tx,
       );
       return { ...comment, authorName: author?.displayName ?? null };
@@ -128,36 +148,48 @@ export async function resolveNoteComment(
   input: Keyed & { commentId: string; resolved: boolean },
 ): Promise<{ id: string; resolvedAt: Date | null }> {
   return withTransaction(async (tx) => {
-    const receipt = await withReceipt(tx, auth, input.idempotencyKey, { op: "resolveNoteComment", ...input }, async () => {
-      // Ownership joins the comment to this workspace's notes, so a
-      // cross-workspace commentId is indistinguishable from a wrong one.
-      const [row] = await tx
-        .select({ id: noteComments.id, resolvedAt: noteComments.resolvedAt, noteId: noteComments.noteId })
-        .from(noteComments)
-        .innerJoin(artifacts, eq(artifacts.id, noteComments.noteId))
-        .where(and(eq(noteComments.id, input.commentId), eq(noteComments.workspaceId, auth.workspaceId), eq(artifacts.kind, "note")))
-        .limit(1);
-      if (!row) throw new NoteCommentError("That comment does not exist in this workspace.");
-      const resolvedAt = input.resolved ? new Date() : null;
-      await tx
-        .update(noteComments)
-        .set({ resolvedAt, updatedAt: new Date(), updatedBy: auth.userId, version: noteComments.version })
-        .where(eq(noteComments.id, row.id));
-      await recordAudit(
-        auth,
-        {
-          action: input.resolved ? "note.comment_resolved" : "note.comment_reopened",
-          subjectType: "artifact",
-          // The audit subject is the note the comment lives on; the comment
-          // id rides in metadata where day pages can still find it.
-          subjectId: row.noteId,
-          summary: input.resolved ? "Resolved a note comment" : "Reopened a note comment",
-          metadata: { commentId: row.id },
-        },
-        tx,
-      );
-      return { id: row.id, resolvedAt };
-    });
+    const receipt = await withReceipt(
+      tx,
+      auth,
+      input.idempotencyKey,
+      { op: "resolveNoteComment", ...input },
+      async () => {
+        // Ownership joins the comment to this workspace's notes, so a
+        // cross-workspace commentId is indistinguishable from a wrong one.
+        const [row] = await tx
+          .select({ id: noteComments.id, resolvedAt: noteComments.resolvedAt, noteId: noteComments.noteId })
+          .from(noteComments)
+          .innerJoin(artifacts, eq(artifacts.id, noteComments.noteId))
+          .where(
+            and(
+              eq(noteComments.id, input.commentId),
+              eq(noteComments.workspaceId, auth.workspaceId),
+              eq(artifacts.kind, "note"),
+            ),
+          )
+          .limit(1);
+        if (!row) throw new NoteCommentError("That comment does not exist in this workspace.");
+        const resolvedAt = input.resolved ? new Date() : null;
+        await tx
+          .update(noteComments)
+          .set({ resolvedAt, updatedAt: new Date(), updatedBy: auth.userId, version: noteComments.version })
+          .where(eq(noteComments.id, row.id));
+        await recordAudit(
+          auth,
+          {
+            action: input.resolved ? "note.comment_resolved" : "note.comment_reopened",
+            subjectType: "artifact",
+            // The audit subject is the note the comment lives on; the comment
+            // id rides in metadata where day pages can still find it.
+            subjectId: row.noteId,
+            summary: input.resolved ? "Resolved a note comment" : "Reopened a note comment",
+            metadata: { commentId: row.id },
+          },
+          tx,
+        );
+        return { id: row.id, resolvedAt };
+      },
+    );
     const { value } = receipt;
     return {
       ...value,

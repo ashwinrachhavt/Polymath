@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
-import { artifacts } from "@/domains/knowledge/schema";
+import { artifacts, noteComments } from "@/domains/knowledge/schema";
 import { auditEvents } from "@/domains/audit/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
@@ -78,6 +78,36 @@ suite("note comments", () => {
     await expect(domain.addNoteComment(auth, { noteId, body: "x".repeat(2001) })).rejects.toMatchObject({
       code: "note_comment_invalid",
     });
+  });
+
+  it("lists same-timestamp comments in a stable id order", async () => {
+    /*
+     * value: protects=note margin read determinism when two comments share
+     *   a timestamp (same-millisecond inserts have identical createdAt)
+     * fails_when=listNoteComments returns same-timestamp comments in an
+     *   order that varies between calls or ignores the id tiebreak
+     * why_new=no existing test pins order under a timestamp tie
+     *   (creates-and-lists filters by body; resolve/reopen uses one comment)
+     * seam=none
+     * no_claim=does not attribute a past CI flake to this site; pins only
+     *   the tiebreak contract
+     */
+    const { userId, workspaceId } = await seedWorkspace(db, `comments-tie-${Date.now()}`);
+    const auth = ownerAuth(userId, workspaceId);
+    const noteId = await seedNote(workspaceId);
+
+    const first = await domain.addNoteComment(auth, { noteId, body: "First." });
+    const second = await domain.addNoteComment(auth, { noteId, body: "Second." });
+
+    // Force the tie: two comments written in the same millisecond share a
+    // createdAt, and Postgres gives no relative order without a tiebreaker.
+    const tied = new Date("2026-11-03T00:00:00.000Z");
+    await db.update(noteComments).set({ createdAt: tied }).where(eq(noteComments.noteId, noteId));
+
+    // The id tiebreak makes the order stable: the same rows always list the
+    // same way, instead of whichever order the planner happens to return.
+    const listed = await domain.listNoteComments(auth, noteId);
+    expect(listed.map((c) => c.id)).toEqual([first.id, second.id].sort());
   });
 
   it("keeps one workspace's comments invisible to another", async () => {
