@@ -64,7 +64,6 @@ export function CoachMark({
 
   if (hidden || storedDismissed) return null;
 
-
   return (
     <div
       role="status"
@@ -74,14 +73,17 @@ export function CoachMark({
       ref={rootRef}
       className={cn("pointer-events-none absolute top-full z-40 mt-2 w-64", align === "end" ? "right-0" : "left-0")}
     >
-      <div aria-hidden className={cn("bg-primary absolute -top-1 size-2 rotate-45", align === "end" ? "right-3" : "left-3")} />
+      <div
+        aria-hidden
+        className={cn("bg-primary absolute -top-1 size-2 rotate-45", align === "end" ? "right-3" : "left-3")}
+      />
       <div className="bg-primary text-primary-foreground shadow-raised pointer-events-none rounded-lg p-3">
-        <p className="text-[13px] font-medium">{title}</p>
-        <div className="mt-1 text-[13px] leading-relaxed">{children}</div>
+        <p className="text-body-dense font-medium">{title}</p>
+        <div className="mt-1 text-body-dense leading-relaxed">{children}</div>
         <button
           type="button"
           onClick={dismiss}
-          className="bg-primary-foreground text-primary pointer-events-auto mt-2 min-h-7 rounded-md px-2.5 py-1 text-[13px] font-medium focus-visible:outline-2"
+          className="bg-primary-foreground text-primary pointer-events-auto mt-2 min-h-7 rounded-md px-2.5 py-1 text-body-dense font-medium focus-visible:outline-2"
         >
           {actionLabel}
         </button>

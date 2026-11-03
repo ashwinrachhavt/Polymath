@@ -5,13 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronsLeft, ChevronsRight, Search } from "lucide-react";
 import { cn } from "cn";
-import {
-  destinationForPath,
-  destinations,
-  homeHref,
-  isConversationSurface,
-  type Destination,
-} from "@/lib/navigation";
+import { destinationForPath, destinations, homeHref, isConversationSurface, type Destination } from "@/lib/navigation";
 
 /*
  * The shell's left rail: the Polymath wordmark, then one flat list of the
@@ -31,7 +25,11 @@ const subscribeToHydration = () => () => {};
 
 export function SideNav() {
   const pathname = usePathname();
-  const hydrated = useSyncExternalStore(subscribeToHydration, () => true, () => false);
+  const hydrated = useSyncExternalStore(
+    subscribeToHydration,
+    () => true,
+    () => false,
+  );
   // A conversation surface owns the width: the rail folds to its icon state
   // while one is live on it. A person who pinned the rail open (localStorage
   // "0") keeps it open; the auto-collapse does not fight them.
@@ -75,7 +73,7 @@ export function SideNav() {
         title={collapsed ? destination.label : undefined}
         aria-current={active ? "page" : undefined}
         className={cn(
-          "flex h-8 min-h-8 items-center gap-2.5 rounded-md text-[13px] transition-colors outline-none",
+          "flex h-8 min-h-8 items-center gap-2.5 rounded-md text-body-dense transition-colors outline-none",
           "focus-visible:ring-ring focus-visible:ring-3",
           collapsed ? "justify-center px-0" : "px-2.5",
           active
@@ -116,12 +114,14 @@ export function SideNav() {
             href={homeHref}
             title={collapsed ? "Polymath" : undefined}
             className={cn(
-              "text-sidebar-foreground hover:bg-sidebar-accent flex items-center gap-2 rounded-md text-[13px] font-semibold tracking-tight transition-colors outline-none",
+              "text-sidebar-foreground hover:bg-sidebar-accent flex items-center gap-2 rounded-md text-body-dense font-semibold tracking-tight transition-colors outline-none",
               "focus-visible:ring-ring focus-visible:ring-3",
               collapsed ? "size-6 justify-center px-0" : "h-9 min-w-0 flex-1 px-2",
             )}
           >
-            <span aria-hidden className="polymath-mark !size-6 !text-[15px]">P</span>
+            <span aria-hidden className="polymath-mark !size-6 !text-[15px]">
+              P
+            </span>
             {collapsed ? null : <span className="min-w-0 flex-1 truncate text-left">Polymath</span>}
           </Link>
           {/*
@@ -162,26 +162,26 @@ export function SideNav() {
         </div>
 
         <span className="flex items-center gap-1.5">
-        <button
-          type="button"
-          onClick={openCommand}
-          disabled={!hydrated}
-          aria-label="Search workspace"
-          data-search-trigger
-          aria-keyshortcuts="Meta+K Control+K"
-          className={cn(
-            "border-sidebar-border bg-card text-muted-foreground hover:text-foreground disabled:opacity-50 flex h-8 flex-1 items-center gap-2.5 rounded-md border text-[13px] transition-colors outline-none",
-            "focus-visible:ring-ring focus-visible:ring-3",
-            collapsed ? "justify-center border-transparent bg-transparent px-0 hover:bg-sidebar-accent" : "px-2.5",
-          )}
-        >
-          <Search aria-hidden className="size-4 shrink-0" />
-          {collapsed ? null : (
-            <>
-              <span className="flex-1 text-left">Search</span>
-            </>
-          )}
-        </button>
+          <button
+            type="button"
+            onClick={openCommand}
+            disabled={!hydrated}
+            aria-label="Search workspace"
+            data-search-trigger
+            aria-keyshortcuts="Meta+K Control+K"
+            className={cn(
+              "border-sidebar-border bg-card text-muted-foreground hover:text-foreground disabled:opacity-50 flex h-8 flex-1 items-center gap-2.5 rounded-md border text-body-dense transition-colors outline-none",
+              "focus-visible:ring-ring focus-visible:ring-3",
+              collapsed ? "justify-center border-transparent bg-transparent px-0 hover:bg-sidebar-accent" : "px-2.5",
+            )}
+          >
+            <Search aria-hidden className="size-4 shrink-0" />
+            {collapsed ? null : (
+              <>
+                <span className="flex-1 text-left">Search</span>
+              </>
+            )}
+          </button>
         </span>
 
         {/* The product's destinations, one list. Default prefetch: with

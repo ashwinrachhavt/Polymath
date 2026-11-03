@@ -182,7 +182,7 @@ function QuestionActionBar({
         onChange={(event) => setDraft(event.target.value)}
         placeholder="Type a reply"
         aria-label="Reply to the agent"
-        className="h-7 text-[13px]"
+        className="h-7 text-body-dense"
       />
       <Button type="submit" size="sm" disabled={!answer}>
         Reply
@@ -208,7 +208,7 @@ function DecisionActionBar({
       <Button type="button" variant="outline" size="sm" disabled={expired} onClick={() => onDecide("reject")}>
         Reject
       </Button>
-      {expired ? <span className="text-[11px] text-muted-foreground">Expired; open it to re-propose.</span> : null}
+      {expired ? <span className="text-data text-muted-foreground">Expired; open it to re-propose.</span> : null}
       <OpenOverflowButton label="Open context" onOpen={onOpen} />
     </div>
   );
@@ -258,14 +258,14 @@ export function NotificationCard(props: NotificationCardProps) {
           <span className={cn("pill", pill.tone)}>{pill.label}</span>
           <time
             dateTime={props.askedAt.toISOString()}
-            className="readout ml-auto shrink-0 text-[11px] text-muted-foreground"
+            className="readout ml-auto shrink-0 text-data text-muted-foreground"
           >
             {timeAgoShort(props.askedAt)}
           </time>
         </div>
-        <h4 className="line-clamp-1 text-[13px] font-medium leading-snug text-foreground">{heading(props)}</h4>
+        <h4 className="line-clamp-1 text-body-dense font-medium leading-snug text-foreground">{heading(props)}</h4>
         {detailText ? (
-          <p className="line-clamp-2 text-[12px] leading-relaxed text-muted-foreground">{detailText}</p>
+          <p className="line-clamp-2 text-label leading-relaxed text-muted-foreground">{detailText}</p>
         ) : null}
         {actionBar(props)}
       </div>

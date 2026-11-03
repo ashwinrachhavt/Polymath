@@ -74,7 +74,7 @@ function LiveDock({ pathname }: { pathname: string }) {
     >
       <Link
         href="/neuralflow/focus"
-        className="flex min-h-8 items-center gap-3 rounded-md text-[13px] hover:text-app-accent"
+        className="flex min-h-8 items-center gap-3 rounded-md text-body-dense hover:text-app-accent"
       >
         <Timer aria-hidden className="size-4 shrink-0 text-app-accent" />
         <span className="readout shrink-0 text-xs">
@@ -100,7 +100,7 @@ function PreviewDock({ pathname }: { pathname: string }) {
     >
       <Link
         href="/apps/neuralflow/focus"
-        className="flex min-h-8 items-center gap-3 rounded-md text-[13px] hover:text-app-accent"
+        className="flex min-h-8 items-center gap-3 rounded-md text-body-dense hover:text-app-accent"
       >
         <Timer aria-hidden className="size-4 shrink-0 text-app-accent" />
         <span className="readout shrink-0 text-xs">Preview focus {state.focus.status}</span>
