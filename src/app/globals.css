@@ -548,19 +548,30 @@
 /* Notes header chrome (Notion feel): the top-row actions and the quiet
    action row fade in on pointer hover of the header zone and stay visible
    on keyboard focus. Coarse pointers (touch) have no hover, so the actions
-   remain visible there. Opacity, not display: layout never shifts. */
+   remain visible there. Opacity, not display: layout never shifts.
+   Scroll-away adds the recede state — once the reader is into the document
+   (the column sets .is-scrolled) the chrome fades until scrolling back or a
+   hover brings it back; the hover/focus rules come last so they win. The
+   quiet action row reveals on its own hover too — it sits outside the
+   header zone. */
 .header-actions {
   opacity: 1;
-}
-.header-zone:hover .header-actions,
-.header-zone:focus-within .header-actions {
-  opacity: 1;
+  transition: opacity 150ms ease;
 }
 @media (hover: hover) and (pointer: fine) {
   .header-actions {
     opacity: 0;
-    transition: opacity 150ms ease;
   }
+}
+.is-scrolled .header-actions,
+.quiet-actions.is-scrolled {
+  opacity: 0;
+}
+.header-zone:hover .header-actions,
+.header-zone:focus-within .header-actions,
+.quiet-actions:hover,
+.quiet-actions:focus-within {
+  opacity: 1;
 }
 .polymath-mark {
   display: flex;

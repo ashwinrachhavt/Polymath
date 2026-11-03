@@ -9,6 +9,9 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Status } from "@/components/workspace/ui";
+import { Skeleton } from "@/components/ui/skeleton";
+import { motion } from "motion/react";
+import { motionTransition } from "@/components/motion-config";
 import type { NoteAIRequest } from "@/components/products/polymath/note-ai-menu";
 import {
   markdownEditorMode,
@@ -59,12 +62,11 @@ import { NoteCommentsPanel, type PanelComment } from "./note-comments-panel";
 const RichEditor = dynamic(() => import("@/components/products/polymath/rich-editor"), {
   ssr: false,
   loading: () => (
-    <div
-      role="status"
-      aria-label="Loading the editor"
-      className="min-h-48 animate-pulse text-[16px] text-muted-foreground"
-    >
-      Loading the editor…
+    <div role="status" aria-label="Loading the editor" className="flex flex-col gap-6 pt-2">
+      <Skeleton className="h-5 w-full" />
+      <Skeleton className="h-5 w-[94%]" />
+      <Skeleton className="h-5 w-full" />
+      <Skeleton className="h-5 w-[72%]" />
     </div>
   ),
 });
@@ -611,6 +613,21 @@ export function NoteEditor({
   // shows its chrome while editing.
   const [editing, setEditing] = useState(false);
   const noteColumnRef = useRef<HTMLDivElement>(null);
+  // Scroll-away chrome: once the reader is into the document, the header rows
+  // recede; scroll back or hover to return them. The scroller is the suite
+  // screen ancestor — the note column never scrolls itself.
+  const [scrolled, setScrolled] = useState(false);
+  useEffect(() => {
+    const scroller = noteColumnRef.current?.closest(".suite-screen");
+    if (!(scroller instanceof HTMLElement)) return;
+    const onScroll = () => {
+      const next = scroller.scrollTop > 8;
+      setScrolled((current) => (current === next ? current : next));
+    };
+    onScroll();
+    scroller.addEventListener("scroll", onScroll, { passive: true });
+    return () => scroller.removeEventListener("scroll", onScroll);
+  }, []);
 
   const [ai, setAi] = useState<AIProposal | null>(null);
   const [aiMenuOpen, setAiMenuOpen] = useState(false);
@@ -759,10 +776,17 @@ export function NoteEditor({
   return (
     <div className="flex min-w-0 flex-1 items-start gap-6">
       <div className="min-w-0 flex-1">
-        <div className="mx-auto flex min-h-[var(--canvas-min)] w-full max-w-[var(--measure-prose)] flex-col px-6 pb-24 pt-12">
+        <motion.div
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={motionTransition}
+          className="mx-auto flex min-h-[var(--canvas-min)] w-full max-w-[var(--measure-prose)] flex-col px-6 pb-24 pt-12"
+        >
           {/* The header zone: chrome fades in on pointer hover, always on for
               keyboard focus and coarse pointers. */}
-          <div className="header-zone -mx-6 flex h-8 items-center justify-between px-6">
+          <div
+            className={`header-zone -mx-6 flex h-8 items-center justify-between px-6 ${scrolled ? "is-scrolled" : ""}`}
+          >
             <NotebookListToggle />
             <div className="header-actions flex items-center gap-1">
               <NewNoteButton icon />
@@ -915,7 +939,9 @@ export function NoteEditor({
             )}
           </div>
           {/* The one quiet action row, hover-revealed like the header chrome. */}
-          <div className="header-actions mt-4 flex flex-wrap items-center gap-2">
+          <div
+            className={`header-actions quiet-actions mt-4 flex flex-wrap items-center gap-2 ${scrolled ? "is-scrolled" : ""}`}
+          >
             <NotionAppendAction
               noteId={noteId}
               title={title}
@@ -1104,7 +1130,7 @@ export function NoteEditor({
           <div id="note-comments" className={`mt-10 ${commentsOpen ? "2xl:hidden" : "xl:hidden"}`}>
             <NoteCommentsPanel noteId={noteId} initialComments={comments} />
           </div>
-        </div>
+        </motion.div>
       </div>
       {/* The right margin (Notion's margin comments): ≥1280px only, where it
           costs the prose column nothing. The toggle controls both placements. */}
