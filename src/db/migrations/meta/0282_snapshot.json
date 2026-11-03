@@ -1,6 +1,6 @@
 {
-  "id": "f7bd882a-84ce-4b19-8031-55a7ca13c61d",
-  "prevId": "cbcd9bc4-5679-43b0-bda7-c2deb5ed93cb",
+  "id": "7e719318-cdb5-475d-a58e-b23e79bc08f9",
+  "prevId": "f7bd882a-84ce-4b19-8031-55a7ca13c61d",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -3770,6 +3770,13 @@
           "notNull": true,
           "default": "'in_progress'"
         },
+        "step": {
+          "name": "step",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'role'"
+        },
         "role": {
           "name": "role",
           "type": "text",
@@ -3794,8 +3801,20 @@
           "primaryKey": false,
           "notNull": false
         },
+        "draft": {
+          "name": "draft",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
         "completed_at": {
           "name": "completed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "welcomed_at": {
+          "name": "welcomed_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false

@@ -1,3 +1,6 @@
+import { createOpenAI } from "@ai-sdk/openai";
+import type { LanguageModel } from "ai";
+
 /*
  * The model catalog: every provider the workspace holds a key for, and the
  * models a probe answered or a listing named — the probe field says which.
@@ -284,4 +287,20 @@ export function resolveRunModel(modelPolicy: unknown): ModelOption | null {
   const primary =
     typeof modelPolicy === "object" && modelPolicy !== null ? (modelPolicy as { primary?: unknown }).primary : null;
   return modelById(resolveModelId(primary));
+}
+
+/**
+ * A real model instance for a direct AI SDK call — the one pattern a
+ * no-run, no-stream server action needs (the onboarding assist; an eve run
+ * never enters the picture). Every catalog entry's baseUrl is the
+ * OpenAI-compatible chat endpoint, so one provider factory with the entry's
+ * own credentials speaks for all of them, exactly as the runtime would on a
+ * run's first turn.
+ */
+export function chatModel(option: ModelOption, env: Record<string, string | undefined> = process.env): LanguageModel {
+  const apiKey = env[option.keyEnv];
+  if (typeof apiKey !== "string" || apiKey.trim().length === 0) {
+    throw new Error(`${option.keyEnv} is not set, so ${option.label} cannot be called.`);
+  }
+  return createOpenAI({ apiKey, baseURL: option.baseUrl }).chat(option.id);
 }
