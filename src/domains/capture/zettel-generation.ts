@@ -1,5 +1,6 @@
 import { and, count, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
 import { enqueueOutbox, type ClaimedOutboxEvent } from "@/domains/audit/outbox";
+import { outboxEvents } from "@/domains/audit/schema";
 import { recordAudit } from "@/domains/audit/record";
 import { withReceipt } from "@/domains/audit/receipt";
 import type { AuthContext } from "@/domains/identity/resolve";
@@ -97,6 +98,41 @@ export async function countPendingZettelProposals(auth: AuthContext): Promise<nu
     .from(zettelProposals)
     .where(and(eq(zettelProposals.workspaceId, auth.workspaceId), eq(zettelProposals.status, "proposed")));
   return row?.n ?? 0;
+}
+
+/** How long a zettelize verb watches the queue before it says so honestly. */
+export const ZETTEL_QUEUE_GIVE_UP_MS = 2 * 60_000;
+
+/** Count outbox rows that have not settled yet: the pending zettelize passes. */
+export async function countQueuedZettelPasses(auth: AuthContext): Promise<number> {
+  const [row] = await db
+    .select({ n: count() })
+    .from(outboxEvents)
+    .where(
+      and(
+        eq(outboxEvents.workspaceId, auth.workspaceId),
+        eq(outboxEvents.topic, ZETTEL_GENERATION_TOPIC),
+        isNull(outboxEvents.processedAt),
+      ),
+    );
+  return row?.n ?? 0;
+}
+
+/**
+ * The status vocabulary a watching zettelize verb speaks, derived from counts
+ * that already exist: no new table, no new state machine. Working counts the
+ * outbox rows still owed; done covers the rest - proposals waiting on a human
+ * is the good outcome, a clear queue the calm one. The watch never reports
+ * failure here: a queue-wide status read with zero owed rows is simply caught
+ * up.
+ */
+export function zettelQueuePhase(input: { queuedPasses: number; awaitingReview: number }): "working" | "done" {
+  return input.queuedPasses > 0 ? "working" : "done";
+}
+
+export function zettelQueueLabel(input: { queuedPasses: number; awaitingReview: number }): string {
+  if (input.queuedPasses > 0) return "Proposing ideas…";
+  return input.awaitingReview > 0 ? "Ideas are waiting for your review." : "The ideas queue is clear.";
 }
 
 export type ZettelGenerationRequest = {

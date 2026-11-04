@@ -21,8 +21,8 @@ export type WorkState = {
   phase: WorkPhase;
   /** Server-authored sentence. The client never writes workflow copy. */
   label: string;
-  /** Structured counts; zero segments are skipped, the numbers render tabular. */
-  count?: { queued: number; reviewing?: number };
+  /** Structured counts; zero or absent segments are skipped, the numbers render tabular. */
+  count?: { queued?: number; reviewing?: number };
 };
 
 function sameWorkState(a: WorkState, b: WorkState): boolean {

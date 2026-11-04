@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
+import { WorkStatus } from "@/components/work-status";
 import {
   acceptProposalAction,
   makeDraftAction,
@@ -20,6 +21,7 @@ import { Sparkles } from "lucide-react";
 import { CaptureBody } from "./capture-body";
 import { captureDetailHeading, captureKindLabel, captureStateLabel, captureTitle, type InboxRow } from "./inbox-list";
 import { generateZettelsAction } from "./zettel-actions";
+import { ZettelQueueWatch } from "./zettel-queue-watch";
 
 /*
  * The detail pane: a view of the selected capture row (D12/D14). URL captures
@@ -164,12 +166,13 @@ export function InboxDetail({
   const [suggestionsFor, setSuggestionsFor] = useState<string | null>(capture?.id ?? null);
   // The per-capture zettelize verb: a queued pass is one per capture until the
   // outbox worker files it, so the verb disables itself once queued and the
-  // outcome line carries the review link. Selecting another capture resets it.
-  const [zettel, setZettel] = useState<{ awaitingReview: number } | null>(null);
+  // watch below carries the outcome. Each click mounts a fresh watch (the key
+  // re-arms the poller); selecting another capture resets it.
+  const [zettelPass, setZettelPass] = useState(0);
   if ((capture?.id ?? null) !== suggestionsFor) {
     setSuggestionsFor(capture?.id ?? null);
     setDecidedSuggestions(new Set());
-    setZettel(null);
+    setZettelPass(0);
   }
   const headingRef = useRef<HTMLHeadingElement>(null);
   // Seeded with the capture rendered on arrival: a page load with ?id= is not
@@ -297,7 +300,7 @@ export function InboxDetail({
         setError(result.message);
         return;
       }
-      setZettel({ awaitingReview: result.awaitingReview });
+      setZettelPass((n) => n + 1);
     });
   }
 
@@ -449,20 +452,18 @@ export function InboxDetail({
         </section>
       ) : null}
 
-      {error ? (
-        <p className="mt-3 text-destructive text-[13px]" role="alert">
-          {error}
-        </p>
-      ) : null}
+      {error ? <WorkStatus state={{ phase: "failed", label: error }} className="mt-3" /> : null}
 
-      {zettel ? (
-        <p className="text-muted-foreground mt-3 text-[13px]" role="status">
-          Queued for zettel proposals.{" "}
-          {zettel.awaitingReview ? `Already in review: ${zettel.awaitingReview} waiting — ` : ""}
-          <Link href="/polymath/ideas#in-review" className="text-foreground font-medium underline underline-offset-4">
-            Review ideas
-          </Link>
-        </p>
+      {zettelPass > 0 ? (
+        <div className="mt-3 flex flex-col items-start gap-1">
+          <p className="text-muted-foreground text-[13px]" role="status">
+            Queued for zettel proposals.{" "}
+            <Link href="/polymath/ideas#in-review" className="text-foreground font-medium underline underline-offset-4">
+              Review ideas
+            </Link>
+          </p>
+          <ZettelQueueWatch key={zettelPass} />
+        </div>
       ) : null}
 
       {suggestions.length > 0 ? (
@@ -538,12 +539,12 @@ export function InboxDetail({
               <Button
                 size="sm"
                 variant="outline"
-                disabled={pending || zettel !== null || !zettelProviderReady}
+                disabled={pending || zettelPass > 0 || !zettelProviderReady}
                 onClick={zettelize}
                 title={
                   !zettelProviderReady
                     ? zettelProviderReason
-                    : zettel !== null
+                    : zettelPass > 0
                       ? "Queued - the proposals land in Ideas for review."
                       : "Files this capture to your library, then proposes ideas for review."
                 }

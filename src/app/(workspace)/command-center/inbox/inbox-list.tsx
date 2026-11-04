@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { listHref } from "@/lib/list-params";
 import { setCaptureStateAction } from "./actions";
 import { generateZettelsAction } from "./zettel-actions";
+import { ZettelQueueWatch } from "./zettel-queue-watch";
 
 /*
  * The list pane: one clamped line of primary text, a muted metadata line, and
@@ -155,6 +156,9 @@ export function InboxList({
   // skipped, kept while the toolbar is up so the honest answer survives the
   // transition (rows stay in the list until the worker files them).
   const [zettel, setZettel] = useState<{ queued: number; skipped: number; awaitingReview: number } | null>(null);
+  // Each bulk click mounts a fresh queue watch; the key re-arms the poller
+  // after a previous watch already settled itself.
+  const [zettelPass, setZettelPass] = useState(0);
   const [pending, startTransition] = useTransition();
   const lastToggledId = useRef<string | null>(null);
   const listRef = useRef<HTMLUListElement>(null);
@@ -238,6 +242,7 @@ export function InboxList({
         return;
       }
       setZettel({ queued: result.queued, skipped: result.skipped, awaitingReview: result.awaitingReview });
+      setZettelPass((n) => n + 1);
     });
   }
 
@@ -353,6 +358,7 @@ export function InboxList({
                 setSelected(new Set());
                 setBulkErrors([]);
                 setZettel(null);
+                setZettelPass(0);
               }}
             >
               Clear
@@ -375,6 +381,7 @@ export function InboxList({
               </Link>
             </p>
           ) : null}
+          {zettel?.queued ? <ZettelQueueWatch key={zettelPass} /> : null}
           {bulkErrors.length ? (
             <ul className="w-full text-[13px]">
               {bulkErrors.map((failure) => (
