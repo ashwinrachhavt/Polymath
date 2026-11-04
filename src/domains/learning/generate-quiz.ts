@@ -49,6 +49,19 @@ export class QuizGenerationError extends Error {
   }
 }
 
+/**
+ * The authored sentence per failure code - the one copy both the action edge
+ * (what the verb shows now) and the failed row (what the library shows after
+ * a reload) speak, so verb and library never disagree. A driver's error text
+ * never reaches the screen.
+ */
+export const GENERATION_COPY: Record<QuizGenerationError["code"], string> = {
+  document_not_found: "That document is not in this workspace.",
+  no_extraction: "This document is still being read. Try again once its text is ready.",
+  insufficient_evidence: "Not enough of this document could be verified against its text to build an honest quiz.",
+  generation_failed: "The quiz generator did not answer. Try again in a moment.",
+};
+
 export type VerifiedQuestion = {
   prompt: string;
   choices: Array<{ value: string; label: string }>;
@@ -216,7 +229,9 @@ export async function generateQuiz(
       documentId: input.documentId,
       title: extraction.title,
       model: engine.name,
-      error: message,
+      // The row stores the authored sentence, not the driver's text: the
+      // schema promises an owner-facing failure reason.
+      error: GENERATION_COPY.generation_failed,
       sourceExtractionId: extraction.id,
     });
     throw new QuizGenerationError("generation_failed", message);

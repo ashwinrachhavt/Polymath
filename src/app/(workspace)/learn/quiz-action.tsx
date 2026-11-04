@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { WorkStatus } from "@/components/work-status";
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { generateQuizAction } from "./actions";
@@ -48,11 +49,7 @@ export function GenerateQuizButton({
       >
         {pending ? "Generating…" : label}
       </Button>
-      {error ? (
-        <span role="alert" className="text-xs text-destructive">
-          {error}
-        </span>
-      ) : null}
+      {error ? <WorkStatus state={{ phase: "failed", label: error }} /> : null}
     </span>
   );
 }
