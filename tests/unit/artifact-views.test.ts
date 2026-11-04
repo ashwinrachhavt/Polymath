@@ -42,7 +42,7 @@ describe("DeckView generated-text wrapping", () => {
 
   it("renders the hostile unbroken string inside a wrapping element", () => {
     expect(html).toContain(`<span class="wrap-anywhere">${UNBROKEN}</span>`);
-    expect(html).toContain(`<h3 class="wrap-anywhere text-[15px] font-medium">${UNBROKEN}`);
+    expect(html).toContain(`<h3 class="wrap-anywhere text-body font-medium">${UNBROKEN}`);
   });
 });
 
