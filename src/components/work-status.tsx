@@ -39,9 +39,10 @@ export function WorkStatus({ state, className }: { state: WorkState | null; clas
   if (!state) return null;
   const count = state.count;
   const segments = count
-    ? [count.queued > 0 ? `${count.queued} queued` : "", count.reviewing ? `${count.reviewing} in review` : ""].filter(
-        Boolean,
-      )
+    ? [
+        typeof count.queued === "number" && count.queued > 0 ? `${count.queued} queued` : "",
+        typeof count.reviewing === "number" && count.reviewing > 0 ? `${count.reviewing} in review` : "",
+      ].filter(Boolean)
     : [];
   return (
     <motion.p

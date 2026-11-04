@@ -1,6 +1,6 @@
 "use client";
 
-import { useWorkPoll, WorkStatus } from "@/components/work-status";
+import { useWorkPoll, WorkStatus, type WorkState } from "@/components/work-status";
 import { zettelQueueStatusAction } from "./zettel-actions";
 
 /**
@@ -17,11 +17,12 @@ export function ZettelQueueWatch() {
     read: async () => {
       const status = await zettelQueueStatusAction();
       if (!status.ok) throw new Error(status.message);
-      return {
+      const state: WorkState = {
         phase: status.phase,
         label: status.label,
         ...(status.reviewing > 0 ? { count: { reviewing: status.reviewing } } : {}),
       };
+      return { "zettel-queue": state };
     },
     intervalMs: 2_000,
     giveUpMs: 2 * 60_000,

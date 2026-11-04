@@ -112,7 +112,9 @@ export async function countQueuedZettelPasses(auth: AuthContext): Promise<number
       and(
         eq(outboxEvents.workspaceId, auth.workspaceId),
         eq(outboxEvents.topic, ZETTEL_GENERATION_TOPIC),
-        isNull(outboxEvents.processedAt),
+        // The queue is the pending rows, not the table (the partial index's
+        // own rule): dispatched rows have landed, failed rows retry.
+        eq(outboxEvents.status, "pending"),
       ),
     );
   return row?.n ?? 0;
