@@ -58,7 +58,7 @@ export function NewSkill() {
           value={name}
           onChange={(event) => setName(event.target.value)}
           placeholder="Weekly review"
-          className="h-9 rounded-md border border-border bg-background px-2.5 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="h-9 rounded-md border border-border bg-background px-2.5 text-body-dense outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
       </div>
       <div className="flex flex-col gap-1">
@@ -72,7 +72,7 @@ export function NewSkill() {
           value={description}
           onChange={(event) => setDescription(event.target.value)}
           placeholder="Close the week: what moved, what stalled, what carries into the next one."
-          className="h-9 rounded-md border border-border bg-background px-2.5 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="h-9 rounded-md border border-border bg-background px-2.5 text-body-dense outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
       </div>
       <div className="flex flex-col gap-1">
@@ -85,8 +85,10 @@ export function NewSkill() {
           rows={8}
           value={body}
           onChange={(event) => setBody(event.target.value)}
-          placeholder={"1. List what finished this week.\n2. List what stalled, with the next action for each.\n3. Choose the three outcomes next week is for."}
-          className="field-sizing-content max-h-72 min-h-32 resize-none rounded-md border border-border bg-background px-2.5 py-2 font-mono text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          placeholder={
+            "1. List what finished this week.\n2. List what stalled, with the next action for each.\n3. Choose the three outcomes next week is for."
+          }
+          className="field-sizing-content max-h-72 min-h-32 resize-none rounded-md border border-border bg-background px-2.5 py-2 font-mono text-body-dense outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
       </div>
       <p className="text-xs text-muted-foreground">

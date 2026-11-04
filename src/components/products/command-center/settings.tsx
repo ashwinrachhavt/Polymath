@@ -130,13 +130,13 @@ function SettingsNav({
       >
         {groups.map((group) => (
           <div key={group.label}>
-            <p className="px-2 pt-4 pb-1 text-[11px] font-medium text-muted-foreground first:pt-0">{group.label}</p>
+            <p className="px-2 pt-4 pb-1 text-data font-medium text-muted-foreground first:pt-0">{group.label}</p>
             {group.items.map((item) => (
               <a
                 key={item.id}
                 href={`#${item.id}`}
                 aria-current={active === item.id ? "true" : undefined}
-                className="flex min-h-8 w-full items-center rounded-md px-2 py-1.5 text-[13px] font-medium text-foreground transition hover:bg-muted [&[aria-current='true']]:bg-muted [&[aria-current='true']]:text-foreground"
+                className="flex min-h-8 w-full items-center rounded-md px-2 py-1.5 text-body-dense font-medium text-foreground transition hover:bg-muted [&[aria-current='true']]:bg-muted [&[aria-current='true']]:text-foreground"
               >
                 {item.label}
               </a>
@@ -156,7 +156,7 @@ function SettingsNav({
               key={item.id}
               href={`#${item.id}`}
               aria-current={active === item.id ? "true" : undefined}
-              className="flex min-h-8 shrink-0 items-center whitespace-nowrap rounded-md px-3 py-1.5 text-[13px] text-muted-foreground transition hover:bg-muted hover:text-foreground [&[aria-current='true']]:bg-muted [&[aria-current='true']]:font-medium [&[aria-current='true']]:text-foreground"
+              className="flex min-h-8 shrink-0 items-center whitespace-nowrap rounded-md px-3 py-1.5 text-body-dense text-muted-foreground transition hover:bg-muted hover:text-foreground [&[aria-current='true']]:bg-muted [&[aria-current='true']]:font-medium [&[aria-current='true']]:text-foreground"
             >
               {item.label}
             </a>
@@ -200,7 +200,7 @@ function AgentSessionsPanel({ roots }: { roots?: AgentRootStatus[] }) {
       title="Local agent sessions"
       description="Folders this deployment reads when you scan agent sessions from a project page. Files are parsed on this machine and nothing is sent to a model."
     >
-      <dl className="grid gap-3 text-[13px]">
+      <dl className="grid gap-3 text-body-dense">
         {roots.map((root) => (
           <div key={root.source}>
             <dt className="text-muted-foreground">{root.source}</dt>
@@ -255,9 +255,11 @@ function CapabilityPanel({ capabilities }: { capabilities?: CapabilityStatus[] }
         </div>
       ) : null}
       {missing.length === 0 ? (
-        <p className="mt-3 text-[13px] text-muted-foreground">Every integration this release claims is configured.</p>
+        <p className="mt-3 text-body-dense text-muted-foreground">
+          Every integration this release claims is configured.
+        </p>
       ) : (
-        <p className="mt-3 text-[13px] text-muted-foreground">
+        <p className="mt-3 text-body-dense text-muted-foreground">
           {missing.length} of {capabilities.length} are not configured. Each one is listed above with the variable that
           turns it on.
         </p>
@@ -337,7 +339,7 @@ function AssistantPanel({ profile }: { profile: AssistantProfile }) {
         }}
       >
         {conflict ? (
-          <div className="rounded-md border border-border bg-muted/40 p-3 text-[13px]">
+          <div className="rounded-md border border-border bg-muted/40 p-3 text-body-dense">
             <p className="font-medium">Changed elsewhere while you edited.</p>
             <p className="mt-1 text-muted-foreground">Latest description: {conflict.description ?? "(retired)"}</p>
             <p className="mt-0.5 line-clamp-2 text-muted-foreground">
@@ -583,7 +585,7 @@ export default function Settings({
 
           <Section id="appearance">
             <Panel title="Appearance" description="No appearance overrides.">
-              <p className="text-[13px] leading-relaxed text-muted-foreground">
+              <p className="text-body-dense leading-relaxed text-muted-foreground">
                 The header toggle cycles light, dark and system, and saves the choice to your account, so a new browser
                 adopts it on first load. One accent colour is used across all three products; per-surface palette
                 switching is not offered.
@@ -611,7 +613,7 @@ export default function Settings({
                 checked={state.preferences.killSwitch}
                 onChange={(killSwitch) => updatePreferences({ killSwitch })}
               />
-              <p className="mt-3 text-[13px] text-muted-foreground">
+              <p className="mt-3 text-body-dense text-muted-foreground">
                 This preference is local-only. No agent runtime is connected, and disabling it does not enable any paid
                 call or external write. A production kill switch must fence server-side claims and running work; it
                 cannot recall in-flight provider effects.
@@ -678,7 +680,7 @@ export default function Settings({
           <Section id="data-retention">
             {browserPreview ? (
               <Panel title="Data and retention" description="What this preview stores, and where it stops.">
-                <dl className="grid gap-3 text-[13px]">
+                <dl className="grid gap-3 text-body-dense">
                   <div>
                     <dt className="text-muted-foreground">Stored</dt>
                     <dd>
@@ -698,7 +700,7 @@ export default function Settings({
               </Panel>
             ) : (
               <Panel title="Data and retention" description="Where your account data lives on this deployment.">
-                <dl className="grid gap-3 text-[13px]">
+                <dl className="grid gap-3 text-body-dense">
                   <div>
                     <dt className="text-muted-foreground">Stored</dt>
                     <dd>

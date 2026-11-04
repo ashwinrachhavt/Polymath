@@ -195,12 +195,12 @@ export function SessionComplete({
         </div>
       )}
       <div className="min-w-0 flex-1">
-        <h2 id="nf-session-complete" className="text-[13px] font-medium">
+        <h2 id="nf-session-complete" className="text-body-dense font-medium">
           {heading}
         </h2>
         {stone ? (
           <>
-            <h3 className="mt-2 text-[13px]">Clarity stone earned</h3>
+            <h3 className="mt-2 text-body-dense">Clarity stone earned</h3>
             <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
               {stone.name}. {reason} One stone per recorded interval; saving again cannot add another.{" "}
               <span className="readout">{earnedTotal}</span> in your local collection.
@@ -260,7 +260,7 @@ export function StoneShelf({
               <li key={reward.id} className="flex items-center gap-3 py-2">
                 {stone ? <StoneArt stone={stone} size={32} /> : <span className="nf-vitrine size-8" aria-hidden />}
                 <div className="min-w-0 flex-1">
-                  <p className="text-[13px] font-medium">{reward.title}</p>
+                  <p className="text-body-dense font-medium">{reward.title}</p>
                   <p className="truncate text-xs text-muted-foreground">{stoneReason(reward, tasks)}</p>
                 </div>
                 <time dateTime={reward.earnedAt} className="readout shrink-0 text-xs text-muted-foreground">

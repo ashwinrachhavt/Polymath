@@ -54,13 +54,13 @@ export function InviteForm() {
         {pending ? "Inviting…" : "Invite"}
       </Button>
       {error ? (
-        <p className="text-destructive text-[13px] sm:col-span-3" role="alert">
+        <p className="text-destructive text-body-dense sm:col-span-3" role="alert">
           {error}
         </p>
       ) : null}
       {inviteLink ? (
         <div
-          className="sm:col-span-3 rounded-lg border border-border bg-muted/40 p-3 text-[13px]"
+          className="sm:col-span-3 rounded-lg border border-border bg-muted/40 p-3 text-body-dense"
           role="status"
           data-testid="invite-link"
         >

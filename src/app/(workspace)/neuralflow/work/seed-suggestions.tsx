@@ -17,7 +17,14 @@ import { commitSeedAction, dismissSeedAction } from "./actions";
 export function SeedSuggestions({
   seeds,
 }: {
-  seeds: Array<{ seedId: string; taskId: string; title: string; reason: string | null; version: number; taskVersion: number }>;
+  seeds: Array<{
+    seedId: string;
+    taskId: string;
+    title: string;
+    reason: string | null;
+    version: number;
+    taskVersion: number;
+  }>;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -57,27 +64,29 @@ export function SeedSuggestions({
   return (
     <section aria-labelledby="suggested-heading" className="mb-5">
       <div className="mb-1.5 flex items-baseline gap-2">
-        <h2 id="suggested-heading" className="text-[13px] font-medium">
+        <h2 id="suggested-heading" className="text-body-dense font-medium">
           Suggested today
         </h2>
-        <span className="readout text-[11px] text-muted-foreground">{seeds.length}</span>
-        <span className="text-[11px] text-muted-foreground">from last night&apos;s shutdown</span>
+        <span className="readout text-data text-muted-foreground">{seeds.length}</span>
+        <span className="text-data text-muted-foreground">from last night&apos;s shutdown</span>
       </div>
       <ul className="divide-y divide-border/60">
         {seeds.map((seed) => (
           <li key={seed.seedId}>
             <div className="flex min-h-11 items-center gap-3 py-1.5">
               <div className="min-w-0 flex-1">
-                <p className="truncate text-[13px] text-foreground">{seed.title}</p>
-                {seed.reason ? <p className="truncate text-[11px] text-muted-foreground">{seed.reason}</p> : null}
+                <p className="truncate text-body-dense text-foreground">{seed.title}</p>
+                {seed.reason ? <p className="truncate text-data text-muted-foreground">{seed.reason}</p> : null}
                 {error?.id === seed.seedId ? (
-                  <p role="alert" className="text-[11px] text-destructive">{error.message}</p>
+                  <p role="alert" className="text-data text-destructive">
+                    {error.message}
+                  </p>
                 ) : null}
               </div>
               <Button
                 size="sm"
                 variant="ghost"
-                className="shrink-0 text-[12px]"
+                className="shrink-0 text-label"
                 disabled={pending}
                 onClick={() => commit(seed)}
                 aria-label={`Commit ${seed.title} to today`}
@@ -87,7 +96,7 @@ export function SeedSuggestions({
               <Button
                 size="sm"
                 variant="ghost"
-                className="shrink-0 text-[12px] text-muted-foreground"
+                className="shrink-0 text-label text-muted-foreground"
                 disabled={pending}
                 onClick={() => dismiss(seed)}
                 aria-label={`Dismiss the suggestion ${seed.title}`}

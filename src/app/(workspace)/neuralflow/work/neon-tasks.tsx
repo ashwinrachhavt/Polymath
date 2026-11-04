@@ -139,7 +139,7 @@ export async function NeonTasks({
         // its setup when nothing is running.
         <Link
           href="/neuralflow/focus"
-          className="inline-flex h-8 items-center rounded-md border border-border px-3 text-[12px] text-muted-foreground hover:bg-muted hover:text-foreground"
+          className="inline-flex h-8 items-center rounded-md border border-border px-3 text-label text-muted-foreground hover:bg-muted hover:text-foreground"
         >
           New session
         </Link>
@@ -166,13 +166,13 @@ export async function NeonTasks({
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
         <div className="min-w-0">
           <div className="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-border pb-2">
-            <h2 className="text-[15px] font-medium">
+            <h2 className="text-body font-medium">
               {scope === "today" ? "Today" : scope === "done" ? "Finished" : "Open"}
             </h2>
-            <span className="readout text-[12px] text-muted-foreground">
+            <span className="readout text-label text-muted-foreground">
               {found.total} {scopeLabel}
             </span>
-            <nav aria-label="Saved task filter" className="ml-auto flex gap-3 text-[12px]">
+            <nav aria-label="Saved task filter" className="ml-auto flex gap-3 text-label">
               <Link
                 className={scope === "today" ? "text-foreground" : "text-muted-foreground hover:text-foreground"}
                 href={listHref(BASE, raw, {
@@ -288,13 +288,13 @@ export async function NeonTasks({
             <div className="mt-6 flex flex-col gap-6">
               <section aria-labelledby="next-up-heading">
                 <div className="mb-1.5 flex items-baseline gap-2">
-                  <h2 id="next-up-heading" className="text-[13px] font-medium">
+                  <h2 id="next-up-heading" className="text-body-dense font-medium">
                     Next up
                   </h2>
-                  <span className="readout text-[11px] text-muted-foreground">{nextUpCount}</span>
+                  <span className="readout text-data text-muted-foreground">{nextUpCount}</span>
                   <Link
                     href={listHref(BASE, raw, { view: "saved", show: undefined, task: undefined })}
-                    className="ml-auto text-[11px] text-muted-foreground hover:text-foreground hover:underline"
+                    className="ml-auto text-data text-muted-foreground hover:text-foreground hover:underline"
                   >
                     All open
                   </Link>
@@ -306,21 +306,21 @@ export async function NeonTasks({
                     href: hrefFor(r.id),
                   }))}
                   emptyState={
-                    <p className="py-2 text-[12px] text-muted-foreground">Every open task is committed to today.</p>
+                    <p className="py-2 text-label text-muted-foreground">Every open task is committed to today.</p>
                   }
                 />
               </section>
 
               <section aria-labelledby="inbox-heading">
                 <div className="mb-1.5 flex items-baseline gap-2">
-                  <h2 id="inbox-heading" className="text-[13px] font-medium">
+                  <h2 id="inbox-heading" className="text-body-dense font-medium">
                     Inbox
                   </h2>
-                  <span className="readout text-[11px] text-muted-foreground">{inboxCount}</span>
+                  <span className="readout text-data text-muted-foreground">{inboxCount}</span>
                   {inboxCount > 0 ? (
                     <Link
                       href="/command-center/inbox"
-                      className="ml-auto text-[11px] text-muted-foreground hover:text-foreground hover:underline"
+                      className="ml-auto text-data text-muted-foreground hover:text-foreground hover:underline"
                     >
                       Triage
                     </Link>
@@ -329,7 +329,7 @@ export async function NeonTasks({
                 <CommitList
                   rows={[]}
                   emptyState={
-                    <p className="py-2 text-[12px] text-muted-foreground">
+                    <p className="py-2 text-label text-muted-foreground">
                       {inboxCount === 0
                         ? "Nothing waiting. New captures land in Inbox until you commit them."
                         : `${inboxCount} captured, waiting for triage.`}
@@ -338,7 +338,7 @@ export async function NeonTasks({
                 />
               </section>
 
-              <nav aria-label="Related tools" className="flex flex-wrap gap-x-4 text-[11px] text-muted-foreground">
+              <nav aria-label="Related tools" className="flex flex-wrap gap-x-4 text-data text-muted-foreground">
                 <Link className="py-1 hover:text-foreground hover:underline" href="/command-center/inbox">
                   Brain dump
                 </Link>
@@ -389,9 +389,9 @@ export async function NeonTasks({
           {detail ? (
             <div className="mt-4 border-t border-border pt-3">
               <div className="mb-2 flex items-center justify-between gap-2">
-                <p className="text-[12px] font-medium">Focus history</p>
+                <p className="text-label font-medium">Focus history</p>
                 {activeSession ? (
-                  <span className="text-[11px] text-muted-foreground">Session live above</span>
+                  <span className="text-data text-muted-foreground">Session live above</span>
                 ) : (
                   <FocusTaskButton task={{ id: detail.task.id, title: detail.task.title }} />
                 )}
@@ -400,19 +400,19 @@ export async function NeonTasks({
                 <div className="divide-y divide-border/60">
                   {focusHistory.map((session) => (
                     <div key={session.id} className="py-1.5 first:pt-0">
-                      <p className="readout text-[11px] text-muted-foreground">
+                      <p className="readout text-data text-muted-foreground">
                         {session.state} · {Math.round(session.elapsedSeconds / 60)} min ·{" "}
                         {session.startedAt ? session.startedAt.toISOString().slice(0, 10) : "scheduled"}
                       </p>
-                      {session.whatChanged ? <p className="text-[12px]">Changed: {session.whatChanged}</p> : null}
+                      {session.whatChanged ? <p className="text-label">Changed: {session.whatChanged}</p> : null}
                       {session.nextStep ? (
-                        <p className="text-[12px] text-muted-foreground">Next: {session.nextStep}</p>
+                        <p className="text-label text-muted-foreground">Next: {session.nextStep}</p>
                       ) : null}
                     </div>
                   ))}
                 </div>
               ) : (
-                <p className="text-[11px] text-muted-foreground">No focus sessions against this task yet.</p>
+                <p className="text-data text-muted-foreground">No focus sessions against this task yet.</p>
               )}
             </div>
           ) : null}

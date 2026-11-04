@@ -41,7 +41,7 @@ export function RunControls({ runId }: { runId: string }) {
         type="button"
         disabled={pending}
         onClick={retry}
-        className="text-muted-foreground hover:text-foreground w-fit rounded text-[12px] outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+        className="text-muted-foreground hover:text-foreground w-fit rounded text-label outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
       >
         Retry as a new run
       </button>

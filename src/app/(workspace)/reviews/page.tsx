@@ -155,14 +155,14 @@ async function Reviews({ searchParams }: { searchParams: Promise<RawSearchParams
               key={option.value}
               href={`/reviews?status=${option.value}`}
               aria-current={active ? "page" : undefined}
-              className={`inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-[13px] transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring ${
+              className={`inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-body-dense transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring ${
                 active
                   ? "bg-card text-foreground border border-border shadow-[var(--shadow)] font-medium"
                   : "text-muted-foreground hover:bg-muted hover:text-foreground border border-transparent"
               }`}
             >
               {option.label}
-              <span className="readout text-[11px] text-muted-foreground">{tabCount}</span>
+              <span className="readout text-data text-muted-foreground">{tabCount}</span>
             </Link>
           );
         })}
@@ -204,7 +204,7 @@ export default function ReviewsPage({ searchParams }: { searchParams: Promise<Ra
   return (
     <Suspense
       fallback={
-        <p role="status" className="p-6 text-[13px] text-muted-foreground">
+        <p role="status" className="p-6 text-body-dense text-muted-foreground">
           Loading the review queue…
         </p>
       }

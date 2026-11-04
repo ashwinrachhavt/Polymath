@@ -28,15 +28,17 @@ export function ShareDialog({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="font-display text-xl font-normal">Share {label}</DialogTitle>
-          <DialogDescription>Sharing with other people is not available yet. Nothing here sends anything.</DialogDescription>
+          <DialogDescription>
+            Sharing with other people is not available yet. Nothing here sends anything.
+          </DialogDescription>
         </DialogHeader>
-        <div className="flex flex-col gap-3 text-[13px]">
+        <div className="flex flex-col gap-3 text-body-dense">
           <div className="flex gap-2">
             <input
               disabled
               placeholder="Add people by email"
               aria-label="Add people by email"
-              className="border-input bg-background h-9 min-w-0 flex-1 rounded-md border px-2 text-[13px] opacity-50"
+              className="border-input bg-background h-9 min-w-0 flex-1 rounded-md border px-2 text-body-dense opacity-50"
             />
             <Select disabled aria-label="Permission" className="w-28">
               <option>Can view</option>
@@ -54,7 +56,9 @@ export function ShareDialog({
             <Button
               type="button"
               variant="outline"
-              onClick={() => void navigator.clipboard.writeText(`${window.location.origin}/polymath/library/${single.id}`)}
+              onClick={() =>
+                void navigator.clipboard.writeText(`${window.location.origin}/polymath/library/${single.id}`)
+              }
             >
               Copy link for workspace members
             </Button>

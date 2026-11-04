@@ -97,7 +97,7 @@ export function StatementPanel({
   if (!extractionSucceeded) {
     return (
       <section className="panel rounded-lg px-3.5 py-3">
-        <h3 className="text-[13px] font-medium">Statement ledger</h3>
+        <h3 className="text-body-dense font-medium">Statement ledger</h3>
         <p className="text-muted-foreground mt-1 text-xs">
           Read the document first. The ledger is built from what the reader found.
         </p>
@@ -108,7 +108,7 @@ export function StatementPanel({
   if (!statement) {
     return (
       <section className="panel rounded-lg px-3.5 py-3">
-        <h3 className="text-[13px] font-medium">Statement ledger</h3>
+        <h3 className="text-body-dense font-medium">Statement ledger</h3>
         <p className="text-muted-foreground mt-1 text-xs">
           If this is a bank statement, turn it into a ledger of date, description and amount.
         </p>
@@ -129,7 +129,7 @@ export function StatementPanel({
   if (statement.status === "unsupported") {
     return (
       <section className="panel rounded-lg px-3.5 py-3">
-        <h3 className="text-[13px] font-medium">Not a statement</h3>
+        <h3 className="text-body-dense font-medium">Not a statement</h3>
         <p className="text-muted-foreground mt-1 text-xs">
           {statement.error ?? "This document has no table of transactions."}
         </p>
@@ -140,7 +140,7 @@ export function StatementPanel({
   const period =
     statement.periodStart && statement.periodEnd
       ? `${statement.periodStart} to ${statement.periodEnd}`
-      : statement.periodStart ?? "period unknown";
+      : (statement.periodStart ?? "period unknown");
 
   const reviewRows = statement.rows.filter(
     (row): row is typeof row & { id: string } => Boolean(row.id) && row.needsReview === true,
@@ -150,8 +150,10 @@ export function StatementPanel({
     <section className="panel rounded-lg px-3.5 py-3">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-[13px] font-medium">Statement ledger</h3>
-          <p className="text-muted-foreground mt-1 text-xs">{statement.accountLabel} · {period}</p>
+          <h3 className="text-body-dense font-medium">Statement ledger</h3>
+          <p className="text-muted-foreground mt-1 text-xs">
+            {statement.accountLabel} · {period}
+          </p>
         </div>
         {statement.reconciled ? (
           <a
@@ -182,13 +184,11 @@ export function StatementPanel({
       {statement.reconciled ? (
         <div className="mt-3">
           <p className="text-muted-foreground text-xs">
-            Every row carries the running balance forward. The CSV has three columns:
-            date, description, amount. Money out is negative.
+            Every row carries the running balance forward. The CSV has three columns: date, description, amount. Money
+            out is negative.
           </p>
           {statement.totalsStatus === "match" ? (
-            <p className="text-muted-foreground mt-1 text-xs">
-              The totals printed on the statement match the rows.
-            </p>
+            <p className="text-muted-foreground mt-1 text-xs">The totals printed on the statement match the rows.</p>
           ) : null}
           {statement.strategy && statement.strategy !== "default" ? (
             <p className="text-muted-foreground mt-1 text-xs">
@@ -202,8 +202,8 @@ export function StatementPanel({
             {statement.error ?? "These rows do not reconcile against the statement's running balance."}
           </p>
           <p className="text-muted-foreground mt-1 text-xs">
-            The download stays closed until the rows add up, because a ledger that is
-            almost right is a ledger you cannot check.
+            The download stays closed until the rows add up, because a ledger that is almost right is a ledger you
+            cannot check.
           </p>
           <ul className="mt-2 flex flex-col gap-1 text-xs">
             {statement.mismatches.slice(0, 5).map((mismatch, index) => (
@@ -233,9 +233,7 @@ export function StatementPanel({
 
       {reviewRows.length > 0 ? (
         <div className="mt-3">
-          <p className="text-xs font-medium">
-            {reviewRows.length} to categorise
-          </p>
+          <p className="text-xs font-medium">{reviewRows.length} to categorise</p>
           <p className="text-muted-foreground mt-1 text-xs">
             Pick a category once and every later statement from the same merchant uses it.
           </p>

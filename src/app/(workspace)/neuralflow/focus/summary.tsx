@@ -26,13 +26,13 @@ function FollowUpNote({ followUp }: { followUp: FocusFollowUpStatus | null }) {
   if (!followUp || followUp.kind === "none") return null;
   if (followUp.kind === "skipped") {
     return (
-      <p className="mt-3 border-t border-border pt-3 text-[13px] leading-relaxed text-muted-foreground">
+      <p className="mt-3 border-t border-border pt-3 text-body-dense leading-relaxed text-muted-foreground">
         {followUp.summary}
       </p>
     );
   }
   return (
-    <div className="mt-3 border-t border-border pt-3 text-[13px]">
+    <div className="mt-3 border-t border-border pt-3 text-body-dense">
       <p className="leading-relaxed text-muted-foreground">{followUp.summary}</p>
       {followUp.runId ? (
         <a
@@ -61,7 +61,7 @@ export function ClosedSummary({
     <section className="panel min-w-0 rounded-xl p-4">
       <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="text-[13px] font-medium">{session.subject ?? "Focus session"}</h2>
+          <h2 className="text-body-dense font-medium">{session.subject ?? "Focus session"}</h2>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
             {tierLabels[session.strictness]} focus · {formatFocused(session.elapsedSeconds)}
             {planned ? ` · ${planned}` : ""} · ended {new Date(session.endedAt).toLocaleString()}
@@ -70,7 +70,7 @@ export function ClosedSummary({
         <Status>{session.state === "finished" ? "Finished" : "Abandoned"}</Status>
       </div>
       {session.outcome || session.whatChanged || session.nextStep ? (
-        <dl className="grid gap-2 border-t border-border pt-3 text-[13px]">
+        <dl className="grid gap-2 border-t border-border pt-3 text-body-dense">
           {session.outcome ? (
             <div>
               <dt className="text-xs text-muted-foreground">Outcome</dt>

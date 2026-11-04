@@ -31,14 +31,17 @@ export function Select({
   const hasWidth = /(?:^|\s)w-/.test(layout);
   const base =
     variant === "ghost"
-      ? "h-8 w-full min-w-0 appearance-none rounded-md border border-transparent bg-transparent pr-7 pl-2.5 text-[13px] text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-      : "h-9 w-full min-w-0 appearance-none rounded-md border border-input bg-background pr-8 pl-2.5 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50";
+      ? "h-8 w-full min-w-0 appearance-none rounded-md border border-transparent bg-transparent pr-7 pl-2.5 text-body-dense text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+      : "h-9 w-full min-w-0 appearance-none rounded-md border border-input bg-background pr-8 pl-2.5 text-body-dense outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50";
   return (
     <span data-slot="select-wrapper" className={`relative inline-flex min-w-0 ${hasWidth ? "" : "w-full"} ${layout}`}>
       <select {...props} data-slot="select" data-variant={variant} className={`${base} ${selectClass}`}>
         {children}
       </select>
-      <ChevronDown aria-hidden className="text-muted-foreground pointer-events-none absolute top-1/2 right-2 size-4 -translate-y-1/2" />
+      <ChevronDown
+        aria-hidden
+        className="text-muted-foreground pointer-events-none absolute top-1/2 right-2 size-4 -translate-y-1/2"
+      />
     </span>
   );
 }

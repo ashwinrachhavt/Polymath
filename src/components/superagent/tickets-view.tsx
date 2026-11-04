@@ -27,8 +27,8 @@ function TicketRow({ ticket }: { ticket: TicketView }) {
       >
         <span className="flex flex-wrap items-center gap-2">
           <Status>{stage.label}</Status>
-          <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{ticket.title}</span>
-          <span className="readout shrink-0 text-[11px] opacity-80">{ticket.strength}</span>
+          <span className="min-w-0 flex-1 truncate text-body-dense font-medium">{ticket.title}</span>
+          <span className="readout shrink-0 text-data opacity-80">{ticket.strength}</span>
         </span>
         <span className="text-muted-foreground text-xs">{ticket.reportSummary ?? "No report yet."}</span>
       </button>
@@ -74,9 +74,9 @@ export function TicketsView({ groups, stage }: { groups: StageGroup[]; stage?: S
     <div className="flex flex-col gap-6">
       {groups.map((group) => (
         <section key={group.key} className="flex flex-col gap-2">
-          <h2 className="text-muted-foreground text-[13px] font-medium">
+          <h2 className="text-muted-foreground text-body-dense font-medium">
             {group.label}
-            <span className="readout ml-2 text-[11px] opacity-80">{group.tickets.length}</span>
+            <span className="readout ml-2 text-data opacity-80">{group.tickets.length}</span>
           </h2>
           <TicketList tickets={group.tickets} heading={group.label} />
         </section>
@@ -96,7 +96,7 @@ export function PersonStageCard({ group, className }: { group: StageGroup; class
       )}
     >
       <span className="min-w-0">
-        <span className="block text-[13px] font-medium">{group.label}</span>
+        <span className="block text-body-dense font-medium">{group.label}</span>
         <span className="text-muted-foreground mt-0.5 block text-xs">
           {group.tickets.map((ticket) => ticket.title).join(", ")}
         </span>

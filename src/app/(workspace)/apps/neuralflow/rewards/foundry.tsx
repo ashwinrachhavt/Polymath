@@ -49,7 +49,7 @@ function ProposalCard({ proposal }: { proposal: FoundryProposal }) {
           <span className="nf-vitrine size-12 shrink-0" aria-hidden />
         )}
         <div className="min-w-0">
-          <p className="text-[13px] font-medium">
+          <p className="text-body-dense font-medium">
             {proposal.recipe?.name ?? proposal.title}
             {proposal.recipe ? <span className="text-muted-foreground"> · {proposal.recipe.rarity}</span> : null}
           </p>
@@ -117,7 +117,7 @@ export function Foundry({
               <div key={stone.key} className="flex items-center gap-2">
                 <RecipeStoneArt svg={stone.svg} name={stone.label} size={32} />
                 <div className="min-w-0">
-                  <p className="text-[13px] font-medium">{stone.label}</p>
+                  <p className="text-body-dense font-medium">{stone.label}</p>
                   {stone.description ? (
                     <p className="max-w-64 truncate text-xs text-muted-foreground">{stone.description}</p>
                   ) : null}

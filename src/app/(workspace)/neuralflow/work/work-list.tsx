@@ -94,7 +94,13 @@ export function WorkList({
 
   function run(
     id: string,
-    fn: () => Promise<{ ok: boolean; error?: string; kind?: "conflict" | "validation"; quartzEarned?: boolean; sentenceRecorded?: boolean }>,
+    fn: () => Promise<{
+      ok: boolean;
+      error?: string;
+      kind?: "conflict" | "validation";
+      quartzEarned?: boolean;
+      sentenceRecorded?: boolean;
+    }>,
     applyChange: Change,
     onError?: (kind: "conflict" | "validation" | "retryable", sentenceRecorded?: boolean) => void,
     sentence?: string,
@@ -124,21 +130,31 @@ export function WorkList({
     event.preventDefault();
     const sentence = (drafts[id] ?? "").trim();
     setAsking(null);
-    run(id, () => completeTaskAction(id, sentence || undefined), { type: "complete", id }, (kind, recorded) => {
-      if (kind === "conflict") {
-        // The task's state moved on: never offer another completion.
-        // Say the sentence was not recorded ONLY when the server checked the
-        // completed task's audit row and found it absent.
-        if (sentence && recorded === true) {
-          setDrafts((prev) => { const next = { ...prev }; delete next[id]; return next; });
-        } else if (sentence && recorded === false) {
-          setError({ id, message: "This task was already completed.", unrecorded: sentence });
+    run(
+      id,
+      () => completeTaskAction(id, sentence || undefined),
+      { type: "complete", id },
+      (kind, recorded) => {
+        if (kind === "conflict") {
+          // The task's state moved on: never offer another completion.
+          // Say the sentence was not recorded ONLY when the server checked the
+          // completed task's audit row and found it absent.
+          if (sentence && recorded === true) {
+            setDrafts((prev) => {
+              const next = { ...prev };
+              delete next[id];
+              return next;
+            });
+          } else if (sentence && recorded === false) {
+            setError({ id, message: "This task was already completed.", unrecorded: sentence });
+          }
+          router.refresh();
+          return;
         }
-        router.refresh();
-        return;
-      }
-      setAsking(id);
-    }, sentence || undefined);
+        setAsking(id);
+      },
+      sentence || undefined,
+    );
   }
 
   function bulkComplete() {
@@ -178,7 +194,8 @@ export function WorkList({
         router.refresh();
         setBulkResult({
           kind: "error",
-          message: "The request was interrupted. Some selected tasks may have completed - the list has been refreshed, so check before retrying.",
+          message:
+            "The request was interrupted. Some selected tasks may have completed - the list has been refreshed, so check before retrying.",
         });
       }
     });
@@ -240,28 +257,47 @@ export function WorkList({
             aria-label="New task title"
             placeholder="Add a task   !high ~30m #tag due friday"
             maxLength={300}
-            className="h-9 text-[13px]"
+            className="h-9 text-body-dense"
           />
           <Button type="submit" size="sm" className="h-9" disabled={pending}>
             Add task
           </Button>
         </div>
-        {addError ? <p role="alert" className="text-xs text-destructive">{addError}</p> : null}
+        {addError ? (
+          <p role="alert" className="text-xs text-destructive">
+            {addError}
+          </p>
+        ) : null}
       </form>
 
       {selection.length > 0 ? (
-        <div role="group" aria-label="Bulk selection actions" className="mb-2 flex flex-wrap items-center gap-2 border-b border-border pb-2">
+        <div
+          role="group"
+          aria-label="Bulk selection actions"
+          className="mb-2 flex flex-wrap items-center gap-2 border-b border-border pb-2"
+        >
           <span className="text-xs text-muted-foreground">{selection.length} selected</span>
           <Button size="sm" variant="outline" disabled={pending} onClick={bulkComplete}>
             Complete {selection.length} selected
           </Button>
-          <Button size="sm" variant="ghost" disabled={pending} onClick={() => { setSelection([]); setBulkResult(null); }}>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={pending}
+            onClick={() => {
+              setSelection([]);
+              setBulkResult(null);
+            }}
+          >
             Clear
           </Button>
         </div>
       ) : null}
       {bulkResult ? (
-        <p role={bulkResult.kind === "error" ? "alert" : "status"} className={`mb-2 text-xs ${bulkResult.kind === "error" ? "text-destructive" : "text-muted-foreground"}`}>
+        <p
+          role={bulkResult.kind === "error" ? "alert" : "status"}
+          className={`mb-2 text-xs ${bulkResult.kind === "error" ? "text-destructive" : "text-muted-foreground"}`}
+        >
           {bulkResult.message}
         </p>
       ) : null}
@@ -282,7 +318,10 @@ export function WorkList({
                     aria-label={`Select ${row.title}`}
                     checked={selection.includes(row.id)}
                     disabled={pending}
-                    onChange={() => { setSelection((prev) => toggleSelection(prev, row.id)); setBulkResult(null); }}
+                    onChange={() => {
+                      setSelection((prev) => toggleSelection(prev, row.id));
+                      setBulkResult(null);
+                    }}
                     className="size-4 shrink-0 accent-foreground"
                   />
                 ) : (
@@ -292,33 +331,43 @@ export function WorkList({
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
                     {optimistic ? (
-                      <span className="text-[13px] font-medium text-muted-foreground">{row.title}</span>
+                      <span className="text-body-dense font-medium text-muted-foreground">{row.title}</span>
                     ) : (
                       <Link
                         href={item.href}
-                        className="min-w-0 truncate text-[13px] text-foreground hover:underline"
+                        className="min-w-0 truncate text-body-dense text-foreground hover:underline"
                         aria-current={item.selected ? "true" : undefined}
                       >
                         {row.title}
                       </Link>
                     )}
                     <span className={statusPill[row.status]}>{statusLabel[row.status]}</span>
-                    {row.priority !== "none" ? <span className="text-[11px] text-muted-foreground">{row.priority}</span> : null}
+                    {row.priority !== "none" ? (
+                      <span className="text-data text-muted-foreground">{row.priority}</span>
+                    ) : null}
                     {due ? (
-                      <span className={`readout text-[11px] ${due.today ? "text-primary" : "text-muted-foreground"}`}>{due.text}</span>
+                      <span className={`readout text-data ${due.today ? "text-primary" : "text-muted-foreground"}`}>
+                        {due.text}
+                      </span>
                     ) : null}
                     {row.subtaskCount > 0 ? (
-                      <span className="readout text-[11px] text-muted-foreground">{row.subtasksDone}/{row.subtaskCount}</span>
+                      <span className="readout text-data text-muted-foreground">
+                        {row.subtasksDone}/{row.subtaskCount}
+                      </span>
                     ) : null}
                     {row.blockedBy > 0 ? (
-                      <span className="text-[11px] text-muted-foreground">Blocked by {row.blockedBy}</span>
+                      <span className="text-data text-muted-foreground">Blocked by {row.blockedBy}</span>
                     ) : null}
                   </div>
                   {error?.id === row.id ? (
                     <div className="mt-1">
-                      <p role="alert" className="text-xs text-destructive">{error.message}</p>
+                      <p role="alert" className="text-xs text-destructive">
+                        {error.message}
+                      </p>
                       {error.unrecorded ? (
-                        <p className="text-xs text-muted-foreground">Your sentence was not recorded: &quot;{error.unrecorded}&quot;</p>
+                        <p className="text-xs text-muted-foreground">
+                          Your sentence was not recorded: &quot;{error.unrecorded}&quot;
+                        </p>
                       ) : null}
                     </div>
                   ) : null}
@@ -333,7 +382,7 @@ export function WorkList({
                       aria-label={`Done: complete ${row.title}`}
                       aria-expanded={asking === row.id}
                       onClick={() => setAsking(asking === row.id ? null : row.id)}
-                      className="text-[12px] text-muted-foreground"
+                      className="text-label text-muted-foreground"
                     >
                       Done
                     </Button>
@@ -342,7 +391,10 @@ export function WorkList({
               </div>
 
               {asking === row.id ? (
-                <form onSubmit={(event) => submitCompletion(event, row.id)} className="mb-2 ml-7 flex max-w-sm flex-col gap-1.5">
+                <form
+                  onSubmit={(event) => submitCompletion(event, row.id)}
+                  className="mb-2 ml-7 flex max-w-sm flex-col gap-1.5"
+                >
                   <label className="text-xs text-muted-foreground" htmlFor={`sentence-${row.id}`}>
                     What did you actually do?
                   </label>
@@ -357,13 +409,18 @@ export function WorkList({
                     onChange={(event) => setDrafts((prev) => ({ ...prev, [row.id]: event.target.value }))}
                   />
                   <div className="flex gap-1">
-                    <Button type="submit" size="sm" disabled={pending}>Complete</Button>
+                    <Button type="submit" size="sm" disabled={pending}>
+                      Complete
+                    </Button>
                     <Button
                       type="button"
                       size="sm"
                       variant="ghost"
                       disabled={pending}
-                      onClick={() => { setAsking(null); run(row.id, () => completeTaskAction(row.id), { type: "complete", id: row.id }); }}
+                      onClick={() => {
+                        setAsking(null);
+                        run(row.id, () => completeTaskAction(row.id), { type: "complete", id: row.id });
+                      }}
                     >
                       Just complete
                     </Button>
@@ -406,20 +463,31 @@ export function CommitList({
       {rows.map((row) => (
         <li key={row.id}>
           <div className="flex min-h-11 items-center gap-3 py-1.5">
-            <Link href={row.href} className="min-w-0 flex-1 truncate text-[13px] text-muted-foreground hover:text-foreground hover:underline">
+            <Link
+              href={row.href}
+              className="min-w-0 flex-1 truncate text-body-dense text-muted-foreground hover:text-foreground hover:underline"
+            >
               {row.title}
             </Link>
-            {error?.id === row.id ? <p role="alert" className="text-xs text-destructive">{error.message}</p> : null}
+            {error?.id === row.id ? (
+              <p role="alert" className="text-xs text-destructive">
+                {error.message}
+              </p>
+            ) : null}
             <Button
               size="sm"
               variant="ghost"
-              className="shrink-0 text-[12px] text-muted-foreground"
+              className="shrink-0 text-label text-muted-foreground"
               disabled={pending}
               aria-label={`Commit ${row.title} to today`}
               onClick={() => {
                 setError(null);
                 startTransition(async () => {
-                  const result = await commitTaskAction({ taskId: row.id, expectedVersion: row.version, idempotencyKey: crypto.randomUUID() });
+                  const result = await commitTaskAction({
+                    taskId: row.id,
+                    expectedVersion: row.version,
+                    idempotencyKey: crypto.randomUUID(),
+                  });
                   if (!result.ok) {
                     setError({ id: row.id, message: result.error });
                     return;

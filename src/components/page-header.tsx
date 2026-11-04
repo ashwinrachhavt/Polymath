@@ -9,15 +9,7 @@ import type { ReactNode } from "react";
  * second coloured mark on every page made the accent a theme instead of an
  * indicator. The single hairline below is the whole structure, as in Notion.
  */
-export function PageHeader({
-  title,
-  purpose,
-  actions,
-}: {
-  title: string;
-  purpose?: string;
-  actions?: ReactNode;
-}) {
+export function PageHeader({ title, purpose, actions }: { title: string; purpose?: string; actions?: ReactNode }) {
   return (
     <header className="page-header border-border bg-background/95 sticky top-(--topbar-h, 3rem) z-10 border-b backdrop-blur">
       <div className="screen-heading">
@@ -48,10 +40,8 @@ export function Section({
   return (
     <section className="flex flex-col gap-2.5">
       <div className="flex flex-col gap-0.5">
-        <h2 className="text-[13px] leading-tight font-medium">{title}</h2>
-        {description ? (
-          <p className="screen-description">{description}</p>
-        ) : null}
+        <h2 className="text-body-dense leading-tight font-medium">{title}</h2>
+        {description ? <p className="screen-description">{description}</p> : null}
       </div>
       {children}
     </section>

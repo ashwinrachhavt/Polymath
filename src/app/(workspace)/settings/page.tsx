@@ -88,7 +88,7 @@ export default function SettingsPage() {
   return (
     <Suspense
       fallback={
-        <p role="status" className="p-6 text-[13px] text-muted-foreground">
+        <p role="status" className="p-6 text-body-dense text-muted-foreground">
           Loading settings…
         </p>
       }

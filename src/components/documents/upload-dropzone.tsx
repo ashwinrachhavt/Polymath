@@ -337,7 +337,7 @@ export function UploadDropzone({ libraryHref = "/polymath/library" }: { libraryH
           <FileUp aria-hidden className="text-muted-foreground size-4" />
         </span>
         <div>
-          <p className="text-[13px] font-medium">Choose files or drag &amp; drop them here</p>
+          <p className="text-body-dense font-medium">Choose files or drag &amp; drop them here</p>
           <p className="text-muted-foreground mt-1 text-xs">
             PDF, PNG, JPEG and WebP, up to {MAX_UPLOAD_LABEL} each. Stored as originals, then read.
           </p>
@@ -371,7 +371,7 @@ export function UploadDropzone({ libraryHref = "/polymath/library" }: { libraryH
                   </span>
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[13px] font-medium">{entry.file.name}</p>
+                  <p className="truncate text-body-dense font-medium">{entry.file.name}</p>
                   {/* Recovery copy can be a full sentence; two clamped lines keeps
                       the row height stable while the title attribute keeps it whole. */}
                   <p
@@ -411,7 +411,7 @@ export function UploadDropzone({ libraryHref = "/polymath/library" }: { libraryH
         <section className="rounded-lg border border-border p-4">
           <div className="mb-3 flex items-center gap-2">
             <FileText aria-hidden className="text-muted-foreground size-4" />
-            <h3 className="text-[13px] font-medium">Extracted text</h3>
+            <h3 className="text-body-dense font-medium">Extracted text</h3>
             <Badge variant="outline" className="ml-auto">
               Extracted by Polymath
             </Badge>
@@ -421,11 +421,11 @@ export function UploadDropzone({ libraryHref = "/polymath/library" }: { libraryH
               Loading the extracted text…
             </p>
           ) : openError ? (
-            <p role="alert" className="text-[13px] text-destructive">
+            <p role="alert" className="text-body-dense text-destructive">
               {openError}
             </p>
           ) : openBody ? (
-            <div className="max-h-72 overflow-y-auto whitespace-pre-wrap break-words rounded-md bg-muted/40 p-3 text-[13px] leading-relaxed">
+            <div className="max-h-72 overflow-y-auto whitespace-pre-wrap break-words rounded-md bg-muted/40 p-3 text-body-dense leading-relaxed">
               {openBody}
               <p className="text-muted-foreground mt-2 text-xs">
                 First 1,200 characters. The full text is in the library reader.

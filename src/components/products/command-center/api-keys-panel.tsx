@@ -54,7 +54,7 @@ export default function ApiKeysPanel() {
   }
   if (keys === null) {
     return (
-      <p role="status" className="text-[13px] text-muted-foreground">
+      <p role="status" className="text-body-dense text-muted-foreground">
         Loading API keys…
       </p>
     );
@@ -68,7 +68,7 @@ export default function ApiKeysPanel() {
           description="The Chrome companion and any script or agent authenticate with an API key. Create one, paste it into the client once, and revoke it here when it should stop working."
         />
       ) : (
-        <table className="w-full text-[13px]">
+        <table className="w-full text-body-dense">
           <thead>
             <tr className="border-b text-left text-xs text-muted-foreground">
               <th className="py-2 font-medium">Key</th>
@@ -164,13 +164,13 @@ export default function ApiKeysPanel() {
             <Input required name="name" maxLength={100} placeholder="Chrome companion" autoComplete="off" />
           </Field>
           <Field label="Client kind">
-            <select name="kind" className="h-9 rounded-md border border-input bg-background px-3 text-[13px]">
+            <select name="kind" className="h-9 rounded-md border border-input bg-background px-3 text-body-dense">
               <option value="companion">Chrome companion</option>
               <option value="machine">Agent or script</option>
             </select>
           </Field>
         </div>
-        <fieldset className="flex flex-wrap items-center gap-4 text-[13px]">
+        <fieldset className="flex flex-wrap items-center gap-4 text-body-dense">
           <legend className="sr-only">Scopes</legend>
           {Object.entries(SCOPE_LABELS).map(([scope, label]) => (
             <label key={scope} className="flex items-center gap-2">
@@ -197,7 +197,7 @@ export default function ApiKeysPanel() {
           <DialogDescription>
             Shown once. Paste it into the client now. Polymath stores only its digest and cannot show it again.
           </DialogDescription>
-          <p className="readout mt-2 break-all rounded-md border border-border bg-muted/60 p-3 text-[13px]">
+          <p className="readout mt-2 break-all rounded-md border border-border bg-muted/60 p-3 text-body-dense">
             {shownToken}
           </p>
           <div className="mt-4 flex items-center gap-3">

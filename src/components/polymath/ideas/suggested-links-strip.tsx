@@ -39,7 +39,10 @@ export function SuggestedLinksStrip({
   return (
     <span className="flex flex-wrap items-center gap-1.5" aria-label="Suggested links">
       {visible.map((suggestion) => (
-        <span key={suggestion.targetId} className="inline-flex items-center gap-1 rounded-full border border-dashed border-border px-2 py-0.5 text-[10px]">
+        <span
+          key={suggestion.targetId}
+          className="inline-flex items-center gap-1 rounded-full border border-dashed border-border px-2 py-0.5 text-data"
+        >
           <span className="max-w-32 truncate">Suggested: {suggestion.targetTitle}</span>
           <button
             type="button"

@@ -82,7 +82,8 @@ export async function SkillsSurface({
   const list = parseListParams(raw, { filters: { readiness: READINESS_FILTERS }, defaultPageSize: 24 });
   const installed = await listSkills(auth);
   const installedIdentities = new Set(installed.map((skill) => `${skill.sourceKind}:${skill.sourcePath}`));
-  const tab = (typeof raw.tab === "string" && raw.tab === "discover" ? "discover" : "installed") as "installed" | "discover";
+  const tab = (typeof raw.tab === "string" && raw.tab === "discover" ? "discover" : "installed") as
+    "installed" | "discover";
 
   const matching = installed.filter(
     (skill) =>
@@ -106,8 +107,10 @@ export async function SkillsSurface({
           key={id}
           href={listHref(BASE, raw, { tab: id === "installed" ? undefined : id, page: undefined })}
           aria-current={tab === id ? "page" : undefined}
-          className={`inline-flex min-h-9 items-center rounded-md px-3 text-[13px] font-medium transition-colors ${
-            tab === id ? "bg-app-accent text-app-accent-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+          className={`inline-flex min-h-9 items-center rounded-md px-3 text-body-dense font-medium transition-colors ${
+            tab === id
+              ? "bg-app-accent text-app-accent-foreground"
+              : "text-muted-foreground hover:bg-muted hover:text-foreground"
           }`}
         >
           {label}
@@ -153,10 +156,7 @@ export async function SkillsSurface({
               noun={matching.length === 1 ? "skill" : "skills"}
             />
             {installed.length === 0 ? (
-              <EmptyState
-                title="No skills yet"
-                description="Write one with New skill, or install one from Discover."
-              />
+              <EmptyState title="No skills yet" description="Write one with New skill, or install one from Discover." />
             ) : page.items.length === 0 ? (
               <NoResults
                 filtered={filtered}
@@ -174,7 +174,7 @@ export async function SkillsSurface({
                         <div className="flex min-w-0 flex-col">
                           <Link
                             href={`/polymath/skills/${skill.id}`}
-                            className="text-[13px] font-medium underline-offset-4 hover:underline"
+                            className="text-body-dense font-medium underline-offset-4 hover:underline"
                           >
                             {skill.name}
                           </Link>
@@ -185,7 +185,8 @@ export async function SkillsSurface({
                         </Badge>
                       </div>
                       <p className="text-muted-foreground readout text-xs">
-                        {sourceLine(skill)} · {shortRevision(skill.revision)} · installed {installedDate.format(skill.createdAt)}
+                        {sourceLine(skill)} · {shortRevision(skill.revision)} · installed{" "}
+                        {installedDate.format(skill.createdAt)}
                       </p>
                       {skill.warnings.length > 0 ? (
                         <ul className="flex flex-col gap-0.5">
@@ -209,7 +210,7 @@ export async function SkillsSurface({
             <Pagination basePath={BASE} raw={raw} page={page.page} pageSize={list.pageSize} total={page.total} />
 
             <details className="rounded-xl border border-border">
-              <summary className="cursor-pointer list-none px-4 py-3 text-[13px] text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
+              <summary className="cursor-pointer list-none px-4 py-3 text-body-dense text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
                 Import from GitHub or a folder
               </summary>
               <div className="border-t border-border px-4 py-3">
@@ -220,18 +221,21 @@ export async function SkillsSurface({
         ) : (
           <>
             <p className="text-muted-foreground text-xs">
-              Procedures that ship with Polymath. Installing one copies it into your library; it is no different from
-              a skill you wrote after that.
+              Procedures that ship with Polymath. Installing one copies it into your library; it is no different from a
+              skill you wrote after that.
             </p>
             <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {BUNDLED_SKILLS.map((skill) => (
                 <li key={skill.slug} className="flex flex-col gap-2 rounded-xl border border-border bg-card p-4">
                   <div className="flex min-w-0 flex-col">
-                    <p className="text-[13px] font-medium">{skill.name}</p>
+                    <p className="text-body-dense font-medium">{skill.name}</p>
                     <p className="text-muted-foreground line-clamp-2 text-xs">{skill.description}</p>
                   </div>
                   <div className="mt-auto pt-1">
-                    <InstallExample slug={skill.slug} installed={installedIdentities.has(`bundled:${skill.sourcePath}`)} />
+                    <InstallExample
+                      slug={skill.slug}
+                      installed={installedIdentities.has(`bundled:${skill.sourcePath}`)}
+                    />
                   </div>
                 </li>
               ))}

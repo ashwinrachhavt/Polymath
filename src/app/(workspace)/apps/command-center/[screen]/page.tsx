@@ -12,7 +12,13 @@ type SearchParams = Promise<Record<string, string | string[] | undefined>>;
  * navigation. Validation (and notFound for an unknown screen) also runs
  * inside, which still renders the not-found boundary.
  */
-async function SelectedScreen({ params, searchParams }: { params: Promise<{ screen: string }>; searchParams: SearchParams }) {
+async function SelectedScreen({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ screen: string }>;
+  searchParams: SearchParams;
+}) {
   const { screen } = await params;
   const product = products.find((record) => record.id === "command-center");
   if (!product?.destinations.some((destination) => destination.slug === screen)) notFound();
@@ -24,9 +30,33 @@ async function SelectedScreen({ params, searchParams }: { params: Promise<{ scre
   const ambiguous = Array.isArray(raw) && raw.length > 1;
   const recordId = !ambiguous && rawId && /^[a-zA-Z0-9_-]{1,100}$/.test(rawId) ? rawId : undefined;
   const invalidRecordId = ambiguous || (rawId !== undefined && !recordId);
-  return <CommandCenterScreen key={`${screen}:${recordId || ""}:${invalidRecordId}`} screen={screen} recordId={recordId} invalidRecordId={invalidRecordId} browserPreview={!clerkConfigured}/>;
+  return (
+    <CommandCenterScreen
+      key={`${screen}:${recordId || ""}:${invalidRecordId}`}
+      screen={screen}
+      recordId={recordId}
+      invalidRecordId={invalidRecordId}
+      browserPreview={!clerkConfigured}
+    />
+  );
 }
 
-export default function Page({ params, searchParams }: { params: Promise<{ screen: string }>; searchParams: SearchParams }) {
-  return <Suspense fallback={<p role="status" className="p-6 text-[13px] text-muted-foreground">Opening record selection…</p>}><SelectedScreen params={params} searchParams={searchParams}/></Suspense>;
+export default function Page({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ screen: string }>;
+  searchParams: SearchParams;
+}) {
+  return (
+    <Suspense
+      fallback={
+        <p role="status" className="p-6 text-body-dense text-muted-foreground">
+          Opening record selection…
+        </p>
+      }
+    >
+      <SelectedScreen params={params} searchParams={searchParams} />
+    </Suspense>
+  );
 }

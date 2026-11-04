@@ -51,7 +51,7 @@ export async function OverviewPanel() {
 
       {personGroups.length > 0 ? (
         <section className="flex flex-col gap-3" aria-label="Needs a person">
-          <h2 className="text-muted-foreground text-[13px] font-medium">Needs a person</h2>
+          <h2 className="text-muted-foreground text-body-dense font-medium">Needs a person</h2>
           <div className="flex flex-col gap-3">
             {personGroups.map((group) => (
               <PersonStageCard key={group.key} group={group} />
@@ -86,7 +86,7 @@ export async function OverviewPanel() {
           <ul className="flex flex-col" aria-label="Effect health">
             {effects.map((effect) => (
               <li key={effect.id} className="border-border not-last:border-b py-2.5 text-sm">
-                <span className="readout text-[11px] opacity-80">{effect.kind}</span>{" "}
+                <span className="readout text-data opacity-80">{effect.kind}</span>{" "}
                 <span className="text-muted-foreground break-all text-xs">{effect.key}</span>
                 {effect.lastError ? (
                   <span className="text-muted-foreground mt-0.5 block text-xs">{effect.lastError}</span>

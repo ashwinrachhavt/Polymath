@@ -72,7 +72,7 @@ export function AddSkillForm() {
         }}
       >
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="skill-source" className="text-[13px] font-medium">
+          <label htmlFor="skill-source" className="text-body-dense font-medium">
             Source
           </label>
           <Input
@@ -80,7 +80,7 @@ export function AddSkillForm() {
             value={source}
             onChange={(event) => setSource(event.target.value)}
             placeholder="github.com/owner/repo, npx skills add owner/repo, or ~/Projects/my-skill"
-            className="text-[13px]"
+            className="text-body-dense"
             aria-describedby="skill-source-hint"
           />
           <p id="skill-source-hint" className="text-muted-foreground text-xs">
@@ -102,7 +102,7 @@ export function AddSkillForm() {
       </form>
 
       {error ? (
-        <p role="alert" className="text-destructive text-[13px]">
+        <p role="alert" className="text-destructive text-body-dense">
           {error}
         </p>
       ) : null}
@@ -118,7 +118,7 @@ export function AddSkillForm() {
             {found.skills.map((skill) => (
               <li key={skill.sourcePath} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5">
                 <div className="flex min-w-0 flex-col">
-                  <p className="text-[13px] font-medium">{skill.name}</p>
+                  <p className="text-body-dense font-medium">{skill.name}</p>
                   <p className="text-muted-foreground text-xs">{skill.description}</p>
                   <p className="text-muted-foreground readout text-xs">
                     {skill.fileCount} {skill.fileCount === 1 ? "file" : "files"}
@@ -134,11 +134,7 @@ export function AddSkillForm() {
                     Installed
                   </span>
                 ) : (
-                  <Button
-                    size="sm"
-                    onClick={() => install(skill)}
-                    disabled={installing !== null}
-                  >
+                  <Button size="sm" onClick={() => install(skill)} disabled={installing !== null}>
                     {installing === skill.slug ? "Installing…" : "Install"}
                   </Button>
                 )}

@@ -105,7 +105,7 @@ export function ImportDrop({
     >
       <div className="flex items-start gap-3">
         <Upload aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-        <div className="min-w-0 flex-1 text-[13px]">
+        <div className="min-w-0 flex-1 text-body-dense">
           <p className="font-medium">Add material</p>
           <p className="mt-1 leading-relaxed text-muted-foreground">{hint}</p>
         </div>
@@ -113,7 +113,7 @@ export function ImportDrop({
       <div className="flex flex-wrap gap-2">
         <input
           aria-label="Paste a URL or text to import"
-          className="h-9 min-w-40 flex-1 rounded-md border border-input bg-background px-2 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="h-9 min-w-40 flex-1 rounded-md border border-input bg-background px-2 text-body-dense outline-none focus-visible:ring-2 focus-visible:ring-ring"
           placeholder="Paste a URL or text"
           value={text}
           onChange={(event) => setText(event.target.value)}
@@ -176,7 +176,7 @@ export function ImportedFileState({
     if (["http:", "https:"].includes(url.protocol)) href = url.href;
   }
   return (
-    <div className="panel flex items-start gap-3 rounded-lg p-3 text-[13px]">
+    <div className="panel flex items-start gap-3 rounded-lg p-3 text-body-dense">
       <div className="min-w-0 flex-1">
         <p className="truncate font-medium">{name}</p>
         <p className="mt-1 text-xs text-muted-foreground">
@@ -200,7 +200,7 @@ export function ImportedFileState({
         </Button>
       )}
       {!download && !href && value && size === undefined && (
-        <p className="whitespace-pre-wrap break-words text-[13px]">{value}</p>
+        <p className="whitespace-pre-wrap break-words text-body-dense">{value}</p>
       )}
       {onRemove && (
         <Button type="button" variant="ghost" size="sm" onClick={onRemove}>

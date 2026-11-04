@@ -20,7 +20,10 @@ async function ActivitySurface() {
       <>
         <PageHeader title="Activity" purpose="What changed in this workspace." />
         <div className="page-content">
-          <EmptyState title="Activity storage is not configured" description="Set DATABASE_URL and apply the database migrations to record and read workspace activity." />
+          <EmptyState
+            title="Activity storage is not configured"
+            description="Set DATABASE_URL and apply the database migrations to record and read workspace activity."
+          />
         </div>
       </>
     );
@@ -32,11 +35,14 @@ async function ActivitySurface() {
       <PageHeader title="Activity" purpose="What changed in this workspace." />
       <div className="page-content">
         {rows.length === 0 ? (
-          <EmptyState title="No activity yet" description="Workspace actions - captures, decisions, calendar and day changes - are recorded here as they happen." />
+          <EmptyState
+            title="No activity yet"
+            description="Workspace actions - captures, decisions, calendar and day changes - are recorded here as they happen."
+          />
         ) : (
           <ul className="divide-y divide-border">
             {rows.map((row, i) => (
-              <li key={i} className="flex items-baseline justify-between gap-4 py-2.5 text-[13px]">
+              <li key={i} className="flex items-baseline justify-between gap-4 py-2.5 text-body-dense">
                 <div className="min-w-0">
                   <p className="truncate">{row.summary}</p>
                   <p className="mt-0.5 text-xs text-muted-foreground">
@@ -44,7 +50,12 @@ async function ActivitySurface() {
                   </p>
                 </div>
                 <time className="readout shrink-0 text-xs text-muted-foreground" dateTime={row.createdAt.toISOString()}>
-                  {row.createdAt.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                  {row.createdAt.toLocaleString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })}
                 </time>
               </li>
             ))}
@@ -61,7 +72,13 @@ async function ActivitySurface() {
  */
 export default function ActivityPage() {
   return (
-    <Suspense fallback={<p role="status" className="p-6 text-[13px] text-muted-foreground">Loading activity…</p>}>
+    <Suspense
+      fallback={
+        <p role="status" className="p-6 text-body-dense text-muted-foreground">
+          Loading activity…
+        </p>
+      }
+    >
       <ActivitySurface />
     </Suspense>
   );

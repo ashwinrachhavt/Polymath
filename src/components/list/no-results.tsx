@@ -19,7 +19,7 @@ export function NoResults({
       title="No matches"
       description="Nothing fits the current search and filters."
       action={
-        <Link href={clearHref} className="text-[13px] font-medium underline underline-offset-4">
+        <Link href={clearHref} className="text-body-dense font-medium underline underline-offset-4">
           Clear filters
         </Link>
       }

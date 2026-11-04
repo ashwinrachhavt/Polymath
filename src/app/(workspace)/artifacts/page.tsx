@@ -13,11 +13,15 @@ export const metadata = { title: "Artifacts · Polymath" };
  * are the toolbar's.
  */
 
-export async function ArtifactsSurface({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+export async function ArtifactsSurface({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   await connection();
   if (!process.env.DATABASE_URL?.trim()) {
     return (
-      <div className="px-6 py-6 text-[13px] text-muted-foreground">
+      <div className="px-6 py-6 text-body-dense text-muted-foreground">
         Set DATABASE_URL and apply the database migrations to use the artifact gallery.
       </div>
     );
@@ -52,7 +56,7 @@ export async function ArtifactsSurface({ searchParams }: { searchParams: Promise
       </Suspense>
       <div className="px-6 py-6">
         {matching.length === 0 ? (
-          <p className="text-[13px] text-muted-foreground">
+          <p className="text-body-dense text-muted-foreground">
             Nothing here yet. Generate a draft from a project and it lands in this gallery.
           </p>
         ) : (
@@ -61,7 +65,13 @@ export async function ArtifactsSurface({ searchParams }: { searchParams: Promise
               {/* The mockup's dotted passage rule: the month names the passage,
                   not a toolbar row. */}
               <div className="rule-label mb-5">{label}</div>
-              <div className={view === "grid" ? "grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6" : "flex flex-col gap-3"}>
+              <div
+                className={
+                  view === "grid"
+                    ? "grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6"
+                    : "flex flex-col gap-3"
+                }
+              >
                 {group.map((item) => (
                   <ArtifactCard key={item.id} artifact={item} view={view} />
                 ))}
@@ -74,7 +84,9 @@ export async function ArtifactsSurface({ searchParams }: { searchParams: Promise
   );
 }
 
-export default async function ArtifactsPage(props: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+export default async function ArtifactsPage(props: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   return (
     <Suspense fallback={<Skeleton className="m-6 h-64 w-full" />}>
       <ArtifactsSurface {...props} />

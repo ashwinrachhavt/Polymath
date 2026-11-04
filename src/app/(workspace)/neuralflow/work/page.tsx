@@ -44,5 +44,15 @@ async function WorkSurface({ searchParams }: { searchParams: WorkQuery }) {
 }
 
 export default function WorkPage({ searchParams }: { searchParams: WorkQuery }) {
-  return <Suspense fallback={<p role="status" className="p-6 text-[13px] text-muted-foreground">Opening Work…</p>}><WorkSurface searchParams={searchParams} /></Suspense>;
+  return (
+    <Suspense
+      fallback={
+        <p role="status" className="p-6 text-body-dense text-muted-foreground">
+          Opening Work…
+        </p>
+      }
+    >
+      <WorkSurface searchParams={searchParams} />
+    </Suspense>
+  );
 }

@@ -22,7 +22,13 @@ const presentations: { id: "saved" | "board" | "calendar"; label: string }[] = [
   { id: "calendar", label: "Calendar" },
 ];
 
-export function WorkViewLinks({ active, presentation }: { active: WorkDestination; presentation?: "saved" | "board" | "calendar" }) {
+export function WorkViewLinks({
+  active,
+  presentation,
+}: {
+  active: WorkDestination;
+  presentation?: "saved" | "board" | "calendar";
+}) {
   return (
     <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-1 border-b border-border">
       <nav aria-label="Work views" className="flex gap-5">
@@ -33,7 +39,7 @@ export function WorkViewLinks({ active, presentation }: { active: WorkDestinatio
               key={id}
               href={href}
               aria-current={current ? "page" : undefined}
-              className={`-mb-px border-b-2 pb-2 text-[13px] transition-colors ${
+              className={`-mb-px border-b-2 pb-2 text-body-dense transition-colors ${
                 current
                   ? "border-primary font-medium text-foreground"
                   : "border-transparent text-muted-foreground hover:text-foreground"
@@ -44,7 +50,7 @@ export function WorkViewLinks({ active, presentation }: { active: WorkDestinatio
           );
         })}
       </nav>
-      <nav aria-label="Presentation" className="mb-1.5 flex gap-3 text-[12px]">
+      <nav aria-label="Presentation" className="mb-1.5 flex gap-3 text-label">
         {presentations.map(({ id, label }) => (
           <Link
             key={id}

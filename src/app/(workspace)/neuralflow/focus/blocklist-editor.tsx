@@ -42,7 +42,7 @@ export function BlocklistEditor({ entries }: { entries: { id: string; pattern: s
   return (
     <section className="panel min-w-0 rounded-xl p-4" aria-label="Blocklist">
       <div className="mb-4">
-        <h2 className="text-[13px] font-medium">Blocklist</h2>
+        <h2 className="text-body-dense font-medium">Blocklist</h2>
         <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
           During a Deep session the extension blocks these sites. An allow entry is exempt - use it for the one
           dashboard Deep work actually needs.
@@ -93,7 +93,7 @@ export function BlocklistEditor({ entries }: { entries: { id: string; pattern: s
             >
               <span className="flex min-w-0 items-center gap-2">
                 <Badge variant={entry.kind === "allow" ? "secondary" : "default"}>{entry.kind}</Badge>
-                <span className="truncate text-[13px]">{entry.pattern}</span>
+                <span className="truncate text-body-dense">{entry.pattern}</span>
               </span>
               <Button variant="ghost" disabled={pending} onClick={() => archive(entry.id)}>
                 Archive

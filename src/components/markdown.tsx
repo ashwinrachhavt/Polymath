@@ -11,7 +11,12 @@ import { inline } from "./markdown-inline";
 
 const isTableLine = (line: string) => line.trim().startsWith("|") && line.trim().endsWith("|");
 const isSeparatorLine = (line: string) => /^\|?[\s:|-]+\|?$/.test(line.trim()) && line.includes("-");
-const cells = (line: string) => line.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
+const cells = (line: string) =>
+  line
+    .trim()
+    .replace(/^\||\|$/g, "")
+    .split("|")
+    .map((c) => c.trim());
 const fence = (line: string) => line.trim().match(/^(```|~~~)\s*([\w+-]*)\s*$/);
 
 /** How an inline span becomes nodes. Defaults to the plain markdown rules. */
@@ -26,10 +31,10 @@ function CodeBlock({ language, lines }: { language: string; lines: string[] }) {
   return (
     <div className="my-1 overflow-hidden rounded-md border border-border">
       {language ? (
-        <p className="text-muted-foreground border-b border-border bg-muted/40 px-3 py-1 text-[11px]">{language}</p>
+        <p className="text-muted-foreground border-b border-border bg-muted/40 px-3 py-1 text-data">{language}</p>
       ) : null}
       <pre className="overflow-x-auto px-3 py-2">
-        <code className="text-[13px] leading-5">{lines.join("\n")}</code>
+        <code className="text-body-dense leading-5">{lines.join("\n")}</code>
       </pre>
     </div>
   );
@@ -38,11 +43,13 @@ function CodeBlock({ language, lines }: { language: string; lines: string[] }) {
 function Table({ lines, renderInline }: { lines: string[]; renderInline: InlineRenderer }) {
   const [head, , ...body] = lines;
   return (
-    <table className="my-1 border-collapse text-[13px]">
+    <table className="my-1 border-collapse text-body-dense">
       <thead>
         <tr>
           {cells(head).map((c, i) => (
-            <th key={i} className="border-border border px-2 py-1 text-left font-medium">{renderInline(c)}</th>
+            <th key={i} className="border-border border px-2 py-1 text-left font-medium">
+              {renderInline(c)}
+            </th>
           ))}
         </tr>
       </thead>
@@ -50,7 +57,9 @@ function Table({ lines, renderInline }: { lines: string[]; renderInline: InlineR
         {body.map((row, r) => (
           <tr key={r}>
             {cells(row).map((c, i) => (
-              <td key={i} className="border-border border px-2 py-1 align-top">{renderInline(c)}</td>
+              <td key={i} className="border-border border px-2 py-1 align-top">
+                {renderInline(c)}
+              </td>
             ))}
           </tr>
         ))}
@@ -66,7 +75,10 @@ function markdown(raw: string, renderInline: InlineRenderer): ReactNode[] {
   let key = 0;
 
   while (i < lines.length) {
-    if (lines[i].trim() === "") { i++; continue; }
+    if (lines[i].trim() === "") {
+      i++;
+      continue;
+    }
 
     // Fenced code: everything to the closing fence is literal text. Text after
     // the opener's language is kept as written and never parsed inline.
@@ -77,7 +89,10 @@ function markdown(raw: string, renderInline: InlineRenderer): ReactNode[] {
       i++;
       while (i < lines.length) {
         const close = fence(lines[i]);
-        if (close && close[1] === marker) { i++; break; }
+        if (close && close[1] === marker) {
+          i++;
+          break;
+        }
         body.push(lines[i]);
         i++;
       }
@@ -89,7 +104,10 @@ function markdown(raw: string, renderInline: InlineRenderer): ReactNode[] {
     if (isTableLine(lines[i]) && i + 1 < lines.length && isSeparatorLine(lines[i + 1])) {
       const tableLines = [lines[i], lines[i + 1]];
       i += 2;
-      while (i < lines.length && isTableLine(lines[i])) { tableLines.push(lines[i]); i++; }
+      while (i < lines.length && isTableLine(lines[i])) {
+        tableLines.push(lines[i]);
+        i++;
+      }
       blocks.push(<Table key={key++} lines={tableLines} renderInline={renderInline} />);
       continue;
     }
@@ -109,8 +127,15 @@ function markdown(raw: string, renderInline: InlineRenderer): ReactNode[] {
       // reading surface; these bare utilities keep non-reading callers
       // (notion-proposals blocks, surface cards) unchanged.
       blocks.push(
-        <ListTag key={key++} className={`my-1 flex flex-col gap-0.5 prose-list ${ordered ? "list-decimal pl-7 marker:text-muted-foreground marker:font-normal" : "list-disc pl-5"}`}>
-          {items.map((item, j) => <li key={j} className={ordered ? "pl-1" : undefined}>{renderInline(item)}</li>)}
+        <ListTag
+          key={key++}
+          className={`my-1 flex flex-col gap-0.5 prose-list ${ordered ? "list-decimal pl-7 marker:text-muted-foreground marker:font-normal" : "list-disc pl-5"}`}
+        >
+          {items.map((item, j) => (
+            <li key={j} className={ordered ? "pl-1" : undefined}>
+              {renderInline(item)}
+            </li>
+          ))}
         </ListTag>,
       );
       continue;
@@ -125,11 +150,7 @@ function markdown(raw: string, renderInline: InlineRenderer): ReactNode[] {
       }
       // Blockquote and hr carry their one treatment from .prose-reading;
       // plain tags here so a quoted table or nested list keeps the ladder.
-      blocks.push(
-        <blockquote key={key++}>
-          {markdown(quoted.join("\n"), renderInline)}
-        </blockquote>,
-      );
+      blocks.push(<blockquote key={key++}>{markdown(quoted.join("\n"), renderInline)}</blockquote>);
       continue;
     }
 
@@ -139,7 +160,7 @@ function markdown(raw: string, renderInline: InlineRenderer): ReactNode[] {
     const heading = lines[i].match(/^(#{1,4})\s+(.*)$/);
     if (heading) {
       const level = Math.min(heading[1].length + 1, 4) as 2 | 3 | 4;
-      const Tag = (`h${level}`) as "h2" | "h3" | "h4";
+      const Tag = `h${level}` as "h2" | "h3" | "h4";
       blocks.push(<Tag key={key++}>{renderInline(heading[2])}</Tag>);
       i++;
       continue;
@@ -180,7 +201,13 @@ function markdown(raw: string, renderInline: InlineRenderer): ReactNode[] {
  * caller supplies how inline spans render, so a surface can add citations to
  * the same typography instead of re-implementing it.
  */
-export const Markdown = memo(function Markdown({ text, renderInline }: { text: string; renderInline?: InlineRenderer }) {
+export const Markdown = memo(function Markdown({
+  text,
+  renderInline,
+}: {
+  text: string;
+  renderInline?: InlineRenderer;
+}) {
   return <div className="prose-reading flex flex-col gap-1.5">{markdown(text, renderInline ?? inline)}</div>;
 });
 

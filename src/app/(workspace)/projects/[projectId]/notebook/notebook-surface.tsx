@@ -230,7 +230,7 @@ export default function NotebookSurface({
       {/* Sources */}
       <aside aria-label="Sources" className="panel rounded-xl p-3">
         <div className="flex items-baseline justify-between gap-2 px-1">
-          <h2 className="text-[13px] font-medium">Sources</h2>
+          <h2 className="text-body-dense font-medium">Sources</h2>
         </div>
         <AddSources projectId={notebook.projectId} vault={vault} />
         {sources.length === 0 ? (
@@ -242,7 +242,7 @@ export default function NotebookSurface({
             {sources.map((source) => (
               <li key={source.documentId} className="px-1 py-1.5">
                 <div className="flex items-baseline justify-between gap-2">
-                  <p className="min-w-0 truncate text-[13px]">{source.title}</p>
+                  <p className="min-w-0 truncate text-body-dense">{source.title}</p>
                   <span className="shrink-0 text-xs text-muted-foreground">{READINESS_LABEL[source.readiness]}</span>
                 </div>
                 <p className="text-xs break-words text-muted-foreground">
@@ -280,7 +280,7 @@ export default function NotebookSurface({
       {/* Chat */}
       <section aria-label="Chat" className="panel flex min-h-[60vh] flex-col rounded-xl p-4">
         <div className="flex items-baseline justify-between gap-2">
-          <h2 className="text-[13px] font-medium">{notebook.title}</h2>
+          <h2 className="text-body-dense font-medium">{notebook.title}</h2>
           {(activeChat || liveRunId) && (
             <Button
               size="sm"
@@ -306,13 +306,13 @@ export default function NotebookSurface({
                   <Link
                     href={`${basePath}?chat=${chat.runId}`}
                     onClick={() => setStartedRunId(null)}
-                    className={`flex items-baseline gap-2 rounded-md px-1 py-1 text-[13px] hover:bg-muted ${
+                    className={`flex items-baseline gap-2 rounded-md px-1 py-1 text-body-dense hover:bg-muted ${
                       active ? "font-medium" : ""
                     }`}
                     aria-current={active ? "true" : undefined}
                   >
                     <span className="min-w-0 flex-1 truncate">{chat.label}</span>
-                    <span className="shrink-0 text-[11px] text-muted-foreground">{chat.ago}</span>
+                    <span className="shrink-0 text-data text-muted-foreground">{chat.ago}</span>
                   </Link>
                 </li>
               );
@@ -340,14 +340,14 @@ export default function NotebookSurface({
                 );
                 const shown = visible.length > 0 && visible[0].kind === "user" ? visible.slice(1) : visible;
                 return shown.length === 0 ? (
-                  <p className="text-[13px] text-muted-foreground">This conversation has no messages yet.</p>
+                  <p className="text-body-dense text-muted-foreground">This conversation has no messages yet.</p>
                 ) : (
                   <div className="space-y-4">
                     {shown.map((entry, index) =>
                       entry.kind === "user" ? (
                         <div
                           key={index}
-                          className="ml-auto max-w-[85%] rounded-lg bg-muted px-3 py-2 text-[13px] leading-6"
+                          className="ml-auto max-w-[85%] rounded-lg bg-muted px-3 py-2 text-body-dense leading-6"
                         >
                           {entry.text}
                         </div>
@@ -410,7 +410,7 @@ export default function NotebookSurface({
       {/* Studio */}
       <aside aria-label="Studio" className="flex flex-col gap-3">
         <div className="panel rounded-xl p-3">
-          <h2 className="text-[13px] font-medium">Studio</h2>
+          <h2 className="text-body-dense font-medium">Studio</h2>
           <div className="mt-2 flex flex-col gap-1" role="radiogroup" aria-label="Output kind">
             {OUTPUTS.map((output) => {
               const Icon = output.icon;
@@ -422,7 +422,7 @@ export default function NotebookSurface({
                   role="radio"
                   aria-checked={active}
                   onClick={() => setSelected(output.kind)}
-                  className={`flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left text-[13px] hover:bg-muted ${
+                  className={`flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left text-body-dense hover:bg-muted ${
                     active ? "bg-muted font-medium" : ""
                   }`}
                 >
@@ -444,7 +444,7 @@ export default function NotebookSurface({
           >
             <Input
               aria-label="What should this output cover?"
-              className="h-8 text-[13px]"
+              className="h-8 text-body-dense"
               placeholder="What should it cover?"
               value={brief}
               onChange={(e) => setBrief(e.target.value)}
@@ -468,7 +468,7 @@ export default function NotebookSurface({
             <div className="mt-2 flex flex-col gap-2">
               <Input
                 aria-label="Company name"
-                className="h-8 text-[13px]"
+                className="h-8 text-body-dense"
                 placeholder="Company name"
                 value={companyName}
                 onChange={(e) => setCompanyName(e.target.value)}
@@ -482,7 +482,7 @@ export default function NotebookSurface({
         </div>
 
         <div className="panel rounded-xl p-3">
-          <h2 className="text-[13px] font-medium">Runs</h2>
+          <h2 className="text-body-dense font-medium">Runs</h2>
           {runs.length === 0 ? (
             <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
               Generated work lands here for review. Nothing publishes by itself.
@@ -492,7 +492,7 @@ export default function NotebookSurface({
               {runs.map((run) => (
                 <li key={run.id} className="flex flex-col gap-1 border-b border-border pb-2 last:border-0 last:pb-0">
                   <div className="flex items-baseline justify-between gap-2">
-                    <p className="min-w-0 line-clamp-1 text-[13px]">
+                    <p className="min-w-0 line-clamp-1 text-body-dense">
                       {displayTitle(stripMentionContext(run.objective)) || "Untitled run"}
                     </p>
                     <Badge variant="secondary" className="shrink-0 font-normal">
@@ -515,7 +515,7 @@ export default function NotebookSurface({
         </div>
 
         <div className="panel rounded-xl p-3">
-          <h2 className="text-[13px] font-medium">In this notebook</h2>
+          <h2 className="text-body-dense font-medium">In this notebook</h2>
           {artifacts.length === 0 ? (
             <p className="mt-2 text-xs leading-relaxed text-muted-foreground">Nothing generated yet.</p>
           ) : (
@@ -523,7 +523,7 @@ export default function NotebookSurface({
               {artifacts.map((artifact) => (
                 <li key={artifact.artifactId} className="border-b border-border pb-2 last:border-0 last:pb-0">
                   <div className="flex items-baseline justify-between gap-2">
-                    <p className="truncate text-[13px]">{artifact.title}</p>
+                    <p className="truncate text-body-dense">{artifact.title}</p>
                     <span className="text-muted-foreground shrink-0 text-xs">{artifact.kind}</span>
                   </div>
                   {artifact.structured?.kind === "deck" && (
