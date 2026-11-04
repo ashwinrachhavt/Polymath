@@ -15,9 +15,29 @@
 #
 #   sh scripts/reset-test-db.sh              # drop, create, migrate
 #   TEST_DB=other_db sh scripts/reset-test-db.sh
+#
+# The database reset is the one named by TEST_DATABASE_URL when that is set
+# (the variable the integration and e2e suites standardize on — e.g. the
+# private per-run/per-shard database an e2e run expects, see
+# tests/e2e/README.md); TEST_DB overrides, axiom_test is the fallback.
 set -e
 
+TEST_DB="${TEST_DB:-}"
+if [ -z "$TEST_DB" ] && [ -n "${TEST_DATABASE_URL:-}" ]; then
+  # Everything after the last slash, query string stripped. Only trust it when
+  # it is a bare identifier — a URL without a db path would yield garbage.
+  TEST_DB=$(printf '%s' "$TEST_DATABASE_URL" | sed -E 's#\?.*$##; s#.*/##')
+  case $TEST_DB in
+    *[!A-Za-z0-9_]*) TEST_DB="" ;;
+  esac
+fi
 TEST_DB="${TEST_DB:-axiom_test}"
+
+# Connect to the server that owns the target database: TEST_DATABASE_URL when
+# given, else the app's DATABASE_URL.
+if [ -n "${TEST_DATABASE_URL:-}" ]; then
+  DATABASE_URL="$TEST_DATABASE_URL"
+fi
 
 # Load the same env files the app does when nothing set them, so the script
 # works standalone as well as from a pnpm script.
@@ -40,7 +60,10 @@ fi
 ADMIN_URL=$(printf '%s' "$DATABASE_URL" | sed -E 's#/[^/?]+(\?.*)?$#/postgres\1#')
 
 echo "reset-test-db: dropping and recreating $TEST_DB"
-psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -q -c "drop database if exists \"$TEST_DB\"" \
+# with (force) (PG13+) terminates connections still attached to the target —
+# the previous run's dev server, say — instead of failing the reset. On a
+# service with no connections (CI) it is a no-op.
+psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -q -c "drop database if exists \"$TEST_DB\" with (force)" \
   -c "create database \"$TEST_DB\""
 
 TARGET_URL=$(printf '%s' "$DATABASE_URL" | sed -E "s#/[^/?]+(\\?.*)?\$#/$TEST_DB\\1#")
