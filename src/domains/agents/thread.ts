@@ -122,18 +122,26 @@ export async function listThreads(workspaceId: string, runIds: string[]): Promis
 }
 
 export type FollowUpResult =
-  { ok: true } | { ok: false; code: "not_found" | "run_finished" | "empty"; message: string };
+  { ok: true } | { ok: false; code: "not_found" | "run_finished" | "empty" | "failed"; message: string };
 
 /**
- * A follow-up on a live run: persisted first, then signalled to Eve. A finished
- * run rejects it (retry makes a new run instead), and so does a run in another
- * workspace, with the same not_found as a missing one.
+ * A follow-up on a live run. Two carriers, two paths:
+ *
+ * - A session-bearing run signals its Eve session (the reactive path).
+ * - A sessionless conversation run is the superagent pipeline's transcript
+ *   carrier; it has no session to signal, so the message goes back through the
+ *   same intake as the first one (`continueSuperagentConversation`). Before
+ *   this branch, every follow-up on a cutover conversation threw "run has no
+ *   Eve session yet" and surfaced as a 500.
+ *
+ * The message is persisted by whichever path answers it: the pipeline writes
+ * the event inside its intake, so appending here first would double it.
  */
 export async function sendFollowUp(auth: AuthContext, runId: string, text: string): Promise<FollowUpResult> {
   const content = text.trim();
   if (!content) return { ok: false, code: "empty", message: "Write a message first." };
   const [run] = await db
-    .select({ id: agentRuns.id, state: agentRuns.state })
+    .select({ id: agentRuns.id, state: agentRuns.state, sessionRef: agentRuns.sessionRef })
     .from(agentRuns)
     .where(and(eq(agentRuns.id, runId), eq(agentRuns.workspaceId, auth.workspaceId)))
     .limit(1);
@@ -141,6 +149,23 @@ export async function sendFollowUp(auth: AuthContext, runId: string, text: strin
   if (isFinished(run.state)) {
     return { ok: false, code: "run_finished", message: "This run is finished. Retry it to start a new run." };
   }
+
+  if (run.sessionRef === null) {
+    try {
+      // Dynamic so the reactive path (and every `isFinished` reader) does not
+      // load the whole superagent composition just to import this module.
+      const { continueSuperagentConversation } = await import("@/domains/superagent/wiring");
+      await continueSuperagentConversation({ auth, runId, message: content });
+      return { ok: true };
+    } catch (cause) {
+      return {
+        ok: false,
+        code: "failed",
+        message: cause instanceof Error ? cause.message : "The message could not be sent. Try again.",
+      };
+    }
+  }
+
   await recordRoundEvent({ runId, workspaceId: auth.workspaceId, type: "message", data: { role: "user", content } });
   try {
     await createEngine(createEveDriver()).signal(runId, content, auth);

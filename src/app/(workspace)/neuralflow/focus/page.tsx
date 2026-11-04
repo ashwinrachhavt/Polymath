@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { io } from "next/cache";
 import { Screen } from "@/components/workspace/ui";
 import { getAuthContext } from "@/lib/auth";
@@ -48,7 +49,7 @@ const tierOptions = [
   },
 ];
 
-export default async function FocusPage() {
+async function FocusSurface() {
   // Per-user data: render at request time, never prerender.
   await io();
   const auth = await getAuthContext();
@@ -95,5 +96,25 @@ export default async function FocusPage() {
       )}
       {!activeSession && latestClosed ? <ClosedSummary session={latestClosed} followUp={followUp} /> : null}
     </Screen>
+  );
+}
+
+/*
+ * io() has to sit inside a Suspense boundary, not just inside the route:
+ * cacheComponents prerenders the shell and rejects uncached data that blocks
+ * it. A bare `await io()` in the page default logs "encountered uncached data
+ * during prerendering" and stalls navigation (see settings/page.tsx).
+ */
+export default function FocusPage() {
+  return (
+    <Suspense
+      fallback={
+        <p role="status" className="p-6 text-[13px] text-muted-foreground">
+          Loading focus…
+        </p>
+      }
+    >
+      <FocusSurface />
+    </Suspense>
   );
 }

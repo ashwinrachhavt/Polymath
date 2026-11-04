@@ -56,6 +56,7 @@ import { type EffectHandler, type EffectHandlers, type RawClient } from "./effec
 import { createSuperagentExecutor, parseExecutorConfig, type LaunchPayload, type SuperagentExecutor } from "./executor";
 import { createEveSeam } from "./executor/eve";
 import { CHAT_SOURCE_KIND, chatSourceKind, chatTrigger, type ChatSourceConfig } from "./sources/chat";
+import { routeChatMessage, type ChatLane } from "./routing";
 import type { ChatEvent, SourceContext, SourceState } from "./sources/host";
 import { SourceRegistry } from "./sources/registry";
 import { createSuperagentStore, getPolicy, readStateValue, storedPolicyConfig, writeStateValue } from "./store";
@@ -409,6 +410,56 @@ const chatReceiptSender: ReceiptSender = async (receipt: ClaimedReceipt) => {
 /* The chat intake entry (the send path)                               */
 /* ------------------------------------------------------------------ */
 
+/** What one intake did: the Engine's answer, plus the lane when Jev routed it. */
+type ConversationIntake = { received: ReceiveResult; lane?: ChatLane };
+
+/**
+ * One message into the pipeline: read its event, translate it to a Trigger,
+ * classify the lane (fail-open), receive, advance the cursor, drain.
+ *
+ * `sequence` is the event just written, not "the last event in the run": a
+ * follow-up can land behind an assistant reply, and taking the tail would
+ * translate the wrong message or none at all.
+ */
+async function intakeConversationMessage(input: {
+  auth: AuthContext;
+  runId: string;
+  sequence: number;
+  text: string;
+}): Promise<ConversationIntake> {
+  const host = await superagentForWorkspace(input.auth.workspaceId);
+  await host.hydrate();
+
+  // The chat Source's translation over the event just written: same plugin,
+  // same stable id, same drop rules (an agent's own message produces none).
+  const events = await readConversationEvents(input.auth.workspaceId, {
+    runId: input.runId,
+    after: input.sequence - 1,
+  });
+  const event = events.find((candidate) => candidate.sequence === input.sequence);
+  if (!event) throw new Error("The conversation message did not land in the transcript.");
+  const trigger = chatTrigger(event);
+  if (!trigger) throw new Error("The conversation's message did not translate into a trigger.");
+
+  // A routed lane is a hint on the Trigger's own durable meta: the ticket's
+  // origin carries it to the executor's objective, so a retry or a crash
+  // replays the same routing decision instead of re-spending on Jev.
+  const route = await routeChatMessage({ workspaceId: input.auth.workspaceId, text: input.text });
+  if (route.routed) {
+    trigger.meta.lane = route.lane;
+    trigger.meta.laneSource = route.source;
+  }
+
+  const result = host.engine.receive(trigger);
+  // The read position advances only after the trigger was stored, so a crash
+  // before it replays as a duplicate rather than a lost message (the plugin's
+  // own rule; the send path enforces it because it bypasses pollChat).
+  await writeStateValue(db, input.auth.workspaceId, readCursorKey(input.runId), String(event.sequence));
+  await host.flush();
+  await drainSuperagentInline(input.auth.workspaceId);
+  return { received: result, ...(route.routed ? { lane: route.lane } : {}) };
+}
+
 /**
  * The chat send path's superagent entry, all the way from the person's
  * words: the sessionless conversation run (the durable transcript), the
@@ -429,29 +480,64 @@ export async function startSuperagentConversation(input: {
   profileName: string;
   message: string;
   subjects?: { type: "project" | "document" | "artifact"; id: string }[];
-}): Promise<{ runId: string; received: ReceiveResult }> {
+}): Promise<{ runId: string; received: ReceiveResult; lane?: ChatLane }> {
   // The transcript carrier: a waiting_input run with no session, whose first
   // event is the person's own words. Created before intake so the Source's
   // stable id (key("chat", runId, sequence)) exists to hang the Trigger on.
-  const { runId } = await createConversationRun(input);
+  const created = await createConversationRun(input);
+  const intake = await intakeConversationMessage({
+    auth: input.auth,
+    runId: created.runId,
+    sequence: created.sequence,
+    text: input.message,
+  });
+  return { runId: created.runId, ...intake };
+}
 
-  const host = await superagentForWorkspace(input.auth.workspaceId);
-  await host.hydrate();
+/**
+ * A follow-up on a conversation run that has no eve session.
+ *
+ * Sessionless conversation runs are the pipeline's transcript carriers: they
+ * stay `waiting_input` for their whole life, so the Eve driver's `signal` can
+ * never answer one — it throws "run has no Eve session yet", which the chat
+ * surfaced as a 500. The person's message belongs to the same pipeline as the
+ * first one: append it, translate it, receive it, drain it. Work happens in a
+ * ticket run, and the reply comes back through the outbox into this run's
+ * stream.
+ */
+export async function continueSuperagentConversation(input: {
+  auth: AuthContext;
+  runId: string;
+  message: string;
+}): Promise<{ runId: string; received: ReceiveResult; lane?: ChatLane }> {
+  const text = input.message.trim();
+  if (!text) throw new Error("Write a message first.");
 
-  // The chat Source's translation over the event just written: same plugin,
-  // same stable id, same drop rules (an agent's own message produces none).
-  const events = await readConversationEvents(input.auth.workspaceId, { runId });
-  const trigger = chatTrigger(events[events.length - 1]!);
-  if (!trigger) throw new Error("The conversation's first message did not translate into a trigger.");
+  const [run] = await db
+    .select({ id: agentRuns.id, sessionRef: agentRuns.sessionRef })
+    .from(agentRuns)
+    .where(and(eq(agentRuns.id, input.runId), eq(agentRuns.workspaceId, input.auth.workspaceId)))
+    .limit(1);
+  if (!run) throw new Error("No such run.");
+  // A session-bearing run keeps the reactive path; only the pipeline's
+  // sessionless carriers belong here.
+  if (run.sessionRef !== null) {
+    throw new Error("This run has an Eve session; a follow-up must go through the driver.");
+  }
 
-  const result = host.engine.receive(trigger);
-  // The read position advances only after the trigger was stored, so a crash
-  // before it replays as a duplicate rather than a lost message (the plugin's
-  // own rule; the send path enforces it because it bypasses pollChat).
-  await writeStateValue(db, input.auth.workspaceId, readCursorKey(runId), String(events[events.length - 1]!.sequence));
-  await host.flush();
-  await drainSuperagentInline(input.auth.workspaceId);
-  return { runId, received: result };
+  const written = await recordRoundEvent({
+    runId: input.runId,
+    workspaceId: input.auth.workspaceId,
+    type: "message",
+    data: { role: "user", content: text, messageId: crypto.randomUUID() },
+  });
+  const intake = await intakeConversationMessage({
+    auth: input.auth,
+    runId: input.runId,
+    sequence: written.sequence,
+    text,
+  });
+  return { runId: input.runId, ...intake };
 }
 
 /* ------------------------------------------------------------------ */

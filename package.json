@@ -54,7 +54,7 @@
     "@xyflow/react": "^12.12.0",
     "ai": "^7.0.159",
     "class-variance-authority": "^0.7.1",
-    "cn": "^0.5.1",
+    "cn": "^0.5.2",
     "drizzle-orm": "0.45.4",
     "eve": "^0.76.3",
     "lucide-react": "^1.66.0",

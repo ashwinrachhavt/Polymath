@@ -112,6 +112,15 @@ function isSet(value: string | undefined): boolean {
  * and the real tool would run — the failure this file exists to prevent.
  */
 export const STUBBED_TOOLS = {
+  /*
+   * The built-in subagent tool (agent/tools/agent.ts). A stub cannot simulate
+   * a child session — the tool's result is the child's reply, which arrives as
+   * a task, not as this call's response — so the stub fails the call instead.
+   * That keeps an eval from spawning a live copy of the agent (real spend,
+   * real tools) and tells the model to do the work itself, which is what an
+   * eval asserts on anyway.
+   */
+  agent: { throw: { message: "Subagent delegation is not available in evals; do the work in this turn." } },
   artifacts_propose_revision: {
     response: {
       ok: true,

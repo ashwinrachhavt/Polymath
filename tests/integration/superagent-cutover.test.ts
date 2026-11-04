@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { agentRuns } from "@/domains/agents/schema";
+import { agentRuns, runEvents } from "@/domains/agents/schema";
 import { key } from "@/domains/superagent/core";
 import type { Outcome } from "@/domains/superagent/core";
 import { policyVersion } from "@/domains/superagent/core/policy/gate";
@@ -34,12 +34,14 @@ let db: NonNullable<typeof handle>["db"];
 let ensureProfile: typeof import("@/domains/agents/commands").ensureProfile;
 let startSuperagentConversation: typeof import("@/domains/superagent/wiring").startSuperagentConversation;
 let superagentForWorkspace: typeof import("@/domains/superagent/wiring").superagentForWorkspace;
+let sendFollowUp: typeof import("@/domains/agents/thread").sendFollowUp;
 
 beforeAll(async () => {
   if (!handle) return;
   db = handle.db;
   ({ ensureProfile } = await import("@/domains/agents/commands"));
   ({ startSuperagentConversation, superagentForWorkspace } = await import("@/domains/superagent/wiring"));
+  ({ sendFollowUp } = await import("@/domains/agents/thread"));
 });
 
 afterAll(async () => {
@@ -149,5 +151,47 @@ suite("the chat cutover", () => {
       meta: {},
     });
     expect(replay).toBe("duplicate");
+  });
+
+  it("a follow-up on a sessionless conversation goes back through the pipeline, not the Eve driver", async () => {
+    // The regression this covers: a conversation carrier has no Eve session,
+    // so the reactive follow-up path threw "run has no Eve session yet" and
+    // the chat answered 500. The message belongs to the same pipeline as the
+    // first one.
+    const { userId, workspaceId } = await seedWorkspace(db, `superagent-followup-${Date.now()}`);
+    await ensureProfile(workspaceId, "polymath");
+    const auth = ownerAuth(userId, workspaceId);
+
+    const { runId } = await startSuperagentConversation({
+      auth,
+      profileName: "polymath",
+      message: "What did I ship last week?",
+    });
+
+    const sent = await sendFollowUp(auth, runId, "And what is still open?");
+    expect(sent).toEqual({ ok: true });
+
+    // Two user messages in one transcript, each its own Trigger: identical
+    // words would be two sends, so the second must not dedupe into the first.
+    const events = await db.select().from(runEvents).where(eq(runEvents.runId, runId)).orderBy(runEvents.sequence);
+    const messages = events.filter((event) => event.type === "message");
+    expect(messages.map((event) => (event.data as { content: string }).content)).toEqual([
+      "What did I ship last week?",
+      "And what is still open?",
+    ]);
+
+    const triggers = await db.select().from(workTriggers).where(eq(workTriggers.workspaceId, workspaceId));
+    expect(triggers.map((trigger) => trigger.id).sort()).toEqual(
+      [key("chat", runId, "1"), key("chat", runId, "2")].sort(),
+    );
+
+    // The cursor follows the newest message, so a later poll replays neither.
+    const cursor = await readStateValue(db, workspaceId, `chat:read-cursor:${runId}`);
+    expect(cursor).toBe(String(events[events.length - 1]!.sequence));
+
+    // Still the transcript carrier: no session was opened for it.
+    const [run] = await db.select().from(agentRuns).where(eq(agentRuns.id, runId)).limit(1);
+    expect(run?.sessionRef).toBeNull();
+    expect(run?.state).toBe("waiting_input");
   });
 });
