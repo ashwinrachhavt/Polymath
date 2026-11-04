@@ -32,6 +32,22 @@ vi.mock("@/lib/db-transaction", () => ({
       (holder.db!.transaction as typeof import("@/lib/db-transaction").withTransaction)(fn);
   },
 }));
+/*
+ * The verified-email seam, faked to the session user's stored address.
+ *
+ * The real one asks Clerk for a verified address whenever the keys are set.
+ * A test process has no Clerk session, so it returns null, acceptance is
+ * refused, and the suite goes red on every machine that configures Clerk while
+ * staying green in CI (no keys) - a failure that says nothing about the code.
+ * The domain's rule is "the invitation's email must match the session's
+ * verified email"; this mock supplies that email so the test asserts the rule.
+ */
+vi.mock("@/app/(workspace)/invitations/[token]/session-email", () => ({
+  async sessionVerifiedEmail(auth: { userId: string }) {
+    const [row] = await holder.db!.select({ email: users.email }).from(users).where(eq(users.id, auth.userId)).limit(1);
+    return row?.email ?? null;
+  },
+}));
 
 import { createInvitationAction, revokeInvitationAction } from "@/app/(workspace)/settings/actions";
 import { acceptInvitationAction } from "@/app/(workspace)/invitations/[token]/actions";
