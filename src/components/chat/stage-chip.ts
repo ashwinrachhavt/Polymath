@@ -25,19 +25,24 @@ export type StageChipFacts = {
   lastFailedTurn: boolean;
 };
 
-export type StageChipStatus = "failed" | "working" | "waiting" | "finished" | "offline";
+export type StageChipStatus = "failed" | "paused" | "working" | "waiting" | "finished" | "offline";
 
 /**
  * The chip's status, failed first: a failed run or turn renders as failed
  * whatever the transport is doing — a reconnect that has not replayed the end
- * frame yet must never read as "Working". A stream that gave up without a
- * terminal frame is the one state the chip does not name: the run's stage is
- * unknown rather than failed, and the transcript's own alert carries the
- * transport's error.
+ * frame yet must never read as "Working". A reconnecting transport is the
+ * second truth: a drop is a pause (the durable stream keeps the run's events),
+ * so it renders pause vocabulary, never "Working" over a transport that is not
+ * delivering and never "Failed" — only a real run failure pins that. A stream
+ * that gave up without a terminal frame is the one state the chip does not
+ * name: the run's stage is unknown rather than failed, and the transcript's
+ * own alert carries the transport's error.
  */
 export function stageChipStatus({ connection, runFailed, lastFailedTurn }: StageChipFacts): StageChipStatus {
   if (runFailed || lastFailedTurn) return "failed";
   switch (connection) {
+    case "reconnecting":
+      return "paused";
     case "connecting":
     case "streaming":
       return "working";
@@ -52,7 +57,9 @@ export function stageChipStatus({ connection, runFailed, lastFailedTurn }: Stage
 
 /**
  * The chip's words. Failed and working speak the Supervision panel's own
- * vocabulary (`STAGE_META`) — one definition, two surfaces. Waiting and
+ * vocabulary (`STAGE_META`) — one definition, two surfaces. Paused names the
+ * transport, not a run stage: the stage table has no row for a dropped
+ * connection, and "Reconnecting…" is the honest word for one. Waiting and
  * finished keep the conversation's transport-honest phrasing, for which the
  * stage table has no row ("Idle"/"Ended" describe a ticket between turns, not
  * a conversation waiting for its next message). Null renders nothing — the
@@ -62,6 +69,8 @@ export function stageChipLabel(status: StageChipStatus): string | null {
   switch (status) {
     case "failed":
       return STAGE_META["person-failed"].label;
+    case "paused":
+      return "Reconnecting…";
     case "working":
       return STAGE_META.working.label;
     case "waiting":

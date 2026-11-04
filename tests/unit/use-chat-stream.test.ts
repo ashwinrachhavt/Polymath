@@ -127,3 +127,77 @@ describe("useChatStream recoverable turn failure (no terminal end frame)", () =>
     expect(result.current.runFailed).toBe(false);
   });
 });
+
+describe("useChatStream run facts and the reconnect pause", () => {
+  it("pins runFailed from the run frame's terminal row state", async () => {
+    // The run frame is every connection's head: the durable facts arrive even
+    // when the transport never replays an end frame. A failed row is terminal
+    // truth — the chip renders Failed from the fact alone.
+    mockStreamOnce([
+      { type: "run", runId: RUN, state: "failed", lastTurnFailed: false, cursor: 1 },
+      { type: "turn", runId: RUN, state: "waiting", cursor: 2 },
+    ]);
+    const { result } = renderHook(() => useChatStream(RUN, { enabled: true }));
+    await waitFor(() => expect(result.current.runFailed).toBe(true));
+    expect(result.current.lastFailedTurn).toBe(false);
+  });
+
+  it("carries lastTurnFailed from the run frame and lets the person's next message supersede it", async () => {
+    // Connection one opens on a run whose latest turn failed; after the pause,
+    // the reconnect replays the person's follow-up — the one live fact that
+    // supersedes the failure (the panel's rule). Each fetch builds a fresh
+    // Response: a body reads once, so a shared instance would strand the
+    // reconnect on an already-consumed stream.
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(ndjson([{ type: "run", runId: RUN, state: "waiting_input", lastTurnFailed: true, cursor: 1 }]), {
+          status: 200,
+        }),
+      )
+      .mockImplementation(
+        async () =>
+          new Response(ndjson([{ type: "message", runId: RUN, role: "user", text: "One more try.", cursor: 3 }]), {
+            status: 200,
+          }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const { result } = renderHook(() => useChatStream(RUN, { enabled: true }));
+    await waitFor(() => expect(result.current.lastFailedTurn).toBe(true));
+    await waitFor(() => expect(result.current.lastFailedTurn).toBe(false));
+  });
+
+  it("reads a transient drop as the reconnect pause, never a failure", async () => {
+    // Connection one delivers an event and dies; the hook pauses and
+    // reconnects from the cursor. runFailed stays false — a drop is a pause,
+    // not a run failure — and the reconnect finishes the run.
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          ndjson([{ type: "message", runId: RUN, role: "user", text: "Are you connected to Notion?", cursor: 2 }]),
+          {
+            status: 200,
+          },
+        ),
+      )
+      .mockImplementation(
+        async () =>
+          new Response(
+            ndjson([
+              { type: "run", runId: RUN, state: "running", lastTurnFailed: false, cursor: 0 },
+              { type: "message", runId: RUN, role: "assistant", text: "Yes.", cursor: 9 },
+              { type: "end", runId: RUN, state: "succeeded", cursor: 10 },
+            ]),
+            { status: 200 },
+          ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const { result } = renderHook(() => useChatStream(RUN, { enabled: true }));
+    await waitFor(() => expect(result.current.connection).toBe("reconnecting"));
+    expect(result.current.runFailed).toBe(false);
+    expect(result.current.lastFailedTurn).toBe(false);
+    await waitFor(() => expect(result.current.connection).toBe("done"));
+    expect(result.current.runFailed).toBe(false);
+  });
+});
