@@ -48,6 +48,35 @@ vi.mock("@/app/(workspace)/invitations/[token]/session-email", () => ({
     return row?.email ?? null;
   },
 }));
+/*
+ * Import-graph seam. settings/actions.ts imports the preferences and
+ * assistant-profile domains for its OTHER actions; this suite calls only
+ * createInvitationAction/revokeInvitationAction/acceptInvitationAction,
+ * which touch none of them — but under vite-node the imports still evaluate
+ * their whole graph (agents/queries alone pulls 170+ files: the ai SDK,
+ * unpdf, pdf-lib, @vercel/blob). Mocking the unused branches shrinks this
+ * file's module graph to what it exercises. The mocks throw if ever
+ * reached: a call here would mean the seam is masking real behavior and
+ * must be revisited, not silently absorbed.
+ */
+vi.mock("@/domains/identity/preferences", () => ({
+  getPreferences: vi.fn(async () => {
+    throw new Error("import-graph seam: preferences are not exercised by this suite");
+  }),
+  updatePreferences: vi.fn(async () => {
+    throw new Error("import-graph seam: preferences are not exercised by this suite");
+  }),
+}));
+vi.mock("@/domains/agents/queries", () => ({
+  getDefaultProfile: vi.fn(async () => {
+    throw new Error("import-graph seam: agents/queries is not exercised by this suite");
+  }),
+}));
+vi.mock("@/domains/agents/commands", () => ({
+  updateDefaultProfileBrief: vi.fn(async () => {
+    throw new Error("import-graph seam: agents/commands is not exercised by this suite");
+  }),
+}));
 
 import { createInvitationAction, revokeInvitationAction } from "@/app/(workspace)/settings/actions";
 import { acceptInvitationAction } from "@/app/(workspace)/invitations/[token]/actions";

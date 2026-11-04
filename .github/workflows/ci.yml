@@ -30,9 +30,12 @@ jobs:
   #   check-lint   — lint + typecheck + knip. The fast-fail surface: a lint,
   #                  tsc, or dead-code break shows up in ~2 min instead of
   #                  trailing a serial job.
-  #   check-tests  — vitest (all projects) + inventory:check + the two
-  #                  migration guards, on the pgvector service the db project
-  #                  needs.
+  #   check-tests-unit — vitest unit + ui projects, hermetic: no database
+  #                  service, shallow clone, no guard scripts.
+  #   check-tests-db — everything that needs the database and history: the
+  #                  guard scripts, the psql-applied migrations, the db
+  #                  project (integration + migration), inventory:check and
+  #                  the schema-drift gate, on the pgvector service.
   #   check-build  — production build + route-JS budget + boot smoke, on its
   #                  own pgvector service (boot smoke sets DATABASE_URL).
   check-lint:
@@ -41,6 +44,19 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+      # tsc's incremental state is gitignored, so this leg typechecked cold
+      # every run. Restore the previous run's tsbuildinfo: tsc revalidates it
+      # against the tree and rebuilds what changed, so a stale entry can cost
+      # time but never a false pass — check-build's `pnpm build` type-checks
+      # independently. Keyed on lockfile + tsconfig + ref like .next/cache;
+      # the restore-keys fallback keeps the ref's state across commits that
+      # touch neither file.
+      - uses: actions/cache@v6
+        with:
+          path: tsconfig.tsbuildinfo
+          key: tsbuildinfo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'tsconfig.json') }}-${{ github.ref }}
+          restore-keys: |
+            tsbuildinfo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'tsconfig.json') }}-
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
@@ -54,7 +70,27 @@ jobs:
       # config, never a per-line suppression.
       - run: pnpm knip
 
-  check-tests:
+  check-tests-unit:
+    name: check / unit + ui tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # Hermetic by design: the unit project pins a deterministic database URL
+      # and never opens a connection (tests/unit/setup.db-url.ts), and the ui
+      # project runs on jsdom. Shallow clone, no Postgres service, no
+      # migrations, no guard scripts, no history. If either project ever
+      # reaches for a database, this leg fails loudly instead of passing
+      # vacuously.
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm vitest run --project unit --project ui
+
+  check-tests-db:
     name: check / vitest + migration & drift gates
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -150,7 +186,9 @@ jobs:
           for f in src/db/migrations/*.sql; do
             psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f "$f"
           done
-      - run: pnpm test
+      # The db project covers the integration, contract and migration suites
+      # (vitest.config.mts); unit and ui run in check-tests-unit.
+      - run: pnpm vitest run --project db
       # docs/generated/inventory.md is checked in and read as fact. If a schema,
       # route, tool, or outbox topic changed without regenerating it, the doc is
       # lying and this fails. Keep it on this leg, next to `test`.

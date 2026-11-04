@@ -29,7 +29,13 @@ export function makeTestDb(options: { max?: number } = {}) {
   // src/lib/db-transaction.ts reads DATABASE_URL at module load; point it here
   // before anything lazy-imports that module.
   process.env.DATABASE_URL = url;
-  const client = postgres(url, { max: options.max ?? 3 });
+  // truncateAll()'s TRUNCATE ... CASCADE emits one server NOTICE per cascaded
+  // table on every call — ~35k NOTICE objects (7.8MB of log) per full gate
+  // run, serialized through postgres-js's default onnotice. No suite asserts
+  // driver notices (the .notices fields some tests read are app-level report
+  // structures, not these), so drop them at the driver. Test helper only —
+  // the dev server's db client (src/lib/db.ts) keeps its defaults.
+  const client = postgres(url, { max: options.max ?? 3, onnotice: () => {} });
   return { client, db: drizzle(client) };
 }
 

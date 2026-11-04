@@ -675,7 +675,12 @@ async function probe(fn: unknown, shape: string, args: unknown[]): Promise<Attem
   // reserved-connection row-parsing wedge observed on row-returning shapes.
   // A wedge is recorded as a failed attempt, so a module whose probes all
   // wedge still fails the exercised>0 floor.
-  const dedicated = postgres(process.env.TEST_DATABASE_URL as string, { max: 1, idle_timeout: 5, prepare: false });
+  const dedicated = postgres(process.env.TEST_DATABASE_URL as string, {
+    max: 1,
+    idle_timeout: 5,
+    prepare: false,
+    onnotice: () => {},
+  });
   const scopedDb = drizzle(dedicated);
   let timer: NodeJS.Timeout | undefined;
   let wedged = false;
