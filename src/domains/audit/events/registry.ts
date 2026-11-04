@@ -458,3 +458,29 @@ export function resolveEventDefinition(action: string): EventDefinition {
   if (defined) return defined;
   return tier2Definition(action, "workspace");
 }
+
+/*
+ * Filter vocabularies for the read model, derived from the registry once at
+ * module load. A SQL WHERE cannot call the registry, so the read model
+ * filters by `action IN (...)` over these lists: an unknown action appears in
+ * neither (it is technical by default, per resolveEventDefinition), so the
+ * feed hides it unless the viewer asks for technical events.
+ */
+const ACTIONS_BY_CATEGORY = new Map<EventCategory, string[]>();
+const ACTIVITY_VISIBLE_ACTIONS: string[] = [];
+for (const [action, definition] of REGISTRY) {
+  const inCategory = ACTIONS_BY_CATEGORY.get(definition.category);
+  if (inCategory) inCategory.push(action);
+  else ACTIONS_BY_CATEGORY.set(definition.category, [action]);
+  if (definition.visibility === "activity") ACTIVITY_VISIBLE_ACTIONS.push(action);
+}
+
+/** Actions with feed-visible definitions; the Activity page's default set. */
+export function activityVisibleActions(): readonly string[] {
+  return ACTIVITY_VISIBLE_ACTIONS;
+}
+
+/** Registered actions in one category, for the Activity page's category filter. */
+export function actionsInCategory(category: EventCategory): readonly string[] {
+  return ACTIONS_BY_CATEGORY.get(category) ?? [];
+}
