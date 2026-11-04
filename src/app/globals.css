@@ -79,6 +79,15 @@
 
   --success: oklch(0.5 0.11 155);
   --info: oklch(0.5 0.11 245);
+  /* Tone roles for non-pill uses (row text, glyphs, banners): the pill
+     wheel's own hues exposed as plain colors so hard-coded Tailwind
+     ambers/teals die without inventing new ones. Values mirror
+     .pill-working / .pill-teal; -wash is their background mix base for
+     hairline borders and faint fills. */
+  --tone-attention: oklch(0.52 0.1 70);
+  --tone-attention-wash: oklch(0.72 0.12 80);
+  --tone-teal: oklch(0.55 0.09 195);
+  --tone-teal-wash: oklch(0.72 0.1 195);
 
   --border: oklch(0.916 0.003 95);
   --input: oklch(0.916 0.003 95);
@@ -243,6 +252,10 @@
 
   --success: oklch(0.7 0.11 155);
   --info: oklch(0.7 0.11 245);
+  /* Dark lifts mirror .dark .pill-teal; pill-working ships one tone for
+     both modes, so --tone-attention does not flip. */
+  --tone-teal: oklch(0.8 0.08 195);
+  --tone-teal-wash: oklch(0.76 0.09 195);
 
   --border: oklch(0.29 0.003 80);
   --input: oklch(0.29 0.003 80);
@@ -861,4 +874,29 @@ textarea {
   min-height: 32px;
   height: 32px;
   padding-block: 0;
+}
+
+/* The deep-linked activity row (/activity?event=<id>): a quiet ring that
+   flashes once on arrival and settles, so the linked event is findable
+   without staying loud. The global reduced-motion block collapses the flash;
+   the ring itself is not motion. */
+li[data-deep-linked="true"] {
+  background-color: color-mix(in oklab, var(--primary) 7%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--primary) 40%, transparent);
+  animation: activity-link-flash 1.6s ease-out 1;
+}
+@keyframes activity-link-flash {
+  0% {
+    background-color: color-mix(in oklab, var(--primary) 18%, transparent);
+  }
+}
+
+/* A long activity title clamps to two lines and expands to full on click:
+   closed, the summary carries the clamped preview; open, the preview swaps
+   for a "Show less" row above the full text. */
+.activity-title-toggle[open] > summary .title-preview {
+  display: none;
+}
+.activity-title-toggle[open] > summary .title-collapse {
+  display: inline;
 }

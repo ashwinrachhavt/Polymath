@@ -95,7 +95,7 @@ function SendSummary({ capability, revision }: { capability: string; revision: Q
   const subject = typeof payload.subject === "string" ? payload.subject : null;
   return (
     <>
-      <dl className="mb-3 grid gap-1 text-[13px]">
+      <dl className="mb-3 grid gap-1 text-body-dense">
         <div className="flex gap-2">
           <dt className="w-14 shrink-0 text-muted-foreground">From</dt>
           <dd>
@@ -146,9 +146,9 @@ function DraftGrounding({ flags, revision }: { flags: unknown; revision: QueueCa
     : [];
   if (flagList.length === 0 && citations.length === 0) return null;
   return (
-    <div className="mb-3 grid gap-2 text-[13px]">
+    <div className="mb-3 grid gap-2 text-body-dense">
       {flagList.length > 0 ? (
-        <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3">
+        <div className="rounded-md border border-(--tone-attention-wash)/40 bg-(--tone-attention-wash)/10 p-3">
           <p className="mb-1 text-xs font-medium">The thread asked for something - quoted here, never acted on:</p>
           <ul className="grid gap-1 text-xs text-muted-foreground">
             {flagList.map((flag, i) => (
@@ -260,7 +260,7 @@ function ProposalCard({
       <NotionDiff capability={item.capability} revision={item.latestRevision} />
 
       {item.latestRevision ? (
-        <details className="mb-4 text-[13px]">
+        <details className="mb-4 text-body-dense">
           <summary className="cursor-pointer">Inspect the exact payload</summary>
           <pre className="mt-3 max-h-72 overflow-x-auto whitespace-pre-wrap break-words rounded-md border border-border bg-muted/40 p-3 font-mono text-xs">
             {JSON.stringify(item.latestRevision.payload, null, 2)}
@@ -334,7 +334,7 @@ function ProposalCard({
           ) : null}
         </div>
       ) : (
-        <div className="text-[13px]">
+        <div className="text-body-dense">
           <p className="text-xs text-muted-foreground">Decided {item.decidedAt ? formatTs(item.decidedAt) : "—"}</p>
           {item.reviews.length > 0 ? (
             <ul className="mt-2 grid gap-1.5">
@@ -558,7 +558,7 @@ export function ReviewsQueue({
             aria-label="Follow-up pair"
             className="border-border flex flex-col gap-3 rounded-md border border-dashed p-3"
           >
-            <p className="text-muted-foreground text-[12px]">
+            <p className="text-muted-foreground text-label">
               One finished session proposed this pair. Each half is approved or rejected on its own.
             </p>
             {row.items.map(card)}

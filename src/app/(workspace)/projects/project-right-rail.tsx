@@ -8,7 +8,15 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { ProviderIcon } from "@/components/chat/provider-icon";
 import { useChatStarted } from "@/components/chat/chat-events";
-import { addMemoryAction, createAutomationAction, deleteAutomationAction, deleteMemoryAction, setProjectAccountAction, updateAutomationAction, updateProjectAction } from "./project-actions";
+import {
+  addMemoryAction,
+  createAutomationAction,
+  deleteAutomationAction,
+  deleteMemoryAction,
+  setProjectAccountAction,
+  updateAutomationAction,
+  updateProjectAction,
+} from "./project-actions";
 
 /*
  * The project right rail (Perplexity parity): Instructions, Sources,
@@ -24,9 +32,17 @@ function Panel({ title, children, defaultOpen = true }: PanelProps) {
   return (
     <section className="rounded-xl border border-border">
       <div className="flex items-center justify-between px-3 py-2.5">
-        <button type="button" className="flex flex-1 items-center gap-1 text-left text-[13px] font-medium" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+        <button
+          type="button"
+          className="flex flex-1 items-center gap-1 text-left text-body-dense font-medium"
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+        >
           {title}
-          <ChevronDown aria-hidden className={`size-3.5 text-muted-foreground transition-transform ${open ? "" : "-rotate-90"}`} />
+          <ChevronDown
+            aria-hidden
+            className={`size-3.5 text-muted-foreground transition-transform ${open ? "" : "-rotate-90"}`}
+          />
         </button>
       </div>
       {open ? <div className="border-t border-border px-3 py-3">{children}</div> : null}
@@ -36,7 +52,11 @@ function Panel({ title, children, defaultOpen = true }: PanelProps) {
 
 function ErrorNote({ error }: { error: string | null }) {
   if (!error) return null;
-  return <p role="alert" className="mt-2 text-xs text-destructive">{error}</p>;
+  return (
+    <p role="alert" className="mt-2 text-xs text-destructive">
+      {error}
+    </p>
+  );
 }
 
 export function ProjectRightRail({
@@ -83,14 +103,22 @@ export function ProjectRightRail({
     <aside aria-label="Project controls" className="flex min-w-0 flex-col gap-3">
       {/* Instructions */}
       <Panel title="Instructions">
-        <InstructionsPanel projectId={projectId} instructions={instructions} description={description} pending={pending} onSave={(patch) => run(() => updateProjectAction({ projectId, ...patch }))} />
+        <InstructionsPanel
+          projectId={projectId}
+          instructions={instructions}
+          description={description}
+          pending={pending}
+          onSave={(patch) => run(() => updateProjectAction({ projectId, ...patch }))}
+        />
       </Panel>
 
       {/* Sources */}
       <Panel title="Sources">
         {sources.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border px-3 py-6 text-center">
-            <p className="text-[13px] text-muted-foreground">Add files or other resources to reference in this project.</p>
+            <p className="text-body-dense text-muted-foreground">
+              Add files or other resources to reference in this project.
+            </p>
             <Button size="sm" variant="outline" className="mt-3" asChild>
               <Link href="/polymath/sources">Browse sources</Link>
             </Button>
@@ -98,9 +126,11 @@ export function ProjectRightRail({
         ) : (
           <ul className="flex flex-col gap-2">
             {sources.map((source) => (
-              <li key={source.documentId} className="text-[13px]">
+              <li key={source.documentId} className="text-body-dense">
                 <p className="truncate">{source.title}</p>
-                <p className="text-xs text-muted-foreground">{source.readiness === "ready" ? "Ready" : source.readiness}</p>
+                <p className="text-xs text-muted-foreground">
+                  {source.readiness === "ready" ? "Ready" : source.readiness}
+                </p>
               </li>
             ))}
           </ul>
@@ -109,25 +139,46 @@ export function ProjectRightRail({
 
       {/* Automations */}
       <Panel title="Automations">
-        <AutomationsPanel automations={automations} pending={pending} onCreate={(prompt, schedule) => run(() => createAutomationAction({ projectId, prompt, schedule }))} onToggle={(automationId, enabled) => run(() => updateAutomationAction({ projectId, automationId, enabled }))} onDelete={(automationId) => run(() => deleteAutomationAction({ projectId, automationId }))} />
+        <AutomationsPanel
+          automations={automations}
+          pending={pending}
+          onCreate={(prompt, schedule) => run(() => createAutomationAction({ projectId, prompt, schedule }))}
+          onToggle={(automationId, enabled) => run(() => updateAutomationAction({ projectId, automationId, enabled }))}
+          onDelete={(automationId) => run(() => deleteAutomationAction({ projectId, automationId }))}
+        />
       </Panel>
 
       {/* Memory */}
       <Panel title="Memory">
-        <MemoryPanel memories={memories} pending={pending} onAdd={(content) => run(() => addMemoryAction({ projectId, content }))} onDelete={(memoryId) => run(() => deleteMemoryAction({ projectId, memoryId }))} />
+        <MemoryPanel
+          memories={memories}
+          pending={pending}
+          onAdd={(content) => run(() => addMemoryAction({ projectId, content }))}
+          onDelete={(memoryId) => run(() => deleteMemoryAction({ projectId, memoryId }))}
+        />
       </Panel>
 
       {/* Integrations */}
       <Panel title="Integrations">
         {connectors.length === 0 ? (
-          <p className="text-[13px] text-muted-foreground">
+          <p className="text-body-dense text-muted-foreground">
             Connect an account on the{" "}
-            <a href="/command-center/integrations" className="underline underline-offset-2">connectors page</a> and it appears here.
+            <a href="/command-center/integrations" className="underline underline-offset-2">
+              connectors page
+            </a>{" "}
+            and it appears here.
           </p>
         ) : (
           <ul className="flex flex-col gap-2">
             {connectors.map((connector) => (
-              <ConnectorToggle key={connector.id} connector={connector} pending={pending} onSet={(gatewayAccountId, enabled) => run(() => setProjectAccountAction({ projectId, gatewayAccountId, enabled }))} />
+              <ConnectorToggle
+                key={connector.id}
+                connector={connector}
+                pending={pending}
+                onSet={(gatewayAccountId, enabled) =>
+                  run(() => setProjectAccountAction({ projectId, gatewayAccountId, enabled }))
+                }
+              />
             ))}
           </ul>
         )}
@@ -159,12 +210,19 @@ function InstructionsPanel({
     return (
       <div className="flex flex-col gap-2">
         <div className="flex items-start justify-between gap-2">
-          <p className="text-[13px] text-muted-foreground">{description ?? "Customize this project's responses."}</p>
-          <button type="button" aria-label="Edit instructions" className="rounded p-1 hover:bg-muted" onClick={() => setEditing(true)}>
+          <p className="text-body-dense text-muted-foreground">
+            {description ?? "Customize this project's responses."}
+          </p>
+          <button
+            type="button"
+            aria-label="Edit instructions"
+            className="rounded p-1 hover:bg-muted"
+            onClick={() => setEditing(true)}
+          >
             <Pencil aria-hidden className="size-3.5" />
           </button>
         </div>
-        {instructions ? <p className="whitespace-pre-wrap text-[13px]">{instructions}</p> : null}
+        {instructions ? <p className="whitespace-pre-wrap text-body-dense">{instructions}</p> : null}
       </div>
     );
   }
@@ -177,7 +235,9 @@ function InstructionsPanel({
         setEditing(false);
       }}
     >
-      <label className="sr-only" htmlFor={`instructions-${projectId}`}>Instructions</label>
+      <label className="sr-only" htmlFor={`instructions-${projectId}`}>
+        Instructions
+      </label>
       <textarea
         id={`instructions-${projectId}`}
         value={value}
@@ -185,10 +245,18 @@ function InstructionsPanel({
         rows={5}
         maxLength={8000}
         placeholder="Explain what this project is for and how the assistant should work."
-        className="w-full rounded-md border border-input bg-transparent px-2 py-1.5 text-[13px]"
+        className="w-full rounded-md border border-input bg-transparent px-2 py-1.5 text-body-dense"
       />
       <div className="flex justify-end gap-2">
-        <Button size="sm" variant="ghost" type="button" onClick={() => { setValue(instructions ?? ""); setEditing(false); }}>
+        <Button
+          size="sm"
+          variant="ghost"
+          type="button"
+          onClick={() => {
+            setValue(instructions ?? "");
+            setEditing(false);
+          }}
+        >
           Clear
         </Button>
         <Button size="sm" type="submit" disabled={pending}>
@@ -220,17 +288,31 @@ function AutomationsPanel({
     <div className="flex flex-col gap-2">
       <p className="text-xs text-muted-foreground">Run tasks on a schedule in this project.</p>
       {automations.map((automation) => (
-        <div key={automation.id} className="flex items-start justify-between gap-2 rounded-md border border-border px-2 py-2">
+        <div
+          key={automation.id}
+          className="flex items-start justify-between gap-2 rounded-md border border-border px-2 py-2"
+        >
           <div className="min-w-0">
-            <p className="truncate text-[13px]">{automation.prompt}</p>
+            <p className="truncate text-body-dense">{automation.prompt}</p>
             <p className="font-mono text-xs text-muted-foreground">{automation.schedule}</p>
           </div>
           <div className="flex shrink-0 items-center gap-1">
             <label className="flex cursor-pointer items-center gap-1 text-xs">
-              <input type="checkbox" checked={automation.enabled} disabled={pending} onChange={(event) => onToggle(automation.id, event.target.checked)} />
+              <input
+                type="checkbox"
+                checked={automation.enabled}
+                disabled={pending}
+                onChange={(event) => onToggle(automation.id, event.target.checked)}
+              />
               on
             </label>
-            <button type="button" aria-label="Delete automation" className="rounded p-1 hover:bg-muted" disabled={pending} onClick={() => onDelete(automation.id)}>
+            <button
+              type="button"
+              aria-label="Delete automation"
+              className="rounded p-1 hover:bg-muted"
+              disabled={pending}
+              onClick={() => onDelete(automation.id)}
+            >
               <Trash2 aria-hidden className="size-3.5" />
             </button>
           </div>
@@ -246,11 +328,28 @@ function AutomationsPanel({
             setAdding(false);
           }}
         >
-          <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} rows={3} required maxLength={4000} placeholder="What should it do?" className="w-full rounded-md border border-input bg-transparent px-2 py-1.5 text-[13px]" />
-          <input value={schedule} onChange={(event) => setSchedule(event.target.value)} className="rounded-md border border-input bg-transparent px-2 py-1.5 font-mono text-[13px]" aria-label="Cron schedule" />
+          <textarea
+            value={prompt}
+            onChange={(event) => setPrompt(event.target.value)}
+            rows={3}
+            required
+            maxLength={4000}
+            placeholder="What should it do?"
+            className="w-full rounded-md border border-input bg-transparent px-2 py-1.5 text-body-dense"
+          />
+          <input
+            value={schedule}
+            onChange={(event) => setSchedule(event.target.value)}
+            className="rounded-md border border-input bg-transparent px-2 py-1.5 font-mono text-body-dense"
+            aria-label="Cron schedule"
+          />
           <div className="flex justify-end gap-2">
-            <Button size="sm" variant="ghost" type="button" onClick={() => setAdding(false)}>Cancel</Button>
-            <Button size="sm" type="submit" disabled={pending || !prompt.trim()}>Add</Button>
+            <Button size="sm" variant="ghost" type="button" onClick={() => setAdding(false)}>
+              Cancel
+            </Button>
+            <Button size="sm" type="submit" disabled={pending || !prompt.trim()}>
+              Add
+            </Button>
           </div>
         </form>
       ) : (
@@ -278,9 +377,15 @@ function MemoryPanel({
     <div className="flex flex-col gap-2">
       <p className="text-xs text-muted-foreground">Context that this project remembers.</p>
       {memories.map((memory) => (
-        <div key={memory.id} className="group flex items-start justify-between gap-2 text-[13px]">
+        <div key={memory.id} className="group flex items-start justify-between gap-2 text-body-dense">
           <p className="min-w-0 flex-1">{memory.content}</p>
-          <button type="button" aria-label="Delete memory" className="rounded p-1 opacity-0 group-hover:opacity-100 hover:bg-muted" disabled={pending} onClick={() => onDelete(memory.id)}>
+          <button
+            type="button"
+            aria-label="Delete memory"
+            className="rounded p-1 opacity-0 group-hover:opacity-100 hover:bg-muted"
+            disabled={pending}
+            onClick={() => onDelete(memory.id)}
+          >
             <Trash2 aria-hidden className="size-3.5" />
           </button>
         </div>
@@ -294,10 +399,21 @@ function MemoryPanel({
         }}
       >
         <div className="min-w-0 flex-1">
-          <label className="sr-only" htmlFor="project-memory-input">Add memory</label>
-          <input id="project-memory-input" value={value} onChange={(event) => setValue(event.target.value)} maxLength={2000} placeholder="Add a memory" className="w-full rounded-md border border-input bg-transparent px-2 py-1.5 text-[13px]" />
+          <label className="sr-only" htmlFor="project-memory-input">
+            Add memory
+          </label>
+          <input
+            id="project-memory-input"
+            value={value}
+            onChange={(event) => setValue(event.target.value)}
+            maxLength={2000}
+            placeholder="Add a memory"
+            className="w-full rounded-md border border-input bg-transparent px-2 py-1.5 text-body-dense"
+          />
         </div>
-        <Button size="sm" variant="outline" type="submit" disabled={pending || !value.trim()}>Add</Button>
+        <Button size="sm" variant="outline" type="submit" disabled={pending || !value.trim()}>
+          Add
+        </Button>
       </form>
     </div>
   );
@@ -318,9 +434,9 @@ function ConnectorToggle({
         <ProviderIcon provider={connector.alias ?? connector.displayName} displayName={connector.displayName} />
       </span>
       <span className="min-w-0 flex-1 leading-tight">
-        <span className="block truncate text-[13px]">{connector.displayName}</span>
+        <span className="block truncate text-body-dense">{connector.displayName}</span>
         {connector.alias && connector.alias !== connector.displayName ? (
-          <span className="block truncate text-[11px] text-muted-foreground">{connector.alias}</span>
+          <span className="block truncate text-data text-muted-foreground">{connector.alias}</span>
         ) : null}
       </span>
       <Switch

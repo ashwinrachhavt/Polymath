@@ -20,7 +20,8 @@ export const metadata = { title: "Connectors · Polymath" };
 /* What the OAuth callback reported, in the owner's words. */
 const CONNECTION_RESULT: Record<string, string> = {
   connected: "Connected.",
-  "missing-state": "The provider did not return a state token, so the connection could not be matched. Try connecting again.",
+  "missing-state":
+    "The provider did not return a state token, so the connection could not be matched. Try connecting again.",
   "unknown-attempt": "That connection attempt is no longer valid. Start it again.",
   "provider-not-active": "The provider did not finish authorising the account. Try again.",
   incomplete: "That attempt never reached the provider. Start it again.",
@@ -33,7 +34,9 @@ async function Connectors({ searchParams }: { searchParams: Promise<Record<strin
   await io();
   const query = await searchParams;
   const connectionResult = typeof query.connection === "string" ? query.connection : null;
-  const resultMessage = connectionResult ? CONNECTION_RESULT[connectionResult] ?? "The connection did not complete." : null;
+  const resultMessage = connectionResult
+    ? (CONNECTION_RESULT[connectionResult] ?? "The connection did not complete.")
+    : null;
   const auth = await getAuthContext();
   const [connectors, senderPolicy, senderProposalsAccountIds] = await Promise.all([
     listConnectors(auth),
@@ -76,16 +79,18 @@ async function Connectors({ searchParams }: { searchParams: Promise<Record<strin
           role="status"
           className={
             connectionResult === "connected"
-              ? "rounded-md border border-border bg-muted px-3 py-2 text-[13px]"
-              : "rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-[13px] text-destructive"
+              ? "rounded-md border border-border bg-muted px-3 py-2 text-body-dense"
+              : "rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-body-dense text-destructive"
           }
         >
           {resultMessage}
         </p>
       ) : null}
 
-      <ConnectorCatalog connectors={catalog} authorizedSenders={senderPolicy.configured ? senderPolicy.aliases : null} />
-
+      <ConnectorCatalog
+        connectors={catalog}
+        authorizedSenders={senderPolicy.configured ? senderPolicy.aliases : null}
+      />
     </Screen>
   );
 }
@@ -96,7 +101,13 @@ export default function ConnectorsPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   return (
-    <Suspense fallback={<p role="status" className="p-6 text-[13px] text-muted-foreground">Opening connectors…</p>}>
+    <Suspense
+      fallback={
+        <p role="status" className="p-6 text-body-dense text-muted-foreground">
+          Opening connectors…
+        </p>
+      }
+    >
       <Connectors searchParams={searchParams} />
     </Suspense>
   );

@@ -41,7 +41,7 @@ async function ReaderSurface({ documentId }: { documentId: string }) {
         actions={
           <Link
             href="/polymath/library"
-            className="text-[13px] text-muted-foreground underline-offset-4 hover:underline"
+            className="text-body-dense text-muted-foreground underline-offset-4 hover:underline"
           >
             Back to library
           </Link>
@@ -65,13 +65,13 @@ async function ReaderSurface({ documentId }: { documentId: string }) {
           </Readout>
         </div>
         {!doc.extraction || doc.extraction.status === "pending" || doc.extraction.status === "skipped" ? (
-          <p role="status" className="text-[13px] text-muted-foreground">
+          <p role="status" className="text-body-dense text-muted-foreground">
             Still reading this document. Check back shortly.
           </p>
         ) : doc.extraction.status === "failed" ? (
-          <p role="alert" className="text-[13px] text-destructive">
-            This document could not be read{doc.extraction.error ? `: ${doc.extraction.error}` : "."} Re-run
-            extraction from Knowledge.
+          <p role="alert" className="text-body-dense text-destructive">
+            This document could not be read{doc.extraction.error ? `: ${doc.extraction.error}` : "."} Re-run extraction
+            from Knowledge.
           </p>
         ) : (
           <>

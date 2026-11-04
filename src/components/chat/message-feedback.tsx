@@ -75,7 +75,7 @@ export function MessageFeedback({
         <ThumbsDown aria-hidden className="size-3.5" />
       </button>
       {error ? (
-        <span className="text-destructive ml-1.5 text-[11px]" role="alert">
+        <span className="text-destructive ml-1.5 text-data" role="alert">
           Feedback was not saved.
         </span>
       ) : null}

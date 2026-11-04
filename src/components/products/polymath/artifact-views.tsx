@@ -18,16 +18,14 @@ export type CitationSource = { documentId: string; title: string };
 
 function CitationMarker({ index }: { index: number }) {
   return (
-    <sup className="readout ml-0.5 text-[10px] text-muted-foreground" aria-label={`Source ${index + 1}`}>
+    <sup className="readout ml-0.5 text-data text-muted-foreground" aria-label={`Source ${index + 1}`}>
       {index + 1}
     </sup>
   );
 }
 
 function markers(citations: string[], sources: CitationSource[]): number[] {
-  return citations
-    .map((id) => sources.findIndex((s) => s.documentId === id))
-    .filter((i) => i >= 0);
+  return citations.map((id) => sources.findIndex((s) => s.documentId === id)).filter((i) => i >= 0);
 }
 
 export function DeckView({ content, sources }: { content: DeckContent; sources: CitationSource[] }) {
@@ -38,7 +36,7 @@ export function DeckView({ content, sources }: { content: DeckContent; sources: 
         return (
           <li key={`${i}-${slide.title}`} className="panel rounded-xl p-5">
             <div className="flex items-baseline justify-between gap-3">
-              <h3 className="wrap-anywhere text-[15px] font-medium">
+              <h3 className="wrap-anywhere text-body font-medium">
                 {slide.title}
                 {cites.map((index) => (
                   <CitationMarker key={index} index={index} />
@@ -51,14 +49,18 @@ export function DeckView({ content, sources }: { content: DeckContent; sources: 
             {slide.bullets.length > 0 && (
               <ul className="mt-3 space-y-1.5">
                 {slide.bullets.map((bullet, b) => (
-                  <li key={b} className="flex gap-2 text-[13px] leading-relaxed">
+                  <li key={b} className="flex gap-2 text-body-dense leading-relaxed">
                     <span aria-hidden className="mt-1.5 size-1 shrink-0 rounded-full bg-muted-foreground" />
                     <span className="wrap-anywhere">{bullet}</span>
                   </li>
                 ))}
               </ul>
             )}
-            {slide.note && <p className="mt-3 wrap-anywhere border-t border-border pt-3 text-xs leading-relaxed text-muted-foreground">{slide.note}</p>}
+            {slide.note && (
+              <p className="mt-3 wrap-anywhere border-t border-border pt-3 text-xs leading-relaxed text-muted-foreground">
+                {slide.note}
+              </p>
+            )}
             {cites.length === 0 && (
               <p className="mt-3 text-xs text-muted-foreground">Unsourced slide. Edit it to cite a document.</p>
             )}
@@ -75,7 +77,11 @@ export function InfographicView({ content, sources }: { content: InfographicCont
       <h2 className="wrap-anywhere text-lg font-medium">{content.headline}</h2>
 
       {content.stats.length > 0 && (
-        <dl className={content.layout === "stats" ? "mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3" : "mt-4 flex flex-wrap gap-6"}>
+        <dl
+          className={
+            content.layout === "stats" ? "mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3" : "mt-4 flex flex-wrap gap-6"
+          }
+        >
           {content.stats.map((stat, i) => {
             const index = stat.citation ? sources.findIndex((s) => s.documentId === stat.citation) : -1;
             return (
@@ -95,8 +101,8 @@ export function InfographicView({ content, sources }: { content: InfographicCont
         <div className="mt-6 space-y-4">
           {content.sections.map((section, i) => (
             <section key={`${i}-${section.heading}`}>
-              <h3 className="wrap-anywhere text-[13px] font-medium">{section.heading}</h3>
-              <p className="mt-1 wrap-anywhere text-[13px] leading-relaxed text-muted-foreground">{section.body}</p>
+              <h3 className="wrap-anywhere text-body-dense font-medium">{section.heading}</h3>
+              <p className="mt-1 wrap-anywhere text-body-dense leading-relaxed text-muted-foreground">{section.body}</p>
             </section>
           ))}
         </div>

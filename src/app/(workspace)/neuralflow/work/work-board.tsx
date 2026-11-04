@@ -51,13 +51,7 @@ function apply(cards: BoardCardData[], change: Change): BoardCardData[] {
   return cards.map((card) => (card.id === change.id ? { ...card, status: change.status } : card));
 }
 
-export function WorkBoard({
-  cards,
-  detailBase,
-}: {
-  cards: BoardCardData[];
-  detailBase: string;
-}) {
+export function WorkBoard({ cards, detailBase }: { cards: BoardCardData[]; detailBase: string }) {
   const router = useRouter();
   const [optimistic, move] = useOptimistic(cards, apply);
   const [pending, startTransition] = useTransition();
@@ -66,7 +60,7 @@ export function WorkBoard({
   const [error, setError] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const intent = useRef<string | null>(null);
-  const opened = openId ? optimistic.find((card) => card.id === openId) ?? null : null;
+  const opened = openId ? (optimistic.find((card) => card.id === openId) ?? null) : null;
 
   const ALL_STATUSES: Array<[BoardStatus, string]> = [
     ["inbox", "Inbox"],
@@ -84,7 +78,12 @@ export function WorkBoard({
     const key = crypto.randomUUID();
     startTransition(async () => {
       move({ type: "move", id: card.id, status });
-      const result = await updateTaskAction({ taskId: card.id, expectedVersion: card.version, idempotencyKey: key, patch: { status } });
+      const result = await updateTaskAction({
+        taskId: card.id,
+        expectedVersion: card.version,
+        idempotencyKey: key,
+        patch: { status },
+      });
       if (!result.ok) {
         setError(result.error);
         return;
@@ -107,8 +106,20 @@ export function WorkBoard({
     startTransition(async () => {
       const result = await moveTaskAction(
         direction === -1
-          ? { taskId: card.id, expectedVersion: card.version, beforeTaskId: target.id, afterTaskId: beyond?.id, idempotencyKey: key }
-          : { taskId: card.id, expectedVersion: card.version, afterTaskId: target.id, beforeTaskId: beyond?.id, idempotencyKey: key },
+          ? {
+              taskId: card.id,
+              expectedVersion: card.version,
+              beforeTaskId: target.id,
+              afterTaskId: beyond?.id,
+              idempotencyKey: key,
+            }
+          : {
+              taskId: card.id,
+              expectedVersion: card.version,
+              afterTaskId: target.id,
+              beforeTaskId: beyond?.id,
+              idempotencyKey: key,
+            },
       );
       if (!result.ok) {
         setError(result.error);
@@ -151,7 +162,7 @@ export function WorkBoard({
   return (
     <div className="flex flex-col gap-3">
       {error ? (
-        <p role="alert" className="text-[12px] text-destructive">
+        <p role="alert" className="text-label text-destructive">
           {error}
         </p>
       ) : null}
@@ -177,13 +188,13 @@ export function WorkBoard({
               }`}
             >
               <div className="mb-2 flex items-baseline gap-2 px-0.5">
-                <h2 className="text-[12px] font-medium">{lane.label}</h2>
-                <span className="readout text-[11px] text-muted-foreground">{laneCards.length}</span>
+                <h2 className="text-label font-medium">{lane.label}</h2>
+                <span className="readout text-data text-muted-foreground">{laneCards.length}</span>
               </div>
 
               <ul className="flex min-h-16 flex-col gap-2">
                 {laneCards.length === 0 ? (
-                  <li className="rounded-md border border-dashed border-border/70 px-2 py-3 text-center text-[11px] text-muted-foreground">
+                  <li className="rounded-md border border-dashed border-border/70 px-2 py-3 text-center text-data text-muted-foreground">
                     {active ? "Drop here" : "Empty"}
                   </li>
                 ) : (
@@ -207,11 +218,11 @@ export function WorkBoard({
                         <button
                           type="button"
                           onClick={() => setOpenId(card.id)}
-                          className="w-full text-left text-[12px] leading-snug text-foreground hover:underline"
+                          className="w-full text-left text-label leading-snug text-foreground hover:underline"
                         >
                           {card.title}
                         </button>
-                        <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
+                        <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-data text-muted-foreground">
                           {card.priority !== "none" ? <span>{card.priority}</span> : null}
                           {card.dueAt ? <span className="readout">{card.dueAt.slice(0, 10)}</span> : null}
                           {card.subtaskCount > 0 ? (
@@ -232,7 +243,7 @@ export function WorkBoard({
                             aria-label={`Move ${card.title} to status`}
                             value={card.status}
                             disabled={pending}
-                            className="h-6 min-w-0 flex-1 text-[10px]"
+                            className="h-6 min-w-0 flex-1 text-data"
                             onChange={(event) => changeStatus(card, event.target.value as BoardStatus)}
                           >
                             {ALL_STATUSES.map(([value, label]) => (
@@ -244,7 +255,7 @@ export function WorkBoard({
                           <Button
                             size="sm"
                             variant="ghost"
-                            className="h-6 shrink-0 px-1 text-[10px]"
+                            className="h-6 shrink-0 px-1 text-data"
                             disabled={pending || index === 0}
                             aria-label={`Move ${card.title} up`}
                             onClick={() => reorder(card, laneCards, index, -1)}
@@ -254,7 +265,7 @@ export function WorkBoard({
                           <Button
                             size="sm"
                             variant="ghost"
-                            className="h-6 shrink-0 px-1 text-[10px]"
+                            className="h-6 shrink-0 px-1 text-data"
                             disabled={pending || index === laneCards.length - 1}
                             aria-label={`Move ${card.title} down`}
                             onClick={() => reorder(card, laneCards, index, 1)}
@@ -277,7 +288,7 @@ export function WorkBoard({
         onClose={() => setOpenId(null)}
         fullHref={opened ? `${detailBase}?view=saved&task=${opened.id}` : null}
       />
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-data text-muted-foreground">
         Drag a card to change its status.{" "}
         <Link href={`${detailBase}?view=saved`} className="hover:text-foreground hover:underline">
           Open the list

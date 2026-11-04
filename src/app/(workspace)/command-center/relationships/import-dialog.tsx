@@ -96,7 +96,7 @@ export function ImportDialog({ children }: { children: React.ReactNode }) {
           }`}
         >
           <FileUp aria-hidden className="text-muted-foreground size-6" />
-          <p className="text-[13px] font-medium">Drag the CSV here</p>
+          <p className="text-body-dense font-medium">Drag the CSV here</p>
           <p className="max-w-xs text-xs leading-relaxed text-muted-foreground">
             First name, last name, email address, company and position are read. Nothing is deleted by an import.
           </p>
@@ -114,17 +114,17 @@ export function ImportDialog({ children }: { children: React.ReactNode }) {
         </div>
 
         {fileName && pending ? (
-          <p className="text-muted-foreground text-[13px]" role="status">
+          <p className="text-muted-foreground text-body-dense" role="status">
             Reading {fileName}…
           </p>
         ) : null}
 
         {summary ? (
           <div className="space-y-2 rounded-lg border border-border bg-muted/30 p-4" role="status">
-            <p className="text-[13px] font-medium">
+            <p className="text-body-dense font-medium">
               Read {summary.rowsRead} row{summary.rowsRead === 1 ? "" : "s"} from {fileName}
             </p>
-            <ul className="text-muted-foreground space-y-1 text-[13px]">
+            <ul className="text-muted-foreground space-y-1 text-body-dense">
               <li>{summary.peopleCreated} people added</li>
               <li>{summary.peopleMatched} already known</li>
               <li>{summary.organizationsCreated} organizations added</li>
@@ -146,7 +146,7 @@ export function ImportDialog({ children }: { children: React.ReactNode }) {
         ) : null}
 
         {error ? (
-          <p className="text-destructive text-[13px]" role="alert">
+          <p className="text-destructive text-body-dense" role="alert">
             {error}
           </p>
         ) : null}

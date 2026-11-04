@@ -41,20 +41,20 @@ export function AgentPanel({ agent, defaultOpen = false }: { agent: AgentPanelDa
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
-        className="text-muted-foreground hover:text-foreground focus-visible:ring-ring inline-flex items-center gap-1.5 rounded text-[13px] outline-none transition-colors focus-visible:ring-2"
+        className="text-muted-foreground hover:text-foreground focus-visible:ring-ring inline-flex items-center gap-1.5 rounded text-body-dense outline-none transition-colors focus-visible:ring-2"
       >
         <Bot aria-hidden className="size-3.5" />
         <span className="truncate">{agent.name}</span>
-        {agent.model ? <span className="readout shrink-0 text-[11px] opacity-80">{agent.model}</span> : null}
-        <ChevronDown aria-hidden className={cn("size-3 shrink-0 transition-transform", open && "rotate-180")} />
+        {agent.model ? <span className="readout shrink-0 text-data opacity-80">{agent.model}</span> : null}
+        <ChevronDown aria-hidden className={cn("size-3.5 shrink-0 transition-transform", open && "rotate-180")} />
       </button>
 
       {open ? (
         <div className="border-border mt-2 flex flex-col gap-3 rounded-lg border px-3.5 py-3">
           {agent.instructions ? (
             <div className="flex flex-col gap-1">
-              <p className="text-muted-foreground text-[11px] font-medium">Instructions</p>
-              <p className="text-[13px] leading-5 whitespace-pre-wrap">{agent.instructions}</p>
+              <p className="text-muted-foreground text-data font-medium">Instructions</p>
+              <p className="text-body-dense leading-5 whitespace-pre-wrap">{agent.instructions}</p>
             </div>
           ) : null}
 
@@ -65,10 +65,10 @@ export function AgentPanel({ agent, defaultOpen = false }: { agent: AgentPanelDa
                 "Tools" read as "tools this answer used", which is how a
                 granted-but-never-invoked catalog looked like a wall of calls.
               */}
-              <p className="text-muted-foreground text-[11px] font-medium">
+              <p className="text-muted-foreground text-data font-medium">
                 Policy ceiling · {agent.ceiling} {agent.ceiling === 1 ? "capability" : "capabilities"}
               </p>
-              <p className="text-muted-foreground text-[11px] leading-4">
+              <p className="text-muted-foreground text-data leading-4">
                 What the run was allowed to call. The chain of thought above shows what it actually called.
               </p>
               <ul className="flex flex-col">
@@ -83,21 +83,21 @@ export function AgentPanel({ agent, defaultOpen = false }: { agent: AgentPanelDa
                         aria-controls={descId}
                         disabled={!tool.description}
                         onClick={() => setOpenTool(expanded ? null : tool.id)}
-                        className="hover:bg-muted/60 focus-visible:ring-ring flex h-8 w-full items-center gap-2 rounded px-1 text-left text-[13px] outline-none transition-colors focus-visible:ring-2 disabled:cursor-default"
+                        className="hover:bg-muted/60 focus-visible:ring-ring flex h-8 w-full items-center gap-2 rounded px-1 text-left text-body-dense outline-none transition-colors focus-visible:ring-2 disabled:cursor-default"
                       >
                         <span className="min-w-0 flex-1 truncate">{tool.name}</span>
                         {tool.description ? (
                           <ChevronDown
                             aria-hidden
                             className={cn(
-                              "text-muted-foreground size-3 shrink-0 transition-transform",
+                              "text-muted-foreground size-3.5 shrink-0 transition-transform",
                               expanded && "rotate-180",
                             )}
                           />
                         ) : null}
                       </button>
                       {expanded && tool.description ? (
-                        <p id={descId} className="text-muted-foreground px-1 pb-2 text-[12px] leading-5">
+                        <p id={descId} className="text-muted-foreground px-1 pb-2 text-label leading-5">
                           {tool.description}
                         </p>
                       ) : null}

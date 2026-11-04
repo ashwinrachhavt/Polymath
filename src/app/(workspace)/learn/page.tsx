@@ -2,6 +2,7 @@ import Link from "next/link";
 import { io } from "next/cache";
 import { Suspense } from "react";
 import { EmptyState } from "@/components/empty-state";
+import { WorkStatus } from "@/components/work-status";
 import { Empty, Panel, Screen, Stat } from "@/components/workspace/ui";
 import { getRewardsOverview } from "@/domains/gamification/queries";
 import { getLearnLibrary, type LearnLibraryRow } from "@/domains/learning/queries";
@@ -52,17 +53,23 @@ function LibraryList({ rows }: { rows: LearnLibraryRow[] }) {
           >
             <Link
               href={`/learn/${row.documentId}`}
-              className="min-w-0 flex-1 truncate text-[13px] font-medium underline-offset-4 hover:underline"
+              className="min-w-0 flex-1 truncate text-body-dense font-medium underline-offset-4 hover:underline"
             >
               {row.title}
             </Link>
             <span className="text-xs text-muted-foreground">{learningState(row)}</span>
             {attempted ? <span className="text-xs text-muted-foreground">last attempted {attempted}</span> : null}
+            {row.lastFailure ? (
+              <WorkStatus
+                state={{ phase: "failed", label: `Last generation failed: ${row.lastFailure}` }}
+                className="w-full"
+              />
+            ) : null}
             {row.quizzable ? (
               row.quizId ? (
                 <Link
                   href={`/learn/${row.documentId}`}
-                  className="text-[13px] font-medium underline-offset-4 hover:underline"
+                  className="text-body-dense font-medium underline-offset-4 hover:underline"
                 >
                   Retake
                 </Link>
@@ -106,7 +113,7 @@ async function LearnSurface() {
           action={
             <Link
               href="/polymath/knowledge"
-              className="inline-flex h-7 items-center rounded-md border border-border px-2.5 text-[13px] font-medium underline-offset-4 hover:underline"
+              className="inline-flex h-7 items-center rounded-md border border-border px-2.5 text-body-dense font-medium underline-offset-4 hover:underline"
             >
               Open the vault
             </Link>
@@ -137,7 +144,7 @@ export default function LearnPage() {
   return (
     <Suspense
       fallback={
-        <p role="status" className="p-6 text-[13px] text-muted-foreground">
+        <p role="status" className="p-6 text-body-dense text-muted-foreground">
           Opening the learning library…
         </p>
       }

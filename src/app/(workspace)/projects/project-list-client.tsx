@@ -16,7 +16,7 @@ import { createProjectAction, setProjectPinnedAction } from "./project-actions";
 export function SectionRow({ label }: { label: string }) {
   return (
     <div className="mb-1 flex items-center justify-between rounded-md bg-muted/50 px-3 py-2">
-      <span className="text-[13px] text-muted-foreground">{label}</span>
+      <span className="text-body-dense text-muted-foreground">{label}</span>
     </div>
   );
 }
@@ -71,7 +71,11 @@ export function NewProjectButton() {
       <Button size="sm" variant="ghost" type="button" onClick={() => setOpen(false)}>
         Cancel
       </Button>
-      {error ? <p role="alert" className="text-destructive text-xs">{error}</p> : null}
+      {error ? (
+        <p role="alert" className="text-destructive text-xs">
+          {error}
+        </p>
+      ) : null}
     </form>
   );
 }
@@ -102,20 +106,20 @@ export function ProjectRow({
 
   return (
     <li className="group relative flex items-start gap-3 rounded-lg px-3 py-3 transition-colors hover:bg-muted/50">
-      <span aria-hidden className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted text-[15px]">
+      <span aria-hidden className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted text-body">
         {project.emoji ?? <Folder className="size-4 text-muted-foreground" />}
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
-          <Link href={`/projects/${project.id}`} className="min-w-0 truncate text-[15px] font-medium hover:underline">
+          <Link href={`/projects/${project.id}`} className="min-w-0 truncate text-body font-medium hover:underline">
             {project.title}
           </Link>
-          {pinned ? <Pin aria-hidden className="size-3 shrink-0 text-muted-foreground" /> : null}
+          {pinned ? <Pin aria-hidden className="size-3.5 shrink-0 text-muted-foreground" /> : null}
         </div>
         {project.description ? (
-          <p className="mt-0.5 line-clamp-1 text-[13px] text-muted-foreground">{project.description}</p>
+          <p className="mt-0.5 line-clamp-1 text-body-dense text-muted-foreground">{project.description}</p>
         ) : null}
-        <p className="text-muted-foreground mt-1 text-[12px]">
+        <p className="text-muted-foreground mt-1 text-label">
           {project.documentCount === 0
             ? "No sources yet"
             : `${project.documentCount} source${project.documentCount === 1 ? "" : "s"}`}
@@ -131,7 +135,13 @@ export function ProjectRow({
         onClick={togglePin}
         className={`rounded p-1 hover:bg-muted ${pinned ? "" : "opacity-0 group-hover:opacity-100"}`}
       >
-        {pending ? <Loader2 aria-hidden className="size-4 animate-spin" /> : pinned ? <Pin aria-hidden className="size-4" /> : <PinOff aria-hidden className="size-4" />}
+        {pending ? (
+          <Loader2 aria-hidden className="size-4 animate-spin" />
+        ) : pinned ? (
+          <Pin aria-hidden className="size-4" />
+        ) : (
+          <PinOff aria-hidden className="size-4" />
+        )}
       </button>
     </li>
   );

@@ -52,17 +52,19 @@ async function AgentSessionRoute({ params }: { params: Promise<{ projectId: stri
 
   const project = await getProjectDetail(auth, projectId);
   if (!project) {
-    return <div className="page-content text-[13px] text-muted-foreground">This project does not exist.</div>;
+    return <div className="page-content text-body-dense text-muted-foreground">This project does not exist.</div>;
   }
 
   const session = await getProjectSession(auth, sessionId);
   if (!session || !project.repoPath || !cwdMatchesProjectRoot(session.cwd, project.repoPath)) {
     return (
       <div className="page-content">
-        <Link href={`/projects/${projectId}`} className="text-[13px] text-muted-foreground hover:underline">
+        <Link href={`/projects/${projectId}`} className="text-body-dense text-muted-foreground hover:underline">
           ← Back to {project.title}
         </Link>
-        <p className="mt-6 text-[13px] text-muted-foreground">This agent session is not attached to this project.</p>
+        <p className="mt-6 text-body-dense text-muted-foreground">
+          This agent session is not attached to this project.
+        </p>
       </div>
     );
   }
@@ -72,11 +74,11 @@ async function AgentSessionRoute({ params }: { params: Promise<{ projectId: stri
   return (
     <div className="page-content">
       <div>
-        <Link href={`/projects/${projectId}`} className="text-[13px] text-muted-foreground hover:underline">
+        <Link href={`/projects/${projectId}`} className="text-body-dense text-muted-foreground hover:underline">
           ← Back to {project.title}
         </Link>
-        <h1 className="screen-title mt-3 text-[20px]">{brief.aiTitle ?? session.externalSessionId}</h1>
-        <p className="mt-1 text-[13px] text-muted-foreground">
+        <h1 className="screen-title mt-3 text-title">{brief.aiTitle ?? session.externalSessionId}</h1>
+        <p className="mt-1 text-body-dense text-muted-foreground">
           {AGENT_SOURCE_LABEL[session.source] ?? session.source} · started{" "}
           {session.startedAt ? timeAgoShort(session.startedAt) : "unknown"} · last activity{" "}
           {session.lastActivityAt ? timeAgoShort(session.lastActivityAt) : "unknown"}

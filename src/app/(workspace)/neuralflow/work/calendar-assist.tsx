@@ -64,20 +64,31 @@ export function CalendarToolbar({ events, proposals }: { events: AssistEvent[]; 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap gap-2">
-        <Button size="sm" onClick={() => setOpen(open === "add" ? null : "add")}>+ Add block</Button>
-        <Button size="sm" variant="outline" onClick={() => setOpen(open === "assist" ? null : "assist")}>AI Assistant</Button>
+        <Button size="sm" onClick={() => setOpen(open === "add" ? null : "add")}>
+          + Add block
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => setOpen(open === "assist" ? null : "assist")}>
+          AI Assistant
+        </Button>
       </div>
 
       {proposals.length > 0 ? (
         <ul className="flex flex-col gap-1.5" aria-label="Agent proposals">
           {proposals.map((p) => (
-            <li key={p.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-[13px]">
+            <li
+              key={p.id}
+              className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-body-dense"
+            >
               <span className="min-w-0 flex-1">
                 <span className="font-medium">{p.title}</span>
                 <span className="ml-2 text-xs text-muted-foreground">{p.effect}</span>
               </span>
-              <Button size="sm" disabled={pending} onClick={() => decide(p, true)}>Approve</Button>
-              <Button size="sm" variant="ghost" disabled={pending} onClick={() => decide(p, false)}>Reject</Button>
+              <Button size="sm" disabled={pending} onClick={() => decide(p, true)}>
+                Approve
+              </Button>
+              <Button size="sm" variant="ghost" disabled={pending} onClick={() => decide(p, false)}>
+                Reject
+              </Button>
             </li>
           ))}
         </ul>
@@ -89,23 +100,65 @@ export function CalendarToolbar({ events, proposals }: { events: AssistEvent[]; 
             e.preventDefault();
             add(e.currentTarget);
           }}
-          className="flex flex-wrap items-end gap-2 rounded-lg border border-border p-3 text-[13px]"
+          className="flex flex-wrap items-end gap-2 rounded-lg border border-border p-3 text-body-dense"
         >
-          <label className="flex flex-col gap-1">Title<input name="title" required maxLength={200} className="h-8 rounded-md border border-border bg-background px-2" /></label>
-          <label className="flex flex-col gap-1">Day<input name="day" type="date" required className="h-8 rounded-md border border-border bg-background px-2" /></label>
-          <label className="flex flex-col gap-1">From<input name="start" type="time" required defaultValue="09:00" className="h-8 rounded-md border border-border bg-background px-2" /></label>
-          <label className="flex flex-col gap-1">To<input name="end" type="time" required defaultValue="10:00" className="h-8 rounded-md border border-border bg-background px-2" /></label>
-          <Button size="sm" type="submit" disabled={pending}>Add</Button>
+          <label className="flex flex-col gap-1">
+            Title
+            <input
+              name="title"
+              required
+              maxLength={200}
+              className="h-8 rounded-md border border-border bg-background px-2"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            Day
+            <input name="day" type="date" required className="h-8 rounded-md border border-border bg-background px-2" />
+          </label>
+          <label className="flex flex-col gap-1">
+            From
+            <input
+              name="start"
+              type="time"
+              required
+              defaultValue="09:00"
+              className="h-8 rounded-md border border-border bg-background px-2"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            To
+            <input
+              name="end"
+              type="time"
+              required
+              defaultValue="10:00"
+              className="h-8 rounded-md border border-border bg-background px-2"
+            />
+          </label>
+          <Button size="sm" type="submit" disabled={pending}>
+            Add
+          </Button>
         </form>
       ) : null}
 
       {open === "assist" ? (
-        <div className="rounded-lg border border-border p-3 text-[13px]" role="dialog" aria-label="Calendar AI Assistant">
+        <div
+          className="rounded-lg border border-border p-3 text-body-dense"
+          role="dialog"
+          aria-label="Calendar AI Assistant"
+        >
           <p className="font-medium">Calendar AI Assistant</p>
-          <p className="text-xs text-muted-foreground">Ask me about your schedule, find free time, or analyze your calendar.</p>
+          <p className="text-xs text-muted-foreground">
+            Ask me about your schedule, find free time, or analyze your calendar.
+          </p>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {SUGGESTED_PROMPTS.map((s) => (
-              <button key={s} type="button" onClick={() => ask(s)} className="rounded-full border border-border px-2.5 py-1 text-xs hover:bg-accent">
+              <button
+                key={s}
+                type="button"
+                onClick={() => ask(s)}
+                className="rounded-full border border-border px-2.5 py-1 text-xs hover:bg-accent"
+              >
                 {s}
               </button>
             ))}
@@ -124,12 +177,18 @@ export function CalendarToolbar({ events, proposals }: { events: AssistEvent[]; 
               aria-label="Ask Calendar Assist"
               className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2"
             />
-            <Button size="sm" type="submit">Ask AI</Button>
+            <Button size="sm" type="submit">
+              Ask AI
+            </Button>
           </form>
-          {reply ? <pre className="mt-2 whitespace-pre-wrap font-sans text-[13px]">{reply}</pre> : null}
+          {reply ? <pre className="mt-2 whitespace-pre-wrap font-sans text-body-dense">{reply}</pre> : null}
         </div>
       ) : null}
-      {note ? <p role="status" className="text-xs text-muted-foreground">{note}</p> : null}
+      {note ? (
+        <p role="status" className="text-xs text-muted-foreground">
+          {note}
+        </p>
+      ) : null}
     </div>
   );
 }

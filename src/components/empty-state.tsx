@@ -22,11 +22,9 @@ export function EmptyState({
 }) {
   return (
     <div className="panel-empty flex flex-col items-start gap-1.5 rounded-lg px-3.5 py-4">
-      <p className="text-[13px] font-medium">{title}</p>
+      <p className="text-body-dense font-medium">{title}</p>
       {description ? (
-        <p className="text-muted-foreground max-w-prose text-[13px] leading-relaxed">
-          {description}
-        </p>
+        <p className="text-muted-foreground max-w-prose text-body-dense leading-relaxed">{description}</p>
       ) : null}
       {action}
     </div>

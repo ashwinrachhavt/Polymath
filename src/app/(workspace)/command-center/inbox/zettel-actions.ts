@@ -5,8 +5,11 @@ import { z } from "zod";
 import {
   MAX_ZETTEL_SOURCE_CAPTURES,
   countPendingZettelProposals,
+  countQueuedZettelPasses,
   countZettelSourceCaptures,
   requestZettelGeneration,
+  zettelQueueLabel,
+  zettelQueuePhase,
 } from "@/domains/capture/zettel-generation";
 import { getAuthContext, type AuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
@@ -89,4 +92,26 @@ export async function generateZettelsAction(raw: {
     awaitingReview: await countPendingZettelProposals(auth),
     replayed: outcome.replayed,
   };
+}
+
+export type ZettelQueueStatus =
+  { ok: true; phase: "working" | "done"; label: string; reviewing: number } | { ok: false; message: string };
+
+/**
+ * The queue-wide status read a watching verb polls: how many zettelize passes
+ * are still owed, and how many proposals wait for review. Counts only - the
+ * outbox owns the work, this owns the words.
+ */
+export async function zettelQueueStatusAction(): Promise<ZettelQueueStatus> {
+  const auth = await authorize();
+  try {
+    const [queuedPasses, awaitingReview] = await Promise.all([
+      countQueuedZettelPasses(auth),
+      countPendingZettelProposals(auth),
+    ]);
+    const counts = { queuedPasses, awaitingReview };
+    return { ok: true, phase: zettelQueuePhase(counts), label: zettelQueueLabel(counts), reviewing: awaitingReview };
+  } catch (cause) {
+    return { ok: false, message: cause instanceof Error ? cause.message : "Could not read the zettel queue." };
+  }
 }

@@ -230,11 +230,11 @@ export function TaskCard({ data, candidates }: { data: CardData; candidates: { i
       ) : null}
 
       <section aria-label="Subtasks" className="grid gap-2">
-        <h3 className="text-[13px] font-medium">Subtasks</h3>
+        <h3 className="text-body-dense font-medium">Subtasks</h3>
         {data.subtasks.length === 0 && <p className="text-xs text-muted-foreground">No subtasks yet.</p>}
         <ul className="divide-y divide-border">
           {data.subtasks.map((s) => (
-            <li key={s.id} className="flex items-center justify-between gap-3 py-2 text-[13px]">
+            <li key={s.id} className="flex items-center justify-between gap-3 py-2 text-body-dense">
               <span className={s.status === "done" ? "text-muted-foreground line-through" : ""}>{s.title}</span>
               <Button
                 size="sm"
@@ -286,13 +286,13 @@ export function TaskCard({ data, candidates }: { data: CardData; candidates: { i
       </section>
 
       <section aria-label="Dependencies" className="grid gap-2">
-        <h3 className="text-[13px] font-medium">Dependencies</h3>
+        <h3 className="text-body-dense font-medium">Dependencies</h3>
         {data.blockedBy.length === 0 && data.blocking.length === 0 && (
           <p className="text-xs text-muted-foreground">Nothing blocks this task and it blocks nothing.</p>
         )}
         <ul className="divide-y divide-border">
           {data.blockedBy.map((d) => (
-            <li key={d.dependencyId} className="flex items-center justify-between gap-3 py-2 text-[13px]">
+            <li key={d.dependencyId} className="flex items-center justify-between gap-3 py-2 text-body-dense">
               <span>Blocked by {d.title}</span>
               <Button
                 size="sm"
@@ -310,7 +310,7 @@ export function TaskCard({ data, candidates }: { data: CardData; candidates: { i
             </li>
           ))}
           {data.blocking.map((d) => (
-            <li key={d.dependencyId} className="flex items-center justify-between gap-3 py-2 text-[13px]">
+            <li key={d.dependencyId} className="flex items-center justify-between gap-3 py-2 text-body-dense">
               <span>Blocks {d.title}</span>
               <Button
                 size="sm"

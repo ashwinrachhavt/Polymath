@@ -35,8 +35,8 @@ export function Jewels({ overview }: { overview: RewardsOverview }) {
           priority
         />
         <div>
-          <p className="text-[15px] font-medium">{heroEarned ? hero.name : "Finish a task to earn your first stone"}</p>
-          <p className="text-muted-foreground mt-0.5 text-[13px]">{hero.theme}</p>
+          <p className="text-body font-medium">{heroEarned ? hero.name : "Finish a task to earn your first stone"}</p>
+          <p className="text-muted-foreground mt-0.5 text-body-dense">{hero.theme}</p>
         </div>
         <p className="readout text-3xl">
           {overview.totalPoints} <span className="text-muted-foreground text-base">points from the ledger</span>
@@ -44,7 +44,7 @@ export function Jewels({ overview }: { overview: RewardsOverview }) {
       </section>
 
       <section aria-label="All stones">
-        <h2 className="text-[15px] font-medium">All stones</h2>
+        <h2 className="text-body font-medium">All stones</h2>
         <ul className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {stoneCatalog.map((stone) => {
             const open = earnedKeys.has(stone.slug);
@@ -61,7 +61,7 @@ export function Jewels({ overview }: { overview: RewardsOverview }) {
                   }
                 />
                 <div className="min-w-0">
-                  <p className="text-[13px] font-medium">{stone.name}</p>
+                  <p className="text-body-dense font-medium">{stone.name}</p>
                   <p className="text-muted-foreground mt-0.5 text-xs leading-relaxed">
                     {ruleFor.get(stone.slug) ?? stone.rule}
                   </p>

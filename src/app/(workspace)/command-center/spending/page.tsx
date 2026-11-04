@@ -20,7 +20,13 @@ export default function SpendingPage() {
       title="Spending"
       description="What the agents have spent, from recorded usage events. Unpriced work shows as unpriced, never as zero."
     >
-      <Suspense fallback={<p role="status" className="p-6 text-[13px] text-muted-foreground">Loading the ledger…</p>}>
+      <Suspense
+        fallback={
+          <p role="status" className="p-6 text-body-dense text-muted-foreground">
+            Loading the ledger…
+          </p>
+        }
+      >
         <SpendingPanel />
       </Suspense>
     </Screen>

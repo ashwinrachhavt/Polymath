@@ -79,7 +79,7 @@ export function CreateWorkspaceForm() {
         </span>
       </Field>
       {error ? (
-        <p className="text-destructive text-[13px]" role="alert">
+        <p className="text-destructive text-body-dense" role="alert">
           {error}
         </p>
       ) : null}

@@ -36,7 +36,7 @@ function RoleSelect({ row, caller, soleOwner }: { row: MemberRow; caller: Caller
     <Select
       aria-label={`Role for ${row.displayName ?? row.email ?? "member"}`}
       variant="ghost"
-      className="h-8 text-[13px]"
+      className="h-8 text-body-dense"
       value={row.role}
       disabled={saving || ownSoleOwnerRow}
       title={ownSoleOwnerRow ? "A workspace needs at least one active owner." : undefined}
@@ -73,7 +73,7 @@ function RemoveMember({ row }: { row: MemberRow }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="sm" className="h-8 text-[13px] text-muted-foreground">
+        <Button variant="ghost" size="sm" className="h-8 text-body-dense text-muted-foreground">
           Remove
         </Button>
       </DialogTrigger>
@@ -120,7 +120,7 @@ function LeaveWorkspace() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="sm" className="h-8 text-[13px] text-muted-foreground">
+        <Button variant="ghost" size="sm" className="h-8 text-body-dense text-muted-foreground">
           Leave
         </Button>
       </DialogTrigger>
@@ -168,7 +168,7 @@ export function MembersTable({
 }) {
   const canManage = caller.role === "owner" || caller.role === "admin";
   return (
-    <table className="w-full text-[13px]">
+    <table className="w-full text-body-dense">
       <thead>
         <tr className="border-b text-left text-xs text-muted-foreground">
           <th className="py-2 font-medium">Member</th>

@@ -29,12 +29,18 @@ export function ArtifactMarkdown({ text }: { text: string }) {
   let key = 0;
 
   while (i < lines.length) {
-    if (lines[i].trim() === "") { i++; continue; }
+    if (lines[i].trim() === "") {
+      i++;
+      continue;
+    }
 
     if (isTableLine(lines[i]) && i + 1 < lines.length && isSeparatorLine(lines[i + 1])) {
       const tableLines = [lines[i], lines[i + 1]];
       i += 2;
-      while (i < lines.length && isTableLine(lines[i])) { tableLines.push(lines[i]); i++; }
+      while (i < lines.length && isTableLine(lines[i])) {
+        tableLines.push(lines[i]);
+        i++;
+      }
       blocks.push(<Table key={key++} lines={tableLines} />);
       continue;
     }
@@ -49,7 +55,9 @@ export function ArtifactMarkdown({ text }: { text: string }) {
       const ListTag = ordered ? "ol" : "ul";
       blocks.push(
         <ListTag key={key++} className={`my-2 flex flex-col gap-1 pl-6 ${ordered ? "list-decimal" : "list-disc"}`}>
-          {items.map((item, j) => <li key={j}>{renderInline(item)}</li>)}
+          {items.map((item, j) => (
+            <li key={j}>{renderInline(item)}</li>
+          ))}
         </ListTag>,
       );
       continue;
@@ -78,25 +86,39 @@ export function ArtifactMarkdown({ text }: { text: string }) {
     }
 
     const para: string[] = [];
-    while (i < lines.length && lines[i].trim() !== "" && !isTableLine(lines[i]) && !bullet.test(lines[i]) && !numbered.test(lines[i]) && !/^#{1,4}\s/.test(lines[i])) {
+    while (
+      i < lines.length &&
+      lines[i].trim() !== "" &&
+      !isTableLine(lines[i]) &&
+      !bullet.test(lines[i]) &&
+      !numbered.test(lines[i]) &&
+      !/^#{1,4}\s/.test(lines[i])
+    ) {
       para.push(lines[i].trim());
       i++;
     }
     blocks.push(<p key={key++}>{renderInline(para.join(" "))}</p>);
   }
 
-  return <div className="flex flex-col gap-3 text-[15px] leading-7">{blocks}</div>;
+  return <div className="flex flex-col gap-3 text-body leading-7">{blocks}</div>;
 }
 
 function Table({ lines }: { lines: string[] }) {
   const [head, , ...body] = lines;
-  const cells = (line: string) => line.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
+  const cells = (line: string) =>
+    line
+      .trim()
+      .replace(/^\||\|$/g, "")
+      .split("|")
+      .map((c) => c.trim());
   return (
-    <table className="my-2 border-collapse text-[13px]">
+    <table className="my-2 border-collapse text-body-dense">
       <thead>
         <tr>
           {cells(head).map((c, i) => (
-            <th key={i} className="border-border border px-2 py-1 text-left font-medium">{renderInline(c)}</th>
+            <th key={i} className="border-border border px-2 py-1 text-left font-medium">
+              {renderInline(c)}
+            </th>
           ))}
         </tr>
       </thead>
@@ -104,7 +126,9 @@ function Table({ lines }: { lines: string[] }) {
         {body.map((row, r) => (
           <tr key={r}>
             {cells(row).map((c, i) => (
-              <td key={i} className="border-border border px-2 py-1 align-top">{renderInline(c)}</td>
+              <td key={i} className="border-border border px-2 py-1 align-top">
+                {renderInline(c)}
+              </td>
             ))}
           </tr>
         ))}

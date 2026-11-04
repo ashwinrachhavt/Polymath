@@ -13,7 +13,9 @@ const TO_ROLES = ["recipient"] as const;
 function sourceLine(p: DocumentReviewParty): string {
   const profile = p.contactName ?? p.companyName;
   if (profile) return `Profile: ${profile} (${p.partyKind === "contact" ? "contact" : "company"})`;
-  return p.resolutionStatus === "ambiguous" ? "Several profiles match - pick one in review" : "From the document - no profile yet";
+  return p.resolutionStatus === "ambiguous"
+    ? "Several profiles match - pick one in review"
+    : "From the document - no profile yet";
 }
 
 function Block({ label, parties }: { label: string; parties: DocumentReviewParty[] }) {
@@ -25,7 +27,9 @@ function Block({ label, parties }: { label: string; parties: DocumentReviewParty
       ) : (
         parties.map((p) => (
           <div key={p.id} className="flex flex-col">
-            <span className="truncate text-[13px] font-medium">{p.contactName ?? p.companyName ?? p.displayName}</span>
+            <span className="truncate text-body-dense font-medium">
+              {p.contactName ?? p.companyName ?? p.displayName}
+            </span>
             {p.contactName || p.companyName ? (
               p.displayName !== (p.contactName ?? p.companyName) ? (
                 <span className="text-muted-foreground truncate text-xs">Written as &quot;{p.displayName}&quot;</span>
@@ -51,7 +55,8 @@ export function PartyBlocks({ parties }: { parties: DocumentReviewParty[] }) {
       </div>
       {others.length > 0 ? (
         <p className="text-muted-foreground text-xs">
-          Also on the document: {others.map((p) => `${p.contactName ?? p.companyName ?? p.displayName} (${p.partyRole})`).join(", ")}
+          Also on the document:{" "}
+          {others.map((p) => `${p.contactName ?? p.companyName ?? p.displayName} (${p.partyRole})`).join(", ")}
         </p>
       ) : null}
     </section>

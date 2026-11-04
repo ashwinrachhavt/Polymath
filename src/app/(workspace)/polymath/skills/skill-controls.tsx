@@ -146,11 +146,7 @@ export function UseSkill({ id, name, disabled }: { id: string; name: string; dis
   }
 
   if (disabled) {
-    return (
-      <p className="text-muted-foreground text-xs">
-        Enable this skill to use it.
-      </p>
-    );
+    return <p className="text-muted-foreground text-xs">Enable this skill to use it.</p>;
   }
 
   return (
@@ -164,7 +160,7 @@ export function UseSkill({ id, name, disabled }: { id: string; name: string; dis
           }}
           placeholder="Describe what to do with this skill."
           aria-label={`Objective for ${name}`}
-          className="border-input bg-background focus-visible:ring-ring w-full rounded-md border px-3 py-1.5 text-[13px] outline-none focus-visible:ring-3"
+          className="border-input bg-background focus-visible:ring-ring w-full rounded-md border px-3 py-1.5 text-body-dense outline-none focus-visible:ring-3"
         />
         <Button onClick={start} disabled={pending || objective.trim().length === 0} size="sm">
           {pending ? "Starting…" : "Use skill"}

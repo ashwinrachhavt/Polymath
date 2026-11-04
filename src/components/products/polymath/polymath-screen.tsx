@@ -5,7 +5,7 @@ import type { ComponentType } from "react";
 import PolymathStorageWarning from "./feature-storage-warning";
 
 const loading = () => (
-  <p role="status" className="p-6 text-[13px] text-muted-foreground">
+  <p role="status" className="p-6 text-body-dense text-muted-foreground">
     Loading Alfred workspace…
   </p>
 );

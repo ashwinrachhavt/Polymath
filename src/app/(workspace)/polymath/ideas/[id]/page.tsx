@@ -71,7 +71,7 @@ function MissingIdea() {
         title="This idea could not be found."
         description="It may have been removed, or it belongs to another workspace."
         action={
-          <Link href={BASE} className="text-[13px] font-medium underline underline-offset-4">
+          <Link href={BASE} className="text-body-dense font-medium underline underline-offset-4">
             Back to Ideas
           </Link>
         }
@@ -115,7 +115,7 @@ export async function IdeaDetailSurface({ params }: { params: Promise<{ id: stri
     <Screen
       title={idea.title}
       actions={
-        <Link href={BASE} className="text-[13px] text-muted-foreground underline-offset-2 hover:underline">
+        <Link href={BASE} className="text-body-dense text-muted-foreground underline-offset-2 hover:underline">
           Back to Ideas
         </Link>
       }
@@ -126,12 +126,12 @@ export async function IdeaDetailSurface({ params }: { params: Promise<{ id: stri
             block.quote ? (
               <blockquote
                 key={index}
-                className="border-l-2 border-border pl-3 text-[13px] leading-relaxed text-muted-foreground"
+                className="border-l-2 border-border pl-3 text-body-dense leading-relaxed text-muted-foreground"
               >
                 {block.text}
               </blockquote>
             ) : (
-              <p key={index} className="text-[15px] leading-relaxed">
+              <p key={index} className="text-body leading-relaxed">
                 {block.text}
               </p>
             ),
@@ -142,11 +142,11 @@ export async function IdeaDetailSurface({ params }: { params: Promise<{ id: stri
               follow, since they still need a decision. */}
           {linked.length > 0 ? (
             <section className="flex flex-col gap-1">
-              <h2 className="text-[13px] font-medium">Linked ideas</h2>
+              <h2 className="text-body-dense font-medium">Linked ideas</h2>
               <ul className="flex flex-col gap-1">
                 {linked.map((card) => (
                   <li key={card.id}>
-                    <Link href={`${BASE}/${card.id}`} className="text-[13px] underline-offset-2 hover:underline">
+                    <Link href={`${BASE}/${card.id}`} className="text-body-dense underline-offset-2 hover:underline">
                       {card.title}
                     </Link>
                   </li>
@@ -159,7 +159,7 @@ export async function IdeaDetailSurface({ params }: { params: Promise<{ id: stri
             Added {stamp(idea.createdAt)} · updated {stamp(idea.updatedAt)}
           </p>
           <details className="rounded-md border border-border px-3 py-2">
-            <summary className="cursor-pointer text-[13px] font-medium">Edit this idea</summary>
+            <summary className="cursor-pointer text-body-dense font-medium">Edit this idea</summary>
             <div className="mt-2">
               <IdeaEditor
                 workspaceId={auth.workspaceId}

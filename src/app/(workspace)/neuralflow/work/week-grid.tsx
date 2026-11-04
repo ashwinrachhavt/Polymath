@@ -13,7 +13,14 @@ import { blockTimeAction, cancelEventAction } from "./calendar-actions";
  * server for the first free working-hours slot.
  */
 
-export type GridEvent = { id: string; title: string; startsAt: string; endsAt: string; version: number; taskId: string | null };
+export type GridEvent = {
+  id: string;
+  title: string;
+  startsAt: string;
+  endsAt: string;
+  version: number;
+  taskId: string | null;
+};
 export type GridTask = { id: string; title: string; estimateMinutes: number | null; done: boolean };
 
 const START_HOUR = 7;
@@ -44,7 +51,10 @@ export function WeekGrid({
   const [message, setMessage] = useState<string | null>(null);
   // Local midnight for each of the seven days, derived on the client.
   const first = new Date(weekStartMs);
-  const days = Array.from({ length: 7 }, (_, i) => new Date(first.getFullYear(), first.getMonth(), first.getDate() + i));
+  const days = Array.from(
+    { length: 7 },
+    (_, i) => new Date(first.getFullYear(), first.getMonth(), first.getDate() + i),
+  );
   const now = new Date();
 
   function block(task: GridTask) {
@@ -63,7 +73,11 @@ export function WeekGrid({
   function remove(event: GridEvent) {
     setMessage(null);
     startTransition(async () => {
-      const result = await cancelEventAction({ eventId: event.id, expectedVersion: event.version, idempotencyKey: crypto.randomUUID() });
+      const result = await cancelEventAction({
+        eventId: event.id,
+        expectedVersion: event.version,
+        idempotencyKey: crypto.randomUUID(),
+      });
       if (!result.ok) setMessage(result.error);
     });
   }
@@ -77,14 +91,22 @@ export function WeekGrid({
           {days.map((day) => (
             <div key={day.toISOString()} className="border-b border-border px-1 pb-1.5 text-center text-xs">
               <span className="text-muted-foreground">{day.toLocaleDateString(LOCALE, { weekday: "short" })}</span>{" "}
-              <span className={sameDay(day, now) ? "rounded-full bg-foreground px-1.5 py-0.5 text-background" : "font-medium"}>
+              <span
+                className={
+                  sameDay(day, now) ? "rounded-full bg-foreground px-1.5 py-0.5 text-background" : "font-medium"
+                }
+              >
                 {day.getDate()}
               </span>
             </div>
           ))}
           <div className="relative" style={{ height: hours.length * HOUR_PX }}>
             {hours.map((h, i) => (
-              <span key={h} className="absolute right-1 -translate-y-1/2 text-[10px] text-muted-foreground" style={{ top: i * HOUR_PX }}>
+              <span
+                key={h}
+                className="absolute right-1 -translate-y-1/2 text-data text-muted-foreground"
+                style={{ top: i * HOUR_PX }}
+              >
                 {new Date(2000, 0, 1, h).toLocaleTimeString(LOCALE, { hour: "numeric" })}
               </span>
             ))}
@@ -92,7 +114,11 @@ export function WeekGrid({
           {days.map((day) => {
             const dayEvents = events.filter((e) => sameDay(new Date(e.startsAt), day));
             return (
-              <div key={day.toISOString()} className="relative border-l border-border/60" style={{ height: hours.length * HOUR_PX }}>
+              <div
+                key={day.toISOString()}
+                className="relative border-l border-border/60"
+                style={{ height: hours.length * HOUR_PX }}
+              >
                 {hours.map((h, i) => (
                   <div key={h} className="absolute inset-x-0 border-t border-border/40" style={{ top: i * HOUR_PX }} />
                 ))}
@@ -111,12 +137,14 @@ export function WeekGrid({
                   return (
                     <div
                       key={e.id}
-                      className="group absolute inset-x-0.5 overflow-hidden rounded-md border border-border bg-muted/70 px-1.5 py-1 text-[11px] leading-tight"
+                      className="group absolute inset-x-0.5 overflow-hidden rounded-md border border-border bg-muted/70 px-1.5 py-1 text-data leading-tight"
                       style={{ top, height }}
                       title={`${e.title} ${s.toLocaleTimeString(LOCALE, { timeStyle: "short" })} to ${end.toLocaleTimeString(LOCALE, { timeStyle: "short" })}`}
                     >
                       <p className="truncate font-medium">{e.title}</p>
-                      <p className="text-muted-foreground">{s.toLocaleTimeString(LOCALE, { hour: "numeric", minute: "2-digit" })}</p>
+                      <p className="text-muted-foreground">
+                        {s.toLocaleTimeString(LOCALE, { hour: "numeric", minute: "2-digit" })}
+                      </p>
                       <button
                         type="button"
                         aria-label={`Remove ${e.title} from calendar`}
@@ -135,13 +163,13 @@ export function WeekGrid({
         </div>
       </div>
       <aside className="w-full shrink-0 lg:w-64">
-        <h2 className="mb-2 text-[13px] font-medium">Needs a time block</h2>
+        <h2 className="mb-2 text-body-dense font-medium">Needs a time block</h2>
         {unscheduled.length === 0 ? (
           <p className="text-xs text-muted-foreground">Every open task with a due date this week has time set aside.</p>
         ) : (
           <ul className="flex flex-col gap-2">
             {unscheduled.map((task) => (
-              <li key={task.id} className="flex items-center justify-between gap-2 text-[13px]">
+              <li key={task.id} className="flex items-center justify-between gap-2 text-body-dense">
                 <Link href={`/neuralflow/work?view=saved&task=${task.id}`} className="min-w-0 truncate hover:underline">
                   {task.title}
                 </Link>
@@ -152,7 +180,11 @@ export function WeekGrid({
             ))}
           </ul>
         )}
-        {message ? <p role="status" className="mt-3 text-xs text-muted-foreground">{message}</p> : null}
+        {message ? (
+          <p role="status" className="mt-3 text-xs text-muted-foreground">
+            {message}
+          </p>
+        ) : null}
       </aside>
     </div>
   );

@@ -262,19 +262,19 @@ export function ComposerPlus({
                 placeholder="Search notes, artifacts, conversations…"
                 aria-label="Search records to attach"
                 aria-controls={listId}
-                className="placeholder:text-muted-foreground h-8 w-full bg-transparent text-[13px] outline-none"
+                className="placeholder:text-muted-foreground h-8 w-full bg-transparent text-body-dense outline-none"
               />
             </div>
           ) : null}
 
           {records === null ? (
-            <p role="status" className="text-muted-foreground flex items-center gap-2 px-2.5 py-3 text-[12px]">
+            <p role="status" className="text-muted-foreground flex items-center gap-2 px-2.5 py-3 text-label">
               <Loader2 aria-hidden className="size-3.5 animate-spin" /> Searching…
             </p>
           ) : null}
 
           {records !== null && onReference && flat.length === 0 ? (
-            <p className="text-muted-foreground px-2.5 py-3 text-[12px]">
+            <p className="text-muted-foreground px-2.5 py-3 text-label">
               {query.trim() ? "Nothing matches. Try a different word." : "No records yet."}
             </p>
           ) : null}
@@ -289,7 +289,7 @@ export function ComposerPlus({
             >
               {grouped.map((group) => (
                 <li key={group.kind} role="presentation">
-                  <p className="text-muted-foreground px-2.5 pt-1.5 pb-0.5 text-[10px] font-medium tracking-wide uppercase">
+                  <p className="text-muted-foreground px-2.5 pt-1.5 pb-0.5 text-data font-medium tracking-wide uppercase">
                     {KIND_LABELS[group.kind]}
                   </p>
                   <ul role="presentation">
@@ -304,7 +304,7 @@ export function ComposerPlus({
                             onMouseEnter={() => setActive(index)}
                             onClick={() => commit(record)}
                             className={cn(
-                              "flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] outline-none",
+                              "flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-body-dense outline-none",
                               index === active ? "bg-muted" : "hover:bg-muted/60",
                             )}
                           >
@@ -330,13 +330,13 @@ export function ComposerPlus({
                     onOpenChange?.(false);
                     item.onSelect();
                   }}
-                  className="hover:bg-muted focus-visible:bg-muted flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] outline-none"
+                  className="hover:bg-muted focus-visible:bg-muted flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-body-dense outline-none"
                 >
                   <span className="text-muted-foreground shrink-0 [&_svg]:size-4">{item.icon}</span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate">{item.label}</span>
                     {item.hint ? (
-                      <span className="text-muted-foreground block truncate text-[11px]">{item.hint}</span>
+                      <span className="text-muted-foreground block truncate text-data">{item.hint}</span>
                     ) : null}
                   </span>
                 </button>
@@ -355,12 +355,12 @@ export function ComposerPlus({
                   onOpenChange?.(false);
                   pickFile();
                 }}
-                className="hover:bg-muted focus-visible:bg-muted flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] outline-none"
+                className="hover:bg-muted focus-visible:bg-muted flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-body-dense outline-none"
               >
                 <Paperclip aria-hidden className="text-muted-foreground size-4 shrink-0" />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate">Attach a file</span>
-                  <span className="text-muted-foreground block truncate text-[11px]">
+                  <span className="text-muted-foreground block truncate text-data">
                     Captured to your inbox, up to 4 MB
                   </span>
                 </span>

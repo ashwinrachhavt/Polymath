@@ -143,7 +143,7 @@ function Sitting({ quiz, onRetake }: { quiz: QuizForSitting; onRetake: () => voi
           {result.correctCount} of {result.totalCount}
         </p>
         <div className="relative mt-2">
-          <p className="text-[13px]">
+          <p className="text-body-dense">
             {result.stoneEarned
               ? "+10 stones for finishing this quiz."
               : result.replayed
@@ -168,13 +168,11 @@ function Sitting({ quiz, onRetake }: { quiz: QuizForSitting; onRetake: () => voi
             const correct = !!answer && !answer.dontKnow && answer.selectedValue === q.answerValue;
             const gap = !!answer?.dontKnow;
             return (
-              <li key={q.id} className="flex flex-col gap-0.5 rounded-md px-2 py-1.5 text-[13px] odd:bg-muted/40">
+              <li key={q.id} className="flex flex-col gap-0.5 rounded-md px-2 py-1.5 text-body-dense odd:bg-muted/40">
                 <span className="flex items-start gap-2">
                   <span
                     aria-hidden
-                    className={
-                      correct ? "text-teal-600 dark:text-teal-400" : gap ? "text-muted-foreground" : "text-destructive"
-                    }
+                    className={correct ? "text-(--tone-teal)" : gap ? "text-muted-foreground" : "text-destructive"}
                   >
                     {correct ? "✓" : gap ? "·" : "✗"}
                   </span>
@@ -195,7 +193,7 @@ function Sitting({ quiz, onRetake }: { quiz: QuizForSitting; onRetake: () => voi
           </Button>
         </div>
         {error ? (
-          <p role="alert" className="mt-2 text-[13px] text-destructive">
+          <p role="alert" className="mt-2 text-body-dense text-destructive">
             {error}
           </p>
         ) : null}
@@ -205,7 +203,7 @@ function Sitting({ quiz, onRetake }: { quiz: QuizForSitting; onRetake: () => voi
 
   return (
     <Panel title={quiz.title} description={`Question ${index + 1} of ${quiz.questions.length}`}>
-      <p className="text-[15px] font-medium">{question.prompt}</p>
+      <p className="text-body font-medium">{question.prompt}</p>
 
       <div role="group" aria-label="Answer choices" className="mt-3 flex flex-col gap-2">
         {(shuffled[index] ?? question.choices).map((choice) => {
@@ -219,9 +217,9 @@ function Sitting({ quiz, onRetake }: { quiz: QuizForSitting; onRetake: () => voi
               disabled={answered}
               onClick={() => choose(choice.value)}
               className={
-                "flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-left text-[13px] transition-colors " +
+                "flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-left text-body-dense transition-colors " +
                 (answered && isAnswer
-                  ? "border-teal-600/60 bg-teal-50 dark:border-teal-400/40 dark:bg-teal-950/30"
+                  ? "border-(--tone-teal-wash)/60 bg-(--tone-teal-wash)/10"
                   : answered && isChosen
                     ? "border-destructive/60 bg-destructive/5"
                     : answered
@@ -231,7 +229,7 @@ function Sitting({ quiz, onRetake }: { quiz: QuizForSitting; onRetake: () => voi
             >
               <span>{choice.label}</span>
               {mark ? (
-                <span aria-hidden className={isAnswer ? "text-teal-600 dark:text-teal-400" : "text-destructive"}>
+                <span aria-hidden className={isAnswer ? "text-(--tone-teal)" : "text-destructive"}>
                   {mark}
                 </span>
               ) : null}
@@ -245,7 +243,7 @@ function Sitting({ quiz, onRetake }: { quiz: QuizForSitting; onRetake: () => voi
             disabled={answered}
             onClick={giveUp}
             className={
-              "flex w-full items-center justify-between gap-3 rounded-md border border-dashed px-3 py-2 text-left text-[13px] transition-colors " +
+              "flex w-full items-center justify-between gap-3 rounded-md border border-dashed px-3 py-2 text-left text-body-dense transition-colors " +
               (answered && dontKnow
                 ? "border-border bg-muted/60 text-foreground"
                 : answered
@@ -266,17 +264,17 @@ function Sitting({ quiz, onRetake }: { quiz: QuizForSitting; onRetake: () => voi
       {answered ? (
         <div className="mt-4 rounded-md border border-border bg-muted/40 p-3" role="status">
           {dontKnow ? (
-            <p className="text-[13px]">
+            <p className="text-body-dense">
               Kept as an honest gap. The correct answer is: <span className="font-medium">{correctChoice?.label}</span>
             </p>
           ) : selected === question.answerValue ? (
-            <p className="text-[13px] font-medium">Correct!</p>
+            <p className="text-body-dense font-medium">Correct!</p>
           ) : (
-            <p className="text-[13px]">
+            <p className="text-body-dense">
               Incorrect. The correct answer is: <span className="font-medium">{correctChoice?.label}</span>
             </p>
           )}
-          <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground">{question.explanation}</p>
+          <p className="mt-2 text-body-dense leading-relaxed text-muted-foreground">{question.explanation}</p>
           {question.evidence.quote ? (
             <p className="mt-2 border-l-2 border-border pl-3 text-xs italic leading-relaxed text-muted-foreground">
               From the document: {question.evidence.quote}
@@ -291,7 +289,7 @@ function Sitting({ quiz, onRetake }: { quiz: QuizForSitting; onRetake: () => voi
       ) : null}
 
       {error ? (
-        <p role="alert" className="mt-3 text-[13px] text-destructive">
+        <p role="alert" className="mt-3 text-body-dense text-destructive">
           {error}
         </p>
       ) : null}

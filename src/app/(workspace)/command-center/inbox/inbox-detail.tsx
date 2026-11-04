@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
+import { WorkStatus } from "@/components/work-status";
 import {
   acceptProposalAction,
   makeDraftAction,
@@ -20,6 +21,7 @@ import { Sparkles } from "lucide-react";
 import { CaptureBody } from "./capture-body";
 import { captureDetailHeading, captureKindLabel, captureStateLabel, captureTitle, type InboxRow } from "./inbox-list";
 import { generateZettelsAction } from "./zettel-actions";
+import { ZettelQueueWatch } from "./zettel-queue-watch";
 
 /*
  * The detail pane: a view of the selected capture row (D12/D14). URL captures
@@ -164,12 +166,13 @@ export function InboxDetail({
   const [suggestionsFor, setSuggestionsFor] = useState<string | null>(capture?.id ?? null);
   // The per-capture zettelize verb: a queued pass is one per capture until the
   // outbox worker files it, so the verb disables itself once queued and the
-  // outcome line carries the review link. Selecting another capture resets it.
-  const [zettel, setZettel] = useState<{ awaitingReview: number } | null>(null);
+  // watch below carries the outcome. Each click mounts a fresh watch (the key
+  // re-arms the poller); selecting another capture resets it.
+  const [zettelPass, setZettelPass] = useState(0);
   if ((capture?.id ?? null) !== suggestionsFor) {
     setSuggestionsFor(capture?.id ?? null);
     setDecidedSuggestions(new Set());
-    setZettel(null);
+    setZettelPass(0);
   }
   const headingRef = useRef<HTMLHeadingElement>(null);
   // Seeded with the capture rendered on arrival: a page load with ?id= is not
@@ -218,7 +221,7 @@ export function InboxDetail({
   if (!capture) {
     return (
       <div className="flex h-full min-h-64 items-center justify-center px-6">
-        <p className="max-w-sm text-center text-[13px] text-muted-foreground">
+        <p className="max-w-sm text-center text-body-dense text-muted-foreground">
           Select a capture to read it and decide what happens next.
         </p>
       </div>
@@ -297,7 +300,7 @@ export function InboxDetail({
         setError(result.message);
         return;
       }
-      setZettel({ awaitingReview: result.awaitingReview });
+      setZettelPass((n) => n + 1);
     });
   }
 
@@ -320,7 +323,7 @@ export function InboxDetail({
           <h2
             ref={headingRef}
             tabIndex={-1}
-            className="text-balance text-[17px] leading-snug font-medium break-words focus-visible:outline-none"
+            className="text-balance text-title leading-snug font-medium break-words focus-visible:outline-none"
           >
             {heading}
           </h2>
@@ -385,7 +388,7 @@ export function InboxDetail({
             </>
           ) : fetchFailed ? (
             <div className="max-w-[70ch]" role="status">
-              <p className="text-[13px] text-muted-foreground">
+              <p className="text-body-dense text-muted-foreground">
                 {capture.failureReason ?? "The page could not be read."}
               </p>
               <Button className="mt-2" size="sm" variant="outline" disabled={pending} onClick={retryFetch}>
@@ -393,7 +396,7 @@ export function InboxDetail({
               </Button>
             </div>
           ) : capture.fetchOutcome === "acquired" ? null : (
-            <p className="max-w-[70ch] text-[13px] text-muted-foreground">
+            <p className="max-w-[70ch] text-body-dense text-muted-foreground">
               Reading the page now. The text lands here when it arrives.
             </p>
           )
@@ -404,7 +407,7 @@ export function InboxDetail({
                 actions, so this stays out of its way rather than printing the
                 same sentence twice. */}
             {capture.failureReason && !voiceWithoutTranscript ? (
-              <p className="mb-3 max-w-[70ch] text-[13px] text-muted-foreground" role="status">
+              <p className="mb-3 max-w-[70ch] text-body-dense text-muted-foreground" role="status">
                 {capture.failureReason}
               </p>
             ) : null}
@@ -427,13 +430,13 @@ export function InboxDetail({
 
       {priorWriting && priorWriting.items.length > 0 ? (
         <section aria-label="What you have written about this" className="mt-6 border-border border-t pt-6">
-          <h3 className="text-[13px] font-medium">What you&apos;ve written about this</h3>
+          <h3 className="text-body-dense font-medium">What you&apos;ve written about this</h3>
           <ul className="mt-3 space-y-3">
             {priorWriting.items.map((item) => (
               <li key={item.id} className="min-w-0">
                 <Link
                   href={`/polymath/notes?id=${item.id}`}
-                  className="text-[13px] font-medium underline-offset-2 hover:underline"
+                  className="text-body-dense font-medium underline-offset-2 hover:underline"
                 >
                   {item.title}
                 </Link>
@@ -449,20 +452,18 @@ export function InboxDetail({
         </section>
       ) : null}
 
-      {error ? (
-        <p className="mt-3 text-destructive text-[13px]" role="alert">
-          {error}
-        </p>
-      ) : null}
+      {error ? <WorkStatus state={{ phase: "failed", label: error }} className="mt-3" /> : null}
 
-      {zettel ? (
-        <p className="text-muted-foreground mt-3 text-[13px]" role="status">
-          Queued for zettel proposals.{" "}
-          {zettel.awaitingReview ? `Already in review: ${zettel.awaitingReview} waiting — ` : ""}
-          <Link href="/polymath/ideas#in-review" className="text-foreground font-medium underline underline-offset-4">
-            Review ideas
-          </Link>
-        </p>
+      {zettelPass > 0 ? (
+        <div className="mt-3 flex flex-col items-start gap-1">
+          <p className="text-muted-foreground text-body-dense" role="status">
+            Queued for zettel proposals.{" "}
+            <Link href="/polymath/ideas#in-review" className="text-foreground font-medium underline underline-offset-4">
+              Review ideas
+            </Link>
+          </p>
+          <ZettelQueueWatch key={zettelPass} />
+        </div>
       ) : null}
 
       {suggestions.length > 0 ? (
@@ -477,7 +478,7 @@ export function InboxDetail({
                 className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border bg-muted/40 px-3 py-2.5"
               >
                 <Sparkles aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
-                <span className="text-[13px] font-medium">{copy.label}</span>
+                <span className="text-body-dense font-medium">{copy.label}</span>
                 <span className="min-w-0 flex-1 text-xs text-muted-foreground">
                   {[suggestion.rationale, confidence].filter(Boolean).join(" · ")}
                 </span>
@@ -538,12 +539,12 @@ export function InboxDetail({
               <Button
                 size="sm"
                 variant="outline"
-                disabled={pending || zettel !== null || !zettelProviderReady}
+                disabled={pending || zettelPass > 0 || !zettelProviderReady}
                 onClick={zettelize}
                 title={
                   !zettelProviderReady
                     ? zettelProviderReason
-                    : zettel !== null
+                    : zettelPass > 0
                       ? "Queued - the proposals land in Ideas for review."
                       : "Files this capture to your library, then proposes ideas for review."
                 }
@@ -657,7 +658,7 @@ function ExtensionMarkdownBlock({ extraction }: { extraction: ExtensionExtractio
   const qualityLabel = extraction.quality === "rich" ? "rich" : extraction.quality === "basic" ? "basic" : null;
   return (
     <section aria-label="Original formatting kept by the extension" className="mt-3">
-      <p className="text-[13px] text-muted-foreground">
+      <p className="text-body-dense text-muted-foreground">
         The extension kept the original formatting{qualityLabel ? ` (${qualityLabel} markdown)` : ""} —{" "}
         <button
           type="button"
@@ -669,7 +670,7 @@ function ExtensionMarkdownBlock({ extraction }: { extraction: ExtensionExtractio
         </button>
       </p>
       {open ? (
-        <pre className="max-h-[50vh] overflow-auto rounded-lg border border-border bg-muted/40 p-3 text-[12px] whitespace-pre-wrap">
+        <pre className="max-h-[50vh] overflow-auto rounded-lg border border-border bg-muted/40 p-3 text-label whitespace-pre-wrap">
           {extraction.markdown}
         </pre>
       ) : null}
@@ -708,30 +709,32 @@ function FileCapturePanel({
 
   return (
     <section aria-label="Captured file" className="flex flex-col gap-3">
-      <p className="text-[15px] font-medium break-words text-foreground">{filename}</p>
-      <p className="text-[13px] text-muted-foreground">
+      <p className="text-body font-medium break-words text-foreground">{filename}</p>
+      <p className="text-body-dense text-muted-foreground">
         {quarantined ? "Type not recognized - stored as-is" : (payload.mimeType ?? "File")} ·{" "}
         {formatBytes(payload.sizeBytes)}
       </p>
       {isImage ? (
         reading ? (
           <>
-            <p className="max-w-[70ch] text-[13px] break-words whitespace-pre-wrap text-foreground/90">
+            <p className="max-w-[70ch] text-body-dense break-words whitespace-pre-wrap text-foreground/90">
               {reading.length > 300 ? `${reading.slice(0, 300)}…` : reading}
             </p>
-            <p className="text-[13px] text-muted-foreground">The words were read from the image and are searchable.</p>
+            <p className="text-body-dense text-muted-foreground">
+              The words were read from the image and are searchable.
+            </p>
           </>
         ) : pendingRead ? (
-          <p className="max-w-[70ch] text-[13px] text-muted-foreground" role="status">
+          <p className="max-w-[70ch] text-body-dense text-muted-foreground" role="status">
             Reading the image now. The words land here when they arrive.
           </p>
         ) : (
-          <p className="max-w-[70ch] text-[13px] text-muted-foreground" role="status">
+          <p className="max-w-[70ch] text-body-dense text-muted-foreground" role="status">
             {failureReason ?? "Reading the image now. The words land here when they arrive."}
           </p>
         )
       ) : (
-        <p className="max-w-[70ch] text-[13px] text-muted-foreground">
+        <p className="max-w-[70ch] text-body-dense text-muted-foreground">
           Stored as captured. The file&apos;s contents aren&apos;t searchable; the filename is the label.
           {quarantined ? " It downloads rather than opening in the browser." : ""}
         </p>
@@ -741,7 +744,7 @@ function FileCapturePanel({
           href={`/api/v1/captures/${captureId}/file`}
           target="_blank"
           rel="noreferrer"
-          className="text-[13px] font-medium text-primary underline-offset-4 hover:underline"
+          className="text-body-dense font-medium text-primary underline-offset-4 hover:underline"
         >
           {quarantined ? "Download file" : "Open file"}
         </a>

@@ -42,17 +42,21 @@ export async function NeonCalendar({ date }: { date?: string }) {
   const base = "/neuralflow/work?view=calendar";
 
   return (
-    <Screen
-      title="Week"
-    >
-      <div className="flex flex-wrap items-center gap-2 text-[13px]">
-        <Link className="rounded-md border border-border px-2.5 py-1 hover:bg-accent" href={`${base}&date=${shiftDateKey(startKey, -7)}`}>
+    <Screen title="Week">
+      <div className="flex flex-wrap items-center gap-2 text-body-dense">
+        <Link
+          className="rounded-md border border-border px-2.5 py-1 hover:bg-accent"
+          href={`${base}&date=${shiftDateKey(startKey, -7)}`}
+        >
           Previous week
         </Link>
         <Link className="rounded-md border border-border px-2.5 py-1 hover:bg-accent" href={base}>
           This week
         </Link>
-        <Link className="rounded-md border border-border px-2.5 py-1 hover:bg-accent" href={`${base}&date=${shiftDateKey(startKey, 7)}`}>
+        <Link
+          className="rounded-md border border-border px-2.5 py-1 hover:bg-accent"
+          href={`${base}&date=${shiftDateKey(startKey, 7)}`}
+        >
           Next week
         </Link>
         <span className="readout text-xs text-muted-foreground">
@@ -62,11 +66,18 @@ export async function NeonCalendar({ date }: { date?: string }) {
             grid and the toolbar below are the scheduler itself, so the strip
             only links the meetings surface. */}
         <span className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
-          <Link className="py-1 hover:text-foreground hover:underline" href="/neuralflow/work?view=today">Meetings</Link>
+          <Link className="py-1 hover:text-foreground hover:underline" href="/neuralflow/work?view=today">
+            Meetings
+          </Link>
         </span>
       </div>
       <CalendarToolbar
-        events={events.map((e) => ({ title: e.title, startsAt: e.startsAt.toISOString(), endsAt: e.endsAt.toISOString(), taskId: e.taskId }))}
+        events={events.map((e) => ({
+          title: e.title,
+          startsAt: e.startsAt.toISOString(),
+          endsAt: e.endsAt.toISOString(),
+          taskId: e.taskId,
+        }))}
         proposals={proposals}
       />
       <WeekGrid

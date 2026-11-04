@@ -117,7 +117,7 @@ export function ChatTranscript({
     <div className="mt-auto flex min-h-full flex-col justify-end gap-4">
       {agent ? <AgentPanel agent={agent} /> : null}
       {transcriptEmpty && !optimistic && waiting.length === 0 && (!busy || emptyText) ? (
-        <p className="text-muted-foreground max-w-xl text-[13px] leading-relaxed">
+        <p className="text-muted-foreground max-w-xl text-body-dense leading-relaxed">
           {emptyText ??
             `Ask a question. Answers cite the ${subjectType === "project" ? "pinned sources" : "sources"} they use.`}
         </p>
@@ -127,7 +127,7 @@ export function ChatTranscript({
             block.kind === "user" ? (
               <div
                 key={block.id}
-                className="bg-muted/60 ml-auto w-fit max-w-[75%] rounded-md px-2.5 py-1 text-[14px] leading-6"
+                className="bg-muted/60 ml-auto w-fit max-w-[75%] rounded-md px-2.5 py-1 text-body leading-6"
               >
                 {inline(stripMentionContext(block.text))}
               </div>
@@ -148,14 +148,14 @@ export function ChatTranscript({
             ),
           )}
           {optimistic ? (
-            <div className="bg-muted/60 ml-auto w-fit max-w-[75%] rounded-md px-2.5 py-1 text-[14px] leading-6">
+            <div className="bg-muted/60 ml-auto w-fit max-w-[75%] rounded-md px-2.5 py-1 text-body leading-6">
               {optimistic}
             </div>
           ) : null}
           {waiting.map((entry) => (
             <div
               key={entry.id}
-              className="bg-muted/60 ml-auto w-fit max-w-[75%] rounded-md px-2.5 py-1 text-[14px] leading-6 opacity-70"
+              className="bg-muted/60 ml-auto w-fit max-w-[75%] rounded-md px-2.5 py-1 text-body leading-6 opacity-70"
             >
               {inline(entry.text)}
             </div>
@@ -169,7 +169,7 @@ export function ChatTranscript({
       <CitationStrip citations={shownCitations} />
 
       {error && (
-        <div role="status" className="mt-3 flex items-center gap-3 text-[12px] text-destructive">
+        <div role="status" className="mt-3 flex items-center gap-3 text-label text-destructive">
           {/* Retry guidance lives with the button that delivers it — only a
             surface wired for a fresh-start retry promises one. */}
           <p>

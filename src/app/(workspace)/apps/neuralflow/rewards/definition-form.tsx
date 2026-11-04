@@ -43,11 +43,7 @@ export function DefinitionForm() {
         <Input name="label" required maxLength={120} placeholder="Quartz" />
       </Field>
       <Field label="Kind">
-        <Select
-          name="kind"
-          defaultValue="points"
-         
-        >
+        <Select name="kind" defaultValue="points">
           <option value="points">points</option>
           <option value="streak_day">streak day</option>
           <option value="badge">badge</option>
@@ -66,7 +62,11 @@ export function DefinitionForm() {
         <Button type="submit" disabled={pending}>
           {pending ? "Saving…" : "Define reward"}
         </Button>
-        {error ? <p className="text-destructive text-[13px]" role="alert">{error}</p> : null}
+        {error ? (
+          <p className="text-destructive text-body-dense" role="alert">
+            {error}
+          </p>
+        ) : null}
       </div>
     </form>
   );

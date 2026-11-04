@@ -43,7 +43,11 @@ export function NotionAppendAction({
   async function loadPages() {
     setState({ phase: "loading" });
     const pages = await listNotionPagesAction();
-    setState(pages.length > 0 ? { phase: "choosing", pages } : { phase: "error", message: "No Notion pages are available. Connect Notion in Integrations first." });
+    setState(
+      pages.length > 0
+        ? { phase: "choosing", pages }
+        : { phase: "error", message: "No Notion pages are available. Connect Notion in Integrations first." },
+    );
   }
 
   async function propose(page: Page) {
@@ -58,7 +62,9 @@ export function NotionAppendAction({
   }
 
   const pages = state.phase === "choosing" ? state.pages : [];
-  const shown = query.trim() ? pages.filter((page) => page.title.toLowerCase().includes(query.trim().toLowerCase())) : pages;
+  const shown = query.trim()
+    ? pages.filter((page) => page.title.toLowerCase().includes(query.trim().toLowerCase()))
+    : pages;
 
   return (
     <Dialog
@@ -85,7 +91,11 @@ export function NotionAppendAction({
           Choose where this note should go. Nothing is written yet: you review the diff in Reviews and approve it there.
         </DialogDescription>
 
-        {(state.phase === "loading" || state.phase === "idle") && <p role="status" className="mt-3 text-[13px] text-muted-foreground">Loading your pages…</p>}
+        {(state.phase === "loading" || state.phase === "idle") && (
+          <p role="status" className="mt-3 text-body-dense text-muted-foreground">
+            Loading your pages…
+          </p>
+        )}
 
         {state.phase === "choosing" && (
           <div className="mt-3 flex flex-col gap-2">
@@ -94,10 +104,10 @@ export function NotionAppendAction({
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Filter by title"
-              className="rounded-md border border-border bg-transparent px-2.5 py-1.5 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="rounded-md border border-border bg-transparent px-2.5 py-1.5 text-body-dense outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
             {shown.length === 0 ? (
-              <p className="text-[13px] text-muted-foreground">No page matches “{query}”.</p>
+              <p className="text-body-dense text-muted-foreground">No page matches “{query}”.</p>
             ) : (
               <ul className="max-h-72 overflow-y-auto">
                 {shown.map((page) => (
@@ -105,7 +115,7 @@ export function NotionAppendAction({
                     <button
                       type="button"
                       onClick={() => void propose(page)}
-                      className="hover:bg-muted focus-visible:ring-ring flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] outline-none focus-visible:ring-2"
+                      className="hover:bg-muted focus-visible:ring-ring flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-body-dense outline-none focus-visible:ring-2"
                     >
                       <span className="min-w-0 flex-1 truncate">{page.title || "Untitled page"}</span>
                     </button>
@@ -117,13 +127,13 @@ export function NotionAppendAction({
         )}
 
         {state.phase === "proposing" && (
-          <p role="status" className="mt-3 text-[13px] text-muted-foreground">
+          <p role="status" className="mt-3 text-body-dense text-muted-foreground">
             Queuing for review…
           </p>
         )}
 
         {state.phase === "queued" && (
-          <p role="status" className="mt-3 text-[13px]">
+          <p role="status" className="mt-3 text-body-dense">
             Queued. Approve the diff in{" "}
             <a href="/reviews" className="text-primary underline decoration-primary/30 underline-offset-2">
               Reviews
@@ -133,7 +143,7 @@ export function NotionAppendAction({
         )}
 
         {state.phase === "error" && (
-          <p role="status" className="mt-3 text-[13px] text-destructive">
+          <p role="status" className="mt-3 text-body-dense text-destructive">
             {state.message}
           </p>
         )}

@@ -21,7 +21,15 @@ const HEARTBEAT_MS = 5_000;
 /** Below this scroll delta a heartbeat sends nothing: the position did not move. */
 const PROGRESS_EPSILON = 0.005;
 
-export function ReadingShell({ documentId, segments, canSave }: { documentId: string; segments: TextSegment[]; canSave: boolean }) {
+export function ReadingShell({
+  documentId,
+  segments,
+  canSave,
+}: {
+  documentId: string;
+  segments: TextSegment[];
+  canSave: boolean;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [selection, setSelection] = useState<{ quote: string; x: number; y: number } | null>(null);
@@ -113,7 +121,15 @@ export function ReadingShell({ documentId, segments, canSave }: { documentId: st
     const sel = window.getSelection();
     const article = articleRef.current;
     const quote = sel?.toString().trim() ?? "";
-    if (!canSave || !sel || !article || !quote || sel.rangeCount === 0 || !article.contains(sel.anchorNode) || !article.contains(sel.focusNode)) {
+    if (
+      !canSave ||
+      !sel ||
+      !article ||
+      !quote ||
+      sel.rangeCount === 0 ||
+      !article.contains(sel.anchorNode) ||
+      !article.contains(sel.focusNode)
+    ) {
       setSelection(null);
       return;
     }
@@ -149,7 +165,7 @@ export function ReadingShell({ documentId, segments, canSave }: { documentId: st
             {segment.text}
             <Link
               href={`/polymath/notes?id=${segment.passage.artifactId}`}
-              className="ml-1 align-super text-[10px] text-muted-foreground underline-offset-2 hover:underline"
+              className="ml-1 align-super text-data text-muted-foreground underline-offset-2 hover:underline"
               aria-label={`Open zettel: ${segment.passage.title}`}
             >
               card

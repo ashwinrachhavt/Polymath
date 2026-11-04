@@ -50,7 +50,8 @@ const statusLabel: Record<string, string> = {
   reviewed: "kept",
 };
 
-const stamp = (d: Date) => d.toLocaleString("en", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+const stamp = (d: Date) =>
+  d.toLocaleString("en", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
 /** The row's kind in the user's vocabulary: wiki pages are stored as notes. */
 function rowKind(row: { kind: string; isWiki: boolean }): string {
@@ -118,7 +119,7 @@ export async function ArtifactsSurface({ searchParams }: { searchParams: Promise
               title="Nothing here yet."
               description="Generate a report or deck from a Notebook."
               action={
-                <Link href="/projects" className="text-[13px] font-medium underline underline-offset-4">
+                <Link href="/projects" className="text-body-dense font-medium underline underline-offset-4">
                   Open Notebook
                 </Link>
               }
@@ -129,7 +130,7 @@ export async function ArtifactsSurface({ searchParams }: { searchParams: Promise
             {rows.map((row) => (
               <li key={row.id} className="flex flex-col gap-1 py-3 first:pt-0 last:pb-0">
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <Link href={hrefFor(row)} className="text-[13px] font-medium underline-offset-4 hover:underline">
+                  <Link href={hrefFor(row)} className="text-body-dense font-medium underline-offset-4 hover:underline">
                     {row.title}
                   </Link>
                   <span className="flex items-center gap-2">

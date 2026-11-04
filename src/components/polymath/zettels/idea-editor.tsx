@@ -58,7 +58,12 @@ export function IdeaEditor({
     const key = `${idemBase.current}-save-${saveSeq.current}`;
     const { savedArtifactId, savedVersion } = store.getState();
     setSaveState("saving");
-    const title = plainText.split("\n").find((line) => line.trim())?.trim().slice(0, 80) ?? "";
+    const title =
+      plainText
+        .split("\n")
+        .find((line) => line.trim())
+        ?.trim()
+        .slice(0, 80) ?? "";
     const result = await saveIdeaAction({
       idempotencyKey: key,
       artifactId: savedArtifactId ?? artifactId,
@@ -73,7 +78,11 @@ export function IdeaEditor({
     if ("error" in result) {
       if (result.error === "version_conflict" && result.server) {
         // §14.4: never a silent clobber - surface it and let the writer pick.
-        setConflict({ plainText: result.server.plainText, updatedAt: result.server.updatedAt, version: result.server.version });
+        setConflict({
+          plainText: result.server.plainText,
+          updatedAt: result.server.updatedAt,
+          version: result.server.version,
+        });
         setSaveState("idle");
         return;
       }
@@ -89,7 +98,9 @@ export function IdeaEditor({
   }, [save]);
   const debouncerRef = useRef<ReturnType<typeof createIdleDebouncer> | null>(null);
   useEffect(() => {
-    const debouncer = createIdleDebouncer(() => { void saveRef.current(); }, IDEA_IDLE_MS);
+    const debouncer = createIdleDebouncer(() => {
+      void saveRef.current();
+    }, IDEA_IDLE_MS);
     debouncerRef.current = debouncer;
     return () => debouncer.cancel();
   }, []);
@@ -121,11 +132,17 @@ export function IdeaEditor({
       <div className="mb-4 flex items-baseline justify-between">
         {label ? <h1 className="font-sans text-sm font-medium text-muted-foreground">{label}</h1> : <span />}
         <span className="font-sans text-xs text-muted-foreground">
-          {saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved" : saveState === "error" ? "Save failed - keeps retrying on edit" : ""}
+          {saveState === "saving"
+            ? "Saving…"
+            : saveState === "saved"
+              ? "Saved"
+              : saveState === "error"
+                ? "Save failed - keeps retrying on edit"
+                : ""}
         </span>
       </div>
       {conflict ? (
-        <div className="mb-4 rounded border border-amber-500/40 bg-amber-500/10 p-3 font-sans text-sm">
+        <div className="mb-4 rounded border border-(--tone-attention-wash)/40 bg-(--tone-attention-wash)/10 p-3 font-sans text-sm">
           <p>A newer saved copy exists (saved {new Date(conflict.updatedAt).toLocaleString()}).</p>
           <div className="mt-2 flex gap-2">
             <button

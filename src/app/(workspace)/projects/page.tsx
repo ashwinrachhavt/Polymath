@@ -20,7 +20,7 @@ export async function ProjectsSurface() {
     return (
       <>
         <PageHeader title="Notebook" purpose="Long-lived homes for a body of work." />
-        <div className="page-content text-muted-foreground text-[13px]">
+        <div className="page-content text-muted-foreground text-body-dense">
           Set DATABASE_URL and apply the database migrations to use projects.
         </div>
       </>
@@ -40,7 +40,7 @@ export async function ProjectsSurface() {
       />
       <div className="page-content flex flex-col gap-6">
         {projects.length === 0 ? (
-          <p className="text-muted-foreground text-[13px]">
+          <p className="text-muted-foreground text-body-dense">
             No projects yet. Create one and it becomes the home for its sources, instructions and generated artifacts.
           </p>
         ) : (

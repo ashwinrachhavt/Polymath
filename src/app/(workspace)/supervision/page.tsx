@@ -37,7 +37,7 @@ function SupervisionTabs({ active }: { active: View }) {
           href={`/supervision?view=${tab.view}`}
           aria-current={tab.view === active ? "page" : undefined}
           className={cn(
-            "rounded-md px-3 py-1.5 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            "rounded-md px-3 py-1.5 text-body-dense outline-none focus-visible:ring-2 focus-visible:ring-ring",
             tab.view === active
               ? "bg-muted font-medium text-foreground"
               : "text-muted-foreground hover:text-foreground",
@@ -73,7 +73,7 @@ async function SettingsSurface() {
 }
 
 function TicketsFallback() {
-  return <p className="text-muted-foreground text-[13px]">Loading tickets…</p>;
+  return <p className="text-muted-foreground text-body-dense">Loading tickets…</p>;
 }
 
 export default async function SupervisionPage({ searchParams }: { searchParams: Query }) {
@@ -91,11 +91,11 @@ export default async function SupervisionPage({ searchParams }: { searchParams: 
           <TicketsSurface stage={stage} />
         </Suspense>
       ) : view === "settings" ? (
-        <Suspense fallback={<p className="text-muted-foreground text-[13px]">Loading policy…</p>}>
+        <Suspense fallback={<p className="text-muted-foreground text-body-dense">Loading policy…</p>}>
           <SettingsSurface />
         </Suspense>
       ) : (
-        <Suspense fallback={<p className="text-muted-foreground text-[13px]">Loading overview…</p>}>
+        <Suspense fallback={<p className="text-muted-foreground text-body-dense">Loading overview…</p>}>
           <OverviewPanel />
         </Suspense>
       )}

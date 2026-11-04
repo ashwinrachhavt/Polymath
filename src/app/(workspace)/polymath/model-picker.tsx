@@ -23,13 +23,7 @@ import type { ModelOption } from "@/domains/agents/models";
  * Local state rather than Radix, same as HistoryMenu: a flat list of options,
  * no roving focus to buy a portal for.
  */
-export function ModelPicker({
-  models,
-  current,
-}: {
-  models: ModelOption[];
-  current: string;
-}) {
+export function ModelPicker({ models, current }: { models: ModelOption[]; current: string }) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const container = useRef<HTMLDivElement>(null);
@@ -66,10 +60,10 @@ export function ModelPicker({
         aria-controls={panelId}
         disabled={pending}
         onClick={() => setOpen((state) => !state)}
-        className="text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-ring inline-flex h-7 items-center gap-1 rounded-md px-2 text-[12px] outline-none focus-visible:ring-2 disabled:opacity-50"
+        className="text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-ring inline-flex h-7 items-center gap-1 rounded-md px-2 text-label outline-none focus-visible:ring-2 disabled:opacity-50"
       >
         {currentModel?.label ?? current}
-        <ChevronsUpDown aria-hidden className="size-3" />
+        <ChevronsUpDown aria-hidden className="size-3.5" />
       </button>
       {open ? (
         <div
@@ -92,7 +86,7 @@ export function ModelPicker({
                   await setModelAction({ modelId: model.id });
                 });
               }}
-              className="hover:bg-muted focus-visible:ring-ring flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] outline-none focus-visible:ring-2 disabled:opacity-50"
+              className="hover:bg-muted focus-visible:ring-ring flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-body-dense outline-none focus-visible:ring-2 disabled:opacity-50"
             >
               {model.id === current ? (
                 <Check aria-hidden className="size-3.5 shrink-0" />

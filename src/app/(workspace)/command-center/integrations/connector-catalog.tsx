@@ -180,7 +180,7 @@ export function ConnectorCatalog({
               aria-pressed={filter === option.id}
               onClick={() => setFilter(option.id)}
               className={cn(
-                "min-h-8 rounded-md border px-3 text-[13px]",
+                "min-h-8 rounded-md border px-3 text-body-dense",
                 filter === option.id
                   ? "border-border bg-muted font-medium text-foreground"
                   : "border-transparent text-muted-foreground hover:text-foreground",
@@ -194,7 +194,7 @@ export function ConnectorCatalog({
 
       {groups.map(([category, items]) => (
         <section key={category} aria-label={category}>
-          <h2 className="pb-2 text-[11px] font-medium text-muted-foreground">{category}</h2>
+          <h2 className="pb-2 text-data font-medium text-muted-foreground">{category}</h2>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
             {items.map((connector) => {
               const state = cardState(connector);
@@ -209,7 +209,7 @@ export function ConnectorCatalog({
                     </span>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
-                        <h3 className="min-w-0 truncate text-[13px] font-medium">{connector.displayName}</h3>
+                        <h3 className="min-w-0 truncate text-body-dense font-medium">{connector.displayName}</h3>
                         <Status>{STATE_LABEL[state]}</Status>
                       </div>
                     </div>
@@ -222,7 +222,7 @@ export function ConnectorCatalog({
                         .map((account) => (
                           <div key={account.id} className="py-3">
                             <div className="mb-1.5 flex flex-wrap items-center gap-2">
-                              <p className="min-w-0 break-words text-[13px] font-medium">{account.alias}</p>
+                              <p className="min-w-0 break-words text-body-dense font-medium">{account.alias}</p>
                               {account.isDefaultForWrites ? <Status>write default</Status> : null}
                             </div>
                             <p className="mb-2 text-xs text-muted-foreground">
@@ -255,7 +255,7 @@ export function ConnectorCatalog({
                         .filter((account) => account.status !== "active")
                         .map((account) => (
                           <div key={account.id} className="py-3">
-                            <p className="text-[13px] font-medium">{account.alias}</p>
+                            <p className="text-body-dense font-medium">{account.alias}</p>
                             <p className="mt-1 text-xs text-muted-foreground">{accountLabel(account.status)}.</p>
                             {connector.provider === "gmail" ? (
                               <div className="mt-2">
@@ -288,7 +288,7 @@ export function ConnectorCatalog({
                     <div className="border-t border-border pt-3">
                       {connector.accounts.map((account) => (
                         <div key={account.id} className="mb-2">
-                          <p className="text-[13px] font-medium">{account.alias}</p>
+                          <p className="text-body-dense font-medium">{account.alias}</p>
                           <p className="mt-1 mb-2 text-xs text-muted-foreground">
                             Finish connecting to start using it.
                           </p>
@@ -312,7 +312,7 @@ export function ConnectorCatalog({
                     <div className="border-t border-border pt-3">
                       {connector.accounts.map((account) => (
                         <div key={account.id} className="mb-2">
-                          <p className="text-[13px] font-medium">{account.alias}</p>
+                          <p className="text-body-dense font-medium">{account.alias}</p>
                           {account.lastError ? (
                             <p className="mt-1 mb-2 text-xs text-muted-foreground">{account.lastError}</p>
                           ) : null}
@@ -352,7 +352,7 @@ export function ConnectorCatalog({
 
                   {isInstantConnector(connector) ? (
                     <div className="border-t border-border pt-3">
-                      <p className="text-[13px] font-medium">No connection needed</p>
+                      <p className="text-body-dense font-medium">No connection needed</p>
                       <p className="mt-1 text-xs text-muted-foreground">
                         Agents can use this instantly; calls bill the workspace&apos;s tool budget.
                       </p>

@@ -59,16 +59,18 @@ export function CardModal({
         {card ? (
           <>
             <DialogHeader>
-              <DialogTitle className="text-[15px] leading-snug">{card.title}</DialogTitle>
-              <DialogDescription className="text-[11px] text-muted-foreground">
+              <DialogTitle className="text-body leading-snug">{card.title}</DialogTitle>
+              <DialogDescription className="text-data text-muted-foreground">
                 {STATUS_LABEL[card.status]}
                 {card.priority !== "none" ? ` · ${card.priority}` : ""}
                 {card.dueAt ? ` · due ${card.dueAt.slice(0, 10)}` : ""}
               </DialogDescription>
             </DialogHeader>
-            <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[12px]">
+            <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-label">
               <dt className="text-muted-foreground">Status</dt>
-              <dd><span className={statusPill[card.status]}>{STATUS_LABEL[card.status]}</span></dd>
+              <dd>
+                <span className={statusPill[card.status]}>{STATUS_LABEL[card.status]}</span>
+              </dd>
               <dt className="text-muted-foreground">Priority</dt>
               <dd>{card.priority === "none" ? "None" : card.priority}</dd>
               <dt className="text-muted-foreground">Due</dt>
@@ -82,7 +84,7 @@ export function CardModal({
             </dl>
             {/* The keyboard alternative to dragging: every lane is reachable
                 from here, so a card's status never depends on a pointer. */}
-            <label className="mt-1 flex flex-col gap-1 text-[12px]">
+            <label className="mt-1 flex flex-col gap-1 text-label">
               <span className="text-muted-foreground">Move to</span>
               <Select
                 aria-label={card ? `Move ${card.title} to status` : "Move to status"}
@@ -98,14 +100,14 @@ export function CardModal({
               </Select>
             </label>
             {error ? (
-              <p role="alert" className="text-[11px] text-destructive">
+              <p role="alert" className="text-data text-destructive">
                 {error}
               </p>
             ) : null}
             {fullHref ? (
               <a
                 href={fullHref}
-                className="mt-1 inline-flex h-8 items-center self-start rounded-md border border-border px-3 text-[12px] text-muted-foreground hover:bg-muted hover:text-foreground"
+                className="mt-1 inline-flex h-8 items-center self-start rounded-md border border-border px-3 text-label text-muted-foreground hover:bg-muted hover:text-foreground"
               >
                 Open full
               </a>

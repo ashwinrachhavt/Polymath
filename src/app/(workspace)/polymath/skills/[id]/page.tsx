@@ -61,7 +61,7 @@ async function SkillSurface({ skillId }: { skillId: string }) {
         actions={
           <Link
             href="/polymath/skills"
-            className="text-muted-foreground text-[13px] underline-offset-4 hover:underline"
+            className="text-muted-foreground text-body-dense underline-offset-4 hover:underline"
           >
             Back to skills
           </Link>
@@ -84,7 +84,7 @@ async function SkillSurface({ skillId }: { skillId: string }) {
         </Section>
 
         <Section title="Source">
-          <dl className="grid gap-x-6 gap-y-1.5 text-[13px] sm:grid-cols-[8rem_1fr]">
+          <dl className="grid gap-x-6 gap-y-1.5 text-body-dense sm:grid-cols-[8rem_1fr]">
             <dt className="text-muted-foreground text-xs">Source</dt>
             <dd className="break-all">{skill.sourcePath}</dd>
             <dt className="text-muted-foreground text-xs">Ref</dt>
@@ -102,7 +102,7 @@ async function SkillSurface({ skillId }: { skillId: string }) {
           <Section title="Warnings" description="Files the inspection could not use. The skill installed without them.">
             <ul className="flex flex-col gap-1">
               {skill.warnings.map((warning) => (
-                <li key={warning} className="text-muted-foreground text-[13px]">
+                <li key={warning} className="text-muted-foreground text-body-dense">
                   {warning}
                 </li>
               ))}
@@ -111,7 +111,7 @@ async function SkillSurface({ skillId }: { skillId: string }) {
         ) : null}
 
         <Section title="Procedure" description="Given to the assistant verbatim. It supplies instructions, not tools.">
-          <pre className="panel overflow-x-auto rounded-lg px-3.5 py-3 text-[13px] leading-relaxed whitespace-pre-wrap">
+          <pre className="panel overflow-x-auto rounded-lg px-3.5 py-3 text-body-dense leading-relaxed whitespace-pre-wrap">
             {skill.body}
           </pre>
         </Section>
@@ -124,7 +124,7 @@ async function SkillSurface({ skillId }: { skillId: string }) {
             <ul className="divide-border flex flex-col divide-y rounded-md border border-border">
               {skill.files.map((file) => (
                 <li key={file.path} className="flex flex-wrap items-baseline justify-between gap-2 px-3 py-2">
-                  <span className="readout break-all text-[13px]">{file.path}</span>
+                  <span className="readout break-all text-body-dense">{file.path}</span>
                   <Readout className="text-muted-foreground text-xs">
                     {new TextEncoder().encode(file.text).byteLength} bytes
                   </Readout>
@@ -134,9 +134,12 @@ async function SkillSurface({ skillId }: { skillId: string }) {
           ) : null}
         </Section>
 
-        <Section title="Recent runs" description="Every run that pinned this skill, including ones started before a later edit.">
+        <Section
+          title="Recent runs"
+          description="Every run that pinned this skill, including ones started before a later edit."
+        >
           {runs.length === 0 ? (
-            <p className="text-muted-foreground text-[13px]">
+            <p className="text-muted-foreground text-body-dense">
               No runs have used this skill yet. Describe an objective above to start one.
             </p>
           ) : (
@@ -144,14 +147,14 @@ async function SkillSurface({ skillId }: { skillId: string }) {
               {runs.map((run) => (
                 <li key={run.id} className="flex flex-col gap-1 py-3 first:pt-0 last:pb-0">
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <p className="text-[13px]">{displayTitle(stripMentionContext(run.objective)) || "Untitled run"}</p>
+                    <p className="text-body-dense">
+                      {displayTitle(stripMentionContext(run.objective)) || "Untitled run"}
+                    </p>
                     <Badge variant="secondary" className="font-normal">
                       {stateLabel[run.state] ?? run.state}
                     </Badge>
                   </div>
-                  <p className="text-muted-foreground text-xs">
-                    {run.summary ?? run.error ?? "in progress"}
-                  </p>
+                  <p className="text-muted-foreground text-xs">{run.summary ?? run.error ?? "in progress"}</p>
                 </li>
               ))}
             </ul>

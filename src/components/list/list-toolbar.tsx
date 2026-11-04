@@ -138,7 +138,10 @@ export function ListToolbar({
     <div role="search" className="flex flex-col gap-2" aria-busy={pending}>
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative w-full max-w-sm min-w-48 flex-1">
-          <Search aria-hidden className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+          <Search
+            aria-hidden
+            className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2"
+          />
           <input
             ref={inputRef}
             type="search"
@@ -156,7 +159,7 @@ export function ListToolbar({
                 e.currentTarget.blur();
               }
             }}
-            className="border-input bg-background focus-visible:ring-ring h-9 w-full rounded-md border pr-3 pl-9 text-[13px] outline-none focus-visible:ring-2"
+            className="border-input bg-background focus-visible:ring-ring h-9 w-full rounded-md border pr-3 pl-9 text-body-dense outline-none focus-visible:ring-2"
           />
         </div>
         {filters.map((f) => (
@@ -214,7 +217,7 @@ function Chip({ label, onRemove }: { label: string; onRemove: () => void }) {
         onClick={onRemove}
         className="text-muted-foreground hover:text-foreground focus-visible:ring-ring inline-flex size-4 items-center justify-center rounded-full outline-none focus-visible:ring-2"
       >
-        <X aria-hidden className="size-3" />
+        <X aria-hidden className="size-3.5" />
       </button>
     </span>
   );
