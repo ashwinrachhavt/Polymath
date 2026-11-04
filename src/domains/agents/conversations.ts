@@ -36,7 +36,7 @@ export async function createConversationRun(input: {
   /** The person's own words. Become the objective and the run's first event. */
   message: string;
   subjects?: ConversationSubject[];
-}): Promise<{ runId: string }> {
+}): Promise<{ runId: string; sequence: number }> {
   const [profile] = await db
     .select()
     .from(agentProfiles)
@@ -76,13 +76,15 @@ export async function createConversationRun(input: {
 
   // The person's words are the run's first event — the event the chat Source
   // turns into a Trigger. Written here, once, by the same writer every other
-  // transcript row goes through.
-  await recordRoundEvent({
+  // transcript row goes through. The message id is unique per send: identical
+  // words in one conversation are two messages, and the event bridge's replay
+  // dedupe must not collapse them into one.
+  const written = await recordRoundEvent({
     runId: run.id,
     workspaceId: input.auth.workspaceId,
     type: "message",
-    data: { role: "user", content: input.message },
+    data: { role: "user", content: input.message, messageId: crypto.randomUUID() },
   });
 
-  return { runId: run.id };
+  return { runId: run.id, sequence: written.sequence };
 }

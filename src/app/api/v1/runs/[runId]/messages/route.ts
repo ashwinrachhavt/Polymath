@@ -25,5 +25,6 @@ export const POST = authedHandler<Ctx>(async (auth, request, ctx) => {
   if (result.ok) return Response.json({ ok: true }, { status: 202 });
   if (result.code === "not_found") return problemResponse(404, "not_found", result.message);
   if (result.code === "run_finished") return problemResponse(409, "run_finished", result.message);
+  if (result.code === "failed") return problemResponse(503, "agent_unavailable", result.message);
   return problemResponse(422, "invalid_input", result.message);
 });

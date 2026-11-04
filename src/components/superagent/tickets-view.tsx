@@ -42,7 +42,12 @@ function TicketRow({ ticket }: { ticket: TicketView }) {
               name: ticket.title,
               model: null,
               instructions: ticket.procedure,
+              // The drill-down shows the mandate's procedure, not a run's
+              // frozen policy: there is no capability list to report here, and
+              // an empty one is the truth rather than a hidden ceiling.
               tools: [],
+              ceiling: 0,
+              unadvertised: 0,
             }}
           />
         </div>

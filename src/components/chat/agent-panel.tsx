@@ -6,13 +6,17 @@ import { cn } from "cn";
 
 /*
  * The agent panel, folded into the conversation header the way AI Elements
- * shows it: who is working, the procedure it was given, and the tools it may
- * reach — collapsed, because a reader checking an answer rarely needs the whole
- * policy in front of them.
+ * shows it: who is working, the procedure it was given, and the capability
+ * ceiling its policy allowed — collapsed, because a reader checking an answer
+ * rarely needs the whole policy in front of them.
  *
  * It reports the run's frozen snapshot, not the profile's current row: the
  * profile can be edited while a run is going, and showing the newer
  * instructions beside an answer they did not produce would be a lie.
+ *
+ * The capability list is a ceiling, never a log: what the run actually called
+ * is the chain of thought, which is written from tool_calls. Labelling this
+ * list "Tools" made a granted-but-unused catalog read as a wall of calls.
  */
 
 export type AgentPanelData = {
@@ -21,6 +25,10 @@ export type AgentPanelData = {
   instructions: string | null;
   /** `id` is the raw capability name and is the list's identity; `name` may repeat. */
   tools: { id: string; name: string; description: string | null }[];
+  /** Every capability the run's frozen policy allows, offered or not. */
+  ceiling: number;
+  /** Granted capabilities the gateway never advertises to the model. */
+  unadvertised: number;
 };
 
 export function AgentPanel({ agent, defaultOpen = false }: { agent: AgentPanelData; defaultOpen?: boolean }) {
@@ -50,9 +58,19 @@ export function AgentPanel({ agent, defaultOpen = false }: { agent: AgentPanelDa
             </div>
           ) : null}
 
-          {agent.tools.length > 0 ? (
+          {agent.ceiling > 0 ? (
             <div className="flex flex-col gap-1">
-              <p className="text-muted-foreground text-[11px] font-medium">Tools · {agent.tools.length}</p>
+              {/*
+                The list is the run's policy ceiling, not a record of calls.
+                "Tools" read as "tools this answer used", which is how a
+                granted-but-never-invoked catalog looked like a wall of calls.
+              */}
+              <p className="text-muted-foreground text-[11px] font-medium">
+                Policy ceiling · {agent.ceiling} {agent.ceiling === 1 ? "capability" : "capabilities"}
+              </p>
+              <p className="text-muted-foreground text-[11px] leading-4">
+                What the run was allowed to call. The chain of thought above shows what it actually called.
+              </p>
               <ul className="flex flex-col">
                 {agent.tools.map((tool) => {
                   const expanded = openTool === tool.id;
@@ -87,6 +105,13 @@ export function AgentPanel({ agent, defaultOpen = false }: { agent: AgentPanelDa
                   );
                 })}
               </ul>
+              {agent.unadvertised > 0 ? (
+                <p className="text-muted-foreground border-border border-t pt-2 text-[11px] leading-4">
+                  {agent.unadvertised} more granted {agent.unadvertised === 1 ? "capability is" : "capabilities are"}{" "}
+                  not offered to the model on this deployment yet. They stay in the policy ceiling so the record is
+                  honest.
+                </p>
+              ) : null}
             </div>
           ) : null}
         </div>

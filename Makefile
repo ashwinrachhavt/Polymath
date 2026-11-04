@@ -1,10 +1,17 @@
 # `make check` is the project's gate. It calls the same
 # script CI runs, so "passing" has exactly one definition.
 
-.PHONY: install dev check e2e search-up search-down search-logs langfuse-up langfuse-down langfuse-logs evals queue-up queue-down queue-logs eve-up eve-down eve-logs eve-status eve local-stack-up local-stack-down seed-taxonomy
+.PHONY: install dev migrate check e2e search-up search-down search-logs langfuse-up langfuse-down langfuse-logs evals queue-up queue-down queue-logs eve-up eve-down eve-logs eve-status eve local-stack-up local-stack-down seed-taxonomy
 
 install:
 	pnpm install
+
+# Applies pending forward-only migrations to DATABASE_URL (read from .env).
+# Run this after pulling: the dev database drifting behind the schema fails
+# pages at request time on missing columns, not at startup. local-stack-up
+# runs it automatically so bringing the stack up and migrating stay one step.
+migrate:
+	pnpm db:migrate
 
 dev:
 	pnpm dev
@@ -82,13 +89,15 @@ eve-logs:
 	tail -n 100 -f .run/eve-dev.log
 
 # One command for local app testing: the Langfuse trace store, plus the app
-# dependencies if they are not up yet (db, docling, search). eve needs no
-# target here — `pnpm dev` starts it. Prints the exports eve and the harness
-# need for tracing. `make dev` still runs the Next server itself; stop the
-# stack with local-stack-down, which leaves the db volume (a reset is still
-# `docker compose down -v`, deliberately not wired to a make target).
+# dependencies if they are not up yet (db, docling, search), then the pending
+# migrations. eve needs no target here — `pnpm dev` starts it. Prints the
+# exports eve and the harness need for tracing. `make dev` still runs the Next
+# server itself; stop the stack with local-stack-down, which leaves the db
+# volume (a reset is still `docker compose down -v`, deliberately not wired to
+# a make target).
 local-stack-up:
 	docker compose up -d --wait db docling searxng firecrawl
+	$(MAKE) migrate
 	$(MAKE) langfuse-up
 	@echo ""
 	@echo "export LANGFUSE_PUBLIC_KEY=$${LANGFUSE_PUBLIC_KEY:-pk-lf-polymath-local}"

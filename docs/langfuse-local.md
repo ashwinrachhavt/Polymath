@@ -51,9 +51,9 @@ endpoints per langfuse.com/self-hosting/configuration/health-readiness-endpoints
 4. Run evals: `make evals` — the LangGraph harness; fixture-only by default, live suites need `GEMINI_API_KEY` (see `evals-langgraph/README.md`).
 
 `make local-stack-up` does steps 1–3's long-running halves in one command
-(app dependencies + the Langfuse stack; `make dev` still starts Next and eve)
-and prints the three exports; `make local-stack-down` stops them and keeps the
-volumes.
+(app dependencies + the Langfuse stack), then applies any pending database
+migrations (`make migrate`), and prints the three exports; `make dev` still
+starts Next and eve. `make local-stack-down` stops them and keeps the volumes.
 
 ## Makefile targets
 

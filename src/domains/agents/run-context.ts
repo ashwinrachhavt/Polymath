@@ -21,9 +21,27 @@ export type RunAgent = {
    * `id` is the raw capability name and is the list's identity. `name` is the
    * product-words label, which is not unique — several distinct tools share one
    * label ("Checked the wiki"), so keying a list by it rendered duplicate keys.
+   *
+   * Only capabilities the deployment can actually offer the model are listed.
+   * The run's full allowlist is still reported through `ceiling` and
+   * `unadvertised`, so hiding a dead grant never misrepresents the policy.
    */
   tools: { id: string; name: string; description: string | null }[];
+  /** Every distinct capability the run's frozen policy allows. */
+  ceiling: number;
+  /** Granted capabilities the gateway never advertises to the model (see below). */
+  unadvertised: number;
 };
+
+/*
+ * Composio Instant capabilities are granted to the default profile (spec #316)
+ * but `toolManifest()` publishes only PROVIDER_TOOLS, so the gateway never
+ * offers them to the model. They are a real policy ceiling and a dead tool
+ * surface at the same time. The panel lists what the model can reach and
+ * reports the rest as a count, rather than pretending 90 unreachable names are
+ * tools the run used.
+ */
+const UNADVERTISED_CAPABILITY_PREFIX = "instant.";
 
 export async function getRunAgent(workspaceId: string, runId: string): Promise<RunAgent | null> {
   const [row] = await db
@@ -44,22 +62,27 @@ export async function getRunAgent(workspaceId: string, runId: string): Promise<R
     ? snapshot.allowedTools.filter((tool): tool is string => typeof tool === "string")
     : [];
 
+  // Deduped on the raw name: a snapshot can allow the same capability twice
+  // (a profile edited to add a tool it already had), and two identical rows
+  // tell the reader nothing.
+  const unique = [...new Set(allowed)];
+  const offered = unique.filter((raw) => !raw.startsWith(UNADVERTISED_CAPABILITY_PREFIX));
+
   return {
     name: row.profileName ?? "Polymath",
     model: row.model,
     instructions: row.instructions,
-    // One entry per capability, named in product words. The catalog never
-    // decides what may run — the snapshot does — so an unknown name is listed
-    // rather than dropped: hiding a capability would misrepresent the run.
-    //
-    // Deduped on the raw name: a snapshot can allow the same capability twice
-    // (a profile edited to add a tool it already had), and two identical rows
-    // tell the reader nothing.
-    tools: [...new Set(allowed)].map((raw) => ({
+    // One entry per offered capability, named in product words. The snapshot
+    // decides what may run; this list only decides how it reads. An unknown
+    // advertised name is listed rather than dropped — hiding a live grant
+    // would misrepresent the run.
+    tools: offered.map((raw) => ({
       id: raw,
       name: toolLabel(raw),
       description: toolDescription(raw),
     })),
+    ceiling: unique.length,
+    unadvertised: unique.length - offered.length,
   };
 }
 
