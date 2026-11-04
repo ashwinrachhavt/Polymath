@@ -327,4 +327,54 @@ suite("learning loop", () => {
     expect(latest?.id).toBe(second.quizId);
     expect(await db.select().from(quizzes).where(eq(quizzes.workspaceId, auth.workspaceId))).toHaveLength(2);
   });
+
+  it("a failed generation stores authored copy the library shows, with the ready quiz still retakeable", async () => {
+    const auth = await seed();
+    const { doc } = await seedDocument(auth, TEXT);
+
+    await expect(
+      generate.generateQuiz(
+        auth,
+        { documentId: doc.id },
+        {
+          name: "fixture:fail",
+          generate: async () => {
+            throw new Error("the driver exploded");
+          },
+        },
+      ),
+    ).rejects.toBeInstanceOf(generate.QuizGenerationError);
+    // The row stores the authored sentence, never the driver's text, and the
+    // library read surfaces it: a failure is news, not a silent nothing.
+    const [failed] = await db.select().from(quizzes).where(eq(quizzes.workspaceId, auth.workspaceId));
+    expect(failed.status).toBe("failed");
+    expect(failed.error).toBe(generate.GENERATION_COPY.generation_failed);
+    let rows = await learningQueries.getLearnLibrary(auth);
+    expect(rows[0].quizId).toBeNull();
+    expect(rows[0].lastFailure).toBe(generate.GENERATION_COPY.generation_failed);
+
+    // A later successful generation wins, and the failure is gone.
+    const ready = await generate.generateQuiz(auth, { documentId: doc.id }, fixtureGenerator());
+    rows = await learningQueries.getLearnLibrary(auth);
+    expect(rows[0].quizId).toBe(ready.quizId);
+    expect(rows[0].lastFailure).toBeNull();
+
+    // A failed REgeneration after a ready quiz: both facts show - the ready
+    // quiz stays retakeable and the failure is named.
+    await expect(
+      generate.generateQuiz(
+        auth,
+        { documentId: doc.id },
+        {
+          name: "fixture:fail",
+          generate: async () => {
+            throw new Error("the driver exploded again");
+          },
+        },
+      ),
+    ).rejects.toBeInstanceOf(generate.QuizGenerationError);
+    rows = await learningQueries.getLearnLibrary(auth);
+    expect(rows[0].quizId).toBe(ready.quizId);
+    expect(rows[0].lastFailure).toBe(generate.GENERATION_COPY.generation_failed);
+  });
 });
