@@ -63,6 +63,23 @@ export type ChatFrame =
    * live transcript and a reload agree on why the run failed.
    */
   | { type: "end"; runId: string; state: "succeeded" | "failed" | "cancelled"; error?: string; cursor: number }
+  /**
+   * The run's own durable stage facts, the head frame of every stream
+   * connection — including the error paths, so a reconnect over an unreachable
+   * bridge still carries what the rows know. `state` mirrors the run row's
+   * state; `lastTurnFailed` is true when the run's newest turn boundary
+   * (a message, a turn end, a cancel) is a turn failure — the same
+   * "no newer human message or turn superseded it" rule the supervision
+   * panel applies. These are the facts a stage chip needs to stop reading
+   * transport state as the run's truth.
+   */
+  | {
+      type: "run";
+      runId: string;
+      state: "queued" | "running" | "waiting_input" | "waiting_approval" | "succeeded" | "failed" | "cancelled";
+      lastTurnFailed: boolean;
+      cursor: number;
+    }
   /** A transport-level problem the surface should show, not crash on. */
   | { type: "error"; runId: string; code: ChatErrorCode; message: string; cursor: number };
 
@@ -527,7 +544,8 @@ export function decodeFrame(line: string): ChatFrame | null {
     parsed.type !== "delta" &&
     parsed.type !== "block" &&
     parsed.type !== "message" &&
-    parsed.type !== "snapshot"
+    parsed.type !== "snapshot" &&
+    parsed.type !== "run"
   ) {
     // An unknown frame type is protocol skew. Dropping it silently is correct
     // for forward compatibility; the caller sees no state change.
@@ -538,6 +556,11 @@ export function decodeFrame(line: string): ChatFrame | null {
   if (parsed.type === "block" && typeof parsed.blockId !== "string") return null;
   if (parsed.type === "message" && typeof parsed.text !== "string") return null;
   if (parsed.type === "snapshot" && !Array.isArray(parsed.blocks)) return null;
+  if (parsed.type === "run") {
+    // The chip reads only these two facts; a malformed state or a missing
+    // boolean would render a guess, so the frame is dropped instead.
+    if (typeof parsed.state !== "string" || typeof parsed.lastTurnFailed !== "boolean") return null;
+  }
   return parsed as unknown as ChatFrame;
 }
 
