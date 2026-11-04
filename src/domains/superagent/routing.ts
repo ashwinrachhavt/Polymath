@@ -42,7 +42,7 @@ export const LANE_QUESTION = {
   criteria: LANE_CRITERIA,
 };
 
-export function isChatLane(value: unknown): value is ChatLane {
+function isChatLane(value: unknown): value is ChatLane {
   return typeof value === "string" && (CHAT_LANES as readonly string[]).includes(value);
 }
 
@@ -62,7 +62,7 @@ export function laneFromAnswer(answer: unknown): ChatLane | undefined {
 export type LaneDecision =
   { lane: ChatLane; routed: true; source: "jev" } | { lane: ChatLane; routed: false; reason: RoutingFallbackReason };
 
-export type RoutingFallbackReason =
+type RoutingFallbackReason =
   | "disabled"
   | "too_short"
   | "unconfigured"
@@ -73,7 +73,7 @@ export type RoutingFallbackReason =
   | "unrecognized_answer";
 
 /** Routing is on unless explicitly switched off; the provider's own gates still apply. */
-export function routingEnabled(env: Record<string, string | undefined> = process.env): boolean {
+function routingEnabled(env: Record<string, string | undefined> = process.env): boolean {
   return env.POLYMATH_CHAT_ROUTING !== "off";
 }
 
