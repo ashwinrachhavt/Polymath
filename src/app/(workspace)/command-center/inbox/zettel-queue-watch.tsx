@@ -1,6 +1,7 @@
 "use client";
 
 import { useWorkPoll, WorkStatus, type WorkState } from "@/components/work-status";
+import { ZETTEL_QUEUE_GIVE_UP_MS } from "@/domains/capture/zettel-generation";
 import { zettelQueueStatusAction } from "./zettel-actions";
 
 /**
@@ -25,7 +26,7 @@ export function ZettelQueueWatch() {
       return { "zettel-queue": state };
     },
     intervalMs: 2_000,
-    giveUpMs: 2 * 60_000,
+    giveUpMs: ZETTEL_QUEUE_GIVE_UP_MS,
     giveUpLabel: "Still proposing in the background - the Ideas queue will catch up.",
   });
 

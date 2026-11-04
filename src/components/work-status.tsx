@@ -15,7 +15,7 @@ import { motionTransition } from "@/components/motion-config";
  * rise, honoring the root reduced-motion config.
  */
 
-export type WorkPhase = "queued" | "working" | "done" | "failed";
+type WorkPhase = "queued" | "working" | "done" | "failed";
 
 export type WorkState = {
   phase: WorkPhase;
