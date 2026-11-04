@@ -100,9 +100,6 @@ export async function countPendingZettelProposals(auth: AuthContext): Promise<nu
   return row?.n ?? 0;
 }
 
-/** How long a zettelize verb watches the queue before it says so honestly. */
-export const ZETTEL_QUEUE_GIVE_UP_MS = 2 * 60_000;
-
 /** Count outbox rows that have not settled yet: the pending zettelize passes. */
 export async function countQueuedZettelPasses(auth: AuthContext): Promise<number> {
   const [row] = await db

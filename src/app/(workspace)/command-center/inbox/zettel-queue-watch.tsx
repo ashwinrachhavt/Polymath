@@ -1,8 +1,10 @@
 "use client";
 
 import { useWorkPoll, WorkStatus, type WorkState } from "@/components/work-status";
-import { ZETTEL_QUEUE_GIVE_UP_MS } from "@/domains/capture/zettel-generation";
 import { zettelQueueStatusAction } from "./zettel-actions";
+
+/** How long the verb watches the queue before it says so honestly. */
+const GIVE_UP_MS = 2 * 60_000;
 
 /**
  * The live half of a zettelize verb's outcome: "Proposing ideas…" while
@@ -26,7 +28,7 @@ export function ZettelQueueWatch() {
       return { "zettel-queue": state };
     },
     intervalMs: 2_000,
-    giveUpMs: ZETTEL_QUEUE_GIVE_UP_MS,
+    giveUpMs: GIVE_UP_MS,
     giveUpLabel: "Still proposing in the background - the Ideas queue will catch up.",
   });
 
