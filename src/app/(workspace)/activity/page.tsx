@@ -84,7 +84,7 @@ async function ActivitySurface({ searchParams }: { searchParams: SearchParams })
   const eventParam = first(query.event);
   const requestedEventId = eventParam && UUID_PATTERN.test(eventParam) ? eventParam : undefined;
 
-  const filters = buildEventFilters({ category, q: q || undefined }, includeTechnical);
+  const filters = buildEventFilters({ category, q: q || undefined, actorId }, includeTechnical);
   const rows: ActivityEventRow[] = [];
   let cursor: string | null = null;
   let hasMore = false;
