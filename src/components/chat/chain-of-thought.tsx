@@ -54,7 +54,7 @@ export function ChainOfThought({
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
-        className="text-muted-foreground hover:text-foreground focus-visible:ring-ring inline-flex items-center gap-1.5 rounded text-[13px] outline-none transition-colors focus-visible:ring-2"
+        className="text-muted-foreground hover:text-foreground focus-visible:ring-ring inline-flex items-center gap-1.5 rounded text-body-dense outline-none transition-colors focus-visible:ring-2"
       >
         {streaming ? (
           <Loader2 aria-hidden className="size-3.5 animate-spin" />
@@ -62,31 +62,22 @@ export function ChainOfThought({
           <Brain aria-hidden className="size-3.5" />
         )}
         <span>{label}</span>
-        <ChevronRight
-          aria-hidden
-          className={cn("size-3 transition-transform", open && "rotate-90")}
-        />
+        <ChevronRight aria-hidden className={cn("size-3 transition-transform", open && "rotate-90")} />
       </button>
 
       {open ? (
         <ol className="border-border ml-1.5 mt-2 flex flex-col gap-2.5 border-l pl-4">
           {steps.map((step) => (
             <li key={step.id} className="flex flex-col gap-0.5">
-              <span className="flex items-center gap-1.5 text-[13px]">
+              <span className="flex items-center gap-1.5 text-body-dense">
                 <StepMark step={step} />
-                <span className={cn("truncate", step.status === "error" && "text-destructive")}>
-                  {step.label}
-                </span>
+                <span className={cn("truncate", step.status === "error" && "text-destructive")}>{step.label}</span>
                 {step.detail ? (
-                  <span className="text-muted-foreground shrink-0 text-[11px] opacity-80">
-                    {step.detail}
-                  </span>
+                  <span className="text-muted-foreground shrink-0 text-data opacity-80">{step.detail}</span>
                 ) : null}
               </span>
               {step.text ? (
-                <p className="text-muted-foreground whitespace-pre-wrap text-[13px] leading-5">
-                  {step.text}
-                </p>
+                <p className="text-muted-foreground whitespace-pre-wrap text-body-dense leading-5">{step.text}</p>
               ) : null}
               {step.records && step.records.length > 0 ? <RecordCards records={step.records} /> : null}
             </li>

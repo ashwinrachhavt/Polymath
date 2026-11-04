@@ -40,7 +40,11 @@ export function CompanyForm() {
         <Button type="submit" variant="outline" disabled={pending}>
           {pending ? "Adding…" : "Add company"}
         </Button>
-        {error ? <p className="text-destructive text-[13px]" role="alert">{error}</p> : null}
+        {error ? (
+          <p className="text-destructive text-body-dense" role="alert">
+            {error}
+          </p>
+        ) : null}
       </div>
     </form>
   );

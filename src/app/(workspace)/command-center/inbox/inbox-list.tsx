@@ -283,7 +283,7 @@ export function InboxList({
                   className="flex min-w-0 flex-1 items-center gap-3 rounded-md py-2 outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[13px] leading-5">{title}</span>
+                    <span className="block truncate text-body-dense leading-5">{title}</span>
                     <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
                       <span className="truncate">{captureKindLabel(capture.kind)}</span>
                       {capture.processingState !== "unprocessed" ? (
@@ -324,7 +324,7 @@ export function InboxList({
           aria-live="polite"
           className="sticky bottom-3 mx-3 mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-2 shadow-[var(--shadow)] transition-all duration-150 max-sm:fixed max-sm:inset-x-3 max-sm:bottom-3 max-sm:z-30 max-sm:min-h-[44px]"
         >
-          <span className="readout pl-1 text-[13px]">{selected.size} selected</span>
+          <span className="readout pl-1 text-body-dense">{selected.size} selected</span>
           <div className="ml-auto flex flex-wrap items-center gap-1.5">
             <Button size="sm" variant="outline" disabled={pending} onClick={() => bulkAct("discarded")}>
               Archive
@@ -359,7 +359,7 @@ export function InboxList({
             </Button>
           </div>
           {zettel ? (
-            <p className="w-full text-[13px]" role="status">
+            <p className="w-full text-body-dense" role="status">
               <span className="text-muted-foreground">
                 {zettel.queued ? `Queued ${zettel.queued} for zettel proposals.` : "Nothing queued."}
                 {zettel.skipped
@@ -376,7 +376,7 @@ export function InboxList({
             </p>
           ) : null}
           {bulkErrors.length ? (
-            <ul className="w-full text-[13px]">
+            <ul className="w-full text-body-dense">
               {bulkErrors.map((failure) => (
                 <li key={failure.id} className="text-destructive" role="alert">
                   {failure.title}: {failure.message}

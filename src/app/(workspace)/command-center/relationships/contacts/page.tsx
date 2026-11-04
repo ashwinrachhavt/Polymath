@@ -57,8 +57,6 @@ function first(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
 
-
-
 async function Relationships({ searchParams }: { searchParams: SearchParams }) {
   const query = await searchParams;
   await io();
@@ -81,14 +79,19 @@ async function Relationships({ searchParams }: { searchParams: SearchParams }) {
       listCompanies(auth),
     ]);
     const correspondence = detail ? await listCorrespondence(auth, { contactId: detail.contact.id }) : [];
-    const researchCardSet = detail ? await latestProfileResearch(auth, { subjectType: "contact", subjectId: detail.contact.id }) : null;
+    const researchCardSet = detail
+      ? await latestProfileResearch(auth, { subjectType: "contact", subjectId: detail.contact.id })
+      : null;
     const companyOptions = allCompanies.map((company) => ({ id: company.id, name: company.name }));
 
     return (
       <Screen
         title="Contacts"
         actions={
-          <Link href="/command-center/relationships/contacts" className="text-[13px] font-medium underline-offset-4 hover:underline">
+          <Link
+            href="/command-center/relationships/contacts"
+            className="text-body-dense font-medium underline-offset-4 hover:underline"
+          >
             Open contact list
           </Link>
         }
@@ -104,7 +107,12 @@ async function Relationships({ searchParams }: { searchParams: SearchParams }) {
             }
           />
         ) : detail ? (
-          <ContactDetailPanel detail={detail} companies={companyOptions} correspondence={correspondence} researchCardSet={researchCardSet} />
+          <ContactDetailPanel
+            detail={detail}
+            companies={companyOptions}
+            correspondence={correspondence}
+            researchCardSet={researchCardSet}
+          />
         ) : (
           <Empty
             title="Contact not found"
@@ -129,7 +137,14 @@ async function Relationships({ searchParams }: { searchParams: SearchParams }) {
     findCompanyDuplicates(auth),
   ]);
   redirectPastEnd("/command-center/relationships/contacts", query, list.page, list.pageSize, contactsPage.total);
-  redirectPastEnd("/command-center/relationships/contacts", query, companyPage, list.pageSize, companyPageData.total, "cpage");
+  redirectPastEnd(
+    "/command-center/relationships/contacts",
+    query,
+    companyPage,
+    list.pageSize,
+    companyPageData.total,
+    "cpage",
+  );
 
   const companyOptions = allCompanies.map((company) => ({ id: company.id, name: company.name }));
 
@@ -137,7 +152,10 @@ async function Relationships({ searchParams }: { searchParams: SearchParams }) {
     <Screen
       title="Contacts"
       actions={
-        <a href="/command-center/relationships/people" className="text-[13px] font-medium underline-offset-4 hover:underline">
+        <a
+          href="/command-center/relationships/people"
+          className="text-body-dense font-medium underline-offset-4 hover:underline"
+        >
           Open People table
         </a>
       }
@@ -160,7 +178,7 @@ async function Relationships({ searchParams }: { searchParams: SearchParams }) {
         <div className="space-y-6">
           <Panel title={`${contactsPage.total} ${contactsPage.total === 1 ? "contact" : "contacts"}`}>
             <details className="mb-4">
-              <summary className="cursor-pointer text-[13px] font-medium focus-visible:outline-2 focus-visible:outline-ring">
+              <summary className="cursor-pointer text-body-dense font-medium focus-visible:outline-2 focus-visible:outline-ring">
                 New contact
               </summary>
               <div className="mt-3">
@@ -173,7 +191,7 @@ async function Relationships({ searchParams }: { searchParams: SearchParams }) {
                   <div>
                     <Link
                       href={`/command-center/relationships/contacts?id=${contact.id}`}
-                      className="text-[13px] font-medium underline-offset-4 hover:underline"
+                      className="text-body-dense font-medium underline-offset-4 hover:underline"
                     >
                       {contact.fullName}
                     </Link>
@@ -187,7 +205,9 @@ async function Relationships({ searchParams }: { searchParams: SearchParams }) {
                   </div>
                   <div className="flex items-center gap-2">
                     {contact.openFollowUps > 0 ? (
-                      <Status>{contact.openFollowUps} open follow-up{contact.openFollowUps === 1 ? "" : "s"}</Status>
+                      <Status>
+                        {contact.openFollowUps} open follow-up{contact.openFollowUps === 1 ? "" : "s"}
+                      </Status>
                     ) : null}
                     <Status>{RELATIONSHIP_STATUS_LABELS[contact.relationshipStatus]}</Status>
                   </div>
@@ -197,7 +217,11 @@ async function Relationships({ searchParams }: { searchParams: SearchParams }) {
             {!contactsPage.items.length ? (
               <NoResults
                 filtered={Boolean(q || status)}
-                clearHref={listHref("/command-center/relationships/contacts", query, { q: undefined, status: undefined, page: undefined })}
+                clearHref={listHref("/command-center/relationships/contacts", query, {
+                  q: undefined,
+                  status: undefined,
+                  page: undefined,
+                })}
                 emptyTitle="No contacts yet"
                 emptyDescription="Imported LinkedIn connections live in the identity domain until the two records merge."
               />
@@ -221,7 +245,7 @@ async function Relationships({ searchParams }: { searchParams: SearchParams }) {
                   <div>
                     <Link
                       href={`/command-center/relationships/companies/${company.id}`}
-                      className="text-[13px] font-medium underline-offset-4 hover:underline"
+                      className="text-body-dense font-medium underline-offset-4 hover:underline"
                     >
                       {company.name}
                     </Link>
@@ -236,9 +260,7 @@ async function Relationships({ searchParams }: { searchParams: SearchParams }) {
                 </div>
               ))}
             </div>
-            {!companyPageData.items.length ? (
-              <Empty title="No companies yet" />
-            ) : null}
+            {!companyPageData.items.length ? <Empty title="No companies yet" /> : null}
             <Pagination
               basePath="/command-center/relationships/contacts"
               raw={query}
@@ -251,9 +273,7 @@ async function Relationships({ searchParams }: { searchParams: SearchParams }) {
         </div>
 
         <div>
-          <Empty
-            title="Choose a contact"
-          />
+          <Empty title="Choose a contact" />
         </div>
       </div>
     </Screen>
@@ -279,7 +299,7 @@ function ContactDetailPanel({
         title={contact.fullName}
         description={`${contact.title || "No title recorded"}${currentCompany ? ` at ${currentCompany.name}` : ""}`}
       >
-        <dl className="mb-4 grid gap-2 text-[13px] sm:grid-cols-2">
+        <dl className="mb-4 grid gap-2 text-body-dense sm:grid-cols-2">
           <div>
             <dt className="text-muted-foreground">Email</dt>
             <dd>{contact.primaryEmail || "Not recorded"}</dd>
@@ -302,14 +322,13 @@ function ContactDetailPanel({
             {detail.companies.map((company) => (
               <p key={company.linkId} className="text-xs text-muted-foreground">
                 {company.name}
-                {company.title ? ` · ${company.title}` : ""}{" "}
-                {company.isCurrent ? "(current)" : "(past)"}
+                {company.title ? ` · ${company.title}` : ""} {company.isCurrent ? "(current)" : "(past)"}
               </p>
             ))}
           </div>
         ) : null}
         <details>
-          <summary className="cursor-pointer text-[13px] font-medium focus-visible:outline-2 focus-visible:outline-ring">
+          <summary className="cursor-pointer text-body-dense font-medium focus-visible:outline-2 focus-visible:outline-ring">
             Edit contact
           </summary>
           <div className="mt-3">
@@ -343,18 +362,19 @@ function ContactDetailPanel({
           {researchCardSet ? (
             <ProfileResearchCards cardSet={researchCardSet} />
           ) : (
-            <p className="text-[13px] text-muted-foreground">Not researched yet. The first pass searches who they are and what they have said recently.</p>
+            <p className="text-body-dense text-muted-foreground">
+              Not researched yet. The first pass searches who they are and what they have said recently.
+            </p>
           )}
         </div>
       </Panel>
-
 
       <Panel title="Follow-ups">
         <div className="mb-4 divide-y divide-border">
           {detail.followUps.map((followUp) => (
             <div key={followUp.id} className="flex flex-wrap items-center justify-between gap-3 py-2 first:pt-0">
               <div>
-                <p className="text-[13px]">{followUp.note || "Follow up"}</p>
+                <p className="text-body-dense">{followUp.note || "Follow up"}</p>
                 <p className="text-xs text-muted-foreground">
                   {followUp.dueAt ? `Due ${followUp.dueAt.toISOString().slice(0, 10)}` : "No due date"}
                   {followUp.status !== "open" ? ` · ${followUp.status}` : ""}
@@ -382,11 +402,13 @@ function ContactDetailPanel({
           {correspondence.map((item) => (
             <div key={item.id} className="py-3 first:pt-0">
               <div className="mb-1 flex flex-wrap items-center gap-2">
-                <p className="text-[13px] font-medium">{item.subject ?? "(no subject)"}</p>
+                <p className="text-body-dense font-medium">{item.subject ?? "(no subject)"}</p>
                 <Status>{item.state}</Status>
                 <span className="text-xs text-muted-foreground">{item.channel}</span>
               </div>
-              <p className="mb-2 whitespace-pre-wrap text-[13px] leading-relaxed text-muted-foreground">{item.body}</p>
+              <p className="mb-2 whitespace-pre-wrap text-body-dense leading-relaxed text-muted-foreground">
+                {item.body}
+              </p>
               {item.state === "drafted" || item.state === "planned" ? (
                 <span className="flex flex-wrap items-center gap-2">
                   {item.proposalStatus === "approved" ? (
@@ -396,16 +418,18 @@ function ContactDetailPanel({
                       Send approval was rejected. Cancel this draft and start a new one to change it.
                     </span>
                   ) : (
-                    <RequestSendApprovalButton correspondenceId={item.id} version={item.version} hasProposal={!!item.actionProposalId} />
+                    <RequestSendApprovalButton
+                      correspondenceId={item.id}
+                      version={item.version}
+                      hasProposal={!!item.actionProposalId}
+                    />
                   )}
                   <CancelCorrespondenceButton correspondenceId={item.id} version={item.version} />
                 </span>
               ) : null}
             </div>
           ))}
-          {!correspondence.length ? (
-            <p className="py-1 text-xs text-muted-foreground">Nothing drafted yet.</p>
-          ) : null}
+          {!correspondence.length ? <p className="py-1 text-xs text-muted-foreground">Nothing drafted yet.</p> : null}
         </div>
         <CorrespondenceForm contactId={contact.id} />
       </Panel>
@@ -414,7 +438,7 @@ function ContactDetailPanel({
         <div className="mb-4 space-y-3">
           {detail.observations.map((observation) => (
             <div key={observation.id} className="border-b border-border pb-3 last:border-0">
-              <p className="whitespace-pre-wrap text-[13px] leading-relaxed">{observation.body}</p>
+              <p className="whitespace-pre-wrap text-body-dense leading-relaxed">{observation.body}</p>
               <p className="mt-1 text-xs text-muted-foreground">
                 {observation.source} · {observation.observedAt.toISOString().slice(0, 10)}
               </p>
@@ -433,7 +457,13 @@ function ContactDetailPanel({
 export default function RelationshipsPage({ searchParams }: { searchParams: SearchParams }) {
   return (
     <>
-      <Suspense fallback={<p role="status" className="p-6 text-[13px] text-muted-foreground">Loading contacts…</p>}>
+      <Suspense
+        fallback={
+          <p role="status" className="p-6 text-body-dense text-muted-foreground">
+            Loading contacts…
+          </p>
+        }
+      >
         <Relationships searchParams={searchParams} />
       </Suspense>
     </>

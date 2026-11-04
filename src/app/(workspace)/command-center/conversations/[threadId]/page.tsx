@@ -24,14 +24,18 @@ async function Timeline({ threadId }: { threadId: string }) {
     <Screen
       title={conversation.thread.title || "Untitled conversation"}
       description={`With ${conversation.thread.profileName} · started ${conversation.thread.createdAt.toISOString().slice(0, 16).replace("T", " ")}Z`}
-      actions={conversation.entries.length ? (
-        <form action={addConversationToKnowledgeAction}>
-          <input type="hidden" name="threadId" value={threadId} />
-          <Button type="submit" variant="outline" size="sm">Add to knowledge</Button>
-        </form>
-      ) : undefined}
+      actions={
+        conversation.entries.length ? (
+          <form action={addConversationToKnowledgeAction}>
+            <input type="hidden" name="threadId" value={threadId} />
+            <Button type="submit" variant="outline" size="sm">
+              Add to knowledge
+            </Button>
+          </form>
+        ) : undefined
+      }
     >
-      <p className="text-[13px]">
+      <p className="text-body-dense">
         <Link href="/polymath" className="text-muted-foreground underline-offset-4 hover:underline">
           Conversations now live in the Assistant
         </Link>
@@ -39,27 +43,25 @@ async function Timeline({ threadId }: { threadId: string }) {
       <div className="space-y-4" aria-label="Timeline">
         {conversation.entries.map((entry) =>
           entry.role === "user" ? (
-            <div key={entry.id} className="ml-auto max-w-[85%] rounded-lg bg-muted px-3 py-2 text-[13px] leading-6">
+            <div key={entry.id} className="ml-auto max-w-[85%] rounded-lg bg-muted px-3 py-2 text-body-dense leading-6">
               {entry.content ?? ""}
             </div>
           ) : (
             <div key={entry.id} className="max-w-[72ch] space-y-3">
-              <p className="whitespace-pre-wrap text-[13px] leading-6">{entry.content ?? ""}</p>
+              <p className="whitespace-pre-wrap text-body-dense leading-6">{entry.content ?? ""}</p>
               {(() => {
                 // ASH-306: a surface card is part of the message, so the
                 // timeline on any device shows what the owner was shown.
                 const card = surfaceCardFromParts(entry.parts);
                 return card ? <SurfaceCardView card={card} /> : null;
               })()}
-              <p className="mt-1 text-[11px] text-muted-foreground">
+              <p className="mt-1 text-data text-muted-foreground">
                 {entry.role} · {entry.createdAt.toISOString().slice(0, 16).replace("T", " ")}Z
               </p>
             </div>
           ),
         )}
-        {!conversation.entries.length ? (
-          <Empty title="No messages yet" />
-        ) : null}
+        {!conversation.entries.length ? <Empty title="No messages yet" /> : null}
       </div>
     </Screen>
   );
@@ -68,7 +70,13 @@ async function Timeline({ threadId }: { threadId: string }) {
 export default async function ConversationPage({ params }: { params: Promise<{ threadId: string }> }) {
   const { threadId } = await params;
   return (
-    <Suspense fallback={<p role="status" className="p-6 text-[13px] text-muted-foreground">Loading conversation…</p>}>
+    <Suspense
+      fallback={
+        <p role="status" className="p-6 text-body-dense text-muted-foreground">
+          Loading conversation…
+        </p>
+      }
+    >
       <Timeline threadId={threadId} />
     </Suspense>
   );

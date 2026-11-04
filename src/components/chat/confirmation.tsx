@@ -77,12 +77,12 @@ export function Confirmation({
       role="group"
       aria-label={card.kind === "question" ? "The agent needs an answer" : "The agent needs approval"}
     >
-      <p className="flex items-center gap-2 text-[13px] font-medium">
+      <p className="flex items-center gap-2 text-body-dense font-medium">
         <Icon aria-hidden className="text-muted-foreground size-3.5 shrink-0" />
         <span className="min-w-0 flex-1">{card.title}</span>
-        {settledLabel ? <span className="text-muted-foreground shrink-0 text-[11px]">{settledLabel}</span> : null}
+        {settledLabel ? <span className="text-muted-foreground shrink-0 text-data">{settledLabel}</span> : null}
       </p>
-      <p className="text-muted-foreground mt-1 text-[13px] leading-5">{card.body}</p>
+      <p className="text-muted-foreground mt-1 text-body-dense leading-5">{card.body}</p>
 
       {settled ? null : card.kind === "question" ? (
         <div className="mt-2.5 flex flex-col gap-2">
@@ -102,7 +102,7 @@ export function Confirmation({
                         Promise.resolve({ ok: false, message: "This conversation cannot take an answer." }),
                     );
                   }}
-                  className="border-border hover:bg-muted focus-visible:ring-ring inline-flex h-7 items-center rounded-md border px-2.5 text-[13px] outline-none transition-colors focus-visible:ring-2 disabled:opacity-50"
+                  className="border-border hover:bg-muted focus-visible:ring-ring inline-flex h-7 items-center rounded-md border px-2.5 text-body-dense outline-none transition-colors focus-visible:ring-2 disabled:opacity-50"
                 >
                   {option}
                 </button>
@@ -127,12 +127,12 @@ export function Confirmation({
                 value={answer}
                 onChange={(event) => setAnswer(event.target.value)}
                 placeholder="Answer to continue"
-                className="border-input bg-background focus-visible:ring-ring h-8 min-w-0 flex-1 rounded-md border px-2.5 text-[13px] outline-none focus-visible:ring-2"
+                className="border-input bg-background focus-visible:ring-ring h-8 min-w-0 flex-1 rounded-md border px-2.5 text-body-dense outline-none focus-visible:ring-2"
               />
               <button
                 type="submit"
                 disabled={!answer.trim() || pending !== null}
-                className="bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:ring-ring inline-flex h-8 items-center gap-1 rounded-md px-2.5 text-[13px] outline-none transition-colors focus-visible:ring-2 disabled:opacity-50"
+                className="bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:ring-ring inline-flex h-8 items-center gap-1 rounded-md px-2.5 text-body-dense outline-none transition-colors focus-visible:ring-2 disabled:opacity-50"
               >
                 {pending === "answer" ? <Loader2 aria-hidden className="size-3.5 animate-spin" /> : null}
                 Send
@@ -153,7 +153,7 @@ export function Confirmation({
                   Promise.resolve({ ok: false, message: "This proposal is decided in Reviews." }),
               )
             }
-            className="border-border hover:bg-muted focus-visible:ring-ring inline-flex h-8 items-center rounded-md border px-2.5 text-[13px] outline-none transition-colors focus-visible:ring-2 disabled:opacity-50"
+            className="border-border hover:bg-muted focus-visible:ring-ring inline-flex h-8 items-center rounded-md border px-2.5 text-body-dense outline-none transition-colors focus-visible:ring-2 disabled:opacity-50"
           >
             Reject
           </button>
@@ -168,7 +168,7 @@ export function Confirmation({
                   Promise.resolve({ ok: false, message: "This proposal is decided in Reviews." }),
               )
             }
-            className="bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:ring-ring inline-flex h-8 items-center gap-1 rounded-md px-2.5 text-[13px] outline-none transition-colors focus-visible:ring-2 disabled:opacity-50"
+            className="bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:ring-ring inline-flex h-8 items-center gap-1 rounded-md px-2.5 text-body-dense outline-none transition-colors focus-visible:ring-2 disabled:opacity-50"
           >
             {pending === "approved" ? (
               <Loader2 aria-hidden className="size-3.5 animate-spin" />
@@ -180,7 +180,7 @@ export function Confirmation({
           {card.href ? (
             <a
               href={card.href}
-              className="text-muted-foreground hover:text-foreground ml-1 text-[12px] underline-offset-2 hover:underline"
+              className="text-muted-foreground hover:text-foreground ml-1 text-label underline-offset-2 hover:underline"
             >
               Review in full
             </a>
@@ -189,7 +189,7 @@ export function Confirmation({
       )}
 
       {error ? (
-        <p role="alert" className="text-destructive mt-2 text-[12px]">
+        <p role="alert" className="text-destructive mt-2 text-label">
           {error}
         </p>
       ) : null}

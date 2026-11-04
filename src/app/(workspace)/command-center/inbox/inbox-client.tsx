@@ -77,7 +77,7 @@ export function CaptureForm() {
             onFocus={() => setExpanded(true)}
             placeholder="Capture a thought, excerpt, or URL"
             aria-label="Capture a thought, excerpt, or URL"
-            className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-muted-foreground"
+            className="min-w-0 flex-1 bg-transparent text-body-dense outline-none placeholder:text-muted-foreground"
           />
         </div>
       ) : asChip ? (
@@ -92,7 +92,7 @@ export function CaptureForm() {
               <span className="file-chip-shimmer absolute inset-x-0 bottom-0 h-px" />
             </span>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[13px] font-medium">Pasted text</p>
+              <p className="truncate text-body-dense font-medium">Pasted text</p>
               <p className="text-xs text-muted-foreground">
                 {text.length.toLocaleString()} characters · {lines.toLocaleString()} {lines === 1 ? "line" : "lines"}
               </p>
@@ -119,7 +119,7 @@ export function CaptureForm() {
               <span className="readout">Cmd Enter</span>
             </span>
             {error ? (
-              <p className="w-full text-destructive text-[13px]" role="alert">
+              <p className="w-full text-destructive text-body-dense" role="alert">
                 {error.message}
               </p>
             ) : null}
@@ -139,7 +139,7 @@ export function CaptureForm() {
             }}
             placeholder="Paste a thought, source excerpt, or URL"
             aria-label="Capture a thought, excerpt, or URL"
-            className="min-h-16 resize-none border-0 bg-transparent p-1 text-[13px] shadow-none focus-visible:ring-0"
+            className="min-h-16 resize-none border-0 bg-transparent p-1 text-body-dense shadow-none focus-visible:ring-0"
           />
           <div className="flex flex-wrap items-center gap-2 border-border border-t px-1 pt-2">
             <Button type="submit" size="sm" disabled={pending || !text.trim()}>
@@ -161,7 +161,7 @@ export function CaptureForm() {
               <span className="readout">Cmd Enter</span>
             </span>
             {error ? (
-              <p className="w-full text-destructive text-[13px]" role="alert">
+              <p className="w-full text-destructive text-body-dense" role="alert">
                 {error.message}
                 {error.existingId ? (
                   <>

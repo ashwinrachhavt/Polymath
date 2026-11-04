@@ -89,7 +89,7 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
         >
           <header className="shrink-0 border-border border-b px-3 pt-2.5 pb-3">
             <div className="flex h-8 items-center gap-2">
-              <h1 className="text-[13px] font-medium tracking-tight">Inbox</h1>
+              <h1 className="text-body-dense font-medium tracking-tight">Inbox</h1>
               <span className="readout text-xs text-muted-foreground">{tabs.unprocessed} to clarify</span>
             </div>
             <div className="mt-1">
@@ -175,14 +175,14 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
 
             {!rows.length ? (
               <div className="flex flex-col items-center gap-1 px-6 py-12 text-center">
-                <p className="text-[13px]">{filtered ? "No matches" : "Nothing in this view"}</p>
+                <p className="text-body-dense">{filtered ? "No matches" : "Nothing in this view"}</p>
                 <p className="max-w-xs text-xs leading-relaxed text-muted-foreground">
                   {filtered
                     ? "Nothing fits the current search and filters."
                     : "Capture material above or choose another filter."}
                 </p>
                 {filtered ? (
-                  <Link href={clearHref} className="mt-1 text-[13px] font-medium underline underline-offset-4">
+                  <Link href={clearHref} className="mt-1 text-body-dense font-medium underline underline-offset-4">
                     Clear filters
                   </Link>
                 ) : null}
@@ -252,7 +252,7 @@ export default function InboxPage({
   return (
     <Suspense
       fallback={
-        <p role="status" className="p-6 text-[13px] text-muted-foreground">
+        <p role="status" className="p-6 text-body-dense text-muted-foreground">
           Opening the inbox…
         </p>
       }

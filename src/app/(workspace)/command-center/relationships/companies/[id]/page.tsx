@@ -25,7 +25,9 @@ async function CompanyProfileSurface({ params }: { params: Promise<{ id: string 
   const auth = await getAuthContext();
   const valid = /^[0-9a-fA-F-]{36}$/.test(id);
   const detail = valid ? await getCompanyDetail(auth, { companyId: id }) : null;
-  const cardSet = detail ? await latestProfileResearch(auth, { subjectType: "company", subjectId: detail.company.id }) : null;
+  const cardSet = detail
+    ? await latestProfileResearch(auth, { subjectType: "company", subjectId: detail.company.id })
+    : null;
 
   if (!detail) {
     return (
@@ -48,20 +50,28 @@ async function CompanyProfileSurface({ params }: { params: Promise<{ id: string 
     <Screen
       title={company.name}
       actions={
-        <Link href="/command-center/relationships/contacts" className="text-[13px] font-medium underline-offset-4 hover:underline">
+        <Link
+          href="/command-center/relationships/contacts"
+          className="text-body-dense font-medium underline-offset-4 hover:underline"
+        >
           Open contacts
         </Link>
       }
     >
       <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <div className="space-y-6">
-          <Panel title="Research" description="A bounded web pass: homepage, about page and recent news become a grounded card set.">
+          <Panel
+            title="Research"
+            description="A bounded web pass: homepage, about page and recent news become a grounded card set."
+          >
             <div className="space-y-4">
               <CompanyResearchControls companyId={company.id} researched={cardSet !== null} />
               {cardSet ? (
                 <ProfileResearchCards cardSet={cardSet} />
               ) : (
-                <p className="text-[13px] text-muted-foreground">Not researched yet. The first pass reads the company&apos;s own site and recent news.</p>
+                <p className="text-body-dense text-muted-foreground">
+                  Not researched yet. The first pass reads the company&apos;s own site and recent news.
+                </p>
               )}
             </div>
           </Panel>
@@ -69,7 +79,7 @@ async function CompanyProfileSurface({ params }: { params: Promise<{ id: string 
 
         <div className="space-y-6">
           <Panel title="Record">
-            <dl className="grid gap-2 text-[13px]">
+            <dl className="grid gap-2 text-body-dense">
               <div>
                 <dt className="text-muted-foreground">Domain</dt>
                 <dd className="readout">{company.domain ?? "Not recorded"}</dd>
@@ -85,11 +95,14 @@ async function CompanyProfileSurface({ params }: { params: Promise<{ id: string 
             {linked.length ? (
               <div className="divide-y divide-border">
                 {linked.map((person) => (
-                  <div key={person.linkId} className="flex flex-wrap items-center justify-between gap-2 py-2.5 first:pt-0 last:pb-0">
+                  <div
+                    key={person.linkId}
+                    className="flex flex-wrap items-center justify-between gap-2 py-2.5 first:pt-0 last:pb-0"
+                  >
                     <div className="min-w-0">
                       <Link
                         href={`/command-center/relationships/contacts?id=${person.contactId}`}
-                        className="block max-w-[16rem] truncate text-[13px] font-medium underline-offset-4 hover:underline"
+                        className="block max-w-[16rem] truncate text-body-dense font-medium underline-offset-4 hover:underline"
                       >
                         {person.fullName}
                       </Link>
@@ -100,7 +113,7 @@ async function CompanyProfileSurface({ params }: { params: Promise<{ id: string 
                 ))}
               </div>
             ) : (
-              <p className="text-[13px] text-muted-foreground">No contacts linked to this company yet.</p>
+              <p className="text-body-dense text-muted-foreground">No contacts linked to this company yet.</p>
             )}
           </Panel>
         </div>
@@ -115,7 +128,13 @@ async function CompanyProfileSurface({ params }: { params: Promise<{ id: string 
  */
 export default function CompanyProfilePage({ params }: { params: Promise<{ id: string }> }) {
   return (
-    <Suspense fallback={<p role="status" className="p-6 text-[13px] text-muted-foreground">Loading company…</p>}>
+    <Suspense
+      fallback={
+        <p role="status" className="p-6 text-body-dense text-muted-foreground">
+          Loading company…
+        </p>
+      }
+    >
       <CompanyProfileSurface params={params} />
     </Suspense>
   );

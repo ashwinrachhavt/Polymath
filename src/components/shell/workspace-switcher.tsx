@@ -73,7 +73,7 @@ export function WorkspaceSwitcher({ data }: { data: WorkspaceSwitcherData | null
           "focus-visible:ring-3 data-[state=open]:bg-muted data-[state=open]:text-foreground",
         )}
       >
-        <span className="max-w-[140px] truncate text-[13px] font-medium">{label}</span>
+        <span className="max-w-[140px] truncate text-body-dense font-medium">{label}</span>
         <ChevronsUpDown aria-hidden className="text-muted-foreground size-3.5 shrink-0" />
       </Popover.Trigger>
 
@@ -84,7 +84,7 @@ export function WorkspaceSwitcher({ data }: { data: WorkspaceSwitcherData | null
           sideOffset={6}
           className="panel bg-popover text-popover-foreground shadow-raised z-50 w-72 rounded-xl p-2 outline-none"
         >
-          <p className="text-muted-foreground px-2 pt-1 pb-2 text-[11px] font-medium uppercase tracking-wider">
+          <p className="text-muted-foreground px-2 pt-1 pb-2 text-data font-medium uppercase tracking-wider">
             Workspaces
           </p>
           <div className="flex flex-col gap-0.5">
@@ -105,7 +105,7 @@ export function WorkspaceSwitcher({ data }: { data: WorkspaceSwitcherData | null
                     }
                     switchTo(membership.workspaceId);
                   }}
-                  className="hover:bg-accent focus-visible:ring-ring flex h-9 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] outline-none focus-visible:ring-3 disabled:opacity-50"
+                  className="hover:bg-accent focus-visible:ring-ring flex h-9 w-full items-center gap-2 rounded-md px-2 text-left text-body-dense outline-none focus-visible:ring-3 disabled:opacity-50"
                 >
                   <span className="min-w-0 flex-1 truncate">{membership.name}</span>
                   <Badge variant="secondary" className="shrink-0">
@@ -121,7 +121,10 @@ export function WorkspaceSwitcher({ data }: { data: WorkspaceSwitcherData | null
             <div className="mt-1 flex flex-col gap-0.5">
               <div aria-hidden className="bg-border my-1 h-px" />
               {data.pendingInvitations.map((invitation) => (
-                <div key={invitation.workspaceId} className="flex h-9 items-center gap-2 rounded-md px-2 text-[13px]">
+                <div
+                  key={invitation.workspaceId}
+                  className="flex h-9 items-center gap-2 rounded-md px-2 text-body-dense"
+                >
                   <Mail aria-hidden className="size-4 shrink-0 opacity-70" />
                   <span className="min-w-0 flex-1 truncate">Invited to {invitation.workspaceName}</span>
                   <Badge variant="outline" className="shrink-0">
@@ -129,7 +132,7 @@ export function WorkspaceSwitcher({ data }: { data: WorkspaceSwitcherData | null
                   </Badge>
                 </div>
               ))}
-              <p className="text-muted-foreground px-2 pb-1 text-[11px]">
+              <p className="text-muted-foreground px-2 pb-1 text-data">
                 Open the invitation link you were sent to join.
               </p>
             </div>
@@ -139,7 +142,7 @@ export function WorkspaceSwitcher({ data }: { data: WorkspaceSwitcherData | null
           <Link
             href="/workspaces/create"
             onClick={() => setOpen(false)}
-            className="hover:bg-accent focus-visible:ring-ring flex h-9 w-full items-center gap-2 rounded-md px-2 text-[13px] outline-none focus-visible:ring-3"
+            className="hover:bg-accent focus-visible:ring-ring flex h-9 w-full items-center gap-2 rounded-md px-2 text-body-dense outline-none focus-visible:ring-3"
           >
             <Plus aria-hidden className="size-4 shrink-0 opacity-70" />
             Create workspace

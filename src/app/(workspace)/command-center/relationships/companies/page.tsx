@@ -35,20 +35,32 @@ async function Companies({ searchParams }: { searchParams: SearchParams }) {
   redirectPastEnd(BASE, query, list.page, list.pageSize, page.total);
 
   return (
-    <Screen
-      title="Companies"
-    >
+    <Screen title="Companies">
       <ListToolbar searchPlaceholder="Search name or domain" />
 
       <div className="panel min-w-0 overflow-hidden rounded-xl">
         <div className="overflow-x-auto">
-          <table className="w-full text-[13px]">
+          <table className="w-full text-body-dense">
             <thead>
               <tr className="border-b border-border">
-                <th scope="col" className="text-muted-foreground px-4 py-2.5 text-left text-xs font-medium">Name</th>
-                <th scope="col" className="text-muted-foreground hidden px-4 py-2.5 text-left text-xs font-medium md:table-cell">Domain</th>
-                <th scope="col" className="text-muted-foreground px-4 py-2.5 text-right text-xs font-medium">People</th>
-                <th scope="col" className="text-muted-foreground hidden px-4 py-2.5 text-right text-xs font-medium sm:table-cell">Last activity</th>
+                <th scope="col" className="text-muted-foreground px-4 py-2.5 text-left text-xs font-medium">
+                  Name
+                </th>
+                <th
+                  scope="col"
+                  className="text-muted-foreground hidden px-4 py-2.5 text-left text-xs font-medium md:table-cell"
+                >
+                  Domain
+                </th>
+                <th scope="col" className="text-muted-foreground px-4 py-2.5 text-right text-xs font-medium">
+                  People
+                </th>
+                <th
+                  scope="col"
+                  className="text-muted-foreground hidden px-4 py-2.5 text-right text-xs font-medium sm:table-cell"
+                >
+                  Last activity
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -95,7 +107,13 @@ async function Companies({ searchParams }: { searchParams: SearchParams }) {
 
 export default function CompaniesPage({ searchParams }: { searchParams: SearchParams }) {
   return (
-    <Suspense fallback={<p role="status" className="p-6 text-[13px] text-muted-foreground">Loading companies…</p>}>
+    <Suspense
+      fallback={
+        <p role="status" className="p-6 text-body-dense text-muted-foreground">
+          Loading companies…
+        </p>
+      }
+    >
       <Companies searchParams={searchParams} />
     </Suspense>
   );

@@ -55,8 +55,7 @@ export function ContactForm({
       phone: String(data.get("phone") || ""),
       title: String(data.get("title") || ""),
       location: String(data.get("location") || ""),
-      relationshipStatus: (String(data.get("relationshipStatus")) ||
-        "unknown") as RelationshipStatus,
+      relationshipStatus: (String(data.get("relationshipStatus")) || "unknown") as RelationshipStatus,
       notes: String(data.get("notes") || ""),
       companyId: companyRaw || null,
     };
@@ -96,7 +95,7 @@ export function ContactForm({
           <Input name="location" maxLength={200} defaultValue={contact?.location ?? ""} />
         </Field>
         <Field label="Company">
-          <Select name="companyId" defaultValue={contact?.currentCompanyId ?? ""} >
+          <Select name="companyId" defaultValue={contact?.currentCompanyId ?? ""}>
             <option value="">No company</option>
             {companies.map((company) => (
               <option key={company.id} value={company.id}>
@@ -106,7 +105,7 @@ export function ContactForm({
           </Select>
         </Field>
         <Field label="Relationship status">
-          <Select name="relationshipStatus" defaultValue={contact?.relationshipStatus ?? "unknown"} >
+          <Select name="relationshipStatus" defaultValue={contact?.relationshipStatus ?? "unknown"}>
             {RELATIONSHIP_STATUSES.map((status) => (
               <option key={status} value={status}>
                 {RELATIONSHIP_STATUS_LABELS[status]}
@@ -124,7 +123,7 @@ export function ContactForm({
         />
       </Field>
       {error ? (
-        <p className="text-destructive text-[13px]" role="alert">
+        <p className="text-destructive text-body-dense" role="alert">
           {error}
         </p>
       ) : null}

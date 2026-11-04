@@ -33,11 +33,11 @@ export function AgentPanel({ agent, defaultOpen = false }: { agent: AgentPanelDa
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
-        className="text-muted-foreground hover:text-foreground focus-visible:ring-ring inline-flex items-center gap-1.5 rounded text-[13px] outline-none transition-colors focus-visible:ring-2"
+        className="text-muted-foreground hover:text-foreground focus-visible:ring-ring inline-flex items-center gap-1.5 rounded text-body-dense outline-none transition-colors focus-visible:ring-2"
       >
         <Bot aria-hidden className="size-3.5" />
         <span className="truncate">{agent.name}</span>
-        {agent.model ? <span className="readout shrink-0 text-[11px] opacity-80">{agent.model}</span> : null}
+        {agent.model ? <span className="readout shrink-0 text-data opacity-80">{agent.model}</span> : null}
         <ChevronDown aria-hidden className={cn("size-3 shrink-0 transition-transform", open && "rotate-180")} />
       </button>
 
@@ -45,14 +45,14 @@ export function AgentPanel({ agent, defaultOpen = false }: { agent: AgentPanelDa
         <div className="border-border mt-2 flex flex-col gap-3 rounded-lg border px-3.5 py-3">
           {agent.instructions ? (
             <div className="flex flex-col gap-1">
-              <p className="text-muted-foreground text-[11px] font-medium">Instructions</p>
-              <p className="text-[13px] leading-5 whitespace-pre-wrap">{agent.instructions}</p>
+              <p className="text-muted-foreground text-data font-medium">Instructions</p>
+              <p className="text-body-dense leading-5 whitespace-pre-wrap">{agent.instructions}</p>
             </div>
           ) : null}
 
           {agent.tools.length > 0 ? (
             <div className="flex flex-col gap-1">
-              <p className="text-muted-foreground text-[11px] font-medium">Tools · {agent.tools.length}</p>
+              <p className="text-muted-foreground text-data font-medium">Tools · {agent.tools.length}</p>
               <ul className="flex flex-col">
                 {agent.tools.map((tool) => {
                   const expanded = openTool === tool.id;
@@ -65,7 +65,7 @@ export function AgentPanel({ agent, defaultOpen = false }: { agent: AgentPanelDa
                         aria-controls={descId}
                         disabled={!tool.description}
                         onClick={() => setOpenTool(expanded ? null : tool.id)}
-                        className="hover:bg-muted/60 focus-visible:ring-ring flex h-8 w-full items-center gap-2 rounded px-1 text-left text-[13px] outline-none transition-colors focus-visible:ring-2 disabled:cursor-default"
+                        className="hover:bg-muted/60 focus-visible:ring-ring flex h-8 w-full items-center gap-2 rounded px-1 text-left text-body-dense outline-none transition-colors focus-visible:ring-2 disabled:cursor-default"
                       >
                         <span className="min-w-0 flex-1 truncate">{tool.name}</span>
                         {tool.description ? (
@@ -79,7 +79,7 @@ export function AgentPanel({ agent, defaultOpen = false }: { agent: AgentPanelDa
                         ) : null}
                       </button>
                       {expanded && tool.description ? (
-                        <p id={descId} className="text-muted-foreground px-1 pb-2 text-[12px] leading-5">
+                        <p id={descId} className="text-muted-foreground px-1 pb-2 text-label leading-5">
                           {tool.description}
                         </p>
                       ) : null}

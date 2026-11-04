@@ -20,11 +20,21 @@ type Choice = "unset" | "leave" | "finish" | "abandon";
 function ClosedPanel({ today, logNoteId, onReopen }: { today: string; logNoteId: string; onReopen?: () => void }) {
   return (
     <Panel title="Day closed" description={`The shutdown log for ${today} is already saved.`}>
-      <p className="text-sm text-muted-foreground">This day is already closed. Reopen it only when something new needs closing.</p>
+      <p className="text-sm text-muted-foreground">
+        This day is already closed. Reopen it only when something new needs closing.
+      </p>
       <div className="mt-4 flex gap-2">
-        <Button size="sm" variant="outline" asChild><Link href={`/polymath/notes?id=${encodeURIComponent(logNoteId)}`}>Open the log</Link></Button>
-        {onReopen ? <Button size="sm" variant="ghost" onClick={onReopen}>Close the day again</Button> : null}
-        <Button size="sm" variant="ghost" asChild><Link href="/command-center/inbox">Back to Inbox</Link></Button>
+        <Button size="sm" variant="outline" asChild>
+          <Link href={`/polymath/notes?id=${encodeURIComponent(logNoteId)}`}>Open the log</Link>
+        </Button>
+        {onReopen ? (
+          <Button size="sm" variant="ghost" onClick={onReopen}>
+            Close the day again
+          </Button>
+        ) : null}
+        <Button size="sm" variant="ghost" asChild>
+          <Link href="/command-center/inbox">Back to Inbox</Link>
+        </Button>
       </div>
     </Panel>
   );
@@ -69,7 +79,13 @@ export function ShutdownForm({ preview }: { preview: ShutdownPreview }) {
       const session =
         live && choice !== "unset"
           ? choice === "finish"
-            ? { action: "finish" as const, sessionId: live.id, expectedVersion: live.version, outcome: outcome.trim() || null, nextStep: nextStep.trim() || null }
+            ? {
+                action: "finish" as const,
+                sessionId: live.id,
+                expectedVersion: live.version,
+                outcome: outcome.trim() || null,
+                nextStep: nextStep.trim() || null,
+              }
             : choice === "abandon"
               ? { action: "abandon" as const, sessionId: live.id, expectedVersion: live.version }
               : { action: "leave" as const, sessionId: live.id, expectedVersion: live.version }
@@ -77,7 +93,9 @@ export function ShutdownForm({ preview }: { preview: ShutdownPreview }) {
       const result = await applyShutdownAction({
         idempotencyKey,
         session,
-        park: preview.captures.filter((c) => park.has(c.id)).map((c) => ({ captureId: c.id, expectedVersion: c.version })),
+        park: preview.captures
+          .filter((c) => park.has(c.id))
+          .map((c) => ({ captureId: c.id, expectedVersion: c.version })),
         seedTaskIds: [...seed],
         email: wantEmail ? { to, accountAlias: alias.trim() || null } : null,
       });
@@ -92,19 +110,30 @@ export function ShutdownForm({ preview }: { preview: ShutdownPreview }) {
       <Panel title="Day closed" description={`Shutdown log saved for ${done.today}.`}>
         <ul className="list-disc space-y-1 pl-5 text-sm">
           {done.session ? <li>Focus session: {done.session.action}</li> : null}
-          <li>{done.parked} capture{done.parked === 1 ? "" : "s"} parked</li>
-          <li>{done.seeded} task{done.seeded === 1 ? "" : "s"} suggested for {done.tomorrow}</li>
+          <li>
+            {done.parked} capture{done.parked === 1 ? "" : "s"} parked
+          </li>
+          <li>
+            {done.seeded} task{done.seeded === 1 ? "" : "s"} suggested for {done.tomorrow}
+          </li>
           {done.email.status === "proposed" ? (
             <li>
               Summary email waiting for your approval in{" "}
-              <Link href="/reviews" className="underline underline-offset-2">Reviews</Link>. Nothing was sent.
+              <Link href="/reviews" className="underline underline-offset-2">
+                Reviews
+              </Link>
+              . Nothing was sent.
             </li>
           ) : null}
           {done.email.status === "skipped" ? <li>Email not proposed: {done.email.reason}</li> : null}
         </ul>
         <div className="mt-4 flex gap-2">
-          <Button size="sm" variant="outline" asChild><Link href={`/polymath/notes?id=${encodeURIComponent(done.logNoteId)}`}>Open the log</Link></Button>
-          <Button size="sm" variant="ghost" asChild><Link href="/command-center/inbox">Back to Inbox</Link></Button>
+          <Button size="sm" variant="outline" asChild>
+            <Link href={`/polymath/notes?id=${encodeURIComponent(done.logNoteId)}`}>Open the log</Link>
+          </Button>
+          <Button size="sm" variant="ghost" asChild>
+            <Link href="/command-center/inbox">Back to Inbox</Link>
+          </Button>
         </div>
       </Panel>
     );
@@ -119,26 +148,48 @@ export function ShutdownForm({ preview }: { preview: ShutdownPreview }) {
       <Panel title="Still open" description="Read what is open, choose, confirm once. Tomorrow gets seeded from this.">
         <div className="space-y-3">
           {live ? (
-            <div className="rounded-lg border border-border p-4" role="radiogroup" aria-label="What happens to the open session">
+            <div
+              className="rounded-lg border border-border p-4"
+              role="radiogroup"
+              aria-label="What happens to the open session"
+            >
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="truncate text-[13px] font-medium">{live.subject ?? "Untitled session"}</p>
-                  <p className="mt-0.5 text-[12px] text-muted-foreground">
-                    Open session · {live.state} · {Math.round(live.elapsedSeconds / 60)} min — never closed for you; you choose.
+                  <p className="truncate text-body-dense font-medium">{live.subject ?? "Untitled session"}</p>
+                  <p className="mt-0.5 text-label text-muted-foreground">
+                    Open session · {live.state} · {Math.round(live.elapsedSeconds / 60)} min — never closed for you; you
+                    choose.
                   </p>
                 </div>
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
                 {(["finish", "abandon", "leave"] as const).map((value) => (
-                  <Button key={value} size="sm" variant={choice === value ? "default" : "outline"} role="radio" aria-checked={choice === value} onClick={() => setChoice(value)}>
+                  <Button
+                    key={value}
+                    size="sm"
+                    variant={choice === value ? "default" : "outline"}
+                    role="radio"
+                    aria-checked={choice === value}
+                    onClick={() => setChoice(value)}
+                  >
                     {value === "finish" ? "Finish it" : value === "abandon" ? "Abandon it" : "Leave it running"}
                   </Button>
                 ))}
               </div>
               {choice === "finish" ? (
                 <div className="mt-3 space-y-2">
-                  <Textarea value={outcome} onChange={(e) => setOutcome(e.target.value)} placeholder="Outcome, in your own words (optional)" aria-label="Outcome" />
-                  <Input value={nextStep} onChange={(e) => setNextStep(e.target.value)} placeholder="Next step (optional)" aria-label="Next step" />
+                  <Textarea
+                    value={outcome}
+                    onChange={(e) => setOutcome(e.target.value)}
+                    placeholder="Outcome, in your own words (optional)"
+                    aria-label="Outcome"
+                  />
+                  <Input
+                    value={nextStep}
+                    onChange={(e) => setNextStep(e.target.value)}
+                    placeholder="Next step (optional)"
+                    aria-label="Next step"
+                  />
                 </div>
               ) : null}
             </div>
@@ -147,16 +198,24 @@ export function ShutdownForm({ preview }: { preview: ShutdownPreview }) {
           {preview.captures.length ? (
             <ul className="divide-y divide-border rounded-lg border border-border">
               {preview.captures.map((c) => (
-                <li key={c.id} className="flex items-center justify-between gap-3 p-3 first:rounded-t-lg last:rounded-b-lg">
+                <li
+                  key={c.id}
+                  className="flex items-center justify-between gap-3 p-3 first:rounded-t-lg last:rounded-b-lg"
+                >
                   <label className="flex min-w-0 items-start gap-2">
-                    <input type="checkbox" className="mt-1" checked={park.has(c.id)} onChange={() => toggle(park, c.id, setPark)} />
-                    <span className="min-w-0 break-words text-[13px]">{c.label}</span>
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      checked={park.has(c.id)}
+                      onChange={() => toggle(park, c.id, setPark)}
+                    />
+                    <span className="min-w-0 break-words text-body-dense">{c.label}</span>
                   </label>
                   <button
                     type="button"
                     onClick={() => toggle(park, c.id, setPark)}
                     aria-pressed={park.has(c.id)}
-                    className={`shrink-0 text-[13px] ${park.has(c.id) ? "text-muted-foreground line-through" : "text-foreground hover:underline"}`}
+                    className={`shrink-0 text-body-dense ${park.has(c.id) ? "text-muted-foreground line-through" : "text-foreground hover:underline"}`}
                   >
                     {park.has(c.id) ? "Parked" : "Park"}
                   </button>
@@ -168,12 +227,18 @@ export function ShutdownForm({ preview }: { preview: ShutdownPreview }) {
           )}
 
           {preview.plannedSessionCount > 0 ? (
-            <p className="text-xs text-muted-foreground">{preview.plannedSessionCount} planned session{preview.plannedSessionCount === 1 ? "" : "s"} stay as they are.</p>
+            <p className="text-xs text-muted-foreground">
+              {preview.plannedSessionCount} planned session{preview.plannedSessionCount === 1 ? "" : "s"} stay as they
+              are.
+            </p>
           ) : null}
         </div>
       </Panel>
 
-      <Panel title={`Lead ${preview.tomorrow} with`} description="A suggestion for tomorrow's list, not a commitment. You still accept outcomes yourself.">
+      <Panel
+        title={`Lead ${preview.tomorrow} with`}
+        description="A suggestion for tomorrow's list, not a commitment. You still accept outcomes yourself."
+      >
         {preview.seedCandidates.length === 0 ? (
           <p className="text-sm text-muted-foreground">No unfinished or due tasks to carry over.</p>
         ) : (
@@ -181,8 +246,15 @@ export function ShutdownForm({ preview }: { preview: ShutdownPreview }) {
             {preview.seedCandidates.map((t) => (
               <li key={t.taskId}>
                 <label className="flex items-start gap-2">
-                  <input type="checkbox" className="mt-1" checked={seed.has(t.taskId)} onChange={() => toggle(seed, t.taskId, setSeed)} />
-                  <span className="min-w-0 break-words">{t.title} <span className="text-muted-foreground">- {t.reason}</span></span>
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={seed.has(t.taskId)}
+                    onChange={() => toggle(seed, t.taskId, setSeed)}
+                  />
+                  <span className="min-w-0 break-words">
+                    {t.title} <span className="text-muted-foreground">- {t.reason}</span>
+                  </span>
                 </label>
               </li>
             ))}
@@ -197,15 +269,32 @@ export function ShutdownForm({ preview }: { preview: ShutdownPreview }) {
         </label>
         {wantEmail ? (
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            <Input type="email" value={to} onChange={(e) => setTo(e.target.value)} placeholder="Send to (required)" aria-label="Recipient" />
-            <Input value={alias} onChange={(e) => setAlias(e.target.value)} placeholder="Gmail account alias (blank if you have one)" aria-label="Gmail account alias" />
+            <Input
+              type="email"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+              placeholder="Send to (required)"
+              aria-label="Recipient"
+            />
+            <Input
+              value={alias}
+              onChange={(e) => setAlias(e.target.value)}
+              placeholder="Gmail account alias (blank if you have one)"
+              aria-label="Gmail account alias"
+            />
           </div>
         ) : null}
       </Panel>
 
-      {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+      {error ? (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+      ) : null}
       <div className="flex items-center justify-end gap-3">
-        {needsChoice ? <span className="text-xs text-muted-foreground">Choose what happens to the open session first.</span> : null}
+        {needsChoice ? (
+          <span className="text-xs text-muted-foreground">Choose what happens to the open session first.</span>
+        ) : null}
         <Button onClick={submit} disabled={pending || needsChoice || (wantEmail && !to.trim())}>
           {pending ? "Closing the day..." : "Close the day"}
         </Button>

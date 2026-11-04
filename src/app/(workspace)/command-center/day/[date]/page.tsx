@@ -84,10 +84,12 @@ function WeekStrip({ date, days }: { date: string; days: Array<{ date: string; e
               aria-current={active ? "date" : undefined}
               className={`flex flex-col items-center gap-1 border-border px-2 py-4 text-center transition-colors outline-none hover:bg-sidebar-accent focus-visible:bg-sidebar-accent [&:nth-child(n+2)]:border-l ${active ? "bg-sidebar-accent" : ""}`}
             >
-              <span className={`text-[11px] font-medium uppercase tracking-wide ${active ? "" : future ? "text-muted-foreground/80" : "text-muted-foreground"}`}>
+              <span
+                className={`text-data font-medium uppercase tracking-wide ${active ? "" : future ? "text-muted-foreground/80" : "text-muted-foreground"}`}
+              >
                 {weekday(d.date)}
               </span>
-              <span className={`text-[15px] font-semibold tabular-nums ${future ? "text-muted-foreground" : ""}`}>
+              <span className={`text-body font-semibold tabular-nums ${future ? "text-muted-foreground" : ""}`}>
                 {dayNum(d.date)}
               </span>
               <span className="mt-1 flex h-3 items-end" aria-hidden>
@@ -103,17 +105,25 @@ function WeekStrip({ date, days }: { date: string; days: Array<{ date: string; e
       <div className="flex gap-1.5">
         {prev ? (
           <Button asChild variant="outline" size="icon-sm" aria-label={`Previous day (${prev})`}>
-            <Link href={`/command-center/day/${prev}`}><ChevronLeft aria-hidden /></Link>
+            <Link href={`/command-center/day/${prev}`}>
+              <ChevronLeft aria-hidden />
+            </Link>
           </Button>
         ) : (
-          <Button variant="outline" size="icon-sm" disabled aria-label="No earlier day in this week"><ChevronLeft aria-hidden /></Button>
+          <Button variant="outline" size="icon-sm" disabled aria-label="No earlier day in this week">
+            <ChevronLeft aria-hidden />
+          </Button>
         )}
         {next ? (
           <Button asChild variant="outline" size="icon-sm" aria-label={`Next day (${next})`}>
-            <Link href={`/command-center/day/${next}`}><ChevronRight aria-hidden /></Link>
+            <Link href={`/command-center/day/${next}`}>
+              <ChevronRight aria-hidden />
+            </Link>
           </Button>
         ) : (
-          <Button variant="outline" size="icon-sm" disabled aria-label="No later day in this week"><ChevronRight aria-hidden /></Button>
+          <Button variant="outline" size="icon-sm" disabled aria-label="No later day in this week">
+            <ChevronRight aria-hidden />
+          </Button>
         )}
       </div>
     </div>
@@ -130,10 +140,10 @@ function Timeline({ rows, localDate, timezone }: { rows: TimelineRow[]; localDat
   return (
     <section aria-label="The record" className="panel rounded-xl px-5 py-4">
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-[13px] font-medium">
+        <h2 className="text-body-dense font-medium">
           The record <span className="ml-1 text-muted-foreground">{rows.length}</span>
         </h2>
-        <span className="text-[11px] text-muted-foreground">append-only · {rows.length} rows</span>
+        <span className="text-data text-muted-foreground">append-only · {rows.length} rows</span>
       </div>
       <ol className="relative">
         {rows.map((row, index) => (
@@ -141,35 +151,37 @@ function Timeline({ rows, localDate, timezone }: { rows: TimelineRow[]; localDat
             key={row.key}
             className={`relative flex gap-3 pb-5 ${index < rows.length - 1 ? "before:absolute before:top-5 before:left-[5px] before:h-[calc(100%-12px)] before:w-px before:bg-border" : ""}`}
           >
-            <span aria-hidden className={`relative z-10 mt-1.5 size-[11px] shrink-0 rounded-full border-2 border-background ${row.kind === "Captured" ? "bg-info" : row.kind === "Created" ? "bg-success" : row.kind === "Session" ? "bg-foreground/70" : "bg-muted-foreground/70"}`} />
+            <span
+              aria-hidden
+              className={`relative z-10 mt-1.5 size-[11px] shrink-0 rounded-full border-2 border-background ${row.kind === "Captured" ? "bg-info" : row.kind === "Created" ? "bg-success" : row.kind === "Session" ? "bg-foreground/70" : "bg-muted-foreground/70"}`}
+            />
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                <span className="w-10 shrink-0 text-[12px] tabular-nums text-muted-foreground">{formatTime(row.at, timezone)}</span>
+                <span className="w-10 shrink-0 text-label tabular-nums text-muted-foreground">
+                  {formatTime(row.at, timezone)}
+                </span>
                 <span className={`pill ${kindPill(row.kind)}`}>{row.kind}</span>
                 {row.kind !== "Captured" ? (
-                  <span className="min-w-0 flex-1 break-words text-[13px] font-medium">{row.title}</span>
+                  <span className="min-w-0 flex-1 break-words text-body-dense font-medium">{row.title}</span>
                 ) : null}
                 {row.artifactId ? (
                   <span className="shrink-0">
-                    <PinControls
-                      localDate={localDate}
-                      candidates={[{ id: row.artifactId, title: row.title }]}
-                    />
+                    <PinControls localDate={localDate} candidates={[{ id: row.artifactId, title: row.title }]} />
                   </span>
                 ) : null}
               </div>
               {row.kind === "Captured" ? (
-                <p className="mt-2 border-l-2 border-border pl-3 text-[13px] italic leading-relaxed text-muted-foreground line-clamp-2">
+                <p className="mt-2 border-l-2 border-border pl-3 text-body-dense italic leading-relaxed text-muted-foreground line-clamp-2">
                   {row.title}
                 </p>
               ) : row.detail ? (
-                <p className="mt-1 text-[12px] text-muted-foreground">{row.detail}</p>
+                <p className="mt-1 text-label text-muted-foreground">{row.detail}</p>
               ) : null}
             </div>
           </li>
         ))}
       </ol>
-      <p className="mt-1 border-t border-dashed border-border pt-3 text-[12px] text-muted-foreground">
+      <p className="mt-1 border-t border-dashed border-border pt-3 text-label text-muted-foreground">
         The record is append-only. Corrections are new rows, never edits.
       </p>
     </section>
@@ -224,7 +236,9 @@ async function DaySurface({ params }: { params: Promise<{ date: string }> }) {
       description={`One day's record: what arrived, what changed, what was kept. ${capturedCount} ${capturedCount === 1 ? "capture" : "captures"} so far, in order, nothing rewritten.`}
       actions={
         <div className="flex gap-1.5">
-          <Button asChild variant="outline" size="sm"><Link href="/command-center/inbox">Back to Inbox</Link></Button>
+          <Button asChild variant="outline" size="sm">
+            <Link href="/command-center/inbox">Back to Inbox</Link>
+          </Button>
         </div>
       }
     >
@@ -235,12 +249,8 @@ async function DaySurface({ params }: { params: Promise<{ date: string }> }) {
           {timeline.length ? (
             <Timeline rows={timeline} localDate={date} timezone={day.timezone} />
           ) : (
-            <Empty
-              title={`Nothing recorded on ${label}`}
-              description="Work on something and it will show up here."
-            />
+            <Empty title={`Nothing recorded on ${label}`} description="Work on something and it will show up here." />
           )}
-
         </div>
 
         <aside className="flex min-w-0 flex-col gap-6">
@@ -253,12 +263,21 @@ async function DaySurface({ params }: { params: Promise<{ date: string }> }) {
                     <li key={task.id} className="flex items-start gap-2">
                       <span aria-hidden className="mt-1 size-3.5 shrink-0 rounded-[4px] border border-border" />
                       <div className="min-w-0">
-                        <Link href={`/neuralflow/work?task=${task.id}`} className="text-[13px] leading-snug hover:underline">
+                        <Link
+                          href={`/neuralflow/work?task=${task.id}`}
+                          className="text-body-dense leading-snug hover:underline"
+                        >
                           {task.title}
                         </Link>
-                        <p className="mt-0.5 text-[11px] text-muted-foreground">
-                          {task.priority !== "none" ? <span className={hot ? "text-destructive" : ""}>{task.priority}</span> : null}
-                          {task.dueAt ? <span>{task.priority !== "none" ? " · " : ""}due {task.dueAt.toISOString().slice(0, 10)}</span> : null}
+                        <p className="mt-0.5 text-data text-muted-foreground">
+                          {task.priority !== "none" ? (
+                            <span className={hot ? "text-destructive" : ""}>{task.priority}</span>
+                          ) : null}
+                          {task.dueAt ? (
+                            <span>
+                              {task.priority !== "none" ? " · " : ""}due {task.dueAt.toISOString().slice(0, 10)}
+                            </span>
+                          ) : null}
                           {task.priority === "none" && !task.dueAt ? <span>committed</span> : null}
                         </p>
                       </div>
@@ -267,10 +286,13 @@ async function DaySurface({ params }: { params: Promise<{ date: string }> }) {
                 })}
               </ul>
             ) : (
-              <p className="text-[13px] text-muted-foreground">Nothing committed for today.</p>
+              <p className="text-body-dense text-muted-foreground">Nothing committed for today.</p>
             )}
             <div className="mt-4 border-t border-border pt-3">
-              <Link href="/neuralflow/work?view=today" className="text-[13px] text-muted-foreground hover:underline">
+              <Link
+                href="/neuralflow/work?view=today"
+                className="text-body-dense text-muted-foreground hover:underline"
+              >
                 Open Work ↗
               </Link>
             </div>
@@ -281,7 +303,7 @@ async function DaySurface({ params }: { params: Promise<{ date: string }> }) {
               <div className="divide-y divide-border">
                 {day.pins.map((pin) => (
                   <div key={pin.id} className="flex items-baseline justify-between gap-3 py-2 first:pt-0">
-                    <span className="text-[13px]">
+                    <span className="text-body-dense">
                       {pin.title}
                       {pin.archived ? " · archived" : ""}
                       {pin.pinnedVersionNumber ? ` · version ${pin.pinnedVersionNumber}` : ""}
@@ -291,14 +313,14 @@ async function DaySurface({ params }: { params: Promise<{ date: string }> }) {
                 ))}
               </div>
             ) : (
-              <p className="text-[13px] text-muted-foreground">
+              <p className="text-body-dense text-muted-foreground">
                 Nothing kept from this day. Pin a row of the record and it stays here, fixed to the date it happened.
               </p>
             )}
           </Panel>
 
           <Panel title="Close the day" description="The ritual reads this record, then seeds tomorrow.">
-            <dl className="space-y-2 text-[13px]">
+            <dl className="space-y-2 text-body-dense">
               <div className="flex items-baseline justify-between gap-3">
                 <dt className="text-muted-foreground">Captures still to clarify</dt>
                 <dd className="tabular-nums">{capturedCount}</dd>
@@ -313,7 +335,9 @@ async function DaySurface({ params }: { params: Promise<{ date: string }> }) {
               </div>
             </dl>
             <div className="mt-4">
-              <Button asChild className="w-full"><Link href="/command-center/shutdown">Close the day</Link></Button>
+              <Button asChild className="w-full">
+                <Link href="/command-center/shutdown">Close the day</Link>
+              </Button>
             </div>
           </Panel>
         </aside>
@@ -322,14 +346,19 @@ async function DaySurface({ params }: { params: Promise<{ date: string }> }) {
   );
 }
 
-
 /*
  * `connection()` must sit inside a Suspense boundary under cacheComponents,
  * or navigation treats the day as uncached data.
  */
 export default function DayPage({ params }: { params: Promise<{ date: string }> }) {
   return (
-    <Suspense fallback={<p role="status" className="p-6 text-[13px] text-muted-foreground">Loading day…</p>}>
+    <Suspense
+      fallback={
+        <p role="status" className="p-6 text-body-dense text-muted-foreground">
+          Loading day…
+        </p>
+      }
+    >
       <DaySurface params={params} />
     </Suspense>
   );
