@@ -1,20 +1,13 @@
 "use client";
 
 import { cn } from "cn";
-import {
-  AlignLeft,
-  FileText,
-  Forward,
-  Link2,
-  Mic,
-  Sparkles,
-  type LucideIcon,
-} from "lucide-react";
+import { AlignLeft, FileText, Forward, Link2, Mic, Sparkles, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { useOptimistic, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { listHref } from "@/lib/list-params";
 import { setCaptureStateAction } from "./actions";
+import { generateZettelsAction } from "./zettel-actions";
 
 /*
  * The list pane: one clamped line of primary text, a muted metadata line, and
@@ -86,7 +79,13 @@ export function captureStateLabel(state: string): string {
  * (a capture's title column); the body's first line is the fallback for captures
  * enrichment has not named, so a pasted essay never titles itself with a paragraph.
  */
-export function captureTitle(capture: { title?: string | null; preview?: string | null; text?: string | null; url?: string | null; rawPayload?: unknown }): string {
+export function captureTitle(capture: {
+  title?: string | null;
+  preview?: string | null;
+  text?: string | null;
+  url?: string | null;
+  rawPayload?: unknown;
+}): string {
   const named = capture.title?.trim();
   if (named) return named;
   const body = capture.preview ?? capture.text ?? "";
@@ -103,7 +102,14 @@ export function captureTitle(capture: { title?: string | null; preview?: string 
  * detail pane showing that same derived line as a heading printed the words
  * twice. Null means "render the body alone".
  */
-export function captureDetailHeading(capture: { title?: string | null; preview?: string | null; text?: string | null; url?: string | null; kind?: string | null; rawPayload?: unknown }): string | null {
+export function captureDetailHeading(capture: {
+  title?: string | null;
+  preview?: string | null;
+  text?: string | null;
+  url?: string | null;
+  kind?: string | null;
+  rawPayload?: unknown;
+}): string | null {
   const named = capture.title?.trim();
   if (named) return named;
   // A url-only capture's URL is its identity, not its body.
@@ -123,7 +129,21 @@ function when(iso: string): string {
   return `${Math.round(hours / 24)}d`;
 }
 
-export function InboxList({ rows, view, selectedId, rawQuery }: { rows: InboxRow[]; view: InboxView; selectedId: string | null; rawQuery: Record<string, string | string[] | undefined> }) {
+export function InboxList({
+  rows,
+  view,
+  selectedId,
+  rawQuery,
+  zettelProviderReady,
+  zettelProviderReason,
+}: {
+  rows: InboxRow[];
+  view: InboxView;
+  selectedId: string | null;
+  rawQuery: Record<string, string | string[] | undefined>;
+  zettelProviderReady: boolean;
+  zettelProviderReason: string;
+}) {
   const [optimisticRows, decide] = useOptimistic(rows, (current: InboxRow[], decision: Decision) =>
     view === "all"
       ? current.map((row) => (row.id === decision.id ? { ...row, processingState: decision.next } : row))
@@ -131,6 +151,10 @@ export function InboxList({ rows, view, selectedId, rawQuery }: { rows: InboxRow
   );
   const [bulkErrors, setBulkErrors] = useState<Array<{ id: string; title: string; message: string }>>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // The bulk zettelize outcome: what actually queued versus what the action
+  // skipped, kept while the toolbar is up so the honest answer survives the
+  // transition (rows stay in the list until the worker files them).
+  const [zettel, setZettel] = useState<{ queued: number; skipped: number; awaitingReview: number } | null>(null);
   const [pending, startTransition] = useTransition();
   const lastToggledId = useRef<string | null>(null);
   const listRef = useRef<HTMLUListElement>(null);
@@ -138,9 +162,7 @@ export function InboxList({ rows, view, selectedId, rawQuery }: { rows: InboxRow
   const bulk = selected.size > 0;
   // Converted rows cannot transition; every other selected row is sent and
   // non-permitting rows fail through the setCaptureState domain guard (D15).
-  const bulkTargets = optimisticRows.filter(
-    (row) => selected.has(row.id) && row.processingState !== "converted",
-  );
+  const bulkTargets = optimisticRows.filter((row) => selected.has(row.id) && row.processingState !== "converted");
 
   function bulkAct(next: "discarded" | "unprocessed") {
     // Focus origin is tracked explicitly: on click the toolbar button (not
@@ -178,7 +200,9 @@ export function InboxList({ rows, view, selectedId, rawQuery }: { rows: InboxRow
         setSelected(new Set());
         // Focus returns to the originating row link when the selection clears
         // (D12); only when that row still exists after the transition.
-        const row = originId ? listRef.current?.querySelector<HTMLAnchorElement>(`li[data-capture-id="${originId}"] a`) : null;
+        const row = originId
+          ? listRef.current?.querySelector<HTMLAnchorElement>(`li[data-capture-id="${originId}"] a`)
+          : null;
         row?.focus();
       }
     });
@@ -191,6 +215,29 @@ export function InboxList({ rows, view, selectedId, rawQuery }: { rows: InboxRow
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
+    });
+  }
+
+  /*
+   * Bulk zettelize: one proposal pass for the selection. The action is the
+   * authority on eligibility - captures already filed, without readable text,
+   * or not open arrive back as skipped - so the summary renders what actually
+   * queued instead of guessing from previews. The selection is kept (like the
+   * failure path below): clearing it would unmount the toolbar and the
+   * outcome line before either is read.
+   */
+  function zettelizeSelection() {
+    setBulkErrors([]);
+    startTransition(async () => {
+      const result = await generateZettelsAction({
+        captureIds: [...selected],
+        idempotencyKey: crypto.randomUUID(),
+      });
+      if (!result.ok) {
+        setBulkErrors([{ id: "zettelize", title: "Zettelize", message: result.message }]);
+        return;
+      }
+      setZettel({ queued: result.queued, skipped: result.skipped, awaitingReview: result.awaitingReview });
     });
   }
 
@@ -285,10 +332,49 @@ export function InboxList({ rows, view, selectedId, rawQuery }: { rows: InboxRow
             <Button size="sm" variant="ghost" disabled={pending} onClick={() => bulkAct("unprocessed")}>
               Restore capture
             </Button>
-            <Button size="sm" variant="ghost" disabled={pending} onClick={() => { setSelected(new Set()); setBulkErrors([]); }}>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={pending || !zettelProviderReady}
+              onClick={zettelizeSelection}
+              title={
+                !zettelProviderReady
+                  ? zettelProviderReason
+                  : "Files the selected captures to your library, then proposes ideas for review."
+              }
+            >
+              Zettelize
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={pending}
+              onClick={() => {
+                setSelected(new Set());
+                setBulkErrors([]);
+                setZettel(null);
+              }}
+            >
               Clear
             </Button>
           </div>
+          {zettel ? (
+            <p className="w-full text-[13px]" role="status">
+              <span className="text-muted-foreground">
+                {zettel.queued ? `Queued ${zettel.queued} for zettel proposals.` : "Nothing queued."}
+                {zettel.skipped
+                  ? ` Skipped ${zettel.skipped} not eligible (no readable text, already filed, or not open).`
+                  : ""}
+                {zettel.awaitingReview ? ` Already in review: ${zettel.awaitingReview} waiting.` : ""}
+              </span>{" "}
+              <Link
+                href="/polymath/ideas#in-review"
+                className="text-foreground font-medium underline underline-offset-4"
+              >
+                Review ideas
+              </Link>
+            </p>
+          ) : null}
           {bulkErrors.length ? (
             <ul className="w-full text-[13px]">
               {bulkErrors.map((failure) => (

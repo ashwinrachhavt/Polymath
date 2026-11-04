@@ -6,7 +6,6 @@ import { Pagination } from "@/components/list/pagination";
 import { ListToolbar } from "@/components/list/list-toolbar";
 import { redirectPastEnd } from "@/components/list/clamp";
 import { CAPTURE_KINDS, type InboxFilter } from "@/domains/capture/queries";
-import { countZettelSourceCaptures } from "@/domains/capture/zettel-generation";
 import { countInboxTabsForPage, getCaptureForPage, listSuggestionMarksForPage, searchCapturesForPage } from "./data";
 import { listHref, offsetFor, parseListParams } from "@/lib/list-params";
 import { getAuthContext } from "@/lib/auth";
@@ -14,7 +13,6 @@ import { capabilityStatus } from "@/lib/capability-config";
 import { CaptureForm } from "./inbox-client";
 import { InboxList } from "./inbox-list";
 import { InboxDetail } from "./inbox-detail";
-import { GenerateZettelsButton } from "./zettel-generate-button";
 
 export const metadata = { title: "Inbox · Polymath" };
 
@@ -70,12 +68,11 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
     // The detail pane is a view of the record, not of the current filter: a
     // capture outside the view still renders, the list just shows no highlight.
     effectiveSelectedId ? getCaptureForPage(auth, effectiveSelectedId) : Promise.resolve(null),
-    listSuggestionMarksForPage(auth, rows.map((row) => row.id)),
+    listSuggestionMarksForPage(
+      auth,
+      rows.map((row) => row.id),
+    ),
   ]);
-  // The bulk "Generate zettels" control: how many open captures carry text, and
-  // whether a model is configured to read them. Both are cheap reads; neither
-  // starts work.
-  const zettelSources = await countZettelSourceCaptures(auth);
   const generation = capabilityStatus().find((c) => c.id === "generation");
   const pageSize = list.pageSize;
   redirectPastEnd("/command-center/inbox", query, list.page, pageSize, found.total);
@@ -149,14 +146,6 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
                 },
               ]}
             />
-
-            {/* The queue's second bulk verb. It reads, it never decides: every
-                proposal it makes waits in the review queue. */}
-            <GenerateZettelsButton
-              sources={zettelSources}
-              providerReady={generation?.configured ?? false}
-              providerReason={generation?.reason ?? "Zettel proposals need a model. Set OPENROUTER_API_KEY or GEMINI_API_KEY."}
-            />
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto">
@@ -164,6 +153,10 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
               view={filter}
               selectedId={effectiveSelectedId}
               rawQuery={query}
+              zettelProviderReady={generation?.configured ?? false}
+              zettelProviderReason={
+                generation?.reason ?? "Zettel proposals need a model. Set OPENROUTER_API_KEY or GEMINI_API_KEY."
+              }
               rows={rows.map((capture) => ({
                 id: capture.id,
                 processingState: capture.processingState,
@@ -184,7 +177,9 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
               <div className="flex flex-col items-center gap-1 px-6 py-12 text-center">
                 <p className="text-[13px]">{filtered ? "No matches" : "Nothing in this view"}</p>
                 <p className="max-w-xs text-xs leading-relaxed text-muted-foreground">
-                  {filtered ? "Nothing fits the current search and filters." : "Capture material above or choose another filter."}
+                  {filtered
+                    ? "Nothing fits the current search and filters."
+                    : "Capture material above or choose another filter."}
                 </p>
                 {filtered ? (
                   <Link href={clearHref} className="mt-1 text-[13px] font-medium underline underline-offset-4">
@@ -195,7 +190,13 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
             ) : null}
 
             <div className="px-3 pb-3">
-              <Pagination basePath="/command-center/inbox" raw={query} page={page} pageSize={pageSize} total={found.total} />
+              <Pagination
+                basePath="/command-center/inbox"
+                raw={query}
+                page={page}
+                pageSize={pageSize}
+                total={found.total}
+              />
             </div>
           </div>
         </section>
@@ -226,6 +227,10 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
                 : null
             }
             priorWriting={selected?.priorWriting ?? null}
+            zettelProviderReady={generation?.configured ?? false}
+            zettelProviderReason={
+              generation?.reason ?? "Zettel proposals need a model. Set OPENROUTER_API_KEY or GEMINI_API_KEY."
+            }
             proposals={(selected?.proposals ?? []).map((proposal) => ({
               id: proposal.id,
               kind: proposal.kind,
@@ -239,9 +244,19 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
   );
 }
 
-export default function InboxPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+export default function InboxPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   return (
-    <Suspense fallback={<p role="status" className="p-6 text-[13px] text-muted-foreground">Opening the inbox…</p>}>
+    <Suspense
+      fallback={
+        <p role="status" className="p-6 text-[13px] text-muted-foreground">
+          Opening the inbox…
+        </p>
+      }
+    >
       <Inbox searchParams={searchParams} />
     </Suspense>
   );
