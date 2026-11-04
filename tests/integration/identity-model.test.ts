@@ -31,7 +31,7 @@ let db: ReturnType<typeof drizzle>;
 
 beforeAll(() => {
   if (!url) return;
-  client = postgres(url, { max: 1 });
+  client = postgres(url, { max: 1, onnotice: () => {} });
   db = drizzle(client);
 });
 
@@ -41,11 +41,11 @@ afterAll(async () => {
 
 async function seedWorkspace() {
   const slug = `ash120-${crypto.randomUUID()}`;
-  const [user] = await db.insert(users).values({ clerkUserId: `clerk_${slug}` }).returning();
-  const [workspace] = await db
-    .insert(workspaces)
-    .values({ name: slug, slug, createdBy: user.id })
+  const [user] = await db
+    .insert(users)
+    .values({ clerkUserId: `clerk_${slug}` })
     .returning();
+  const [workspace] = await db.insert(workspaces).values({ name: slug, slug, createdBy: user.id }).returning();
   return { user, workspace };
 }
 
@@ -126,10 +126,7 @@ suite("canonical party model", () => {
       createdBy: user.id,
     });
 
-    const links = await db
-      .select()
-      .from(accountPersonLinks)
-      .where(eq(accountPersonLinks.workspaceId, workspace.id));
+    const links = await db.select().from(accountPersonLinks).where(eq(accountPersonLinks.workspaceId, workspace.id));
     expect(links).toHaveLength(0);
   });
 
@@ -172,13 +169,9 @@ suite("canonical party model", () => {
   it("an organization dedupes on domain within a workspace, not across them", async () => {
     const a = await seedWorkspace();
     const b = await seedWorkspace();
-    await db
-      .insert(organizations)
-      .values({ workspaceId: a.workspace.id, name: "ACME", domain: "acme.test" });
+    await db.insert(organizations).values({ workspaceId: a.workspace.id, name: "ACME", domain: "acme.test" });
     // Same domain in another workspace is a different organization.
-    await db
-      .insert(organizations)
-      .values({ workspaceId: b.workspace.id, name: "ACME EU", domain: "acme.test" });
+    await db.insert(organizations).values({ workspaceId: b.workspace.id, name: "ACME EU", domain: "acme.test" });
 
     const dupe = await db
       .insert(organizations)
@@ -206,7 +199,8 @@ suite("unique invariants (ASH-120 review)", () => {
     await db.insert(contactPoints).values({ ...point, value: "first@example.com" });
 
     const dupe = await db
-      .insert(contactPoints).values({ ...point, value: "second@example.com" })
+      .insert(contactPoints)
+      .values({ ...point, value: "second@example.com" })
       .catch((e) => e);
     expect((dupe as { cause?: { code?: string } }).cause?.code).toBe("23505");
 
@@ -227,7 +221,10 @@ suite("unique invariants (ASH-120 review)", () => {
       personId: person.id,
     };
     await db.insert(accountPersonLinks).values(link);
-    const dupe = await db.insert(accountPersonLinks).values(link).catch((e) => e);
+    const dupe = await db
+      .insert(accountPersonLinks)
+      .values(link)
+      .catch((e) => e);
     expect((dupe as { cause?: { code?: string } }).cause?.code).toBe("23505");
   });
 });

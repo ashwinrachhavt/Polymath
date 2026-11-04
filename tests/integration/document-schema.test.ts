@@ -28,7 +28,7 @@ let db: ReturnType<typeof drizzle>;
 
 beforeAll(() => {
   if (!url) return;
-  client = postgres(url, { max: 1 });
+  client = postgres(url, { max: 1, onnotice: () => {} });
   db = drizzle(client);
 });
 

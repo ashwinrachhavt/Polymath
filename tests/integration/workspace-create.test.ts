@@ -23,7 +23,7 @@ const handle = (function () {
   // src/lib/db-transaction.ts reads DATABASE_URL at module load; point it here
   // before anything lazy-imports that module.
   process.env.DATABASE_URL = url;
-  const client = postgres(url, { max: 1 });
+  const client = postgres(url, { max: 1, onnotice: () => {} });
   return { url, client, db: drizzle(client) };
 })();
 const suite = handle ? describe : describe.skip;

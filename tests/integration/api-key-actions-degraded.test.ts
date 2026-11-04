@@ -22,10 +22,14 @@ if (!url && process.env.CI) {
 }
 const suite = url ? describe : describe.skip;
 
-const client = url ? postgres(url, { max: 1 }) : undefined;
+const client = url ? postgres(url, { max: 1, onnotice: () => {} }) : undefined;
 const schema = `axiom_iso_${Date.now()}`;
 const holder: { db: unknown } = { db: undefined };
-vi.mock("@/lib/db", () => ({ get db() { return holder.db; } }));
+vi.mock("@/lib/db", () => ({
+  get db() {
+    return holder.db;
+  },
+}));
 
 const getAuthContext = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/auth", async (importOriginal) => {
@@ -65,11 +69,7 @@ suite("API keys against the pre-0234 schema (dedicated scratch schema)", () => {
     expect(JSON.stringify(result)).not.toContain("api_clients");
     expect(JSON.stringify(result)).not.toContain("key_id");
     // The log captured the standard SQLSTATE for the missing column (drizzle rethrows as a plain Error with the driver code attached).
-    expect(spy.mock.calls[0]).toEqual([
-      "[action]",
-      "Could not load API keys.",
-      { name: "Error", code: "42703" },
-    ]);
+    expect(spy.mock.calls[0]).toEqual(["[action]", "Could not load API keys.", { name: "Error", code: "42703" }]);
     spy.mockRestore();
   });
 });

@@ -24,9 +24,13 @@ if (!url && process.env.CI) {
 }
 const suite = url ? describe : describe.skip;
 
-const client = url ? postgres(url, { max: 1 }) : undefined;
+const client = url ? postgres(url, { max: 1, onnotice: () => {} }) : undefined;
 const holder: { db: unknown } = { db: undefined };
-vi.mock("@/lib/db", () => ({ get db() { return holder.db; } }));
+vi.mock("@/lib/db", () => ({
+  get db() {
+    return holder.db;
+  },
+}));
 
 const getAuthContext = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/auth", async (importOriginal) => {
@@ -34,11 +38,7 @@ vi.mock("@/lib/auth", async (importOriginal) => {
   return { ...original, getAuthContext };
 });
 
-import {
-  createApiKeyAction,
-  listApiKeysAction,
-  revokeApiKeyAction,
-} from "@/app/(workspace)/settings/api-key-actions";
+import { createApiKeyAction, listApiKeysAction, revokeApiKeyAction } from "@/app/(workspace)/settings/api-key-actions";
 import { resolveCompanionToken } from "@/domains/identity/machine";
 
 suite("Settings API keys: the full owner journey on the 0234 schema", () => {
