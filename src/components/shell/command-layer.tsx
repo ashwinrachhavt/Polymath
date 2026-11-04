@@ -436,7 +436,7 @@ export function CommandLayer() {
                       <span className="max-w-full truncate">{result.label}</span>
                       <span className="text-data text-muted-foreground">{result.context}</span>
                     </span>
-                    <ArrowRight aria-hidden className="size-3 shrink-0 text-muted-foreground" />
+                    <ArrowRight aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
                   </button>
                 ))}
               </div>

@@ -51,10 +51,10 @@ export function ContextChips({
             }
             title={failed ? (chip.error ?? undefined) : undefined}
           >
-            <Glyph aria-hidden className="size-3 shrink-0" />
+            <Glyph aria-hidden className="size-3.5 shrink-0" />
             <span className="text-foreground max-w-40 truncate">{chip.entity.title}</span>
             <span>{KIND_LABEL[chip.entity.kind]}</span>
-            {pending ? <Loader2 aria-hidden className="size-3 animate-spin" /> : null}
+            {pending ? <Loader2 aria-hidden className="size-3.5 animate-spin" /> : null}
             {failed ? (
               <button
                 type="button"

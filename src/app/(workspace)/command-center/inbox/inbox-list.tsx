@@ -296,7 +296,7 @@ export function InboxList({
                         <>
                           <span aria-hidden>·</span>
                           <span className="flex shrink-0 items-center gap-1 text-foreground/70">
-                            <Sparkles aria-hidden className="size-3" />
+                            <Sparkles aria-hidden className="size-3.5" />
                             Suggestion
                           </span>
                         </>

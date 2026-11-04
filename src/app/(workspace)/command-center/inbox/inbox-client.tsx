@@ -115,7 +115,7 @@ export function CaptureForm() {
               {pending ? "Capturing…" : "Capture to inbox"}
             </Button>
             <span className="ml-auto hidden items-center gap-1 text-xs text-muted-foreground sm:flex">
-              <CornerDownLeft aria-hidden className="size-3" />
+              <CornerDownLeft aria-hidden className="size-3.5" />
               <span className="readout">Cmd Enter</span>
             </span>
             {error ? (
@@ -157,7 +157,7 @@ export function CaptureForm() {
               Cancel
             </button>
             <span className="ml-auto hidden items-center gap-1 text-xs text-muted-foreground sm:flex">
-              <CornerDownLeft aria-hidden className="size-3" />
+              <CornerDownLeft aria-hidden className="size-3.5" />
               <span className="readout">Cmd Enter</span>
             </span>
             {error ? (

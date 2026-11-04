@@ -84,15 +84,15 @@ export function ProjectSettingsForm({
           <a
             key={section.key}
             href={`#${section.key}`}
-            className="rounded-md px-3 py-1.5 text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground"
+            className="rounded-md px-3 py-1.5 text-body-dense text-muted-foreground hover:bg-muted hover:text-foreground"
           >
             {section.label}
           </a>
         ))}
-        <span aria-disabled className="rounded-md px-3 py-1.5 text-[13px] text-muted-foreground/50">
+        <span aria-disabled className="rounded-md px-3 py-1.5 text-body-dense text-muted-foreground/50">
           Members
         </span>
-        <span aria-disabled className="rounded-md px-3 py-1.5 text-[13px] text-muted-foreground/50">
+        <span aria-disabled className="rounded-md px-3 py-1.5 text-body-dense text-muted-foreground/50">
           Skills
         </span>
       </nav>
@@ -101,7 +101,7 @@ export function ProjectSettingsForm({
         <section id="general" aria-label="General" className="flex flex-col gap-4">
           <h2 className="text-lg font-medium">General</h2>
           <div className="flex flex-col gap-1.5">
-            <label htmlFor="project-name" className="text-[13px]">
+            <label htmlFor="project-name" className="text-body-dense">
               Name
             </label>
             <input
@@ -113,7 +113,7 @@ export function ProjectSettingsForm({
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <label htmlFor="project-emoji" className="text-[13px]">
+            <label htmlFor="project-emoji" className="text-body-dense">
               Emoji
             </label>
             <input
@@ -125,7 +125,7 @@ export function ProjectSettingsForm({
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <label htmlFor="project-description" className="text-[13px]">
+            <label htmlFor="project-description" className="text-body-dense">
               Description
             </label>
             <textarea
@@ -138,7 +138,7 @@ export function ProjectSettingsForm({
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <label htmlFor="project-instructions" className="text-[13px]">
+            <label htmlFor="project-instructions" className="text-body-dense">
               Instructions
             </label>
             <p className="text-xs text-muted-foreground">
@@ -154,7 +154,7 @@ export function ProjectSettingsForm({
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <label htmlFor="project-repo-path" className="text-[13px]">
+            <label htmlFor="project-repo-path" className="text-body-dense">
               Local repo path
             </label>
             <p className="text-xs text-muted-foreground">
@@ -205,7 +205,7 @@ export function ProjectSettingsForm({
         <section id="sources" aria-label="Sources" className="flex flex-col gap-3">
           <h2 className="text-lg font-medium">Sources</h2>
           {sources.length === 0 ? (
-            <p className="text-[13px] text-muted-foreground">
+            <p className="text-body-dense text-muted-foreground">
               No sources yet. Add them from{" "}
               <Link href="/polymath/sources" className="underline">
                 Sources
@@ -217,7 +217,7 @@ export function ProjectSettingsForm({
               {sources.map((source) => (
                 <li
                   key={source.documentId}
-                  className="flex items-baseline justify-between gap-2 border-b border-border py-2 text-[13px] last:border-0"
+                  className="flex items-baseline justify-between gap-2 border-b border-border py-2 text-body-dense last:border-0"
                 >
                   <span className="truncate">{source.title}</span>
                   <span className="text-xs text-muted-foreground">
@@ -237,7 +237,7 @@ export function ProjectSettingsForm({
               className="flex items-start justify-between gap-3 rounded-md border border-border px-3 py-2.5"
             >
               <div className="min-w-0">
-                <p className="text-[13px]">{automation.prompt}</p>
+                <p className="text-body-dense">{automation.prompt}</p>
                 <p className="font-mono text-xs text-muted-foreground">{automation.schedule}</p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
@@ -278,11 +278,11 @@ export function ProjectSettingsForm({
 
         <section id="memory" aria-label="Memory" className="flex flex-col gap-3">
           <h2 className="text-lg font-medium">Memory</h2>
-          <p className="text-[13px] text-muted-foreground">Context that this project remembers.</p>
+          <p className="text-body-dense text-muted-foreground">Context that this project remembers.</p>
           {memories.map((memory) => (
             <div
               key={memory.id}
-              className="group flex items-start justify-between gap-3 border-b border-border py-2 text-[13px] last:border-0"
+              className="group flex items-start justify-between gap-3 border-b border-border py-2 text-body-dense last:border-0"
             >
               <p className="min-w-0 flex-1">{memory.content}</p>
               <button
@@ -302,7 +302,7 @@ export function ProjectSettingsForm({
         <section id="integrations" aria-label="Integrations" className="flex flex-col gap-3">
           <h2 className="text-lg font-medium">Integrations</h2>
           {connectors.length === 0 ? (
-            <p className="text-[13px] text-muted-foreground">
+            <p className="text-body-dense text-muted-foreground">
               Connect accounts on the{" "}
               <Link href="/command-center/integrations" className="underline">
                 connectors page
@@ -314,7 +314,7 @@ export function ProjectSettingsForm({
               {connectors.map((connector) => (
                 <li
                   key={connector.id}
-                  className="flex items-center justify-between gap-3 border-b border-border py-2 text-[13px] last:border-0"
+                  className="flex items-center justify-between gap-3 border-b border-border py-2 text-body-dense last:border-0"
                 >
                   <span className="truncate">{connector.label}</span>
                   <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
@@ -378,13 +378,13 @@ function NewAutomation({
         required
         maxLength={4000}
         placeholder="What should it do?"
-        className="w-full rounded-md border border-input bg-transparent px-2 py-1.5 text-[13px]"
+        className="w-full rounded-md border border-input bg-transparent px-2 py-1.5 text-body-dense"
       />
       <input
         value={schedule}
         onChange={(event) => setSchedule(event.target.value)}
         aria-label="Cron schedule"
-        className="w-40 rounded-md border border-input bg-transparent px-2 py-1.5 font-mono text-[13px]"
+        className="w-40 rounded-md border border-input bg-transparent px-2 py-1.5 font-mono text-body-dense"
       />
       <div className="flex justify-end gap-2">
         <Button size="sm" variant="ghost" type="button" onClick={() => setAdding(false)}>
@@ -419,7 +419,7 @@ function NewMemory({ pending, onAdd }: { pending: boolean; onAdd: (content: stri
           onChange={(event) => setValue(event.target.value)}
           maxLength={2000}
           placeholder="Add a memory"
-          className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-[13px]"
+          className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-body-dense"
         />
       </div>
       <Button size="sm" variant="outline" type="submit" disabled={pending || !value.trim()}>

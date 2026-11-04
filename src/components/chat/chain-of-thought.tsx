@@ -62,7 +62,7 @@ export function ChainOfThought({
           <Brain aria-hidden className="size-3.5" />
         )}
         <span>{label}</span>
-        <ChevronRight aria-hidden className={cn("size-3 transition-transform", open && "rotate-90")} />
+        <ChevronRight aria-hidden className={cn("size-3.5 transition-transform", open && "rotate-90")} />
       </button>
 
       {open ? (

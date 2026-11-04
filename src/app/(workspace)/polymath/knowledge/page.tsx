@@ -45,18 +45,18 @@ export const metadata = { title: "Knowledge · Polymath" };
  */
 
 const toneGlyph: Record<DocumentStatusTone, React.ReactNode> = {
-  neutral: <Circle className="size-3 text-muted-foreground" aria-hidden />,
-  progress: <LoaderCircle className="text-muted-foreground size-3" aria-hidden />,
-  attention: <TriangleAlert className="size-3 text-amber-600 dark:text-amber-400" aria-hidden />,
-  done: <CheckCircle2 className="size-3 text-teal-600 dark:text-teal-400" aria-hidden />,
-  error: <CircleAlert className="text-destructive size-3" aria-hidden />,
+  neutral: <Circle className="size-3.5 text-muted-foreground" aria-hidden />,
+  progress: <LoaderCircle className="text-muted-foreground size-3.5" aria-hidden />,
+  attention: <TriangleAlert className="size-3.5 text-(--tone-attention)" aria-hidden />,
+  done: <CheckCircle2 className="size-3.5 text-(--tone-teal)" aria-hidden />,
+  error: <CircleAlert className="text-destructive size-3.5" aria-hidden />,
 };
 
 const toneClass: Record<DocumentStatusTone, string> = {
   neutral: "text-muted-foreground",
   progress: "text-muted-foreground",
-  attention: "text-amber-700 dark:text-amber-400",
-  done: "text-teal-700 dark:text-teal-400",
+  attention: "text-(--tone-attention)",
+  done: "text-(--tone-teal)",
   error: "text-destructive",
 };
 
@@ -165,12 +165,12 @@ export async function KnowledgeSurface({ searchParams }: { searchParams: Promise
       <PageHeader title="Knowledge" purpose="Write, retrieve, and connect." />
 
       <nav aria-label="Knowledge views" className="flex gap-1 border-b border-border">
-        <span aria-current="page" className="border-b-2 border-foreground px-3 py-1.5 text-[13px] font-medium">
+        <span aria-current="page" className="border-b-2 border-foreground px-3 py-1.5 text-body-dense font-medium">
           Documents
         </span>
         <Link
           href="/polymath/ideas"
-          className="px-3 py-1.5 text-[13px] text-muted-foreground underline-offset-2 hover:underline"
+          className="px-3 py-1.5 text-body-dense text-muted-foreground underline-offset-2 hover:underline"
         >
           Ideas
         </Link>
@@ -280,7 +280,7 @@ function ReviewWorkbench({
         {/* Left: document info */}
         <div className="flex flex-col gap-3">
           <div className="panel rounded-lg px-3.5 py-3 transition-colors hover:bg-muted/40">
-            <h3 className="text-[13px] font-medium">{doc.title}</h3>
+            <h3 className="text-body-dense font-medium">{doc.title}</h3>
             <p className="text-muted-foreground mt-1 text-xs">
               {doc.sourceUrl ? (
                 <>
@@ -360,7 +360,7 @@ function ReviewWorkbench({
         {/* Center: field proposals and parties */}
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-3">
-            <h3 className="text-[13px] font-medium">Extracted fields</h3>
+            <h3 className="text-body-dense font-medium">Extracted fields</h3>
             {extraction?.proposer === RULES_PROPOSER && fieldProposals.length > 0 ? (
               <p className="text-muted-foreground text-xs">
                 Proposed by text rules, not AI. Check each value against the line it was read from.
@@ -376,7 +376,7 @@ function ReviewWorkbench({
               <ul className="flex flex-col gap-2">
                 {fieldProposals.map((proposal) => (
                   <li key={proposal.id} className="panel rounded-lg px-3.5 py-3 transition-colors hover:bg-muted/40">
-                    <p className="text-[13px] font-medium">{sentenceCase(fieldLabel(proposal.fieldName))}</p>
+                    <p className="text-body-dense font-medium">{sentenceCase(fieldLabel(proposal.fieldName))}</p>
                     {proposal.evidenceQuote ? (
                       <p className="text-muted-foreground mt-0.5 text-xs">
                         Read from: <q className="text-foreground">{proposal.evidenceQuote}</q>
@@ -418,7 +418,7 @@ function ReviewWorkbench({
 
         {/* Right: obligations */}
         <div className="flex flex-col gap-3">
-          <h3 className="text-[13px] font-medium">Proposed follow-up work</h3>
+          <h3 className="text-body-dense font-medium">Proposed follow-up work</h3>
           {obligations.length === 0 ? (
             <p className="text-muted-foreground text-xs">
               Nothing proposed. No unpaid totals or missing fields were found.
@@ -427,7 +427,7 @@ function ReviewWorkbench({
             <ul className="flex flex-col gap-2">
               {obligations.map((obligation) => (
                 <li key={obligation.id} className="panel rounded-lg px-3.5 py-3 transition-colors hover:bg-muted/40">
-                  <p className="text-[13px]">{obligation.note ?? obligation.kind}</p>
+                  <p className="text-body-dense">{obligation.note ?? obligation.kind}</p>
                   {obligation.status === "proposed" ? (
                     <div className="mt-2">
                       <ObligationDecisions obligationId={obligation.id} />
@@ -446,10 +446,10 @@ function ReviewWorkbench({
             </ul>
           )}
 
-          <h3 className="mt-2 text-[13px] font-medium">Proposed zettels</h3>
+          <h3 className="mt-2 text-body-dense font-medium">Proposed zettels</h3>
           {extraction?.status === "succeeded" ? <ProposeZettelsButton documentId={doc.id} /> : null}
           {zettels.unreadChars > 0 ? (
-            <p className="text-xs text-amber-700 dark:text-amber-400">
+            <p className="text-xs text-(--tone-attention)">
               Read {zettels.readChars} of {zettels.readChars + zettels.unreadChars} characters — {zettels.unreadChars}{" "}
               in {zettels.unreadSections} {zettels.unreadSections === 1 ? "section was" : "sections were"} not read.
             </p>
@@ -460,13 +460,13 @@ function ReviewWorkbench({
             <ul className="flex flex-col gap-2">
               {zettels.proposals.map((z) => (
                 <li key={z.id} className="panel rounded-lg px-3.5 py-3 transition-colors hover:bg-muted/40">
-                  <p className="text-[13px] font-medium">{z.title}</p>
-                  <p className="text-[13px]">{z.claim}</p>
+                  <p className="text-body-dense font-medium">{z.title}</p>
+                  <p className="text-body-dense">{z.claim}</p>
                   <p className="text-muted-foreground mt-1 line-clamp-2 text-xs">
                     &ldquo;{z.quote}&rdquo; · chars {z.spanStart}-{z.spanEnd}
                   </p>
                   {z.duplicateOf ? (
-                    <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+                    <p className="mt-1 text-xs text-(--tone-attention)">
                       Already exists as{" "}
                       <Link href={`/polymath/ideas/${z.duplicateOf.id}`} className="underline">
                         &ldquo;{z.duplicateOf.title}&rdquo;
@@ -503,7 +503,7 @@ function Parties({
   if (parties.length === 0) {
     return (
       <div className="flex flex-col gap-2">
-        <h3 className="text-[13px] font-medium">People and companies</h3>
+        <h3 className="text-body-dense font-medium">People and companies</h3>
         <p className="text-muted-foreground text-xs">None were found in this document.</p>
       </div>
     );
@@ -511,11 +511,11 @@ function Parties({
 
   return (
     <div className="flex flex-col gap-2">
-      <h3 className="text-[13px] font-medium">People and companies</h3>
+      <h3 className="text-body-dense font-medium">People and companies</h3>
       <ul className="flex flex-col gap-2">
         {parties.map((party) => (
           <li key={party.id} className="panel rounded-lg px-3.5 py-3 transition-colors hover:bg-muted/40">
-            <p className="text-[13px] font-medium">
+            <p className="text-body-dense font-medium">
               {party.displayName}{" "}
               <span className="text-muted-foreground font-normal">· {sentenceCase(party.partyRole)}</span>
             </p>

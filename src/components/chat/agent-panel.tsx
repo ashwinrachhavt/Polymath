@@ -38,7 +38,7 @@ export function AgentPanel({ agent, defaultOpen = false }: { agent: AgentPanelDa
         <Bot aria-hidden className="size-3.5" />
         <span className="truncate">{agent.name}</span>
         {agent.model ? <span className="readout shrink-0 text-data opacity-80">{agent.model}</span> : null}
-        <ChevronDown aria-hidden className={cn("size-3 shrink-0 transition-transform", open && "rotate-180")} />
+        <ChevronDown aria-hidden className={cn("size-3.5 shrink-0 transition-transform", open && "rotate-180")} />
       </button>
 
       {open ? (
@@ -72,7 +72,7 @@ export function AgentPanel({ agent, defaultOpen = false }: { agent: AgentPanelDa
                           <ChevronDown
                             aria-hidden
                             className={cn(
-                              "text-muted-foreground size-3 shrink-0 transition-transform",
+                              "text-muted-foreground size-3.5 shrink-0 transition-transform",
                               expanded && "rotate-180",
                             )}
                           />

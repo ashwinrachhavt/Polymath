@@ -130,7 +130,7 @@ export function NewNoteButton({ icon = false }: { icon?: boolean }) {
         </Button>
       )}
       {error && (
-        <span role="alert" className="text-[13px] text-destructive">
+        <span role="alert" className="text-body-dense text-destructive">
           {error}
         </span>
       )}
@@ -180,7 +180,7 @@ function LinkEditor({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className={`${quiet ? "" : "ml-2 "}text-[11px] text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring`}
+        className={`${quiet ? "" : "ml-2 "}text-data text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring`}
       >
         Edit
       </button>
@@ -270,12 +270,12 @@ function BacklinkRow({
         </span>
         <Link
           href={`/polymath/notes?id=${link.id}`}
-          className="rounded-sm text-[14px] text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+          className="rounded-sm text-body text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         >
           {link.title}
         </Link>
         {link.kind === "zettel" && (
-          <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70">zettel</span>
+          <span className="text-data uppercase tracking-wide text-muted-foreground/70">zettel</span>
         )}
         {/* Editing a link is an action on the row, not part of reading it:
             quiet until the row is hovered or focused, still reachable by tab. */}
@@ -284,7 +284,7 @@ function BacklinkRow({
         </span>
       </div>
       {(context || link.excerpt) && (
-        <p className="mt-0.5 pl-5 text-[12px] leading-5 text-muted-foreground/80">
+        <p className="mt-0.5 pl-5 text-label leading-5 text-muted-foreground/80">
           {context ? `…${context.length > 200 ? `${context.slice(0, 200).trimEnd()}…` : context}…` : link.excerpt}
         </p>
       )}
@@ -305,13 +305,13 @@ function LinkRow({
 }) {
   return (
     <li className="group relative rounded-md border border-transparent px-2 py-1 hover:border-border hover:bg-muted/40 focus-within:border-border focus-within:bg-muted/40">
-      <Link className="text-[13px] underline-offset-2 hover:underline" href={`/polymath/notes?id=${link.id}`}>
+      <Link className="text-body-dense underline-offset-2 hover:underline" href={`/polymath/notes?id=${link.id}`}>
         {link.kind === "zettel" && (
-          <span className="mr-1 text-[10px] uppercase tracking-wide text-muted-foreground">zettel</span>
+          <span className="mr-1 text-data uppercase tracking-wide text-muted-foreground">zettel</span>
         )}
         {link.title}
       </Link>
-      <span className="ml-2 text-[10px] uppercase tracking-wide text-muted-foreground/70">
+      <span className="ml-2 text-data uppercase tracking-wide text-muted-foreground/70">
         {RELATION_NAME[link.linkType] ?? link.linkType}
       </span>
       <LinkEditor noteId={noteId} link={link} outgoing={outgoing} />
@@ -325,7 +325,7 @@ function LinkRow({
         aria-label={`${label} ${link.title}`}
         className="pointer-events-none absolute left-0 top-full z-20 mt-1 hidden w-72 rounded-lg border border-border bg-popover p-3 shadow-md group-hover:block group-focus-within:block"
       >
-        <p className="text-[13px] font-medium">{link.title}</p>
+        <p className="text-body-dense font-medium">{link.title}</p>
         {link.context && (
           <p className="mt-1 line-clamp-3 border-l-2 border-border pl-2 text-xs italic text-muted-foreground">
             …{link.context}…
@@ -802,11 +802,11 @@ export function NoteEditor({
                     Every checkpoint is immutable - this is what the note said, when.
                   </DialogDescription>
                   {history.length === 0 ? (
-                    <p className="text-[13px] text-muted-foreground">No checkpoints yet.</p>
+                    <p className="text-body-dense text-muted-foreground">No checkpoints yet.</p>
                   ) : (
                     <ul className="flex max-h-80 flex-col gap-2 overflow-y-auto">
                       {history.map((v) => (
-                        <li key={v.id} className="rounded-md border border-border px-3 py-2 text-[13px]">
+                        <li key={v.id} className="rounded-md border border-border px-3 py-2 text-body-dense">
                           <span className="flex items-center justify-between gap-2">
                             <span className="font-medium">Version {v.versionNumber}</span>
                             <span className="text-xs text-muted-foreground">{stamp(v.createdAt)}</span>
@@ -837,7 +837,7 @@ export function NoteEditor({
           {localOffer && (
             <div
               role="status"
-              className="mb-6 flex flex-wrap items-center gap-2 rounded-lg border border-amber-300/60 bg-amber-50/60 p-3 text-[13px] dark:border-amber-900 dark:bg-amber-950/40"
+              className="mb-6 flex flex-wrap items-center gap-2 rounded-lg border border-(--tone-attention-wash)/40 bg-(--tone-attention-wash)/15 p-3 text-body-dense"
             >
               <span>Unsent changes from {stamp(localOffer.savedAt)} were found in this browser.</span>
               <Button
@@ -912,16 +912,16 @@ export function NoteEditor({
                   type="button"
                   onClick={() => setDetailsOpen(true)}
                   aria-label={`${outlinks.length} ${outlinks.length === 1 ? "reference" : "references"} in this note`}
-                  className="mt-3 hidden shrink-0 items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring sm:inline-flex"
+                  className="mt-3 hidden shrink-0 items-center gap-1 rounded-full border border-border px-2 py-0.5 text-data text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring sm:inline-flex"
                 >
-                  <Link2 aria-hidden className="size-3" />
+                  <Link2 aria-hidden className="size-3.5" />
                   {outlinks.length} {outlinks.length === 1 ? "reference" : "references"}
                 </button>
               )}
             </div>
             {/* Metadata is small and muted; the actions it used to carry are
                 the header zone's problem now. */}
-            <div className="mt-3 flex min-h-5 flex-wrap items-center gap-2 text-[11px] text-muted-foreground/80">
+            <div className="mt-3 flex min-h-5 flex-wrap items-center gap-2 text-data text-muted-foreground/80">
               {saveState === "saving" && <span role="status">Saving…</span>}
               {saveState === "dirty" && <span role="status">Unsaved changes</span>}
               {saveState === "saved" && <span role="status">Saved</span>}
@@ -987,7 +987,7 @@ export function NoteEditor({
               aria-controls="note-comments"
               onClick={() => setCommentsOpen((open) => !open)}
             >
-              <MessageSquare aria-hidden className="size-3" />
+              <MessageSquare aria-hidden className="size-3.5" />
               {openCommentCount > 0 ? `Comments ${openCommentCount}` : "Comments"}
             </Button>
             {issueError && (
@@ -1015,7 +1015,7 @@ export function NoteEditor({
               onStructuredPasteDropped={() => setSourceHint(true)}
             />
             {sourceHint && editorMode === "rich" && (
-              <div role="status" className="mt-2 flex items-center gap-2 text-[13px] text-muted-foreground">
+              <div role="status" className="mt-2 flex items-center gap-2 text-body-dense text-muted-foreground">
                 <span>The paste lost its structure.</span>
                 <Button
                   type="button"
@@ -1047,7 +1047,7 @@ export function NoteEditor({
               </div>
               {ai.output && !ai.failed && (
                 <>
-                  <div className="max-h-64 overflow-y-auto whitespace-pre-wrap rounded-md bg-muted/40 p-3 text-[13px] leading-6">
+                  <div className="max-h-64 overflow-y-auto whitespace-pre-wrap rounded-md bg-muted/40 p-3 text-body-dense leading-6">
                     {ai.output}
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -1101,7 +1101,7 @@ export function NoteEditor({
             </div>
           )}
           {error && (
-            <p role="alert" className="mt-4 text-[13px] text-destructive">
+            <p role="alert" className="mt-4 text-body-dense text-destructive">
               {error}
             </p>
           )}
@@ -1113,7 +1113,7 @@ export function NoteEditor({
               Backlinks <span className="tabular-nums">{backlinks.length}</span>
             </h2>
             {backlinks.length === 0 ? (
-              <p className="mt-3 text-[13px] text-muted-foreground/80">
+              <p className="mt-3 text-body-dense text-muted-foreground/80">
                 No notes link here yet. Another note links to this one when it writes [[{title.trim() || "this title"}
                 ]].
               </p>
@@ -1149,7 +1149,7 @@ export function NoteEditor({
           </SheetDescription>
           <section aria-label="Properties" className="flex flex-col gap-2">
             <h2 className="text-xs font-medium text-muted-foreground">Properties</h2>
-            <dl aria-label="Note properties" className="flex flex-col gap-2 text-[13px]">
+            <dl aria-label="Note properties" className="flex flex-col gap-2 text-body-dense">
               <div className="flex items-center justify-between gap-2">
                 <dt className="text-xs text-muted-foreground">Type</dt>
                 <dd>
@@ -1168,7 +1168,7 @@ export function NoteEditor({
                       className="rounded-full border border-border px-2 py-0.5 text-xs hover:border-destructive/50 hover:text-destructive"
                       onClick={() => void saveTags(tags.filter((t) => t !== tag))}
                     >
-                      {tag} <X aria-hidden className="size-3" />
+                      {tag} <X aria-hidden className="size-3.5" />
                     </button>
                   ))}
                   <input
@@ -1247,7 +1247,7 @@ export function NoteEditor({
                     <LinkRow key={link.id} noteId={noteId} outgoing link={link} label="Reference" />
                   ))}
                   {outlinks.length === 0 && (
-                    <li className="text-[13px] text-muted-foreground">No [[wiki links]] in this note yet.</li>
+                    <li className="text-body-dense text-muted-foreground">No [[wiki links]] in this note yet.</li>
                   )}
                 </ul>
               </div>
@@ -1262,7 +1262,7 @@ export function NoteEditor({
                   .map((r) => (
                     <li
                       key={r.id}
-                      className="group inline-flex max-w-full items-center rounded-full border border-border bg-background text-[13px] transition-colors hover:bg-muted/60"
+                      className="group inline-flex max-w-full items-center rounded-full border border-border bg-background text-body-dense transition-colors hover:bg-muted/60"
                     >
                       <Link
                         className="flex min-w-0 items-center gap-1.5 rounded-full py-1 pl-2.5 pr-2 outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -1270,10 +1270,10 @@ export function NoteEditor({
                         title={r.excerpt ?? r.title}
                       >
                         {r.kind === "zettel" && (
-                          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">zettel</span>
+                          <span className="text-data uppercase tracking-wide text-muted-foreground">zettel</span>
                         )}
                         <span className="truncate">{r.title}</span>
-                        <span className="tabular-nums text-[11px] text-muted-foreground">
+                        <span className="tabular-nums text-data text-muted-foreground">
                           {Math.round(r.score * 100)}%
                         </span>
                       </Link>

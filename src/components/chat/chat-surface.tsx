@@ -591,7 +591,7 @@ export function ThinkingPill({ text, done }: { text: string; done: boolean }) {
   return (
     <details className="group">
       <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-full px-2 py-1 text-label text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
-        <ChevronDown aria-hidden className="size-3 shrink-0 -rotate-90 transition-transform group-open:rotate-0" />
+        <ChevronDown aria-hidden className="size-3.5 shrink-0 -rotate-90 transition-transform group-open:rotate-0" />
         {done ? "Thought process" : "Thinking\u2026"}
       </summary>
       <p className="text-muted-foreground mt-1 whitespace-pre-wrap border-l border-border pl-3 text-body-dense leading-6">

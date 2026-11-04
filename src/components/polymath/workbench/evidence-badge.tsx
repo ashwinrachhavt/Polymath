@@ -64,11 +64,11 @@ export function EvidenceBadge({ tier, className = "" }: { tier: EvidenceTier; cl
   return (
     <span
       title={config.description}
-      className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] leading-4 whitespace-nowrap ${
+      className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-data leading-4 whitespace-nowrap ${
         config.grounded ? GROUNDED_CLASSES : UNGROUNDED_CLASSES
       } ${BORDER_STYLE[config.grounded ? "solid" : tier === "hypothesis" ? "dotted" : "dashed"]} ${className}`}
     >
-      <Icon aria-hidden className="size-3 shrink-0" />
+      <Icon aria-hidden className="size-3.5 shrink-0" />
       <span>{config.label}</span>
       {/* The description rides in the accessible text, not just the tooltip: the tier's
           honesty contract is machine-readable, which is what the spec's badge test pins. */}

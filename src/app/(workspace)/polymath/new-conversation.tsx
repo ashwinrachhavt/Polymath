@@ -256,11 +256,11 @@ export function NewConversation({
   if (navigated) {
     return (
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
-        <div className="ml-auto max-w-[85%] rounded-lg bg-muted px-3 py-2 text-[13px] leading-6">
+        <div className="ml-auto max-w-[85%] rounded-lg bg-muted px-3 py-2 text-body-dense leading-6">
           {navigated.message}
         </div>
         <div className="max-w-[72ch] space-y-3">
-          <p className="text-[13px] leading-6">{navigated.reply}</p>
+          <p className="text-body-dense leading-6">{navigated.reply}</p>
           <SurfaceCardView card={navigated.card} />
         </div>
       </div>
@@ -286,7 +286,7 @@ export function NewConversation({
         <Textarea
           autoFocus
           aria-label="Start a conversation"
-          className="composer-input min-h-[88px] resize-none border-0 bg-transparent px-3.5 pt-3 pb-11 text-[15px] leading-6 focus-visible:ring-0"
+          className="composer-input min-h-[88px] resize-none border-0 bg-transparent px-3.5 pt-3 pb-11 text-body leading-6 focus-visible:ring-0"
           placeholder={
             skillId
               ? skills.find((skill) => skill.id === skillId)?.name
@@ -361,13 +361,13 @@ export function NewConversation({
                 type="button"
                 onClick={() => setSkillId("")}
                 aria-label={`Unpin skill ${skills.find((skill) => skill.id === skillId)?.name ?? skillId}`}
-                className="bg-secondary text-secondary-foreground hover:bg-secondary/80 inline-flex h-6 items-center gap-1 rounded-md px-2 text-[12px] outline-none"
+                className="bg-secondary text-secondary-foreground hover:bg-secondary/80 inline-flex h-6 items-center gap-1 rounded-md px-2 text-label outline-none"
               >
                 {skills.find((skill) => skill.id === skillId)?.name ?? "Skill"}
-                <X aria-hidden className="size-3" />
+                <X aria-hidden className="size-3.5" />
               </button>
             ) : (
-              <span className="px-1 truncate text-[11px] text-muted-foreground">{attachNote}</span>
+              <span className="px-1 truncate text-data text-muted-foreground">{attachNote}</span>
             )}
           </div>
           <Button
@@ -388,12 +388,12 @@ export function NewConversation({
         </div>
       </div>
       {error ? (
-        <p role="status" className="text-destructive mt-2 text-[12px]">
+        <p role="status" className="text-destructive mt-2 text-label">
           {error}
         </p>
       ) : null}
       {pending ? (
-        <p role="status" className="text-muted-foreground mt-2 text-[12px]">
+        <p role="status" className="text-muted-foreground mt-2 text-label">
           Starting…
         </p>
       ) : null}

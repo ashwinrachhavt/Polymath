@@ -79,6 +79,15 @@
 
   --success: oklch(0.5 0.11 155);
   --info: oklch(0.5 0.11 245);
+  /* Tone roles for non-pill uses (row text, glyphs, banners): the pill
+     wheel's own hues exposed as plain colors so hard-coded Tailwind
+     ambers/teals die without inventing new ones. Values mirror
+     .pill-working / .pill-teal; -wash is their background mix base for
+     hairline borders and faint fills. */
+  --tone-attention: oklch(0.52 0.1 70);
+  --tone-attention-wash: oklch(0.72 0.12 80);
+  --tone-teal: oklch(0.55 0.09 195);
+  --tone-teal-wash: oklch(0.72 0.1 195);
 
   --border: oklch(0.916 0.003 95);
   --input: oklch(0.916 0.003 95);
@@ -243,6 +252,10 @@
 
   --success: oklch(0.7 0.11 155);
   --info: oklch(0.7 0.11 245);
+  /* Dark lifts mirror .dark .pill-teal; pill-working ships one tone for
+     both modes, so --tone-attention does not flip. */
+  --tone-teal: oklch(0.8 0.08 195);
+  --tone-teal-wash: oklch(0.76 0.09 195);
 
   --border: oklch(0.29 0.003 80);
   --input: oklch(0.29 0.003 80);

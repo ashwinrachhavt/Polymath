@@ -87,7 +87,7 @@ export function RunReview({ runId, initial }: { runId: string; initial: RunRevie
       {critiqueVisible ? (
         <div className="border-border rounded-md border px-3 py-2.5">
           <div className="flex items-baseline justify-between gap-2">
-            <h2 className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
+            <h2 className="text-muted-foreground text-data font-medium tracking-wide uppercase">
               What the agent noted about this run
             </h2>
             <button
@@ -100,7 +100,7 @@ export function RunReview({ runId, initial }: { runId: string; initial: RunRevie
               <X aria-hidden className="size-3.5" />
             </button>
           </div>
-          <dl className="mt-1.5 flex flex-col gap-1.5 text-[13px] leading-relaxed">
+          <dl className="mt-1.5 flex flex-col gap-1.5 text-body-dense leading-relaxed">
             {critique.gotWrong ? (
               <div>
                 <dt className="text-muted-foreground inline">Got wrong: </dt>
@@ -125,7 +125,7 @@ export function RunReview({ runId, initial }: { runId: string; initial: RunRevie
 
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-1">
-          <span className="text-muted-foreground mr-1 text-[12px]">How was this run?</span>
+          <span className="text-muted-foreground mr-1 text-label">How was this run?</span>
           <button
             type="button"
             aria-label="Run was good"
@@ -161,7 +161,7 @@ export function RunReview({ runId, initial }: { runId: string; initial: RunRevie
             <ThumbsDown aria-hidden className="size-3.5" />
           </button>
           {error ? (
-            <span className="text-destructive ml-1.5 text-[11px]" role="alert">
+            <span className="text-destructive ml-1.5 text-data" role="alert">
               Feedback was not saved.
             </span>
           ) : null}
@@ -170,7 +170,7 @@ export function RunReview({ runId, initial }: { runId: string; initial: RunRevie
         {promptOpen && verdict !== "up" ? (
           <div className="border-border flex flex-col gap-2 rounded-md border px-3 py-2.5">
             <fieldset>
-              <legend className="text-muted-foreground text-[12px]">What went wrong? Pick any, or skip.</legend>
+              <legend className="text-muted-foreground text-label">What went wrong? Pick any, or skip.</legend>
               <div className="mt-1.5 flex flex-wrap gap-1.5">
                 {REASONS.map(({ slug, label }) => (
                   <button
@@ -183,7 +183,7 @@ export function RunReview({ runId, initial }: { runId: string; initial: RunRevie
                       )
                     }
                     className={cn(
-                      "border-border text-muted-foreground rounded-full border px-2.5 py-1 text-[12px] outline-none focus-visible:ring-ring focus-visible:ring-2",
+                      "border-border text-muted-foreground rounded-full border px-2.5 py-1 text-label outline-none focus-visible:ring-ring focus-visible:ring-2",
                       reasons.includes(slug) && "border-foreground/30 bg-muted text-foreground",
                     )}
                   >
@@ -199,9 +199,9 @@ export function RunReview({ runId, initial }: { runId: string; initial: RunRevie
               onChange={(event) => setNote(event.target.value)}
               placeholder="One line, optional"
               aria-label="A note about this run"
-              className="border-border bg-transparent placeholder:text-muted-foreground/70 rounded-md border px-2.5 py-1.5 text-[13px] outline-none focus-visible:ring-ring focus-visible:ring-2"
+              className="border-border bg-transparent placeholder:text-muted-foreground/70 rounded-md border px-2.5 py-1.5 text-body-dense outline-none focus-visible:ring-ring focus-visible:ring-2"
             />
-            <div className="text-muted-foreground flex items-center gap-4 text-[13px]">
+            <div className="text-muted-foreground flex items-center gap-4 text-body-dense">
               <button
                 type="button"
                 disabled={pending}

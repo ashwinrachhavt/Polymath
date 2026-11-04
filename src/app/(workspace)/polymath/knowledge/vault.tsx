@@ -96,16 +96,16 @@ export type VaultUpload = {
 const toneClass: Record<VaultTone, string> = {
   neutral: "text-muted-foreground",
   progress: "text-muted-foreground",
-  attention: "text-amber-700 dark:text-amber-400",
-  done: "text-teal-700 dark:text-teal-400",
+  attention: "text-(--tone-attention)",
+  done: "text-(--tone-teal)",
   error: "text-destructive",
 };
 
 const toneDot: Record<VaultTone, string> = {
   neutral: "bg-muted-foreground/50",
   progress: "bg-muted-foreground",
-  attention: "bg-amber-600 dark:bg-amber-400",
-  done: "bg-teal-600 dark:bg-teal-400",
+  attention: "bg-(--tone-attention)",
+  done: "bg-(--tone-teal)",
   error: "bg-destructive",
 };
 
@@ -121,9 +121,11 @@ function sizeLabel(bytes: number | null): string {
 /** Box-style type-colored glyph: red PDF, blue image, teal web page, grey file. */
 function DocGlyph({ doc, className }: { doc: Pick<VaultDocument, "kind" | "mimeType">; className?: string }) {
   const cls = cn("shrink-0", className);
-  if (doc.kind === "web_page") return <Globe className={cn(cls, "text-teal-600 dark:text-teal-400")} aria-hidden />;
-  if (doc.mimeType?.startsWith("image/")) return <FileImage className={cn(cls, "text-sky-600 dark:text-sky-400")} aria-hidden />;
-  if (doc.mimeType === "application/pdf") return <FileText className={cn(cls, "text-red-600 dark:text-red-400")} aria-hidden />;
+  if (doc.kind === "web_page") return <Globe className={cn(cls, "text-(--tone-teal)")} aria-hidden />;
+  if (doc.mimeType?.startsWith("image/"))
+    return <FileImage className={cn(cls, "text-sky-600 dark:text-sky-400")} aria-hidden />;
+  if (doc.mimeType === "application/pdf")
+    return <FileText className={cn(cls, "text-red-600 dark:text-red-400")} aria-hidden />;
   return <FileText className={cn(cls, "text-muted-foreground")} aria-hidden />;
 }
 
@@ -207,7 +209,8 @@ function sortDocuments(documents: VaultDocument[], sort: VaultSort): VaultDocume
   }
   if (sort === "size") {
     return copy.sort(
-      (a, b) => (b.sizeBytes ?? -1) - (a.sizeBytes ?? -1) || a.title.localeCompare(b.title, "en", { sensitivity: "base" }),
+      (a, b) =>
+        (b.sizeBytes ?? -1) - (a.sizeBytes ?? -1) || a.title.localeCompare(b.title, "en", { sensitivity: "base" }),
     );
   }
   return copy.sort((a, b) => {
@@ -234,7 +237,7 @@ function ReviewCell({ review }: { review: VaultReview | null }) {
       className={cn("inline-flex min-w-0 items-center gap-1.5 text-xs font-medium", toneClass[review.tone])}
     >
       {review.tone === "progress" ? (
-        <LoaderCircle className="size-3 shrink-0 animate-spin" aria-hidden />
+        <LoaderCircle className="size-3.5 shrink-0 animate-spin" aria-hidden />
       ) : (
         <span className={cn("size-1.5 shrink-0 rounded-full", toneDot[review.tone])} aria-hidden />
       )}
@@ -265,7 +268,7 @@ function DocumentPlate({ doc }: { doc: VaultDocument }) {
         <DocGlyph doc={doc} className="size-8 opacity-80" />
       )}
       {doc.pageCount ? (
-        <span className="readout bg-background/85 text-muted-foreground absolute right-1.5 bottom-1.5 rounded-sm px-1 py-0.5 text-[10px]">
+        <span className="readout bg-background/85 text-muted-foreground absolute right-1.5 bottom-1.5 rounded-sm px-1 py-0.5 text-data">
           {doc.pageCount} pp
         </span>
       ) : null}
@@ -288,7 +291,7 @@ function ListView({
     <div className="min-w-0">
       <div
         className={cn(
-          "text-muted-foreground border-border grid items-center gap-3 border-b px-2 pb-1.5 text-[11px] font-medium tracking-wide uppercase",
+          "text-muted-foreground border-border grid items-center gap-3 border-b px-2 pb-1.5 text-data font-medium tracking-wide uppercase",
           ROW_GRID,
         )}
       >
@@ -310,7 +313,7 @@ function ListView({
           <span className="flex min-w-0 items-center gap-2.5">
             <FolderOpen className="text-muted-foreground size-4" aria-hidden />
             <span className="min-w-0">
-              <span className="block truncate text-[13px] font-medium">{folder.name}</span>
+              <span className="block truncate text-body-dense font-medium">{folder.name}</span>
               <span className="text-muted-foreground block truncate text-xs">
                 Folder · {folder.documentCount} {folder.documentCount === 1 ? "document" : "documents"}
               </span>
@@ -347,7 +350,7 @@ function ListView({
                 <span className="flex min-w-0 items-center gap-2.5">
                   <DocGlyph doc={doc} className="size-4" />
                   <span className="min-w-0">
-                    <span className="block truncate text-[13px] font-medium">{doc.title}</span>
+                    <span className="block truncate text-body-dense font-medium">{doc.title}</span>
                     <span className="text-muted-foreground block truncate text-xs">{docSubtitle(doc)}</span>
                   </span>
                 </span>
@@ -355,7 +358,9 @@ function ListView({
                 <span className="text-muted-foreground hidden truncate text-xs sm:block">
                   {doc.updatedAt ? dateFmt.format(new Date(doc.updatedAt)) : "—"}
                 </span>
-                <Readout className="text-muted-foreground hidden text-right text-xs sm:block">{sizeLabel(doc.sizeBytes)}</Readout>
+                <Readout className="text-muted-foreground hidden text-right text-xs sm:block">
+                  {sizeLabel(doc.sizeBytes)}
+                </Readout>
               </button>
             </motion.li>
           ))}
@@ -375,10 +380,7 @@ function GridView({
   onOpen: (id: string) => void;
 }) {
   return (
-    <ul
-      className="grid grid-cols-[repeat(auto-fill,minmax(168px,1fr))] gap-x-4 gap-y-6"
-      aria-label="Files and folders"
-    >
+    <ul className="grid grid-cols-[repeat(auto-fill,minmax(168px,1fr))] gap-x-4 gap-y-6" aria-label="Files and folders">
       {folders.map((folder) => (
         <li key={folder.id} className="min-w-0">
           <Link
@@ -389,7 +391,7 @@ function GridView({
               <FolderOpen className="text-muted-foreground size-9" strokeWidth={1.5} aria-hidden />
             </div>
             <span className="min-w-0">
-              <span className="block truncate text-[13px] font-medium">{folder.name}</span>
+              <span className="block truncate text-body-dense font-medium">{folder.name}</span>
               <span className="text-muted-foreground block truncate text-xs">
                 {folder.documentCount} {folder.documentCount === 1 ? "document" : "documents"}
               </span>
@@ -413,7 +415,7 @@ function GridView({
               <span className="flex min-w-0 items-start gap-2">
                 <DocGlyph doc={doc} className="mt-0.5 size-4" />
                 <span className="min-w-0">
-                  <span className="block truncate text-[13px] font-medium">{doc.title}</span>
+                  <span className="block truncate text-body-dense font-medium">{doc.title}</span>
                   <span className="text-muted-foreground block truncate text-xs">
                     {review ? (
                       <>
@@ -554,9 +556,11 @@ export function DocumentVault({
           headers: { "Idempotency-Key": crypto.randomUUID() },
           body,
         });
-        const payload = (await response.json().catch(() => null)) as
-          | { documentId?: string; fileStatus?: string; title?: string }
-          | null;
+        const payload = (await response.json().catch(() => null)) as {
+          documentId?: string;
+          fileStatus?: string;
+          title?: string;
+        } | null;
         if (!response.ok) {
           const problem = payload && "title" in payload ? payload.title : null;
           throw new Error(problem ?? `${file.name} could not be uploaded (${response.status}).`);
@@ -567,13 +571,18 @@ export function DocumentVault({
         if (payload?.documentId) {
           // The bytes landed; reading and indexing come next. Keep the row busy
           // and let the readiness poller move it to Ready or a failure reason.
-          setUploads((prev) => prev.map((u) => (u.key === key ? { ...u, documentId: payload.documentId, phase: "Reading…" } : u)));
+          setUploads((prev) =>
+            prev.map((u) => (u.key === key ? { ...u, documentId: payload.documentId, phase: "Reading…" } : u)),
+          );
         } else {
           setUploads((prev) => prev.map((u) => (u.key === key ? { ...u, state: "done" } : u)));
         }
         router.refresh();
       } catch (cause) {
-        const text = cause instanceof Error ? cause.message : `${file.name} could not be uploaded. Check the connection and try again.`;
+        const text =
+          cause instanceof Error
+            ? cause.message
+            : `${file.name} could not be uploaded. Check the connection and try again.`;
         setUploads((prev) => prev.map((u) => (u.key === key ? { ...u, state: "error", note: text } : u)));
       }
     },
@@ -749,14 +758,17 @@ export function DocumentVault({
       {/* One toolbar: search and the quiet +. Nothing else lives here. */}
       <div className="flex items-center gap-2">
         <div className="border-input bg-background focus-within:ring-ring relative w-full max-w-sm min-w-0 rounded-md border transition-shadow focus-within:ring-3">
-          <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" aria-hidden />
+          <Search
+            className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2"
+            aria-hidden
+          />
           <input
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search files and folders"
             aria-label="Search files and folders"
-            className="min-h-9 w-full bg-transparent pl-8 pr-3 text-[13px] outline-none"
+            className="min-h-9 w-full bg-transparent pl-8 pr-3 text-body-dense outline-none"
           />
         </div>
         <div ref={plusRef} className="relative shrink-0">
@@ -769,7 +781,11 @@ export function DocumentVault({
             onClick={() => setPlusOpen((open) => !open)}
             className="pr-2.5 pl-2"
           >
-            <motion.span animate={{ rotate: plusOpen ? 45 : 0 }} transition={motionTransition} className="grid place-items-center">
+            <motion.span
+              animate={{ rotate: plusOpen ? 45 : 0 }}
+              transition={motionTransition}
+              className="grid place-items-center"
+            >
               <Plus className="size-4" aria-hidden />
             </motion.span>
             New
@@ -789,7 +805,7 @@ export function DocumentVault({
                   type="button"
                   role="menuitem"
                   onClick={openNewFolder}
-                  className="hover:bg-muted flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-[13px] outline-none"
+                  className="hover:bg-muted flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-body-dense outline-none"
                 >
                   <FolderPlus className="size-3.5" aria-hidden /> New folder
                 </button>
@@ -798,7 +814,7 @@ export function DocumentVault({
                   type="button"
                   role="menuitem"
                   onClick={() => fileInput.current?.click()}
-                  className="hover:bg-muted flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-[13px] outline-none"
+                  className="hover:bg-muted flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-body-dense outline-none"
                 >
                   <Plus className="size-3.5" aria-hidden /> Upload files
                 </button>
@@ -806,7 +822,7 @@ export function DocumentVault({
                   type="button"
                   role="menuitem"
                   onClick={() => folderInput.current?.click()}
-                  className="hover:bg-muted flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-[13px] outline-none"
+                  className="hover:bg-muted flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-body-dense outline-none"
                 >
                   <FolderUp className="size-3.5" aria-hidden /> Upload a folder
                 </button>
@@ -818,10 +834,10 @@ export function DocumentVault({
 
       {/* Location and the controls that describe the current view. */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <nav aria-label="Breadcrumb" className="flex min-h-6 min-w-0 flex-1 items-center gap-1 text-[13px]">
+        <nav aria-label="Breadcrumb" className="flex min-h-6 min-w-0 flex-1 items-center gap-1 text-body-dense">
           {breadcrumb.map((crumb, index) => (
             <span key={`${crumb.name}-${index}`} className="flex min-w-0 items-center gap-1">
-              {index > 0 ? <ChevronRight className="text-muted-foreground size-3 shrink-0" aria-hidden /> : null}
+              {index > 0 ? <ChevronRight className="text-muted-foreground size-3.5 shrink-0" aria-hidden /> : null}
               {crumb.href ? (
                 <Link href={crumb.href} className="text-muted-foreground truncate underline-offset-4 hover:underline">
                   {crumb.name}
@@ -833,7 +849,7 @@ export function DocumentVault({
           ))}
         </nav>
 
-        <div role="group" aria-label="Review state" className="flex shrink-0 items-center gap-3 text-[13px]">
+        <div role="group" aria-label="Review state" className="flex shrink-0 items-center gap-3 text-body-dense">
           <span className="text-muted-foreground">
             <span className="text-foreground tabular-nums">{counts.review}</span> need review
           </span>
@@ -906,7 +922,7 @@ export function DocumentVault({
               aria-label="Dismiss"
               className="hover:text-foreground rounded-sm p-0.5 transition-colors"
             >
-              <X className="size-3" aria-hidden />
+              <X className="size-3.5" aria-hidden />
             </button>
           </motion.div>
         ) : null}
@@ -921,7 +937,7 @@ export function DocumentVault({
             exit={{ opacity: 0 }}
             transition={motionTransition}
             role="status"
-            className="border-ring bg-accent/40 text-accent-foreground pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-md border-2 border-dashed text-[13px] font-medium"
+            className="border-ring bg-accent/40 text-accent-foreground pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-md border-2 border-dashed text-body-dense font-medium"
           >
             Drop to file into {currentName}. Folders keep their structure, reading starts on its own.
           </motion.div>
@@ -931,7 +947,13 @@ export function DocumentVault({
       {/* Uploads in flight: partial stays partial, each row reports its own state. */}
       <AnimatePresence>
         {uploads.length > 0 ? (
-          <motion.ul initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-col gap-1" aria-label="Uploading">
+          <motion.ul
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="flex flex-col gap-1"
+            aria-label="Uploading"
+          >
             {uploads.map((item) => (
               <motion.li
                 key={item.key}
@@ -953,10 +975,10 @@ export function DocumentVault({
                 </span>
                 <span className={cn("readout shrink-0", item.state === "error" && "text-destructive")}>
                   {item.state === "busy"
-                    ? item.phase ?? "Reading…"
+                    ? (item.phase ?? "Reading…")
                     : item.state === "done"
-                      ? item.phase ?? "Added"
-                      : item.phase ?? "Failed"}
+                      ? (item.phase ?? "Added")
+                      : (item.phase ?? "Failed")}
                 </span>
               </motion.li>
             ))}
@@ -973,14 +995,17 @@ export function DocumentVault({
           <span className="border-border text-muted-foreground grid size-10 place-items-center rounded-md border border-dashed">
             <Plus className="size-5" aria-hidden />
           </span>
-          <span className="text-[13px] font-medium">Add your first document</span>
+          <span className="text-body-dense font-medium">Add your first document</span>
           <span className="text-muted-foreground max-w-sm text-xs">
-            Choose files to upload. Polymath reads what arrives and proposes the fields. Nothing is filed until you file it.
+            Choose files to upload. Polymath reads what arrives and proposes the fields. Nothing is filed until you file
+            it.
           </span>
         </button>
       ) : noMatches && uploads.length === 0 ? (
         <div className="panel-empty flex flex-col items-center gap-2 rounded-md px-6 py-12 text-center">
-          <p className="text-[13px] font-medium">{filtering ? "Nothing here matches" : `Nothing in ${currentName} yet`}</p>
+          <p className="text-body-dense font-medium">
+            {filtering ? "Nothing here matches" : `Nothing in ${currentName} yet`}
+          </p>
           <p className="text-muted-foreground max-w-sm text-xs">
             {filtering ? "Clear the search to see everything here." : "Drop files here, or use New to add something."}
           </p>
@@ -1200,106 +1225,106 @@ function Viewer({ doc, onClose }: { doc: VaultDocument; onClose: () => void }) {
         className="bg-background border-border mx-auto flex size-full max-w-[1400px] flex-col overflow-hidden rounded-lg border shadow-sm"
         onClick={(event) => event.stopPropagation()}
       >
-      <div className="border-border flex min-h-12 items-center gap-3 border-b px-4">
-        <DocGlyph doc={doc} className="size-4" />
-        <p className="min-w-0 flex-1 truncate text-[13px] font-medium">{doc.title}</p>
-        <span
-          title={review?.detail}
-          className={cn("shrink-0 text-xs font-medium", toneClass[review?.tone ?? "done"])}
-        >
-          {review?.label ?? "Filed"}
-        </span>
-        {/* The review workbench is where field proposals get accepted or
+        <div className="border-border flex min-h-12 items-center gap-3 border-b px-4">
+          <DocGlyph doc={doc} className="size-4" />
+          <p className="min-w-0 flex-1 truncate text-body-dense font-medium">{doc.title}</p>
+          <span
+            title={review?.detail}
+            className={cn("shrink-0 text-xs font-medium", toneClass[review?.tone ?? "done"])}
+          >
+            {review?.label ?? "Filed"}
+          </span>
+          {/* The review workbench is where field proposals get accepted or
             corrected; the vault list replaced the old row links, so this is
             the surviving way in. */}
-        <Link href={doc.href} className="shrink-0 text-xs font-medium underline-offset-4 hover:underline">
-          Review fields
-        </Link>
-        {textState === "ready" && wordCount > 0 ? (
-          <div className="flex shrink-0 items-center gap-0.5">
-            {copyable ? (
-              <button
-                type="button"
-                onClick={() => void copyText()}
-                className="text-muted-foreground hover:bg-muted hover:text-foreground inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs transition-colors"
-              >
-                {copied ? <Check className="size-3.5" aria-hidden /> : <CopyIcon className="size-3.5" aria-hidden />}
-                {copied ? "Copied" : "Copy"}
-              </button>
-            ) : null}
-            <button
-              type="button"
-              onClick={downloadText}
-              className="text-muted-foreground hover:bg-muted hover:text-foreground inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs transition-colors"
-            >
-              <Download className="size-3.5" aria-hidden /> Save
-            </button>
-          </div>
-        ) : null}
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close viewer"
-          className="text-muted-foreground hover:text-foreground hover:bg-muted rounded-md p-1.5 transition-colors"
-        >
-          <X className="size-4" aria-hidden />
-        </button>
-      </div>
-      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-2">
-        <div className="border-border bg-muted/30 relative min-h-0 border-r">
-          {inline ? (
-            <iframe
-              src={`/api/v1/documents/${doc.id}/file`}
-              title={doc.title}
-              className="absolute inset-0 size-full"
-            />
-          ) : (
-            <div className="text-muted-foreground flex h-full flex-col items-center justify-center gap-2 p-6 text-center text-xs">
-              <DocGlyph doc={doc} className="size-8" />
-              {doc.kind === "web_page" && doc.sourceUrl ? (
-                <>
-                  <p>This document is a captured web page.</p>
-                  <a href={doc.sourceUrl} target="_blank" rel="noreferrer" className="underline underline-offset-4">
-                    Open the original
-                  </a>
-                </>
-              ) : (
-                <p>No preview for this file type. The extracted text is on the right.</p>
-              )}
-            </div>
-          )}
-        </div>
-        <div className="relative min-h-0 overflow-y-auto">
-          <StatementStrip documentId={doc.id} />
-          {textState === "loading" ? (
-            <div role="status" className="text-muted-foreground flex items-center gap-2 p-4 text-xs">
-              <LoaderCircle className="size-3.5 animate-spin" aria-hidden /> Reading the extracted text…
-            </div>
-          ) : textState === "ready" ? (
-            <div className="prose-reading p-4">
-              <Markdown text={text ?? ""} />
-            </div>
-          ) : (
-            <div className="flex h-full flex-col items-start gap-3 p-4">
-              <p className="text-muted-foreground text-xs">{textNote}</p>
-              {retryNote ? (
-                <p role={retryNote.startsWith("Read") ? "status" : "alert"} className="text-muted-foreground text-xs">
-                  {retryNote}
-                </p>
+          <Link href={doc.href} className="shrink-0 text-xs font-medium underline-offset-4 hover:underline">
+            Review fields
+          </Link>
+          {textState === "ready" && wordCount > 0 ? (
+            <div className="flex shrink-0 items-center gap-0.5">
+              {copyable ? (
+                <button
+                  type="button"
+                  onClick={() => void copyText()}
+                  className="text-muted-foreground hover:bg-muted hover:text-foreground inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs transition-colors"
+                >
+                  {copied ? <Check className="size-3.5" aria-hidden /> : <CopyIcon className="size-3.5" aria-hidden />}
+                  {copied ? "Copied" : "Copy"}
+                </button>
               ) : null}
               <button
                 type="button"
-                onClick={() => void retryExtraction()}
-                disabled={retrying}
-                className="border-input hover:bg-muted inline-flex min-h-8 items-center gap-1.5 rounded-md border px-2.5 text-[13px] font-medium transition-colors active:scale-[0.98] disabled:opacity-60"
+                onClick={downloadText}
+                className="text-muted-foreground hover:bg-muted hover:text-foreground inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs transition-colors"
               >
-                <RotateCw className={cn("size-3.5", retrying && "animate-spin")} aria-hidden />
-                {retrying ? "Reading…" : "Retry extraction"}
+                <Download className="size-3.5" aria-hidden /> Save
               </button>
             </div>
-          )}
+          ) : null}
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close viewer"
+            className="text-muted-foreground hover:text-foreground hover:bg-muted rounded-md p-1.5 transition-colors"
+          >
+            <X className="size-4" aria-hidden />
+          </button>
         </div>
-      </div>
+        <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-2">
+          <div className="border-border bg-muted/30 relative min-h-0 border-r">
+            {inline ? (
+              <iframe
+                src={`/api/v1/documents/${doc.id}/file`}
+                title={doc.title}
+                className="absolute inset-0 size-full"
+              />
+            ) : (
+              <div className="text-muted-foreground flex h-full flex-col items-center justify-center gap-2 p-6 text-center text-xs">
+                <DocGlyph doc={doc} className="size-8" />
+                {doc.kind === "web_page" && doc.sourceUrl ? (
+                  <>
+                    <p>This document is a captured web page.</p>
+                    <a href={doc.sourceUrl} target="_blank" rel="noreferrer" className="underline underline-offset-4">
+                      Open the original
+                    </a>
+                  </>
+                ) : (
+                  <p>No preview for this file type. The extracted text is on the right.</p>
+                )}
+              </div>
+            )}
+          </div>
+          <div className="relative min-h-0 overflow-y-auto">
+            <StatementStrip documentId={doc.id} />
+            {textState === "loading" ? (
+              <div role="status" className="text-muted-foreground flex items-center gap-2 p-4 text-xs">
+                <LoaderCircle className="size-3.5 animate-spin" aria-hidden /> Reading the extracted text…
+              </div>
+            ) : textState === "ready" ? (
+              <div className="prose-reading p-4">
+                <Markdown text={text ?? ""} />
+              </div>
+            ) : (
+              <div className="flex h-full flex-col items-start gap-3 p-4">
+                <p className="text-muted-foreground text-xs">{textNote}</p>
+                {retryNote ? (
+                  <p role={retryNote.startsWith("Read") ? "status" : "alert"} className="text-muted-foreground text-xs">
+                    {retryNote}
+                  </p>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => void retryExtraction()}
+                  disabled={retrying}
+                  className="border-input hover:bg-muted inline-flex min-h-8 items-center gap-1.5 rounded-md border px-2.5 text-body-dense font-medium transition-colors active:scale-[0.98] disabled:opacity-60"
+                >
+                  <RotateCw className={cn("size-3.5", retrying && "animate-spin")} aria-hidden />
+                  {retrying ? "Reading…" : "Retry extraction"}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
       </motion.div>
     </motion.div>
   );
