@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { completeQuizAttempt, QuizAttemptError, type CompleteQuizAttemptResult } from "@/domains/learning/commands";
-import { generateQuiz, QuizGenerationError } from "@/domains/learning/generate-quiz";
+import { generateQuiz, GENERATION_COPY, QuizGenerationError } from "@/domains/learning/generate-quiz";
 import type { SubmittedAnswer } from "@/domains/learning/schema";
 import { getRewardsOverview, pickRewardAnnouncement } from "@/domains/gamification/queries";
 import { actionError } from "@/lib/action-error";
@@ -12,18 +12,13 @@ import { requireRole } from "@/lib/auth/guards";
 /*
  * The Learn surface's two mutations. Both are member-only, both return typed
  * unions (no throw crosses to the client), and both map the domain's typed
- * error codes onto authored copy here - the code that reaches the screen is
- * a sentence, never a class name or a driver message. The completion action
- * also computes the "Stone earned" announcement from the fresh ledger, so
- * the runner can surface it with the same coach mark the collection uses.
+ * error codes onto authored copy - the code that reaches the screen is a
+ * sentence, never a class name or a driver message. The copy map lives in
+ * the domain next to the codes, so the verb and the failed row's stored
+ * reason are the same sentences. The completion action also computes the
+ * "Stone earned" announcement from the fresh ledger, so the runner can
+ * surface it with the same coach mark the collection uses.
  */
-
-const GENERATION_COPY: Record<QuizGenerationError["code"], string> = {
-  document_not_found: "That document is not in this workspace.",
-  no_extraction: "This document is still being read. Try again once its text is ready.",
-  insufficient_evidence: "Not enough of this document could be verified against its text to build an honest quiz.",
-  generation_failed: "The quiz generator did not answer. Try again in a moment.",
-};
 
 const ATTEMPT_COPY: Record<QuizAttemptError["code"], string> = {
   quiz_not_found: "That quiz is not in this workspace.",

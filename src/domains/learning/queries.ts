@@ -10,7 +10,9 @@ import { quizAttempts, quizQuestions, quizzes, type QuizEvidence } from "./schem
  * The library's per-document aggregates describe the quiz the user can act
  * on now - the latest ready quiz - not the history of superseded
  * generations: "best score" and "last attempted" on a quiz you cannot retake
- * would be a number that lies.
+ * would be a number that lies. The one exception is the newest generation's
+ * failure: a failed regeneration after a ready quiz is news the library must
+ * show, not swallow.
  */
 
 export type LearnLibraryRow = {
@@ -23,6 +25,8 @@ export type LearnLibraryRow = {
   /** The user's best score on the current quiz, correct out of questionCount. */
   bestCorrect: number | null;
   lastAttemptedAt: string | Date | null;
+  /** The document's newest quiz event failed: its authored, owner-facing reason. */
+  lastFailure: string | null;
 };
 
 export type QuizForSitting = {
@@ -70,11 +74,19 @@ export async function getLearnLibrary(auth: AuthContext): Promise<LearnLibraryRo
       documentId: quizzes.documentId,
       createdAt: quizzes.createdAt,
       questionCount: quizzes.questionCount,
+      status: quizzes.status,
+      error: quizzes.error,
     })
     .from(quizzes)
-    .where(and(eq(quizzes.workspaceId, auth.workspaceId), eq(quizzes.status, "ready")))
+    .where(eq(quizzes.workspaceId, auth.workspaceId))
     .orderBy(desc(quizzes.createdAt));
-  const latestByDocument = latestReadyQuizByDocument(quizRows);
+  const latestByDocument = latestReadyQuizByDocument(quizRows.filter((row) => row.status === "ready"));
+  // First sight of a document across ALL generations - ready or failed - so
+  // a failed regeneration after a ready quiz still reaches the library.
+  const latestEventByDocument = new Map<string, (typeof quizRows)[number]>();
+  for (const row of quizRows) {
+    if (!latestEventByDocument.has(row.documentId)) latestEventByDocument.set(row.documentId, row);
+  }
   const latestQuizIds = [...latestByDocument.values()].map((q) => q.id);
 
   const attemptRows =
@@ -100,6 +112,7 @@ export async function getLearnLibrary(auth: AuthContext): Promise<LearnLibraryRo
   return documentRows.map((doc) => {
     const quiz = latestByDocument.get(doc.documentId);
     const attempts = quiz ? attemptsByQuiz.get(quiz.id) : undefined;
+    const latestEvent = latestEventByDocument.get(doc.documentId);
     return {
       documentId: doc.documentId,
       title: doc.title,
@@ -108,6 +121,7 @@ export async function getLearnLibrary(auth: AuthContext): Promise<LearnLibraryRo
       questionCount: quiz?.questionCount ?? null,
       bestCorrect: attempts?.bestCorrect ?? null,
       lastAttemptedAt: attempts?.lastAttemptedAt ?? null,
+      lastFailure: latestEvent?.status === "failed" ? (latestEvent.error ?? "The last generation failed.") : null,
     };
   });
 }

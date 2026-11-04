@@ -2,6 +2,7 @@ import Link from "next/link";
 import { io } from "next/cache";
 import { Suspense } from "react";
 import { EmptyState } from "@/components/empty-state";
+import { WorkStatus } from "@/components/work-status";
 import { Empty, Panel, Screen, Stat } from "@/components/workspace/ui";
 import { getRewardsOverview } from "@/domains/gamification/queries";
 import { getLearnLibrary, type LearnLibraryRow } from "@/domains/learning/queries";
@@ -58,6 +59,12 @@ function LibraryList({ rows }: { rows: LearnLibraryRow[] }) {
             </Link>
             <span className="text-xs text-muted-foreground">{learningState(row)}</span>
             {attempted ? <span className="text-xs text-muted-foreground">last attempted {attempted}</span> : null}
+            {row.lastFailure ? (
+              <WorkStatus
+                state={{ phase: "failed", label: `Last generation failed: ${row.lastFailure}` }}
+                className="w-full"
+              />
+            ) : null}
             {row.quizzable ? (
               row.quizId ? (
                 <Link
