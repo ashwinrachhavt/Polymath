@@ -22,6 +22,9 @@ import {
 import { genericSummary, isSafeSummaryAction, sanitizeSummary, type ActivityEventRow } from "./queries";
 import { auditEvents } from "./schema";
 
+/* Consumers project through this module only, so they name its types. */
+export type { Destination };
+
 /*
  * The single consumer-visible projection over audit rows (spec section 4):
  * both the Activity page and the notifications feed render this, and nothing
