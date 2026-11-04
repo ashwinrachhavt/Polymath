@@ -44,7 +44,7 @@ function LibraryList({ rows }: { rows: LibraryRow[] }) {
             href={`/polymath/library/${row.id}`}
             className="group flex flex-wrap items-baseline gap-x-3 gap-y-0.5 rounded-md px-2 py-2 hover:bg-muted"
           >
-            <span className="min-w-0 flex-1 truncate text-[13px] font-medium group-hover:underline">
+            <span className="min-w-0 flex-1 truncate text-body-dense font-medium group-hover:underline">
               {row.title}
             </span>
             <span className="text-xs text-muted-foreground">{progressLabel(row)}</span>
@@ -55,7 +55,7 @@ function LibraryList({ rows }: { rows: LibraryRow[] }) {
               </Readout>
             ) : (
               <span className="text-xs text-muted-foreground">
-                {row.kind === "web_page" ? "Saved page" : row.mimeType ?? "File"}
+                {row.kind === "web_page" ? "Saved page" : (row.mimeType ?? "File")}
               </span>
             )}
           </Link>
@@ -73,9 +73,7 @@ async function LibrarySurface() {
   if (rows.length === 0) {
     return (
       <div className="page-content">
-        <EmptyState
-          title="Nothing to read yet"
-        />
+        <EmptyState title="Nothing to read yet" />
       </div>
     );
   }
@@ -94,7 +92,7 @@ async function LibrarySurface() {
         {groups.unread.length > 0 ? (
           <LibraryList rows={groups.unread} />
         ) : (
-          <p className="text-[13px] text-muted-foreground">Everything added so far has been opened.</p>
+          <p className="text-body-dense text-muted-foreground">Everything added so far has been opened.</p>
         )}
       </Section>
       {groups.finished.length > 0 && (
@@ -106,16 +104,15 @@ async function LibrarySurface() {
         <Section title="Reading history">
           <ul className="flex flex-col gap-1.5">
             {history.map((row) => (
-              <li key={row.documentId} className="flex flex-wrap items-baseline gap-x-3 text-[13px]">
-                <Link href={`/polymath/library/${row.documentId}`} className="font-medium underline-offset-4 hover:underline">
+              <li key={row.documentId} className="flex flex-wrap items-baseline gap-x-3 text-body-dense">
+                <Link
+                  href={`/polymath/library/${row.documentId}`}
+                  className="font-medium underline-offset-4 hover:underline"
+                >
                   {row.title}
                 </Link>
-                <span className="text-xs text-muted-foreground">
-                  last opened {openedDate.format(row.lastOpenedAt)}
-                </span>
-                <Readout className="text-xs text-muted-foreground">
-                  {minutes(row.totalActiveSeconds)} min total
-                </Readout>
+                <span className="text-xs text-muted-foreground">last opened {openedDate.format(row.lastOpenedAt)}</span>
+                <Readout className="text-xs text-muted-foreground">{minutes(row.totalActiveSeconds)} min total</Readout>
               </li>
             ))}
           </ul>
@@ -128,9 +125,7 @@ async function LibrarySurface() {
 export default function LibraryPage() {
   return (
     <div className="flex flex-col">
-      <PageHeader
-        title="Library"
-      />
+      <PageHeader title="Library" />
       <Suspense
         fallback={
           <div className="flex flex-col gap-3 page-content">

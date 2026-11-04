@@ -289,7 +289,7 @@ export function NotificationsPanel({ feed }: { feed: TriageFeed }) {
       </SheetTrigger>
       <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-md">
         <SheetHeader className="border-b border-border px-4 py-3">
-          <SheetTitle className="text-[15px] font-medium">Notifications</SheetTitle>
+          <SheetTitle className="text-body font-medium">Notifications</SheetTitle>
           <SheetDescription className="text-data text-muted-foreground">
             What needs you, what an agent is working on, and what already finished.
           </SheetDescription>

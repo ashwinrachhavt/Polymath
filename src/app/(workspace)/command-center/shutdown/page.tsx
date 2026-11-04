@@ -42,7 +42,13 @@ async function ShutdownSurface() {
  */
 export default function ShutdownPage() {
   return (
-    <Suspense fallback={<p role="status" className="p-6 text-[13px] text-muted-foreground">Loading…</p>}>
+    <Suspense
+      fallback={
+        <p role="status" className="p-6 text-body-dense text-muted-foreground">
+          Loading…
+        </p>
+      }
+    >
       <ShutdownSurface />
     </Suspense>
   );

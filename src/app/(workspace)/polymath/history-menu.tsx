@@ -74,14 +74,11 @@ export function HistoryMenu({
         aria-expanded={open}
         aria-controls={panelId}
         onClick={() => setOpen((current) => !current)}
-        className="text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-ring inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] outline-none transition-colors focus-visible:ring-2"
+        className="text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-ring inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-label outline-none transition-colors focus-visible:ring-2"
       >
         <History aria-hidden className="size-3.5 shrink-0" />
         <span className="truncate">{label}</span>
-        <ChevronDown
-          aria-hidden
-          className={`size-3 shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
-        />
+        <ChevronDown aria-hidden className={`size-3.5 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
 
       {open ? (
@@ -90,26 +87,22 @@ export function HistoryMenu({
           className="panel bg-popover text-popover-foreground shadow-raised absolute top-full left-0 z-50 mt-1.5 max-h-[min(70dvh,520px)] w-[320px] overflow-y-auto rounded-[9px] p-1.5"
         >
           {groups.length === 0 ? (
-            <p className="text-muted-foreground px-2 py-1.5 text-[12px]">No conversations yet.</p>
+            <p className="text-muted-foreground px-2 py-1.5 text-label">No conversations yet.</p>
           ) : (
             <nav aria-label="Chat history" className="flex flex-col gap-1">
               {groups.map((group) => (
                 <div key={group.key}>
-                  <p className="text-muted-foreground px-2 pt-1.5 pb-1 text-[11px] font-medium">
-                    {group.label}
-                  </p>
+                  <p className="text-muted-foreground px-2 pt-1.5 pb-1 text-data font-medium">{group.label}</p>
                   <ul className="flex flex-col">
                     {group.rows.map((row) => (
                       <li key={row.id}>
                         <Link
                           href={row.href}
                           onClick={() => setOpen(false)}
-                          className="hover:bg-muted focus-visible:ring-ring flex h-8 items-center gap-3 rounded-md px-2 text-[13px] outline-none focus-visible:ring-2"
+                          className="hover:bg-muted focus-visible:ring-ring flex h-8 items-center gap-3 rounded-md px-2 text-body-dense outline-none focus-visible:ring-2"
                         >
                           <span className="min-w-0 flex-1 truncate">{row.title}</span>
-                          <span className="text-muted-foreground shrink-0 text-[12px] tabular-nums">
-                            {row.time}
-                          </span>
+                          <span className="text-muted-foreground shrink-0 text-label tabular-nums">{row.time}</span>
                         </Link>
                       </li>
                     ))}

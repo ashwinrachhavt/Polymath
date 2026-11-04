@@ -46,7 +46,7 @@ export function FocusSetup({ tasks, tiers }: { tasks: Array<{ id: string; title:
   return (
     <section className="panel min-w-0 rounded-xl p-4">
       <div className="mb-4">
-        <h2 className="text-[13px] font-medium">Start a session</h2>
+        <h2 className="text-body-dense font-medium">Start a session</h2>
         <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
           One session at a time. The tier sets what the server holds you to.
         </p>
@@ -83,13 +83,13 @@ export function FocusSetup({ tasks, tiers }: { tasks: Array<{ id: string; title:
           />
         </Field>
         <fieldset className="min-w-0">
-          <legend className="text-[13px] font-medium">Strictness</legend>
+          <legend className="text-body-dense font-medium">Strictness</legend>
           <div className="mt-2 grid gap-2 sm:grid-cols-3">
             {tiers.map((option) => (
               <label
                 key={option.value}
                 className={cn(
-                  "flex cursor-pointer flex-col gap-1 rounded-lg border p-3 text-[13px]",
+                  "flex cursor-pointer flex-col gap-1 rounded-lg border p-3 text-body-dense",
                   tier === option.value ? "border-app-accent bg-muted/40" : "border-border hover:bg-muted/40",
                 )}
               >
@@ -113,7 +113,7 @@ export function FocusSetup({ tasks, tiers }: { tasks: Array<{ id: string; title:
             Start focusing
           </Button>
           {error ? (
-            <p className="text-destructive text-[13px]" role="alert">
+            <p className="text-destructive text-body-dense" role="alert">
               {error}
             </p>
           ) : null}

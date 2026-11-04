@@ -32,7 +32,7 @@ export function CitedText({ text, citations }: { text: string; citations: Docume
               key={i}
               href={`#citation-${segment.index}`}
               aria-label={`Go to source ${segment.index + 1}`}
-              className="bg-muted text-muted-foreground hover:text-foreground mx-0.5 inline-flex h-[15px] min-w-[15px] items-center justify-center rounded-full px-1 align-super text-[10px] leading-none font-medium no-underline"
+              className="bg-muted text-muted-foreground hover:text-foreground mx-0.5 inline-flex h-[15px] min-w-[15px] items-center justify-center rounded-full px-1 align-super text-data leading-none font-medium no-underline"
             >
               {segment.index + 1}
             </a>

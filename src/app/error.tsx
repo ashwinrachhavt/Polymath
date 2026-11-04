@@ -12,27 +12,19 @@ import { Button } from "@/components/ui/button";
  * `error.digest` is the only handle that ties this screen to the server log, so
  * it is shown rather than swallowed.
  */
-export default function Error({
-  error,
-  reset,
-}: {
-  error: Error & { digest?: string };
-  reset: () => void;
-}) {
+export default function Error({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col justify-center gap-3 p-6">
       <h1 className="text-lg font-medium tracking-tight">This screen did not load</h1>
-      <p className="text-muted-foreground max-w-prose text-[13px]">
-        Something failed while loading this screen. Any change you already submitted may
-        still have gone through; check the list before submitting it again.
+      <p className="text-muted-foreground max-w-prose text-body-dense">
+        Something failed while loading this screen. Any change you already submitted may still have gone through; check
+        the list before submitting it again.
       </p>
       <div className="flex items-center gap-3">
         <Button size="sm" onClick={reset}>
           Try again
         </Button>
-        {error.digest ? (
-          <span className="text-muted-foreground font-mono text-xs">{error.digest}</span>
-        ) : null}
+        {error.digest ? <span className="text-muted-foreground font-mono text-xs">{error.digest}</span> : null}
       </div>
     </main>
   );

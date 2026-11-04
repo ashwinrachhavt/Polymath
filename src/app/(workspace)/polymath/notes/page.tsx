@@ -123,7 +123,7 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
   const noteList = (
     <div className="flex flex-col gap-3">
       <div>
-        <h2 className="text-[13px] font-medium">Notes</h2>
+        <h2 className="text-body-dense font-medium">Notes</h2>
         <p className="mt-0.5 text-xs text-muted-foreground">
           {list.q && !kanban
             ? "Ranked by keyword and meaning"
@@ -229,7 +229,7 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
                   <li key={note.id}>
                     <Link
                       href={listHref(BASE, raw, { id: note.id })}
-                      className={`block rounded-md border px-3 py-2 text-[13px] ${selected?.id === note.id ? "border-foreground/30 bg-muted/60" : "border-transparent hover:bg-muted/40"}`}
+                      className={`block rounded-md border px-3 py-2 text-body-dense ${selected?.id === note.id ? "border-foreground/30 bg-muted/60" : "border-transparent hover:bg-muted/40"}`}
                     >
                       <span className="flex items-center justify-between gap-2">
                         <span className="truncate font-medium">{note.title}</span>
@@ -256,7 +256,7 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
             <li key={note.id}>
               <Link
                 href={listHref(BASE, raw, { id: note.id })}
-                className={`block rounded-md border px-3 py-2 text-[13px] ${selected?.id === note.id ? "border-foreground/30 bg-muted/60" : "border-transparent hover:bg-muted/40"}`}
+                className={`block rounded-md border px-3 py-2 text-body-dense ${selected?.id === note.id ? "border-foreground/30 bg-muted/60" : "border-transparent hover:bg-muted/40"}`}
               >
                 <span className="flex items-center justify-between gap-2">
                   <span className="truncate font-medium">{note.title}</span>
@@ -342,7 +342,7 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
             <h1 className="text-lg" style={{ fontFamily: "var(--font-display)" }}>
               Write your first page.
             </h1>
-            <p className="mt-2 text-[13px] text-muted-foreground">
+            <p className="mt-2 text-body-dense text-muted-foreground">
               It autosaves as you type, and every checkpoint becomes an immutable version.
             </p>
             <div className="mt-5">

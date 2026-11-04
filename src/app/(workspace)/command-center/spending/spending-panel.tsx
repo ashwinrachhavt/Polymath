@@ -70,7 +70,10 @@ export async function SpendingPanel() {
             {ledger.rows.map((row) => (
               <div key={row.runId} className="flex flex-wrap items-center justify-between gap-3 py-2.5 first:pt-0">
                 <div className="min-w-0">
-                  <Link href={`/polymath/${row.runId}`} className="block truncate text-[13px] font-medium hover:underline">
+                  <Link
+                    href={`/polymath/${row.runId}`}
+                    className="block truncate text-body-dense font-medium hover:underline"
+                  >
                     {displayTitle(stripMentionContext(row.objective)) || "Untitled run"}
                   </Link>
                   <p className="mt-0.5 text-xs text-muted-foreground">
@@ -78,7 +81,7 @@ export async function SpendingPanel() {
                     {row.startedAt ? ` · ${row.startedAt.toISOString().slice(0, 10)}` : ""} · {tokens(row)}
                   </p>
                 </div>
-                <span className={`text-[13px] tabular-nums ${row.usd === null ? "text-muted-foreground" : ""}`}>
+                <span className={`text-body-dense tabular-nums ${row.usd === null ? "text-muted-foreground" : ""}`}>
                   {money(row.usd)}
                 </span>
               </div>

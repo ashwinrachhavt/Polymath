@@ -45,15 +45,15 @@ function CommentRow({ comment }: { comment: PanelComment }) {
   return (
     <li className={`rounded-md border px-3 py-2.5 ${resolved ? "border-transparent bg-muted/30" : "border-border"}`}>
       <div className="flex items-baseline justify-between gap-2">
-        <span className={`text-[13px] font-medium ${resolved ? "text-muted-foreground" : ""}`}>
+        <span className={`text-body-dense font-medium ${resolved ? "text-muted-foreground" : ""}`}>
           {comment.authorName ?? "You"}
         </span>
-        <time className="text-[11px] text-muted-foreground" dateTime={comment.createdAt}>
+        <time className="text-data text-muted-foreground" dateTime={comment.createdAt}>
           {timeAgo(comment.createdAt)}
         </time>
       </div>
       <p
-        className={`mt-1 whitespace-pre-wrap text-[13px] leading-6 ${resolved ? "text-muted-foreground line-through decoration-border" : ""}`}
+        className={`mt-1 whitespace-pre-wrap text-body-dense leading-6 ${resolved ? "text-muted-foreground line-through decoration-border" : ""}`}
       >
         {comment.body}
       </p>
@@ -103,7 +103,7 @@ export function NoteCommentsPanel({ noteId, initialComments }: { noteId: string;
         Comments <span className="tabular-nums">{openCount}</span>
       </h2>
       {comments.length === 0 ? (
-        <p className="text-[13px] leading-6 text-muted-foreground/80">
+        <p className="text-body-dense leading-6 text-muted-foreground/80">
           Nothing here yet. Write what this note still owes you.
         </p>
       ) : (
@@ -133,7 +133,7 @@ export function NoteCommentsPanel({ noteId, initialComments }: { noteId: string;
           placeholder="Add a comment…"
           maxLength={2000}
           rows={3}
-          className="rounded-md border border-border bg-background px-3 py-2 text-[13px] leading-6 outline-none placeholder:text-muted-foreground/70 focus-visible:ring-2 focus-visible:ring-ring"
+          className="rounded-md border border-border bg-background px-3 py-2 text-body-dense leading-6 outline-none placeholder:text-muted-foreground/70 focus-visible:ring-2 focus-visible:ring-ring"
         />
         <div className="flex items-center gap-2">
           <Button type="submit" size="xs" disabled={pending || !draft.trim()}>

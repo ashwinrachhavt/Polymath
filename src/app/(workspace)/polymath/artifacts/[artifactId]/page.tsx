@@ -35,7 +35,7 @@ async function WikiArtifactSurface({ params }: { params: Promise<{ artifactId: s
               minute: "2-digit",
             })}
           </p>
-          <div className="whitespace-pre-wrap text-[13px] leading-relaxed">{page.plainText}</div>
+          <div className="whitespace-pre-wrap text-body-dense leading-relaxed">{page.plainText}</div>
         </article>
       ) : (
         <div className="mx-auto w-full max-w-[var(--measure-prose)]">
@@ -43,7 +43,7 @@ async function WikiArtifactSurface({ params }: { params: Promise<{ artifactId: s
             title="This wiki page is not available."
             description="It may have been regenerated or removed."
             action={
-              <Link href="/artifacts" className="text-[13px] font-medium underline underline-offset-4">
+              <Link href="/artifacts" className="text-body-dense font-medium underline underline-offset-4">
                 Back to Artifacts
               </Link>
             }
@@ -62,7 +62,7 @@ export default function WikiArtifactPage({ params }: { params: Promise<{ artifac
   return (
     <Suspense
       fallback={
-        <p role="status" className="p-6 text-[13px] text-muted-foreground">
+        <p role="status" className="p-6 text-body-dense text-muted-foreground">
           Loading page…
         </p>
       }

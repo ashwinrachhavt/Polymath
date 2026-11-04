@@ -65,7 +65,7 @@ async function People({ searchParams }: { searchParams: SearchParams }) {
   redirectPastEnd(BASE, query, list.page, list.pageSize, page.total);
 
   const countFor = (value: string) =>
-    value === "unknown" ? counts.unmatched : counts.statuses.find((s) => s.value === value)?.total ?? 0;
+    value === "unknown" ? counts.unmatched : (counts.statuses.find((s) => s.value === value)?.total ?? 0);
 
   return (
     <Screen
@@ -89,7 +89,12 @@ async function People({ searchParams }: { searchParams: SearchParams }) {
       />
 
       <nav aria-label="People filters" className="flex flex-wrap items-center gap-1">
-        <FilterLink href={listHref(BASE, query, { status: undefined, page: undefined })} active={!status} label="All" count={page.total} />
+        <FilterLink
+          href={listHref(BASE, query, { status: undefined, page: undefined })}
+          active={!status}
+          label="All"
+          count={page.total}
+        />
         {STATUS_FILTERS.map((f) => (
           <FilterLink
             key={f.value}
@@ -103,14 +108,33 @@ async function People({ searchParams }: { searchParams: SearchParams }) {
 
       <div className="panel min-w-0 overflow-hidden rounded-xl">
         <div className="overflow-x-auto">
-          <table className="w-full text-[13px]">
+          <table className="w-full text-body-dense">
             <thead>
               <tr className="border-b border-border">
-                <th scope="col" className="text-muted-foreground px-4 py-2.5 text-left text-xs font-medium">Name</th>
-                <th scope="col" className="text-muted-foreground hidden px-4 py-2.5 text-left text-xs font-medium md:table-cell">Company</th>
-                <th scope="col" className="text-muted-foreground hidden px-4 py-2.5 text-left text-xs font-medium lg:table-cell">Email</th>
-                <th scope="col" className="text-muted-foreground px-4 py-2.5 text-left text-xs font-medium">Status</th>
-                <th scope="col" className="text-muted-foreground hidden px-4 py-2.5 text-right text-xs font-medium sm:table-cell">Last activity</th>
+                <th scope="col" className="text-muted-foreground px-4 py-2.5 text-left text-xs font-medium">
+                  Name
+                </th>
+                <th
+                  scope="col"
+                  className="text-muted-foreground hidden px-4 py-2.5 text-left text-xs font-medium md:table-cell"
+                >
+                  Company
+                </th>
+                <th
+                  scope="col"
+                  className="text-muted-foreground hidden px-4 py-2.5 text-left text-xs font-medium lg:table-cell"
+                >
+                  Email
+                </th>
+                <th scope="col" className="text-muted-foreground px-4 py-2.5 text-left text-xs font-medium">
+                  Status
+                </th>
+                <th
+                  scope="col"
+                  className="text-muted-foreground hidden px-4 py-2.5 text-right text-xs font-medium sm:table-cell"
+                >
+                  Last activity
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -120,7 +144,7 @@ async function People({ searchParams }: { searchParams: SearchParams }) {
                     <div className="flex items-center gap-3">
                       <span
                         aria-hidden
-                        className={`inline-flex size-7 shrink-0 items-center justify-center rounded-full text-[11px] font-medium ${avatarTint(person.id)}`}
+                        className={`inline-flex size-7 shrink-0 items-center justify-center rounded-full text-data font-medium ${avatarTint(person.id)}`}
                       >
                         {initials(person.displayName)}
                       </span>
@@ -136,7 +160,9 @@ async function People({ searchParams }: { searchParams: SearchParams }) {
                           <span className="block max-w-[16rem] truncate font-medium">{person.displayName}</span>
                         )}
                         {person.title ? (
-                          <span className="text-muted-foreground block max-w-[16rem] truncate text-xs">{person.title}</span>
+                          <span className="text-muted-foreground block max-w-[16rem] truncate text-xs">
+                            {person.title}
+                          </span>
                         ) : null}
                       </div>
                     </div>
@@ -177,23 +203,15 @@ async function People({ searchParams }: { searchParams: SearchParams }) {
   );
 }
 
-function FilterLink({
-  href,
-  active,
-  label,
-  count,
-}: {
-  href: string;
-  active: boolean;
-  label: string;
-  count: number;
-}) {
+function FilterLink({ href, active, label, count }: { href: string; active: boolean; label: string; count: number }) {
   return (
     <Link
       href={href}
       aria-current={active ? "page" : undefined}
-      className={`inline-flex h-8 items-center gap-2 rounded-md border px-2.5 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-        active ? "border-border bg-muted font-medium" : "border-transparent text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+      className={`inline-flex h-8 items-center gap-2 rounded-md border px-2.5 text-body-dense outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+        active
+          ? "border-border bg-muted font-medium"
+          : "border-transparent text-muted-foreground hover:bg-muted/60 hover:text-foreground"
       }`}
     >
       {label}
@@ -204,7 +222,13 @@ function FilterLink({
 
 export default function PeoplePage({ searchParams }: { searchParams: SearchParams }) {
   return (
-    <Suspense fallback={<p role="status" className="p-6 text-[13px] text-muted-foreground">Loading people…</p>}>
+    <Suspense
+      fallback={
+        <p role="status" className="p-6 text-body-dense text-muted-foreground">
+          Loading people…
+        </p>
+      }
+    >
       <People searchParams={searchParams} />
     </Suspense>
   );

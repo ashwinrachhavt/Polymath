@@ -38,7 +38,7 @@ export async function DayStrip({ auth }: { auth: AuthContext }) {
   const due = dueToday.filter((t) => t.status !== "done" && t.status !== "cancelled");
 
   return (
-    <ul className="flex flex-wrap items-baseline gap-x-5 gap-y-1 text-[12px] text-muted-foreground">
+    <ul className="flex flex-wrap items-baseline gap-x-5 gap-y-1 text-label text-muted-foreground">
       <li className="text-foreground">
         {now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: timezone })}
       </li>
@@ -69,7 +69,10 @@ export async function DayStrip({ auth }: { auth: AuthContext }) {
         <span className="readout text-foreground">{due.length}</span> due today
       </li>
       <li className="ml-auto">
-        <Link href="/neuralflow/work?view=calendar" className="text-[12px] text-muted-foreground hover:text-foreground hover:underline">
+        <Link
+          href="/neuralflow/work?view=calendar"
+          className="text-label text-muted-foreground hover:text-foreground hover:underline"
+        >
           Week
         </Link>
       </li>

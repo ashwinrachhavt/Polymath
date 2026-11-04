@@ -175,16 +175,16 @@ async function ConversationSurface({ runId }: { runId: string }) {
           <HistoryMenu groups={historyGroups} label="Chats" />
           <Link
             href="/polymath"
-            className="text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-ring inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-[12px] whitespace-nowrap outline-none transition-colors focus-visible:ring-2"
+            className="text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-ring inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-label whitespace-nowrap outline-none transition-colors focus-visible:ring-2"
           >
             <Plus aria-hidden className="size-3.5 shrink-0" />
             <span>New chat</span>
           </Link>
-          <h1 className="text-muted-foreground ml-auto min-w-0 truncate text-[12px] leading-snug font-normal">
+          <h1 className="text-muted-foreground ml-auto min-w-0 truncate text-label leading-snug font-normal">
             {displayTitle(stripMentionContext(run.objective))}
           </h1>
           {/* One meta line, small enough to recede: when it started, how it ended, what it recorded. */}
-          <p className="text-muted-foreground/80 hidden shrink-0 text-[11px] whitespace-nowrap sm:block">
+          <p className="text-muted-foreground/80 hidden shrink-0 text-data whitespace-nowrap sm:block">
             {modelLabel ? `${modelLabel} · ` : ""}
             {timeAgo(run.createdAt)}
             {run.endedAt ? ` · ended ${timeAgo(run.endedAt)}` : null}
@@ -244,13 +244,13 @@ async function ConversationSurface({ runId }: { runId: string }) {
                * Say why the page is quiet instead of leaving a dead end.
                */}
               {!finished && unavailable ? (
-                <p className="rounded-xl border border-border bg-muted/40 px-3.5 py-3 text-[13px] text-muted-foreground">
+                <p className="rounded-xl border border-border bg-muted/40 px-3.5 py-3 text-body-dense text-muted-foreground">
                   This conversation cannot continue until the agent bridge is configured on this deployment. The run is
                   still recorded, and its transcript is below.
                 </p>
               ) : null}
               {visibleThread.length === 0 ? (
-                <p className="text-muted-foreground text-[13px]">This conversation has no messages yet.</p>
+                <p className="text-muted-foreground text-body-dense">This conversation has no messages yet.</p>
               ) : null}
               {visibleThread.map((entry) =>
                 entry.kind === "user" ? (
@@ -258,7 +258,7 @@ async function ConversationSurface({ runId }: { runId: string }) {
                   // tinted only enough to separate from the answer, no big bubble.
                   <div
                     key={entry.sequence}
-                    className="bg-muted/60 ml-auto w-fit max-w-[75%] rounded-md px-2.5 py-1 text-[14px] leading-6"
+                    className="bg-muted/60 ml-auto w-fit max-w-[75%] rounded-md px-2.5 py-1 text-body leading-6"
                   >
                     {inline(entry.text)}
                   </div>
@@ -286,7 +286,7 @@ async function ConversationSurface({ runId }: { runId: string }) {
                     ]}
                   />
                 ) : (
-                  <p key={entry.sequence} className="text-muted-foreground text-[12px]">
+                  <p key={entry.sequence} className="text-muted-foreground text-label">
                     {entry.text} · {timeAgo(entry.at)}
                   </p>
                 ),
@@ -295,7 +295,7 @@ async function ConversationSurface({ runId }: { runId: string }) {
           )}
 
           {run.error ? (
-            <p role="alert" className="text-destructive text-[13px]">
+            <p role="alert" className="text-destructive text-body-dense">
               {run.error}
             </p>
           ) : null}

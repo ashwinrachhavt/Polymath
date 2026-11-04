@@ -168,7 +168,7 @@ async function ActivitySurface({ searchParams }: { searchParams: SearchParams })
         </div>
 
         {requestedEventId && linkedUnavailable ? (
-          <p role="note" className="panel-empty mt-3 rounded-lg px-3.5 py-3 text-[13px] text-muted-foreground">
+          <p role="note" className="panel-empty mt-3 rounded-lg px-3.5 py-3 text-body-dense text-muted-foreground">
             That event is not available. It may be from another workspace, or the link is out of date.
           </p>
         ) : null}
@@ -230,7 +230,7 @@ async function ActivitySurface({ searchParams }: { searchParams: SearchParams })
             <Link
               href={loadMoreHref}
               scroll={false}
-              className="border-border hover:bg-muted inline-flex h-8 items-center justify-center rounded-md border px-3 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="border-border hover:bg-muted inline-flex h-8 items-center justify-center rounded-md border px-3 text-body-dense outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               Load more
             </Link>
@@ -282,7 +282,7 @@ function ActivityEntry({
   return (
     <li id={`event-${item.id}`} data-deep-linked={highlighted ? "true" : undefined} className="rounded-lg px-3 py-2.5">
       <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
-        <p className="min-w-0 text-[13px] font-medium">{item.sentence}</p>
+        <p className="min-w-0 text-body-dense font-medium">{item.sentence}</p>
         <time
           className="readout text-muted-foreground shrink-0 text-xs"
           dateTime={item.occurredAt.toISOString()}
@@ -293,11 +293,11 @@ function ActivityEntry({
       </div>
       {item.title ? (
         <details className="activity-title-toggle mt-0.5">
-          <summary className="text-muted-foreground cursor-pointer list-none text-[13px] [&::-webkit-details-marker]:hidden">
+          <summary className="text-muted-foreground cursor-pointer list-none text-body-dense [&::-webkit-details-marker]:hidden">
             <span className="title-preview line-clamp-2">{item.title}</span>
             <span className="title-collapse hidden">Show less</span>
           </summary>
-          <span className="text-muted-foreground block text-[13px]">{item.title}</span>
+          <span className="text-muted-foreground block text-body-dense">{item.title}</span>
         </details>
       ) : null}
       {destinations.length > 0 ? (
@@ -321,7 +321,7 @@ function ActivityEntry({
           </ul>
         </details>
       ) : null}
-      <p className="readout text-muted-foreground/70 mt-1 text-[11px]">
+      <p className="readout text-muted-foreground/70 mt-1 text-data">
         {item.technical.action} · {item.technical.subjectType}
       </p>
     </li>
@@ -336,7 +336,7 @@ export default function ActivityPage({ searchParams }: { searchParams: SearchPar
   return (
     <Suspense
       fallback={
-        <p role="status" className="text-muted-foreground p-6 text-[13px]">
+        <p role="status" className="text-muted-foreground p-6 text-body-dense">
           Loading activity…
         </p>
       }

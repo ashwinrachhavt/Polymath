@@ -11,7 +11,7 @@ import { listHref, pageCount, pageWindow, rangeLabel, type RawSearchParams } fro
  */
 
 const linkBase =
-  "inline-flex h-8 min-w-8 items-center justify-center rounded-md border px-2 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  "inline-flex h-8 min-w-8 items-center justify-center rounded-md border px-2 text-body-dense outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 export function Pagination({
   basePath,
@@ -46,7 +46,13 @@ export function Pagination({
           <ul className="flex items-center gap-1">
             <li>
               {page > 1 ? (
-                <Link href={href(page - 1)} rel="prev" aria-label="Previous page" scroll={false} className={`${linkBase} border-border hover:bg-muted`}>
+                <Link
+                  href={href(page - 1)}
+                  rel="prev"
+                  aria-label="Previous page"
+                  scroll={false}
+                  className={`${linkBase} border-border hover:bg-muted`}
+                >
                   <ChevronLeft aria-hidden className="size-4" />
                 </Link>
               ) : (
@@ -58,7 +64,9 @@ export function Pagination({
             {pageWindow(page, pages).map((p, i) => (
               <li key={p ?? `gap-${i}`} className={compact ? "hidden" : "hidden sm:block"}>
                 {p === null ? (
-                  <span aria-hidden className="text-muted-foreground px-1 text-xs">…</span>
+                  <span aria-hidden className="text-muted-foreground px-1 text-xs">
+                    …
+                  </span>
                 ) : (
                   <Link
                     href={href(p)}
@@ -77,7 +85,13 @@ export function Pagination({
             </li>
             <li>
               {page < pages ? (
-                <Link href={href(page + 1)} rel="next" aria-label="Next page" scroll={false} className={`${linkBase} border-border hover:bg-muted`}>
+                <Link
+                  href={href(page + 1)}
+                  rel="next"
+                  aria-label="Next page"
+                  scroll={false}
+                  className={`${linkBase} border-border hover:bg-muted`}
+                >
                   <ChevronRight aria-hidden className="size-4" />
                 </Link>
               ) : (

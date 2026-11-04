@@ -61,7 +61,7 @@ export function StatementStripView({
       {statement?.status === "parsed" && statement.reconciled ? (
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-[13px] font-medium">Bank statement</p>
+            <p className="text-body-dense font-medium">Bank statement</p>
             <p className="text-muted-foreground mt-0.5 text-xs">
               {statement.accountLabel}
               {period ? ` · ${period}` : ""} · {statement.transactionCount} transactions
@@ -70,7 +70,7 @@ export function StatementStripView({
           <a
             href={`/api/v1/documents/${documentId}/statement`}
             download
-            className="bg-primary text-primary-foreground hover:bg-primary/90 inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-[13px] font-medium transition-colors active:scale-[0.98]"
+            className="bg-primary text-primary-foreground hover:bg-primary/90 inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-body-dense font-medium transition-colors active:scale-[0.98]"
           >
             <Download className="size-3.5" aria-hidden />
             Export transactions to CSV
@@ -78,10 +78,10 @@ export function StatementStripView({
         </div>
       ) : statement?.status === "needs_review" || (statement?.status === "parsed" && !statement.reconciled) ? (
         <div>
-          <p className="text-[13px] font-medium">Bank statement</p>
+          <p className="text-body-dense font-medium">Bank statement</p>
           <p role="alert" className="text-muted-foreground mt-0.5 text-xs">
-            {statement.error ?? "The rows read from this statement do not add up against its running balance."}{" "}
-            The export stays closed until they do.{" "}
+            {statement.error ?? "The rows read from this statement do not add up against its running balance."} The
+            export stays closed until they do.{" "}
           </p>
           <p className="mt-1.5 text-xs">
             <Link
@@ -94,7 +94,7 @@ export function StatementStripView({
         </div>
       ) : statement?.status === "unsupported" ? (
         <div>
-          <p className="text-[13px] font-medium">Bank statement</p>
+          <p className="text-body-dense font-medium">Bank statement</p>
           <p className="text-muted-foreground mt-0.5 text-xs">
             {statement.error ?? "No transaction table could be read from this document."}
           </p>
@@ -106,7 +106,7 @@ export function StatementStripView({
             type="button"
             onClick={onRead}
             disabled={reading}
-            className="border-input hover:bg-muted inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-[13px] font-medium transition-colors active:scale-[0.98] disabled:opacity-60"
+            className="border-input hover:bg-muted inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-body-dense font-medium transition-colors active:scale-[0.98] disabled:opacity-60"
           >
             <LoaderCircle className={reading ? "size-3.5 animate-spin" : "size-3.5"} aria-hidden />
             {reading ? "Reading transactions…" : "Read transactions"}

@@ -28,11 +28,14 @@ async function QuizShell({ documentId }: { documentId: string }) {
     return (
       <Screen title={row.title} description="Still reading this document.">
         <Panel title="Not ready to quiz">
-          <p className="text-[13px] text-muted-foreground">
+          <p className="text-body-dense text-muted-foreground">
             Quizzes are built from a document&apos;s read text, and this one has none yet. Its state shows honestly on
             the Learn page the moment reading finishes.
           </p>
-          <Link href="/learn" className="mt-3 inline-block text-[13px] font-medium underline-offset-4 hover:underline">
+          <Link
+            href="/learn"
+            className="mt-3 inline-block text-body-dense font-medium underline-offset-4 hover:underline"
+          >
             Back to Learn
           </Link>
         </Panel>
@@ -54,7 +57,7 @@ async function QuizShell({ documentId }: { documentId: string }) {
             out, generation says so instead of shipping a weak quiz.
           </p>
         </Panel>
-        <Link href="/learn" className="text-[13px] font-medium underline-offset-4 hover:underline">
+        <Link href="/learn" className="text-body-dense font-medium underline-offset-4 hover:underline">
           Back to Learn
         </Link>
       </Screen>
@@ -72,7 +75,7 @@ async function QuizShell({ documentId }: { documentId: string }) {
       actions={<GenerateQuizButton documentId={row.documentId} label="Regenerate" afterGenerate="refresh" />}
     >
       <QuizRunner quiz={quiz} />
-      <Link href="/learn" className="text-[13px] font-medium underline-offset-4 hover:underline">
+      <Link href="/learn" className="text-body-dense font-medium underline-offset-4 hover:underline">
         Back to Learn
       </Link>
     </Screen>
@@ -83,7 +86,7 @@ export default function DocumentQuizPage({ params }: { params: Promise<{ documen
   return (
     <Suspense
       fallback={
-        <p role="status" className="p-6 text-[13px] text-muted-foreground">
+        <p role="status" className="p-6 text-body-dense text-muted-foreground">
           Opening the quiz…
         </p>
       }

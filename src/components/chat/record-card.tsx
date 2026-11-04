@@ -15,8 +15,8 @@ function RecordCard({ record }: { record: RecordReference }) {
     <>
       <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-muted-foreground/60" />
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[13px] leading-5 font-medium text-foreground">{record.title}</span>
-        <span className="block truncate text-[11.5px] leading-4 text-muted-foreground">
+        <span className="block truncate text-body-dense leading-5 font-medium text-foreground">{record.title}</span>
+        <span className="block truncate text-data leading-4 text-muted-foreground">
           {recordLabel(record.kind)}
           {record.subtitle ? ` · ${record.subtitle}` : ""}
         </span>

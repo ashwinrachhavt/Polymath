@@ -22,7 +22,7 @@ export async function SettingsSurface({ projectId }: { projectId: string }) {
   const auth = await getAuthContext();
   const project = await getProjectDetail(auth, projectId);
   if (!project) {
-    return <div className="page-content text-[13px] text-muted-foreground">This project does not exist.</div>;
+    return <div className="page-content text-body-dense text-muted-foreground">This project does not exist.</div>;
   }
   const [automations, memories, accounts, connectors, sources] = await Promise.all([
     listAutomations(auth, projectId),
@@ -37,7 +37,7 @@ export async function SettingsSurface({ projectId }: { projectId: string }) {
   return (
     <>
       <div className="border-b border-border px-6 py-3">
-        <p className="text-[13px] text-muted-foreground">
+        <p className="text-body-dense text-muted-foreground">
           <Link href="/projects" className="hover:underline">
             Projects
           </Link>

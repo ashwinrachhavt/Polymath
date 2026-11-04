@@ -51,7 +51,13 @@ export function StartSession({
   }
 
   if (started) {
-    return <InPlaceChat runId={started.runId} subject={{ type: "project", id: projectId }} optimisticMessage={started.message} />;
+    return (
+      <InPlaceChat
+        runId={started.runId}
+        subject={{ type: "project", id: projectId }}
+        optimisticMessage={started.message}
+      />
+    );
   }
 
   return (
@@ -72,15 +78,15 @@ export function StartSession({
           onChange={(event) => setValue(event.target.value)}
           placeholder={`Start a session in ${projectTitle}`}
           maxLength={4000}
-          className="w-full bg-transparent text-[15px] outline-none placeholder:text-muted-foreground"
+          className="w-full bg-transparent text-body outline-none placeholder:text-muted-foreground"
         />
         <div className="mt-4 flex items-center justify-between">
           <div className="flex items-center gap-2 text-muted-foreground">
             <span className="flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-xs">
-              <Plus aria-hidden className="size-3" /> Attach
+              <Plus aria-hidden className="size-3.5" /> Attach
             </span>
             <span className="flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-xs">
-              <Search aria-hidden className="size-3" /> Search
+              <Search aria-hidden className="size-3.5" /> Search
             </span>
           </div>
           <Button type="submit" size="sm" disabled={pending || !value.trim()}>

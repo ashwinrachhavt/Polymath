@@ -1,14 +1,32 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 
-const screens = ["dashboard", "tasks", "boards", "calendar", "scheduler", "focus", "projects", "notes", "meetings", "brain-dump", "reports"];
+const screens = [
+  "dashboard",
+  "tasks",
+  "boards",
+  "calendar",
+  "scheduler",
+  "focus",
+  "projects",
+  "notes",
+  "meetings",
+  "brain-dump",
+  "reports",
+];
 
 /*
  * Both params and searchParams are awaited inside the boundary: Next 16 warns
  * when URL data is read outside Suspense because it blocks instant
  * navigation. An unknown screen still renders the not-found boundary.
  */
-async function SelectedScreen({ params, searchParams }: { params: Promise<{ screen: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+async function SelectedScreen({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ screen: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { screen } = await params;
   if (!screens.includes(screen)) notFound();
   const query = await searchParams;
@@ -63,6 +81,22 @@ async function SelectedScreen({ params, searchParams }: { params: Promise<{ scre
   }
 }
 
-export default function NeuralFlowScreen({ params, searchParams }: { params: Promise<{ screen: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  return <Suspense fallback={<p role="status" className="p-6 text-[13px] text-muted-foreground">Opening screen…</p>}><SelectedScreen params={params} searchParams={searchParams}/></Suspense>;
+export default function NeuralFlowScreen({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ screen: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  return (
+    <Suspense
+      fallback={
+        <p role="status" className="p-6 text-body-dense text-muted-foreground">
+          Opening screen…
+        </p>
+      }
+    >
+      <SelectedScreen params={params} searchParams={searchParams} />
+    </Suspense>
+  );
 }

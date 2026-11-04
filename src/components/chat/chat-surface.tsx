@@ -414,9 +414,9 @@ export function ChatSurface({
         <header className="flex items-center justify-between gap-3 border-b border-border pb-3">
           <div className="flex min-w-0 items-center gap-2">
             <BookOpen aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-            <p className="truncate text-[13px] font-medium">{title ?? `This ${subject.type}`}</p>
+            <p className="truncate text-body-dense font-medium">{title ?? `This ${subject.type}`}</p>
           </div>
-          <div className="flex shrink-0 items-center gap-2 text-[11px] text-muted-foreground">
+          <div className="flex shrink-0 items-center gap-2 text-data text-muted-foreground">
             {stageLabel ? <span>{stageLabel}</span> : null}
           </div>
         </header>
@@ -430,7 +430,7 @@ export function ChatSurface({
        * line of chrome on the headerless surfaces.
        */}
       {!showHeader && stageLabel && stageStatus !== "waiting" ? (
-        <p className="text-muted-foreground pt-1 pb-2 text-[11px]" role="status">
+        <p className="text-muted-foreground pt-1 pb-2 text-data" role="status">
           {stageLabel}
         </p>
       ) : null}
@@ -479,7 +479,7 @@ export function ChatSurface({
         // affordance (Retry on a run, New conversation on a notebook). A
         // failed turn is NOT this state: the session takes follow-ups, so the
         // stream ending leaves the composer open with the failure alert.
-        <p className="rounded-xl border border-border bg-muted/40 px-3.5 py-3 text-[13px] text-muted-foreground">
+        <p className="rounded-xl border border-border bg-muted/40 px-3.5 py-3 text-body-dense text-muted-foreground">
           This conversation has ended.
         </p>
       ) : (
@@ -497,7 +497,7 @@ export function ChatSurface({
            * send fails.
            */}
           {sendError && (
-            <p role="alert" className="border-b border-border px-3.5 pt-2.5 pb-2 text-[12px] text-destructive">
+            <p role="alert" className="border-b border-border px-3.5 pt-2.5 pb-2 text-label text-destructive">
               {sendError}
             </p>
           )}
@@ -511,7 +511,7 @@ export function ChatSurface({
           </div>
           <Textarea
             aria-label={composerLabel}
-            className="composer-input max-h-48 min-h-[76px] resize-none rounded-none border-0 bg-transparent px-3.5 pt-3 pb-11 text-[15px] leading-6 shadow-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent"
+            className="composer-input max-h-48 min-h-[76px] resize-none rounded-none border-0 bg-transparent px-3.5 pt-3 pb-11 text-body leading-6 shadow-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent"
             placeholder={placeholder}
             value={draft}
             onChange={(event) => {
@@ -551,7 +551,7 @@ export function ChatSurface({
                 }}
                 onFile={attachFile}
               />
-              <span className="px-1 truncate text-[11px] text-muted-foreground">{attachNote}</span>
+              <span className="px-1 truncate text-data text-muted-foreground">{attachNote}</span>
             </div>
             <Button
               type="submit"
@@ -590,11 +590,11 @@ export function ChatSurface({
 export function ThinkingPill({ text, done }: { text: string; done: boolean }) {
   return (
     <details className="group">
-      <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-full px-2 py-1 text-[12px] text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
-        <ChevronDown aria-hidden className="size-3 shrink-0 -rotate-90 transition-transform group-open:rotate-0" />
+      <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-full px-2 py-1 text-label text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+        <ChevronDown aria-hidden className="size-3.5 shrink-0 -rotate-90 transition-transform group-open:rotate-0" />
         {done ? "Thought process" : "Thinking\u2026"}
       </summary>
-      <p className="text-muted-foreground mt-1 whitespace-pre-wrap border-l border-border pl-3 text-[13px] leading-6">
+      <p className="text-muted-foreground mt-1 whitespace-pre-wrap border-l border-border pl-3 text-body-dense leading-6">
         {text}
       </p>
     </details>

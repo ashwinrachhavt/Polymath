@@ -42,16 +42,16 @@ export function SessionBriefPanel({ brief }: { brief: SessionBriefData }) {
       className="border-border/70 bg-muted/20 flex w-full flex-col gap-3 rounded-lg border px-4 py-3"
     >
       <header className="flex items-baseline justify-between gap-2">
-        <h2 className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">Session brief</h2>
+        <h2 className="text-muted-foreground text-data font-medium tracking-wide uppercase">Session brief</h2>
         <p
-          className="text-muted-foreground/80 text-[11px]"
+          className="text-muted-foreground/80 text-data"
           aria-label={`Evidence: ${tierCounts.grounded} grounded, ${tierCounts.inferred} inferred, ${tierCounts.hypothesis} hypotheses`}
         >
           {tierCounts.grounded} grounded · {tierCounts.inferred} inferred · {tierCounts.hypothesis} hypotheses
         </p>
       </header>
 
-      <p className="text-muted-foreground text-[11px]">
+      <p className="text-muted-foreground text-data">
         {SOURCE_LABEL[brief.source]} session{" "}
         <code className="bg-muted rounded px-1 py-0.5">{brief.externalSessionId}</code>
         {brief.aiTitle ? ` · ${brief.aiTitle}` : ""} · last activity {timeAgo(brief.lastActivityAt)}
@@ -62,7 +62,7 @@ export function SessionBriefPanel({ brief }: { brief: SessionBriefData }) {
       <OpenSection brief={brief} />
       <DecisionSection brief={brief} />
 
-      <footer className="border-border/70 text-muted-foreground/80 border-t pt-2 text-[11px] italic">
+      <footer className="border-border/70 text-muted-foreground/80 border-t pt-2 text-data italic">
         {SESSION_BRIEF_DISCLOSURE}
       </footer>
     </section>
@@ -72,7 +72,7 @@ export function SessionBriefPanel({ brief }: { brief: SessionBriefData }) {
 function SectionLabel({ label, tier }: { label: string; tier?: EvidenceTier | null }) {
   return (
     <div className="flex items-center justify-between gap-2">
-      <h3 className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">{label}</h3>
+      <h3 className="text-muted-foreground text-data font-medium tracking-wide uppercase">{label}</h3>
       {tier ? <EvidenceBadge tier={tier} /> : null}
     </div>
   );
@@ -84,14 +84,12 @@ function OutcomeSection({ brief }: { brief: SessionBriefData }) {
     <div className="flex flex-col gap-1">
       <SectionLabel label="Requested outcome" tier={outcome.tier} />
       {outcome.tier === "recorded" ? (
-        <p className="text-[13px] leading-6">
+        <p className="text-body-dense leading-6">
           {outcome.text}
-          {outcome.at ? (
-            <span className="text-muted-foreground text-[11px]"> · asked {timeAgo(outcome.at)}</span>
-          ) : null}
+          {outcome.at ? <span className="text-muted-foreground text-data"> · asked {timeAgo(outcome.at)}</span> : null}
         </p>
       ) : (
-        <p className="text-muted-foreground text-[12px]">No human prompt was parsed from this session.</p>
+        <p className="text-muted-foreground text-label">No human prompt was parsed from this session.</p>
       )}
     </div>
   );
@@ -103,7 +101,7 @@ function ActivitySection({ brief }: { brief: SessionBriefData }) {
     return (
       <div className="flex flex-col gap-1">
         <SectionLabel label="What the agent did" />
-        <p className="text-muted-foreground text-[12px]">No file or command activity was parsed from this session.</p>
+        <p className="text-muted-foreground text-label">No file or command activity was parsed from this session.</p>
       </div>
     );
   }
@@ -112,13 +110,13 @@ function ActivitySection({ brief }: { brief: SessionBriefData }) {
   return (
     <div className="flex flex-col gap-1">
       <SectionLabel label="What the agent did" tier="observed" />
-      <p className="text-[12px] leading-5">
+      <p className="text-label leading-5">
         {files.length} file{files.length === 1 ? "" : "s"} touched · {commands.length} command
         {commands.length === 1 ? "" : "s"} run
         {failedCommands > 0 ? ` · ${failedCommands} failed` : ""}
       </p>
       {files.length > 0 ? (
-        <ul className="text-muted-foreground mt-0.5 font-mono text-[11px] leading-5">
+        <ul className="text-muted-foreground mt-0.5 font-mono text-data leading-5">
           {files.slice(0, MAX_PATHS).map((file) => (
             <li key={file.path}>
               <span className="text-foreground/80">{file.op}</span> {file.path}
@@ -128,7 +126,7 @@ function ActivitySection({ brief }: { brief: SessionBriefData }) {
         </ul>
       ) : null}
       {commands.length > 0 ? (
-        <ul className="text-muted-foreground mt-0.5 font-mono text-[11px] leading-5">
+        <ul className="text-muted-foreground mt-0.5 font-mono text-data leading-5">
           {commands.slice(0, MAX_COMMANDS).map((command, index) => (
             <li key={`${command.cmd}-${index}`} className={command.ok ? "" : "text-destructive"}>
               <span className="sr-only">{command.ok ? "passed" : "failed"}: </span>
@@ -152,15 +150,13 @@ function OpenSection({ brief }: { brief: SessionBriefData }) {
           about the record, and it never disappears. */}
       <SectionLabel label="What failed or was left open" tier="observed" />
       {empty ? (
-        <p className="text-muted-foreground text-[12px]">
-          No failures and no open tasks were parsed from this session.
-        </p>
+        <p className="text-muted-foreground text-label">No failures and no open tasks were parsed from this session.</p>
       ) : (
         <ul className="flex flex-col gap-0.5">
           {failures.slice(0, MAX_FAILURES).map((failure, index) => (
             <li
               key={`${failure.kind}-${index}`}
-              className="text-destructive flex items-start gap-1.5 text-[12px] leading-5"
+              className="text-destructive flex items-start gap-1.5 text-label leading-5"
             >
               <CircleX aria-hidden className="size-3.5 shrink-0" />
               <span>
@@ -169,22 +165,22 @@ function OpenSection({ brief }: { brief: SessionBriefData }) {
             </li>
           ))}
           {failures.length > MAX_FAILURES ? (
-            <li className="text-muted-foreground text-[11px]">… and {failures.length - MAX_FAILURES} more failures</li>
+            <li className="text-muted-foreground text-data">… and {failures.length - MAX_FAILURES} more failures</li>
           ) : null}
           {openTasks.slice(0, MAX_TASKS).map((task, index) => (
-            <li key={`${task.text}-${index}`} className="flex items-start gap-1.5 text-[12px] leading-5">
+            <li key={`${task.text}-${index}`} className="flex items-start gap-1.5 text-label leading-5">
               <CircleAlert aria-hidden className="text-muted-foreground size-3.5 shrink-0" />
               <span>
-                {task.text} <span className="text-muted-foreground text-[11px]">({task.state})</span>
+                {task.text} <span className="text-muted-foreground text-data">({task.state})</span>
               </span>
             </li>
           ))}
           {openTasks.length > MAX_TASKS ? (
-            <li className="text-muted-foreground text-[11px]">… and {openTasks.length - MAX_TASKS} more open tasks</li>
+            <li className="text-muted-foreground text-data">… and {openTasks.length - MAX_TASKS} more open tasks</li>
           ) : null}
         </ul>
       )}
-      <p className="text-muted-foreground text-[11px] italic">{UNVERIFIED_CLAIMS_LINE}</p>
+      <p className="text-muted-foreground text-data italic">{UNVERIFIED_CLAIMS_LINE}</p>
     </div>
   );
 }
@@ -193,13 +189,10 @@ function DecisionSection({ brief }: { brief: SessionBriefData }) {
   return (
     <div className="flex flex-col gap-1">
       <SectionLabel label="Why this approach" tier={brief.decision.tier} />
-      <p className="text-[13px] leading-6">
+      <p className="text-body-dense leading-6">
         {brief.decision.line}
         {brief.decision.line === RATIONALE_INFERRED ? (
-          <span className="text-muted-foreground text-[11px]">
-            {" "}
-            · record a note on the session to replace this line
-          </span>
+          <span className="text-muted-foreground text-data"> · record a note on the session to replace this line</span>
         ) : null}
       </p>
     </div>

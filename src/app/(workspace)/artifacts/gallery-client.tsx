@@ -11,13 +11,7 @@ import { WriteFromLibrary } from "./write-from-library";
  * preview card. All of it navigates; the page is the only fetcher.
  */
 
-export function GalleryToolbar({
-  currentView,
-  query,
-}: {
-  currentView: string;
-  query: string;
-}) {
+export function GalleryToolbar({ currentView, query }: { currentView: string; query: string }) {
   const router = useRouter();
   const params = useSearchParams();
   const [draft, setDraft] = useState(query);
@@ -40,7 +34,9 @@ export function GalleryToolbar({
           navigate({ q: draft || undefined });
         }}
       >
-        <label className="sr-only" htmlFor="artifact-search">Search artifacts</label>
+        <label className="sr-only" htmlFor="artifact-search">
+          Search artifacts
+        </label>
         <div className="flex h-8 items-center gap-1.5 rounded-md border border-border px-2">
           <Search aria-hidden className="size-3.5 text-muted-foreground" />
           <input
@@ -48,7 +44,7 @@ export function GalleryToolbar({
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             placeholder="Search"
-            className="w-32 bg-transparent text-[13px] outline-none"
+            className="w-32 bg-transparent text-body-dense outline-none"
           />
         </div>
       </form>
@@ -77,7 +73,13 @@ export function GalleryToolbar({
   );
 }
 
-export function ArtifactCard({ artifact, view }: { artifact: { id: string; title: string; kind: string; preview: string }; view: string }) {
+export function ArtifactCard({
+  artifact,
+  view,
+}: {
+  artifact: { id: string; title: string; kind: string; preview: string };
+  view: string;
+}) {
   const isList = view === "list";
   return (
     <Link
@@ -85,13 +87,15 @@ export function ArtifactCard({ artifact, view }: { artifact: { id: string; title
       className={`group block rounded-xl border border-border p-4 transition-colors hover:bg-muted/40 ${isList ? "flex items-center gap-4" : ""}`}
     >
       <div className={isList ? "min-w-0 flex-1" : ""}>
-        <p className={`text-muted-foreground/70 leading-snug ${isList ? "line-clamp-2 text-[13px]" : "line-clamp-6 font-serif text-[13px]"}`}>
+        <p
+          className={`text-muted-foreground/70 leading-snug ${isList ? "line-clamp-2 text-body-dense" : "line-clamp-6 font-serif text-body-dense"}`}
+        >
           {artifact.preview || "Empty artifact."}
         </p>
       </div>
       <div className={`mt-3 flex items-center gap-2 ${isList ? "mt-0 shrink-0" : ""}`}>
         <FileText aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
-        <span className="truncate text-[13px]">{artifact.title}</span>
+        <span className="truncate text-body-dense">{artifact.title}</span>
         <span className="text-xs text-muted-foreground">{artifact.kind}</span>
       </div>
     </Link>

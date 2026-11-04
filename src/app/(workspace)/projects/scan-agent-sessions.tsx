@@ -58,7 +58,7 @@ export function ScanAgentSessions() {
           maxLength={2000}
           placeholder="What were these sessions for? (optional)"
           aria-label="Decision note for these sessions (optional)"
-          className="h-9 min-w-0 flex-1 rounded-md border border-input bg-transparent px-3 text-[13px]"
+          className="h-9 min-w-0 flex-1 rounded-md border border-input bg-transparent px-3 text-body-dense"
         />
         <Button size="sm" variant="outline" disabled={pending} onClick={scan}>
           {pending ? <Loader2 aria-hidden className="animate-spin" /> : <FolderSearch aria-hidden className="size-4" />}

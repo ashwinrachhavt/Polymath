@@ -31,7 +31,7 @@ function StatusPill({
   return (
     <span
       className={cn(
-        "inline-flex h-6 items-center gap-1.5 rounded-full border px-2 text-[11px] font-medium whitespace-nowrap",
+        "inline-flex h-6 items-center gap-1.5 rounded-full border px-2 text-data font-medium whitespace-nowrap",
         TONES[tone],
         className,
       )}

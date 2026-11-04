@@ -36,7 +36,7 @@ async function Invitation({ token }: { token: string }) {
   return (
     <Screen title="Invitation" description="One click to join the workspace.">
       <Panel title={`Join ${invitation.workspaceName}`}>
-        <p className="text-[13px]">
+        <p className="text-body-dense">
           You were invited to <span className="font-medium">{invitation.workspaceName}</span> as{" "}
           <span className="font-medium capitalize">{invitation.role}</span>. This link is tied to{" "}
           <span className="font-medium">{invitation.email}</span> and expires {dateFormat.format(invitation.expiresAt)}.

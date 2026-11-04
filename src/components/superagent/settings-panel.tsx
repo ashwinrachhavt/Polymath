@@ -58,7 +58,7 @@ export function SettingsPanel({ policy }: { policy: SettingsPolicy }) {
   return (
     <div className="flex flex-col gap-6">
       <section className="panel flex flex-col gap-3 rounded-xl p-4" aria-label="Agent state">
-        <label className="flex items-center gap-2 text-[13px] font-medium">
+        <label className="flex items-center gap-2 text-body-dense font-medium">
           <input type="checkbox" checked={paused} onChange={(event) => setPaused(event.target.checked)} />
           Paused
         </label>
@@ -68,10 +68,10 @@ export function SettingsPanel({ policy }: { policy: SettingsPolicy }) {
       </section>
 
       <section className="panel flex flex-col gap-3 rounded-xl p-4" aria-label="Accept mode">
-        <h2 className="text-[13px] font-medium">Accept mode for inferred work</h2>
+        <h2 className="text-body-dense font-medium">Accept mode for inferred work</h2>
         <div className="flex flex-col gap-2">
           {ACCEPT_MODES.map((option) => (
-            <label key={option.mode} className="flex items-start gap-2 text-[13px]">
+            <label key={option.mode} className="flex items-start gap-2 text-body-dense">
               <input
                 type="radio"
                 name="acceptMode"
@@ -90,8 +90,8 @@ export function SettingsPanel({ policy }: { policy: SettingsPolicy }) {
 
       <section className="panel flex flex-col gap-3 rounded-xl p-4" aria-label="Rules">
         <div className="flex items-center justify-between">
-          <h2 className="text-[13px] font-medium">Rules for inferred work</h2>
-          <span className="text-muted-foreground readout text-[11px]">Policy {policy.version.slice(0, 12)}</span>
+          <h2 className="text-body-dense font-medium">Rules for inferred work</h2>
+          <span className="text-muted-foreground readout text-data">Policy {policy.version.slice(0, 12)}</span>
         </div>
         {rules.length === 0 ? (
           <p className="text-muted-foreground text-xs">
@@ -108,7 +108,7 @@ export function SettingsPanel({ policy }: { policy: SettingsPolicy }) {
                 <div className="flex items-center gap-2">
                   <input
                     aria-label={`Rule ${index + 1} name`}
-                    className="h-8 w-48 rounded-md border border-border bg-transparent px-2 text-[13px]"
+                    className="h-8 w-48 rounded-md border border-border bg-transparent px-2 text-body-dense"
                     value={rule.name}
                     placeholder="Rule name"
                     onChange={(event) => update(index, { name: event.target.value })}
@@ -131,7 +131,7 @@ export function SettingsPanel({ policy }: { policy: SettingsPolicy }) {
                 </div>
                 <textarea
                   aria-label={`Rule ${index + 1} instruction`}
-                  className="min-h-16 rounded-md border border-border bg-transparent px-2 py-1.5 text-[13px]"
+                  className="min-h-16 rounded-md border border-border bg-transparent px-2 py-1.5 text-body-dense"
                   value={rule.instruction}
                   placeholder="What the agent may do when this rule matches"
                   onChange={(event) => update(index, { instruction: event.target.value })}
@@ -155,7 +155,7 @@ export function SettingsPanel({ policy }: { policy: SettingsPolicy }) {
           onClick={save}
           disabled={pending || rules.some((rule) => rule.name.trim() === "")}
           className={cn(
-            "bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-3.5 py-1.5 text-[13px] font-medium outline-none",
+            "bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-3.5 py-1.5 text-body-dense font-medium outline-none",
             "disabled:cursor-not-allowed disabled:opacity-50",
           )}
         >

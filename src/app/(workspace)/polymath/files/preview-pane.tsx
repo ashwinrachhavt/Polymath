@@ -120,7 +120,10 @@ export function PreviewPane({
   ];
 
   return (
-    <aside aria-label="Preview" className="border-border bg-background flex w-full shrink-0 flex-col border-t min-[1400px]:w-[22rem] min-[1400px]:border-t-0 min-[1400px]:border-l">
+    <aside
+      aria-label="Preview"
+      className="border-border bg-background flex w-full shrink-0 flex-col border-t min-[1400px]:w-[22rem] min-[1400px]:border-t-0 min-[1400px]:border-l"
+    >
       <div className="border-border flex items-start justify-between gap-2 border-b px-4 py-3">
         <div className="min-w-0">
           <h2 className="font-display truncate text-lg leading-tight">{row.title}</h2>
@@ -147,11 +150,23 @@ export function PreviewPane({
         <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => void packet()}>
           <Download aria-hidden className="size-3.5" /> Packet
         </Button>
-        <Button type="button" size="sm" variant="ghost" disabled={busy || !data} onClick={() => data && void archive(data.review.document.version)}>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          disabled={busy || !data}
+          onClick={() => data && void archive(data.review.document.version)}
+        >
           <Archive aria-hidden className="size-3.5" /> Archive
         </Button>
         {row.sourceUrl ? (
-          <a href={row.sourceUrl} target="_blank" rel="noreferrer noopener" aria-label="Open original page" className="hover:bg-muted ml-auto rounded p-1.5">
+          <a
+            href={row.sourceUrl}
+            target="_blank"
+            rel="noreferrer noopener"
+            aria-label="Open original page"
+            className="hover:bg-muted ml-auto rounded p-1.5"
+          >
             <ExternalLink aria-hidden className="size-4" />
           </a>
         ) : null}
@@ -164,13 +179,13 @@ export function PreviewPane({
             role="tab"
             aria-selected={tab === id}
             onClick={() => setTab(id)}
-            className={`-mb-px border-b-2 py-2 text-[13px] ${tab === id ? "border-foreground font-medium" : "text-muted-foreground border-transparent"}`}
+            className={`-mb-px border-b-2 py-2 text-body-dense ${tab === id ? "border-foreground font-medium" : "text-muted-foreground border-transparent"}`}
           >
             {label}
           </button>
         ))}
       </div>
-      <div role="tabpanel" className="flex flex-col gap-5 overflow-auto px-4 py-4 text-[13px]">
+      <div role="tabpanel" className="flex flex-col gap-5 overflow-auto px-4 py-4 text-body-dense">
         {!data ? (
           <p role="status" className="text-muted-foreground">
             {load.id === row.id && load.state === "error" ? load.message : "Loading…"}
@@ -179,7 +194,12 @@ export function PreviewPane({
           <>
             <label className="flex items-center justify-between gap-2">
               <span className="text-muted-foreground text-xs">Folder</span>
-              <Select value={row.folderId ?? ""} onChange={(e) => onMove(e.target.value || null)} aria-label="Folder" className="w-48">
+              <Select
+                value={row.folderId ?? ""}
+                onChange={(e) => onMove(e.target.value || null)}
+                aria-label="Folder"
+                className="w-48"
+              >
                 <option value="">Unfiled</option>
                 {folders.map((f) => (
                   <option key={f.id} value={f.id}>{`${"\u00a0\u00a0".repeat(f.depth)}${f.name}`}</option>
@@ -190,7 +210,9 @@ export function PreviewPane({
               {row.tags.map((t) => (
                 <Badge key={t} variant="secondary" className="gap-1">
                   {t}
-                  <button type="button" aria-label={`Remove tag ${t}`} onClick={() => onUntag(t)}><X aria-hidden className="size-3" /></button>
+                  <button type="button" aria-label={`Remove tag ${t}`} onClick={() => onUntag(t)}>
+                    <X aria-hidden className="size-3.5" />
+                  </button>
                 </Badge>
               ))}
               <form
@@ -200,7 +222,14 @@ export function PreviewPane({
                   void onTag(tagDraft).then((ok) => ok && setTagDraft(""));
                 }}
               >
-                <input value={tagDraft} onChange={(e) => setTagDraft(e.target.value)} maxLength={40} aria-label="Add a tag" placeholder="Add tag" className="border-input bg-background h-7 w-24 rounded-md border px-2 text-xs" />
+                <input
+                  value={tagDraft}
+                  onChange={(e) => setTagDraft(e.target.value)}
+                  maxLength={40}
+                  aria-label="Add a tag"
+                  placeholder="Add tag"
+                  className="border-input bg-background h-7 w-24 rounded-md border px-2 text-xs"
+                />
               </form>
             </div>
             <PartyBlocks parties={data.review.parties} />
@@ -210,7 +239,9 @@ export function PreviewPane({
                 <p className="text-foreground/90 line-clamp-[12] whitespace-pre-line">{data.excerpt}</p>
               ) : (
                 <p className="text-muted-foreground">
-                  {data.review.extraction?.error ? `Not read: ${data.review.extraction.error}` : "Nothing has been read from this document yet."}
+                  {data.review.extraction?.error
+                    ? `Not read: ${data.review.extraction.error}`
+                    : "Nothing has been read from this document yet."}
                 </p>
               )}
             </section>
@@ -241,7 +272,9 @@ export function PreviewPane({
                   </div>
                   <Readout className="text-foreground">{p.rawValue ?? "-"}</Readout>
                   {p.evidenceQuote ? (
-                    <blockquote className="border-border text-muted-foreground border-l-2 pl-2 text-xs">{p.evidenceQuote}</blockquote>
+                    <blockquote className="border-border text-muted-foreground border-l-2 pl-2 text-xs">
+                      {p.evidenceQuote}
+                    </blockquote>
                   ) : null}
                 </li>
               ))}
@@ -257,8 +290,18 @@ export function PreviewPane({
                   <div className="flex items-baseline justify-between gap-2">
                     <Readout className="text-muted-foreground text-xs">{stamp.format(new Date(v.at))}</Readout>
                     <span className="flex gap-1.5">
-                      {v.current ? <Badge variant="default">Current</Badge> : v.status === "succeeded" ? (
-                        <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void restore(v.extractionId, data.review.document.version)}>Restore</Button>
+                      {v.current ? (
+                        <Badge variant="default">Current</Badge>
+                      ) : v.status === "succeeded" ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={busy}
+                          onClick={() => void restore(v.extractionId, data.review.document.version)}
+                        >
+                          Restore
+                        </Button>
                       ) : null}
                       <Badge variant={v.status === "failed" ? "destructive" : "outline"}>{v.status}</Badge>
                     </span>
@@ -270,7 +313,10 @@ export function PreviewPane({
                   </span>
                 </li>
               ))}
-              <li className="text-muted-foreground text-xs">Re-reading adds a version; none is edited or overwritten. Restoring an older version moves the current pointer and is logged.</li>
+              <li className="text-muted-foreground text-xs">
+                Re-reading adds a version; none is edited or overwritten. Restoring an older version moves the current
+                pointer and is logged.
+              </li>
             </ol>
           )
         ) : data.activity.length === 0 ? (
@@ -279,7 +325,9 @@ export function PreviewPane({
           <ol className="flex flex-col gap-2.5">
             {data.activity.map((a) => (
               <li key={a.key} className="flex gap-3">
-                <Readout className="text-muted-foreground w-28 shrink-0 text-xs">{stamp.format(new Date(a.at))}</Readout>
+                <Readout className="text-muted-foreground w-28 shrink-0 text-xs">
+                  {stamp.format(new Date(a.at))}
+                </Readout>
                 <span>{a.summary}</span>
               </li>
             ))}

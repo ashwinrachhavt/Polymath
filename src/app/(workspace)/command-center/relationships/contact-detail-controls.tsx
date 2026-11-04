@@ -7,12 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Field } from "@/components/workspace/ui";
-import {
-  addObservationAction,
-  archiveContactAction,
-  createFollowUpAction,
-  resolveFollowUpAction,
-} from "./actions";
+import { addObservationAction, archiveContactAction, createFollowUpAction, resolveFollowUpAction } from "./actions";
 
 /*
  * The small mutation islands on the contact detail panel. Each posts one
@@ -52,7 +47,11 @@ export function ArchiveContactButton({
       >
         {pending ? "Archiving…" : "Archive contact"}
       </Button>
-      {error ? <p className="text-destructive mt-1 text-[13px]" role="alert">{error}</p> : null}
+      {error ? (
+        <p className="text-destructive mt-1 text-body-dense" role="alert">
+          {error}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -83,7 +82,12 @@ export function ObservationForm({ contactId }: { contactId: string }) {
     >
       <div className="grid gap-3 sm:grid-cols-[1fr_180px]">
         <Field label="Observation">
-          <Textarea name="body" required maxLength={5000} placeholder="What was seen or said, and where it came from." />
+          <Textarea
+            name="body"
+            required
+            maxLength={5000}
+            placeholder="What was seen or said, and where it came from."
+          />
         </Field>
         <Field label="Source">
           <Select name="source" defaultValue="stated">
@@ -93,7 +97,11 @@ export function ObservationForm({ contactId }: { contactId: string }) {
           </Select>
         </Field>
       </div>
-      {error ? <p className="text-destructive text-[13px]" role="alert">{error}</p> : null}
+      {error ? (
+        <p className="text-destructive text-body-dense" role="alert">
+          {error}
+        </p>
+      ) : null}
       <Button type="submit" variant="outline" disabled={pending}>
         {pending ? "Adding…" : "Add observation"}
       </Button>
@@ -133,7 +141,11 @@ export function FollowUpForm({ contactId }: { contactId: string }) {
           <Input name="note" maxLength={2000} placeholder="What to follow up about" />
         </Field>
       </div>
-      {error ? <p className="text-destructive text-[13px]" role="alert">{error}</p> : null}
+      {error ? (
+        <p className="text-destructive text-body-dense" role="alert">
+          {error}
+        </p>
+      ) : null}
       <Button type="submit" variant="outline" disabled={pending}>
         {pending ? "Adding…" : "Add follow-up"}
       </Button>
@@ -167,7 +179,11 @@ export function ResolveFollowUpButton({
       >
         {resolution === "done" ? "Mark done" : "Cancel"}
       </Button>
-      {error ? <span className="text-destructive text-[13px]" role="alert">{error}</span> : null}
+      {error ? (
+        <span className="text-destructive text-body-dense" role="alert">
+          {error}
+        </span>
+      ) : null}
     </span>
   );
 }
@@ -210,8 +226,14 @@ export function CorrespondenceForm({ contactId }: { contactId: string }) {
         <Textarea name="body" required rows={3} placeholder="What you'd send, once you approve the send in Reviews." />
       </Field>
       <div className="flex items-center gap-3">
-        <Button type="submit" size="sm" disabled={pending}>Save draft</Button>
-        {error ? <p role="alert" className="text-xs text-destructive">{error}</p> : null}
+        <Button type="submit" size="sm" disabled={pending}>
+          Save draft
+        </Button>
+        {error ? (
+          <p role="alert" className="text-xs text-destructive">
+            {error}
+          </p>
+        ) : null}
       </div>
     </form>
   );
@@ -227,7 +249,8 @@ export function RequestSendApprovalButton({
   hasProposal: boolean;
 }) {
   const { error, setError, pending, startTransition } = useActionError();
-  if (hasProposal) return <span className="text-xs text-muted-foreground">Approval requested - open Reviews to decide.</span>;
+  if (hasProposal)
+    return <span className="text-xs text-muted-foreground">Approval requested - open Reviews to decide.</span>;
   return (
     <span className="inline-flex items-center gap-2">
       <Button
@@ -245,7 +268,11 @@ export function RequestSendApprovalButton({
       >
         Request send approval
       </Button>
-      {error ? <span role="alert" className="text-xs text-destructive">{error}</span> : null}
+      {error ? (
+        <span role="alert" className="text-xs text-destructive">
+          {error}
+        </span>
+      ) : null}
     </span>
   );
 }
@@ -273,7 +300,9 @@ export function SendApprovedButton({ correspondenceId }: { correspondenceId: str
             if (!result.ok) {
               setError(result.error);
             } else if (result.state === "unknown") {
-              setNotice("The provider did not confirm the send. Check the mailbox, then reconcile it below before retrying.");
+              setNotice(
+                "The provider did not confirm the send. Check the mailbox, then reconcile it below before retrying.",
+              );
             } else if (result.state === "failed") {
               setNotice("The provider refused the send. Edit the draft and request approval again.");
             }
@@ -283,12 +312,22 @@ export function SendApprovedButton({ correspondenceId }: { correspondenceId: str
         Send now
       </Button>
       {notice ? <span className="text-xs text-muted-foreground">{notice}</span> : null}
-      {error ? <span role="alert" className="text-xs text-destructive">{error}</span> : null}
+      {error ? (
+        <span role="alert" className="text-xs text-destructive">
+          {error}
+        </span>
+      ) : null}
     </span>
   );
 }
 
-export function CancelCorrespondenceButton({ correspondenceId, version }: { correspondenceId: string; version: number }) {
+export function CancelCorrespondenceButton({
+  correspondenceId,
+  version,
+}: {
+  correspondenceId: string;
+  version: number;
+}) {
   const { error, setError, pending, startTransition } = useActionError();
   return (
     <span className="inline-flex items-center gap-2">
@@ -307,7 +346,11 @@ export function CancelCorrespondenceButton({ correspondenceId, version }: { corr
       >
         Cancel draft
       </Button>
-      {error ? <span role="alert" className="text-xs text-destructive">{error}</span> : null}
+      {error ? (
+        <span role="alert" className="text-xs text-destructive">
+          {error}
+        </span>
+      ) : null}
     </span>
   );
 }

@@ -265,7 +265,7 @@ export function BrainDumpScreen() {
         </Panel>
       </div>
       {error && (
-        <p role="alert" className="text-[13px] text-destructive">
+        <p role="alert" className="text-body-dense text-destructive">
           {error}
         </p>
       )}
@@ -337,7 +337,7 @@ export function MeetingsScreen() {
               </div>
               <div className="grid gap-6 md:grid-cols-2">
                 <div>
-                  <h3 className="mb-3 text-[13px] font-medium">Canonical meeting notes</h3>
+                  <h3 className="mb-3 text-body-dense font-medium">Canonical meeting notes</h3>
                   {notes.map((note) => (
                     <div key={note.id} className="mb-3">
                       <NoteInspector note={note} />
@@ -349,7 +349,7 @@ export function MeetingsScreen() {
                   <NewNote link={meeting.id} label="Add linked note" />
                 </div>
                 <div>
-                  <h3 className="mb-3 text-[13px] font-medium">Linked action items</h3>
+                  <h3 className="mb-3 text-body-dense font-medium">Linked action items</h3>
                   {actions.length ? (
                     actions.map((task) => <TaskRow key={task.id} task={task} />)
                   ) : (
@@ -498,7 +498,7 @@ export function ReportsScreen() {
         </div>
       </Panel>
       {start > end && (
-        <p role="alert" className="text-[13px] text-destructive">
+        <p role="alert" className="text-body-dense text-destructive">
           The reporting range is reversed. Select an end date on or after the start.
         </p>
       )}
@@ -544,7 +544,7 @@ export function ReportsScreen() {
           {records.length ? (
             <ul className="divide-y divide-border">
               {records.map((reward) => (
-                <li key={reward.id} className="py-3 text-[13px]">
+                <li key={reward.id} className="py-3 text-body-dense">
                   <p>{reward.title}</p>
                   <p className="readout mt-1 text-xs text-muted-foreground">
                     {new Date(reward.earnedAt).toLocaleString()}
@@ -583,7 +583,7 @@ export function ReportsScreen() {
         only; none of them are inferred from task estimates or current status.
       </Unavailable>
       {error && (
-        <p role="alert" className="text-[13px] text-destructive">
+        <p role="alert" className="text-body-dense text-destructive">
           {error}
         </p>
       )}

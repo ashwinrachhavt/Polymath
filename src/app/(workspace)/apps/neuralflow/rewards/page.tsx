@@ -36,13 +36,13 @@ export function LedgerEntry({ entry }: { entry: LedgerRow }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div>
-        <p className="text-[13px] font-medium">{entry.definitionLabel}</p>
+        <p className="text-body-dense font-medium">{entry.definitionLabel}</p>
         <p className="text-xs text-muted-foreground">
           {entry.reason.replaceAll("_", " ")} · {when(entry.createdAt)}
         </p>
         {entry.note ? <p className="mt-0.5 text-xs text-muted-foreground">&quot;{entry.note}&quot;</p> : null}
       </div>
-      <p className="readout text-[13px]">{entry.points > 0 ? `+${entry.points}` : entry.points}</p>
+      <p className="readout text-body-dense">{entry.points > 0 ? `+${entry.points}` : entry.points}</p>
     </div>
   );
 }
@@ -108,7 +108,7 @@ async function Rewards() {
           {overview.definitions.map((definition) => (
             <div key={definition.id} className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-[13px] font-medium">
+                <p className="text-body-dense font-medium">
                   {definition.label} <span className="text-muted-foreground">({definition.key})</span>
                 </p>
                 <p className="text-xs text-muted-foreground">
@@ -144,7 +144,7 @@ export default function RewardsPage() {
   return (
     <Suspense
       fallback={
-        <p role="status" className="p-6 text-[13px] text-muted-foreground">
+        <p role="status" className="p-6 text-body-dense text-muted-foreground">
           Opening the stone collection…
         </p>
       }

@@ -41,7 +41,7 @@ export async function ProjectSurface({ projectId }: { projectId: string }) {
   const auth = await getAuthContext();
   const project = await getProjectDetail(auth, projectId);
   if (!project) {
-    return <div className="page-content text-[13px] text-muted-foreground">This project does not exist.</div>;
+    return <div className="page-content text-body-dense text-muted-foreground">This project does not exist.</div>;
   }
 
   const [sessions, automations, memories, connectors, notebookAccounts, sources, agentSessions] = await Promise.all([
@@ -74,7 +74,7 @@ export async function ProjectSurface({ projectId }: { projectId: string }) {
   return (
     <>
       <div className="flex items-center justify-between gap-4 border-b border-border px-6 py-3">
-        <p className="text-[13px] text-muted-foreground">
+        <p className="text-body-dense text-muted-foreground">
           <Link href="/projects" className="hover:underline">
             Projects
           </Link>
@@ -84,7 +84,7 @@ export async function ProjectSurface({ projectId }: { projectId: string }) {
         <Link
           href={`/projects/${projectId}/settings`}
           aria-label="Project settings"
-          className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-[13px] hover:bg-muted"
+          className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-body-dense hover:bg-muted"
         >
           <Settings aria-hidden className="size-4" /> Settings
         </Link>
@@ -112,13 +112,13 @@ export async function ProjectSurface({ projectId }: { projectId: string }) {
               sessions to list. */}
           {sessions.length > 0 ? (
             <section aria-label="Sessions" className="mt-10">
-              <h2 className="screen-title text-[20px]">Sessions</h2>
+              <h2 className="screen-title text-title">Sessions</h2>
               <ul className="mt-3 flex flex-col">
                 {sessions.map((session) => (
                   <li key={session.id} className="flex items-center gap-3 rounded-md px-2 py-2.5 hover:bg-muted/50">
                     <Link
                       href={`/polymath/${session.id}`}
-                      className="min-w-0 flex-1 truncate text-[15px] hover:underline"
+                      className="min-w-0 flex-1 truncate text-body hover:underline"
                     >
                       {session.title ?? "Untitled session"}
                     </Link>
@@ -137,10 +137,10 @@ export async function ProjectSurface({ projectId }: { projectId: string }) {
               The section exists even before the first scan — a missing section
               would hide the feature; the empty states say what to do. */}
           <section aria-label="Agent sessions" className="mt-10">
-            <h2 className="screen-title text-[20px]">Agent sessions</h2>
+            <h2 className="screen-title text-title">Agent sessions</h2>
             {project.repoPath ? (
               <>
-                <p className="mt-2 text-[13px] text-muted-foreground">
+                <p className="mt-2 text-body-dense text-muted-foreground">
                   What Claude Code or Codex did in <span className="font-mono">{project.repoPath}</span>, parsed locally
                   from your own files — nothing was sent to a model. Set the folder in{" "}
                   <Link href={`/projects/${projectId}/settings`} className="underline">
@@ -163,7 +163,7 @@ export async function ProjectSurface({ projectId }: { projectId: string }) {
                         </span>
                         <Link
                           href={`/projects/${projectId}/agent-sessions/${agentSession.id}`}
-                          className="min-w-0 flex-1 truncate text-[15px] hover:underline"
+                          className="min-w-0 flex-1 truncate text-body hover:underline"
                         >
                           {agentSession.aiTitle ?? agentSession.externalSessionId}
                         </Link>
@@ -179,13 +179,13 @@ export async function ProjectSurface({ projectId }: { projectId: string }) {
                     ))}
                   </ul>
                 ) : (
-                  <p className="mt-3 text-[13px] text-muted-foreground">
+                  <p className="mt-3 text-body-dense text-muted-foreground">
                     No agent sessions scanned for this folder yet.
                   </p>
                 )}
               </>
             ) : (
-              <p className="mt-2 text-[13px] text-muted-foreground">
+              <p className="mt-2 text-body-dense text-muted-foreground">
                 Add this project&apos;s local repo path in{" "}
                 <Link href={`/projects/${projectId}/settings`} className="underline">
                   settings

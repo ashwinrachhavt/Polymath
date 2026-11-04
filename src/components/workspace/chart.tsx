@@ -26,7 +26,7 @@ export function BarChart({
   const titleId = useId();
   const peak = Math.max(1, ...points.map((point) => point.value));
   const total = points.reduce((sum, point) => sum + point.value, 0);
-  if (!points.length) return <p className="text-[13px] text-muted-foreground">{emptyLabel}</p>;
+  if (!points.length) return <p className="text-body-dense text-muted-foreground">{emptyLabel}</p>;
 
   return (
     <figure className={cn("space-y-3", className)}>
@@ -37,7 +37,7 @@ export function BarChart({
       <div className="flex items-end gap-1" role="img" aria-labelledby={titleId}>
         {points.map((point) => (
           <div key={point.label} className="flex min-w-0 flex-1 flex-col items-center gap-1">
-            <span className="readout text-[11px] text-muted-foreground">{point.value || ""}</span>
+            <span className="readout text-data text-muted-foreground">{point.value || ""}</span>
             <div
               className="flex h-24 w-full items-end rounded-sm bg-muted"
               title={`${point.label}: ${point.value} ${unit}`}
@@ -47,11 +47,11 @@ export function BarChart({
                 style={{ height: `${point.value ? Math.max(4, (point.value / peak) * 100) : 0}%` }}
               />
             </div>
-            <span className="readout text-[11px] text-muted-foreground">{point.label.slice(5)}</span>
+            <span className="readout text-data text-muted-foreground">{point.label.slice(5)}</span>
           </div>
         ))}
       </div>
-      <table className="w-full text-[13px]">
+      <table className="w-full text-body-dense">
         <caption className="sr-only">{unit} recorded per day</caption>
         <thead>
           <tr className="text-left text-xs text-muted-foreground">

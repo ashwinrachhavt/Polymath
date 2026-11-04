@@ -119,7 +119,7 @@ export function SideNav() {
               collapsed ? "size-6 justify-center px-0" : "h-9 min-w-0 flex-1 px-2",
             )}
           >
-            <span aria-hidden className="polymath-mark !size-6 !text-[15px]">
+            <span aria-hidden className="polymath-mark !size-6 !text-body">
               P
             </span>
             {collapsed ? null : <span className="min-w-0 flex-1 truncate text-left">Polymath</span>}

@@ -29,9 +29,7 @@ export function SlashSkillMenu({
   const [active, setActive] = useState(0);
   const listRef = useRef<HTMLUListElement>(null);
 
-  const matches = skills.filter((skill) =>
-    skill.name.toLowerCase().includes(query.trim().toLowerCase()),
-  );
+  const matches = skills.filter((skill) => skill.name.toLowerCase().includes(query.trim().toLowerCase()));
 
   // Reset the highlight during render when the filter changes, the React-recommended
   // alternative to an effect setState: no cascading render.
@@ -86,11 +84,11 @@ export function SlashSkillMenu({
             onPick(skill);
           }}
           onMouseEnter={() => setActive(index)}
-          className={`cursor-pointer px-3 py-2 text-[13px] ${index === active ? "bg-muted" : ""}`}
+          className={`cursor-pointer px-3 py-2 text-body-dense ${index === active ? "bg-muted" : ""}`}
         >
           <p className="font-medium">{skill.name}</p>
           {skill.description ? (
-            <p className="text-muted-foreground line-clamp-1 text-[11px]">{skill.description}</p>
+            <p className="text-muted-foreground line-clamp-1 text-data">{skill.description}</p>
           ) : null}
         </li>
       ))}

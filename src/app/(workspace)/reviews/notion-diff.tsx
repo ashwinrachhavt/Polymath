@@ -5,18 +5,12 @@ import { readNotionDiffPreview } from "@/domains/knowledge/diff-preview";
  * lines that will be added, with the content hash the executor re-checks, so
  * the review is of the bytes that get written rather than of a summary.
  */
-export function NotionDiff({
-  capability,
-  revision,
-}: {
-  capability: string;
-  revision: { preview: unknown } | null;
-}) {
+export function NotionDiff({ capability, revision }: { capability: string; revision: { preview: unknown } | null }) {
   if (capability !== "notion.page.append" && capability !== "notion.page.create") return null;
   const diff = readNotionDiffPreview(revision?.preview, capability === "notion.page.append" ? "append" : "create");
   if (!diff) return null;
   return (
-    <section aria-label="Notion diff" className="mb-4 text-[13px]">
+    <section aria-label="Notion diff" className="mb-4 text-body-dense">
       <p className="mb-2 text-xs text-muted-foreground">
         {capability === "notion.page.append" ? "Added to the end of" : "New page"}{" "}
         {diff.url ? (

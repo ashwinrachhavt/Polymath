@@ -20,7 +20,7 @@ export function AcceptButton({ token }: { token: string }) {
   if (accepted) {
     return (
       <div className="mt-4 flex items-center gap-3" role="status" data-testid="accept-success">
-        <p className="text-[13px] font-medium">You are in.</p>
+        <p className="text-body-dense font-medium">You are in.</p>
         <Button
           variant="outline"
           onClick={() => {
@@ -54,7 +54,7 @@ export function AcceptButton({ token }: { token: string }) {
         {pending ? "Joining…" : "Accept invitation"}
       </Button>
       {error ? (
-        <p className="mt-2 text-destructive text-[13px]" role="alert">
+        <p className="mt-2 text-destructive text-body-dense" role="alert">
           {error}
         </p>
       ) : null}

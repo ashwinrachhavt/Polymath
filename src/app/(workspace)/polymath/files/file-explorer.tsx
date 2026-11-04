@@ -39,7 +39,15 @@ import {
   type FolderNode,
   type ServerSort,
 } from "@/domains/knowledge/file-browser";
-import { loadPageAction, addTagAction, createFolderAction, moveDocumentsAction, removeTagAction, removeFolderAction, renameFolderAction } from "./actions";
+import {
+  loadPageAction,
+  addTagAction,
+  createFolderAction,
+  moveDocumentsAction,
+  removeTagAction,
+  removeFolderAction,
+  renameFolderAction,
+} from "./actions";
 import { invalidatePreview, PreviewPane } from "./preview-pane";
 import { ShareDialog } from "./share-dialog";
 
@@ -70,7 +78,8 @@ function KindIcon({ row, className }: { row: BrowserRow; className?: string }) {
 
 function StatusBadge({ row }: { row: BrowserRow }) {
   const label = statusLabel(row);
-  const variant = row.extractionStatus === "failed" ? "destructive" : row.undecidedProposals > 0 ? "default" : "outline";
+  const variant =
+    row.extractionStatus === "failed" ? "destructive" : row.undecidedProposals > 0 ? "default" : "outline";
   return <Badge variant={variant}>{label}</Badge>;
 }
 
@@ -177,9 +186,17 @@ export function FileExplorer({
         });
         const payload = (await response.json().catch(() => null)) as { fileStatus?: string; title?: string } | null;
         if (!response.ok) {
-          setUploads((u) => u.map((x) => (x.key === key ? { ...x, state: "error", note: payload?.title ?? `Failed (${response.status})` } : x)));
+          setUploads((u) =>
+            u.map((x) =>
+              x.key === key ? { ...x, state: "error", note: payload?.title ?? `Failed (${response.status})` } : x,
+            ),
+          );
         } else if (payload?.fileStatus === "quarantined") {
-          setUploads((u) => u.map((x) => (x.key === key ? { ...x, state: "error", note: "Kept, but the type could not be identified." } : x)));
+          setUploads((u) =>
+            u.map((x) =>
+              x.key === key ? { ...x, state: "error", note: "Kept, but the type could not be identified." } : x,
+            ),
+          );
         } else {
           setUploads((u) => u.map((x) => (x.key === key ? { ...x, state: "done" } : x)));
           router.refresh();
@@ -235,7 +252,9 @@ export function FileExplorer({
     if (token !== pageToken.current) return;
     setLoading(false);
     if (!result.ok) return setNotice(result.error);
-    setRows((current) => (replace ? result.page.rows : [...current, ...result.page.rows.filter((r) => !current.some((c) => c.id === r.id))]));
+    setRows((current) =>
+      replace ? result.page.rows : [...current, ...result.page.rows.filter((r) => !current.some((c) => c.id === r.id))],
+    );
     setCursor(result.page.nextCursor);
   }
 
@@ -358,7 +377,10 @@ export function FileExplorer({
         </div>
       ) : null}
 
-      <nav aria-label="Folders" className="border-border flex shrink-0 gap-1 overflow-x-auto border-b p-2 min-[1400px]:w-60 min-[1400px]:flex-col min-[1400px]:overflow-y-auto min-[1400px]:border-r min-[1400px]:border-b-0 min-[1400px]:p-3">
+      <nav
+        aria-label="Folders"
+        className="border-border flex shrink-0 gap-1 overflow-x-auto border-b p-2 min-[1400px]:w-60 min-[1400px]:flex-col min-[1400px]:overflow-y-auto min-[1400px]:border-r min-[1400px]:border-b-0 min-[1400px]:p-3"
+      >
         {FOLDERS.map((f) => (
           <button
             key={f.id}
@@ -383,7 +405,7 @@ export function FileExplorer({
               setDragging(false);
               void move(JSON.parse(raw) as string[], null);
             }}
-            className={`flex items-center justify-between gap-3 rounded-md px-2.5 py-1.5 text-left text-[13px] whitespace-nowrap hover:bg-muted ${folder === f.id ? "bg-muted font-medium" : "text-muted-foreground"} ${dropTarget === f.id ? "ring-ring ring-2" : ""}`}
+            className={`flex items-center justify-between gap-3 rounded-md px-2.5 py-1.5 text-left text-body-dense whitespace-nowrap hover:bg-muted ${folder === f.id ? "bg-muted font-medium" : "text-muted-foreground"} ${dropTarget === f.id ? "ring-ring ring-2" : ""}`}
           >
             <span>{f.label}</span>
             <Readout className="text-xs text-muted-foreground">{counts[f.id]}</Readout>
@@ -391,11 +413,20 @@ export function FileExplorer({
         ))}
         <div className="text-muted-foreground mt-3 hidden items-center justify-between px-2.5 text-xs min-[1400px]:flex">
           <span>My folders</span>
-          <button type="button" aria-label="New folder" onClick={() => setNewFolderIn({ parentId: activeFolder?.id ?? null, name: "" })} className="hover:bg-muted rounded p-0.5">
+          <button
+            type="button"
+            aria-label="New folder"
+            onClick={() => setNewFolderIn({ parentId: activeFolder?.id ?? null, name: "" })}
+            className="hover:bg-muted rounded p-0.5"
+          >
             <FolderPlus aria-hidden className="size-3.5" />
           </button>
         </div>
-        <button type="button" onClick={() => setNewFolderIn({ parentId: null, name: "" })} className="text-muted-foreground hover:bg-muted flex items-center gap-1 rounded-md px-2.5 py-1.5 text-[13px] whitespace-nowrap min-[1400px]:hidden">
+        <button
+          type="button"
+          onClick={() => setNewFolderIn({ parentId: null, name: "" })}
+          className="text-muted-foreground hover:bg-muted flex items-center gap-1 rounded-md px-2.5 py-1.5 text-body-dense whitespace-nowrap min-[1400px]:hidden"
+        >
           <FolderPlus aria-hidden className="size-3.5" /> New folder
         </button>
         {newFolderIn ? (
@@ -414,7 +445,7 @@ export function FileExplorer({
               maxLength={80}
               aria-label={newFolderIn.parentId ? "Subfolder name" : "Folder name"}
               placeholder={newFolderIn.parentId ? "Subfolder name" : "Folder name"}
-              className="border-input bg-background focus-visible:ring-ring h-8 w-full min-w-32 rounded-md border px-2 text-[13px] outline-none focus-visible:ring-2"
+              className="border-input bg-background focus-visible:ring-ring h-8 w-full min-w-32 rounded-md border px-2 text-body-dense outline-none focus-visible:ring-2"
             />
           </form>
         ) : null}
@@ -444,9 +475,12 @@ export function FileExplorer({
                 void move(JSON.parse(raw) as string[], f.id);
               }}
               style={{ paddingLeft: `${0.625 + f.depth * 0.875}rem` }}
-              className={`flex items-center justify-between gap-3 rounded-md py-1.5 pr-2.5 text-left text-[13px] whitespace-nowrap hover:bg-muted ${folder === id ? "bg-muted font-medium" : "text-muted-foreground"} ${dropTarget === f.id ? "ring-ring ring-2" : ""}`}
+              className={`flex items-center justify-between gap-3 rounded-md py-1.5 pr-2.5 text-left text-body-dense whitespace-nowrap hover:bg-muted ${folder === id ? "bg-muted font-medium" : "text-muted-foreground"} ${dropTarget === f.id ? "ring-ring ring-2" : ""}`}
             >
-              <span className="flex min-w-0 items-center gap-1.5"><Folder aria-hidden className="size-3.5 shrink-0" /><span className="truncate">{f.name}</span></span>
+              <span className="flex min-w-0 items-center gap-1.5">
+                <Folder aria-hidden className="size-3.5 shrink-0" />
+                <span className="truncate">{f.name}</span>
+              </span>
               <Readout className="text-xs text-muted-foreground">{f.documentCount}</Readout>
             </button>
           );
@@ -460,23 +494,34 @@ export function FileExplorer({
                 type="button"
                 aria-current={folder === `tag:${t.tag}` ? "page" : undefined}
                 onClick={() => setFolder(`tag:${t.tag}`)}
-                className={`flex items-center justify-between gap-3 rounded-md px-2.5 py-1.5 text-left text-[13px] whitespace-nowrap hover:bg-muted ${folder === `tag:${t.tag}` ? "bg-muted font-medium" : "text-muted-foreground"}`}
+                className={`flex items-center justify-between gap-3 rounded-md px-2.5 py-1.5 text-left text-body-dense whitespace-nowrap hover:bg-muted ${folder === `tag:${t.tag}` ? "bg-muted font-medium" : "text-muted-foreground"}`}
               >
-                <span className="flex min-w-0 items-center gap-1.5"><Tag aria-hidden className="size-3.5 shrink-0" /><span className="truncate">{t.tag}</span></span>
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <Tag aria-hidden className="size-3.5 shrink-0" />
+                  <span className="truncate">{t.tag}</span>
+                </span>
                 <Readout className="text-xs text-muted-foreground">{t.count}</Readout>
               </button>
             ))}
           </>
         ) : null}
         <p className="text-muted-foreground mt-3 hidden px-2.5 text-xs leading-relaxed min-[1400px]:block">
-          Drag documents onto a folder to file them. Built-in views describe what a document is; folders are where you keep it.
+          Drag documents onto a folder to file them. Built-in views describe what a document is; folders are where you
+          keep it.
         </p>
       </nav>
 
       <section className="flex min-w-0 flex-1 flex-col" aria-label="Documents">
         {taskId || taskFilterInvalid ? (
-          <div role="status" className="border-border bg-muted/40 text-muted-foreground flex flex-wrap items-center gap-3 border-b px-4 py-2 text-xs md:px-5">
-            <span>{taskFilterInvalid ? "That task link didn't include a valid task, so no documents are shown." : "Showing only the documents linked to this task."}</span>
+          <div
+            role="status"
+            className="border-border bg-muted/40 text-muted-foreground flex flex-wrap items-center gap-3 border-b px-4 py-2 text-xs md:px-5"
+          >
+            <span>
+              {taskFilterInvalid
+                ? "That task link didn't include a valid task, so no documents are shown."
+                : "Showing only the documents linked to this task."}
+            </span>
             <Link href="/polymath/files" className="text-foreground underline-offset-4 hover:underline">
               Show all documents
             </Link>
@@ -485,7 +530,10 @@ export function FileExplorer({
         <div className="border-border flex flex-wrap items-center gap-2 border-b px-4 py-2.5 md:px-5">
           <label className="border-input bg-background focus-within:ring-ring relative min-w-[12rem] flex-1 rounded-md border transition-shadow focus-within:ring-3">
             <span className="sr-only">Search documents</span>
-            <Search aria-hidden className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
+            <Search
+              aria-hidden
+              className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2"
+            />
             <input
               ref={searchRef}
               type="search"
@@ -493,7 +541,7 @@ export function FileExplorer({
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), searchAll())}
               placeholder="Filter loaded, Enter searches everything  ( / )"
-              className="min-h-9 w-full bg-transparent pr-3 pl-8 text-[13px] outline-none"
+              className="min-h-9 w-full bg-transparent pr-3 pl-8 text-body-dense outline-none"
             />
           </label>
           <Select
@@ -504,7 +552,9 @@ export function FileExplorer({
             className="w-40 shrink-0"
           >
             {SERVER_SORTS.map((o) => (
-              <option key={o.id} value={o.id}>{o.label}</option>
+              <option key={o.id} value={o.id}>
+                {o.label}
+              </option>
             ))}
           </Select>
           <div role="group" aria-label="View" className="flex shrink-0 items-center gap-0.5">
@@ -547,32 +597,63 @@ export function FileExplorer({
         </div>
 
         {activeFolder ? (
-          <div className="border-border flex flex-wrap items-center gap-2 border-b px-4 py-2 text-[13px] md:px-5">
+          <div className="border-border flex flex-wrap items-center gap-2 border-b px-4 py-2 text-body-dense md:px-5">
             {renaming === activeFolder.id ? (
               <form
                 className="flex items-center gap-2"
                 onSubmit={(e) => {
                   e.preventDefault();
                   const value = new FormData(e.currentTarget).get("name");
-                  void organise(() => renameFolderAction(activeFolder.id, String(value), activeFolder.version), "Renamed.").then(() => setRenaming(null));
+                  void organise(
+                    () => renameFolderAction(activeFolder.id, String(value), activeFolder.version),
+                    "Renamed.",
+                  ).then(() => setRenaming(null));
                 }}
               >
-                <input name="name" autoFocus defaultValue={activeFolder.name} maxLength={80} aria-label="Folder name" className="border-input bg-background h-8 rounded-md border px-2 text-[13px]" />
-                <Button type="submit" size="sm">Save</Button>
-                <Button type="button" size="sm" variant="ghost" onClick={() => setRenaming(null)}>Cancel</Button>
+                <input
+                  name="name"
+                  autoFocus
+                  defaultValue={activeFolder.name}
+                  maxLength={80}
+                  aria-label="Folder name"
+                  className="border-input bg-background h-8 rounded-md border px-2 text-body-dense"
+                />
+                <Button type="submit" size="sm">
+                  Save
+                </Button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setRenaming(null)}>
+                  Cancel
+                </Button>
               </form>
             ) : (
               <>
                 <span className="font-medium">{activeFolder.name}</span>
-                <Button type="button" size="sm" variant="ghost" onClick={() => setRenaming(activeFolder.id)}>Rename</Button>
-                <Button type="button" size="sm" variant="ghost" onClick={() => setNewFolderIn({ parentId: activeFolder.id, name: "" })}>New subfolder</Button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setRenaming(activeFolder.id)}>
+                  Rename
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setNewFolderIn({ parentId: activeFolder.id, name: "" })}
+                >
+                  New subfolder
+                </Button>
                 <Button
                   type="button"
                   size="sm"
                   variant="ghost"
                   onClick={() => {
-                    if (!window.confirm(`Remove the empty folder "${activeFolder.name}"? A folder with documents or subfolders cannot be removed.`)) return;
-                    void organise(() => removeFolderAction(activeFolder.id, activeFolder.version), "Folder removed.").then((ok) => ok && setFolder("all"));
+                    if (
+                      !window.confirm(
+                        `Remove the empty folder "${activeFolder.name}"? A folder with documents or subfolders cannot be removed.`,
+                      )
+                    )
+                      return;
+                    void organise(
+                      () => removeFolderAction(activeFolder.id, activeFolder.version),
+                      "Folder removed.",
+                    ).then((ok) => ok && setFolder("all"));
                   }}
                 >
                   Remove folder
@@ -583,10 +664,18 @@ export function FileExplorer({
         ) : null}
 
         {selected.length > 0 ? (
-          <div role="toolbar" aria-label="Bulk actions" className="bg-muted/60 border-border flex flex-wrap items-center gap-2 border-b px-4 py-2 text-[13px] md:px-5">
+          <div
+            role="toolbar"
+            aria-label="Bulk actions"
+            className="bg-muted/60 border-border flex flex-wrap items-center gap-2 border-b px-4 py-2 text-body-dense md:px-5"
+          >
             <Readout>{selected.length} selected</Readout>
-            <Button type="button" variant="outline" size="sm" onClick={() => void rereadSelected()}>Read again</Button>
-            <Button type="button" variant="outline" size="sm" onClick={() => void copyTitles()}>Copy titles</Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => void rereadSelected()}>
+              Read again
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => void copyTitles()}>
+              Copy titles
+            </Button>
             <Select
               aria-label="Move to folder"
               value=""
@@ -611,13 +700,24 @@ export function FileExplorer({
                 void organise(() => addTagAction(selected, tagDraft), "Tagged.").then((ok) => ok && setTagDraft(""));
               }}
             >
-              <input value={tagDraft} onChange={(e) => setTagDraft(e.target.value)} maxLength={40} aria-label="Add a tag" placeholder="Add tag" className="border-input bg-background h-8 w-24 rounded-md border px-2 text-[13px]" />
-              <Button type="submit" variant="outline" size="sm">Tag</Button>
+              <input
+                value={tagDraft}
+                onChange={(e) => setTagDraft(e.target.value)}
+                maxLength={40}
+                aria-label="Add a tag"
+                placeholder="Add tag"
+                className="border-input bg-background h-8 w-24 rounded-md border px-2 text-body-dense"
+              />
+              <Button type="submit" variant="outline" size="sm">
+                Tag
+              </Button>
             </form>
             <Button type="button" variant="outline" size="sm" onClick={() => setShareOpen(true)}>
               <Share2 aria-hidden className="size-3.5" /> Share
             </Button>
-            <Button type="button" variant="ghost" size="sm" onClick={() => setSelected([])}>Clear</Button>
+            <Button type="button" variant="ghost" size="sm" onClick={() => setSelected([])}>
+              Clear
+            </Button>
           </div>
         ) : null}
 
@@ -626,7 +726,9 @@ export function FileExplorer({
             {notice ? (
               <p className="text-muted-foreground flex items-center justify-between">
                 {notice}
-                <button type="button" aria-label="Dismiss" onClick={() => setNotice(null)}><X aria-hidden className="size-3.5" /></button>
+                <button type="button" aria-label="Dismiss" onClick={() => setNotice(null)}>
+                  <X aria-hidden className="size-3.5" />
+                </button>
               </p>
             ) : null}
             {uploads.slice(0, 5).map((u) => (
@@ -641,14 +743,14 @@ export function FileExplorer({
         {visible.length === 0 ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 py-16 text-center">
             <p className="font-display text-xl">{rows.length === 0 ? "No documents yet" : "Nothing matches"}</p>
-            <p className="text-muted-foreground max-w-sm text-[13px]">
+            <p className="text-muted-foreground max-w-sm text-body-dense">
               {rows.length === 0
                 ? "Drop a PDF or image anywhere on this page. It is read, and its fields wait for your review."
                 : "Clear the search or pick another folder."}
             </p>
           </div>
         ) : view === "list" ? (
-          <table className="w-full table-fixed text-[13px]">
+          <table className="w-full table-fixed text-body-dense">
             <thead className="text-muted-foreground text-xs">
               <tr className="border-border border-b">
                 <th className="w-10 py-2 pl-4 md:pl-5">
@@ -663,7 +765,9 @@ export function FileExplorer({
                 <th className="hidden py-2 text-left font-normal md:table-cell md:w-28">People</th>
                 <th className="hidden py-2 text-left font-normal sm:table-cell sm:w-20">Type</th>
                 <th className="w-20 py-2 text-left font-normal">Status</th>
-                <th className="hidden py-2 pr-5 text-left font-normal whitespace-nowrap lg:table-cell lg:w-28">Added</th>
+                <th className="hidden py-2 pr-5 text-left font-normal whitespace-nowrap lg:table-cell lg:w-28">
+                  Added
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -692,10 +796,16 @@ export function FileExplorer({
                       <span className="truncate font-medium">{row.title}</span>
                     </span>
                   </td>
-                  <td className="text-muted-foreground hidden max-w-[12rem] truncate py-2 pr-3 md:table-cell">{row.partyNames.slice(0, 2).join(", ") || "-"}</td>
+                  <td className="text-muted-foreground hidden max-w-[12rem] truncate py-2 pr-3 md:table-cell">
+                    {row.partyNames.slice(0, 2).join(", ") || "-"}
+                  </td>
                   <td className="text-muted-foreground hidden py-2 pr-3 sm:table-cell">{kindLabel(row)}</td>
-                  <td className="py-2 pr-3"><StatusBadge row={row} /></td>
-                  <td className="text-muted-foreground hidden py-2 pr-5 whitespace-nowrap lg:table-cell"><Readout>{dateFmt.format(new Date(row.createdAt))}</Readout></td>
+                  <td className="py-2 pr-3">
+                    <StatusBadge row={row} />
+                  </td>
+                  <td className="text-muted-foreground hidden py-2 pr-5 whitespace-nowrap lg:table-cell">
+                    <Readout>{dateFmt.format(new Date(row.createdAt))}</Readout>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -728,7 +838,7 @@ export function FileExplorer({
                   <div className="bg-muted/70 grid h-20 place-items-center rounded-md">
                     <KindIcon row={row} className="text-muted-foreground size-7" />
                   </div>
-                  <p className="truncate text-[13px] font-medium">{row.title}</p>
+                  <p className="truncate text-body-dense font-medium">{row.title}</p>
                   <div className="mt-auto flex items-center justify-between gap-2">
                     <span className="text-muted-foreground text-xs">{kindLabel(row)}</span>
                     <StatusBadge row={row} />
@@ -739,28 +849,75 @@ export function FileExplorer({
           </ul>
         )}
         <div className="text-muted-foreground flex flex-wrap items-center gap-3 px-5 py-3 text-xs">
-          <Readout>{rows.length} of {total} {searched ? "matches" : "loaded"}</Readout>
+          <Readout>
+            {rows.length} of {total} {searched ? "matches" : "loaded"}
+          </Readout>
           {searched ? (
             <>
               <span>Results for &quot;{searched}&quot; across names and extracted text.</span>
-              <button type="button" onClick={clearSearch} className="underline-offset-4 hover:underline">Back to all documents</button>
+              <button type="button" onClick={clearSearch} className="underline-offset-4 hover:underline">
+                Back to all documents
+              </button>
             </>
           ) : query.trim() && cursor ? (
-            <button type="button" onClick={searchAll} className="underline-offset-4 hover:underline">Search all {total} documents for &quot;{query.trim()}&quot;</button>
+            <button type="button" onClick={searchAll} className="underline-offset-4 hover:underline">
+              Search all {total} documents for &quot;{query.trim()}&quot;
+            </button>
           ) : null}
           {cursor ? (
-            <Button type="button" size="sm" variant="outline" disabled={loading} onClick={() => void fetchPage({ sort, cursor: cursor ?? undefined, q: searched ?? undefined }, false)}>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={loading}
+              onClick={() => void fetchPage({ sort, cursor: cursor ?? undefined, q: searched ?? undefined }, false)}
+            >
               {loading ? "Loading…" : "Load more"}
             </Button>
           ) : null}
         </div>
         <p className="text-muted-foreground px-5 py-3 text-xs">
-          Keys: / search, arrows move, space selects, enter opens. <Link href="/polymath/knowledge" className="underline-offset-4 hover:underline">Open the review inbox</Link>
+          Keys: / search, arrows move, space selects, enter opens.{" "}
+          <Link href="/polymath/knowledge" className="underline-offset-4 hover:underline">
+            Open the review inbox
+          </Link>
         </p>
       </section>
 
-      {activeRow ? <PreviewPane key={activeRow.id} row={activeRow} folders={tree} onMove={(id) => void move([activeRow.id], id)} onTag={(t) => { invalidatePreview(activeRow.id); return organise(() => addTagAction([activeRow.id], t), "Tagged."); }} onUntag={(t) => { invalidatePreview(activeRow.id); void organise(() => removeTagAction([activeRow.id], t), "Tag removed."); }} onClose={() => setActive(null)} onShare={() => setShareOpen(true)} onChanged={(m) => { setNotice(m); router.refresh(); }} onArchived={(m) => { const gone = activeRow.id; setRows((c) => c.filter((r) => r.id !== gone)); setActive(null); setNotice(m); router.refresh(); }} /> : null}
-      <ShareDialog open={shareOpen} onOpenChange={setShareOpen} rows={selectedRows.length > 0 ? selectedRows : activeRow ? [activeRow] : []} />
+      {activeRow ? (
+        <PreviewPane
+          key={activeRow.id}
+          row={activeRow}
+          folders={tree}
+          onMove={(id) => void move([activeRow.id], id)}
+          onTag={(t) => {
+            invalidatePreview(activeRow.id);
+            return organise(() => addTagAction([activeRow.id], t), "Tagged.");
+          }}
+          onUntag={(t) => {
+            invalidatePreview(activeRow.id);
+            void organise(() => removeTagAction([activeRow.id], t), "Tag removed.");
+          }}
+          onClose={() => setActive(null)}
+          onShare={() => setShareOpen(true)}
+          onChanged={(m) => {
+            setNotice(m);
+            router.refresh();
+          }}
+          onArchived={(m) => {
+            const gone = activeRow.id;
+            setRows((c) => c.filter((r) => r.id !== gone));
+            setActive(null);
+            setNotice(m);
+            router.refresh();
+          }}
+        />
+      ) : null}
+      <ShareDialog
+        open={shareOpen}
+        onOpenChange={setShareOpen}
+        rows={selectedRows.length > 0 ? selectedRows : activeRow ? [activeRow] : []}
+      />
     </div>
   );
 }

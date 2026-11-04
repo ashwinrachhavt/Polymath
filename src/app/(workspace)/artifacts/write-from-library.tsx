@@ -23,7 +23,7 @@ export function WriteFromLibrary() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex h-8 items-center gap-1.5 rounded-md border border-border px-2 text-[13px] text-muted-foreground hover:text-foreground"
+        className="flex h-8 items-center gap-1.5 rounded-md border border-border px-2 text-body-dense text-muted-foreground hover:text-foreground"
       >
         <PenLine aria-hidden className="size-3.5" />
         Write from library
@@ -33,7 +33,11 @@ export function WriteFromLibrary() {
 
   return (
     <span className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
-      {error ? <span role="alert" className="w-full text-xs text-destructive sm:w-auto sm:max-w-72">{error}</span> : null}
+      {error ? (
+        <span role="alert" className="w-full text-xs text-destructive sm:w-auto sm:max-w-72">
+          {error}
+        </span>
+      ) : null}
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -49,16 +53,22 @@ export function WriteFromLibrary() {
         }}
         className="flex h-8 items-center gap-1.5 rounded-md border border-border px-2"
       >
-        <label className="sr-only" htmlFor="library-draft-topic">Draft topic</label>
+        <label className="sr-only" htmlFor="library-draft-topic">
+          Draft topic
+        </label>
         <input
           id="library-draft-topic"
           value={topic}
           onChange={(event) => setTopic(event.target.value)}
           placeholder="Draft about…"
           autoFocus
-          className="w-40 bg-transparent text-[13px] outline-none"
+          className="w-40 bg-transparent text-body-dense outline-none"
         />
-        <button type="submit" disabled={pending || !topic.trim()} className="text-[13px] text-muted-foreground hover:text-foreground disabled:opacity-50">
+        <button
+          type="submit"
+          disabled={pending || !topic.trim()}
+          className="text-body-dense text-muted-foreground hover:text-foreground disabled:opacity-50"
+        >
           {pending ? "Drafting…" : "Draft"}
         </button>
       </form>

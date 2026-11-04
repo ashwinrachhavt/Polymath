@@ -13,7 +13,7 @@ import type { ChatCitation } from "@/domains/agents/stream-contract";
 export function CitationStrip({ citations }: { citations: ChatCitation[] }) {
   if (citations.length === 0) return null;
   return (
-    <details className="group mt-3 rounded-xl border border-border text-[12px]">
+    <details className="group mt-3 rounded-xl border border-border text-label">
       <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
         <BookOpen aria-hidden className="size-3.5 shrink-0" />
         {/* Citations are passages, so one document can back several. The

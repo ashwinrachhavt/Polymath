@@ -49,7 +49,11 @@ export function CaptureBody({
   const saveRef = useRef<() => void>(() => {});
 
   const editor = useEditor({
-    extensions: [StarterKit.configure({ link: { openOnClick: false } }), Placeholder.configure({ placeholder: "" }), Markdown],
+    extensions: [
+      StarterKit.configure({ link: { openOnClick: false } }),
+      Placeholder.configure({ placeholder: "" }),
+      Markdown,
+    ],
     content: text,
     contentType: "markdown",
     editable,
@@ -60,7 +64,7 @@ export function CaptureBody({
         "aria-label": label,
         "aria-multiline": "true",
         class:
-          "prose-reading max-w-[70ch] outline-none [&_h1]:mb-3 [&_h2]:mb-2 [&_h3]:mb-2 [&_pre]:overflow-auto [&_pre]:rounded-md [&_pre]:bg-muted [&_pre]:p-3 [&_pre]:font-mono [&_pre]:text-[13px] [&_a]:text-primary [&_a]:underline",
+          "prose-reading max-w-[70ch] outline-none [&_h1]:mb-3 [&_h2]:mb-2 [&_h3]:mb-2 [&_pre]:overflow-auto [&_pre]:rounded-md [&_pre]:bg-muted [&_pre]:p-3 [&_pre]:font-mono [&_pre]:text-body-dense [&_a]:text-primary [&_a]:underline",
       },
       handleKeyDown: (_view, event) => {
         if (editable && (event.metaKey || event.ctrlKey) && event.key === "Enter") {
@@ -152,7 +156,7 @@ export function CaptureBody({
       ) : null}
 
       {error ? (
-        <p role="alert" className="max-w-[68ch] text-destructive text-[13px]">
+        <p role="alert" className="max-w-[68ch] text-destructive text-body-dense">
           {error}
         </p>
       ) : null}

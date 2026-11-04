@@ -70,7 +70,7 @@ async function Access() {
             ) : (
               <ul className="divide-y">
                 {invites.map((i) => (
-                  <li key={i.id} className="flex items-center justify-between gap-3 py-2 text-[13px]">
+                  <li key={i.id} className="flex items-center justify-between gap-3 py-2 text-body-dense">
                     <span>
                       <span className="font-medium">{i.email}</span>
                       <span className="ml-2 text-xs capitalize text-muted-foreground">{i.role}</span>
@@ -96,7 +96,7 @@ export default function AccessPage() {
   return (
     <Suspense
       fallback={
-        <p role="status" className="p-6 text-[13px] text-muted-foreground">
+        <p role="status" className="p-6 text-body-dense text-muted-foreground">
           Loading access…
         </p>
       }

@@ -15,11 +15,11 @@ export function TaskEvidence({ items, taskId }: { items: Provenance; taskId: str
   if (items.length === 0) return null;
   return (
     <div className="border-border mt-4 border-t pt-4">
-      <p className="mb-2 text-[13px] font-medium">Why this task exists</p>
+      <p className="mb-2 text-body-dense font-medium">Why this task exists</p>
       <ul className="flex flex-col gap-4">
         {items.map((item) => (
           <li key={item.obligationId} className="flex flex-col gap-1.5">
-            <p className="text-[13px]">{item.note ?? item.kind}</p>
+            <p className="text-body-dense">{item.note ?? item.kind}</p>
             <p className="text-muted-foreground text-xs">
               From{" "}
               {item.sourceUrl ? (

@@ -129,7 +129,7 @@ export default function RichEditor({
         </div>
       )}
       {reason && (
-        <p role="status" className="mb-3 text-[13px] leading-relaxed text-muted-foreground">
+        <p role="status" className="mb-3 text-body-dense leading-relaxed text-muted-foreground">
           This document contains {reason}, which this rich editor cannot preserve. Source mode keeps the original
           Markdown, URLs and states intact. Rich editing is disabled until you deliberately remove or rewrite those
           constructs in source.
@@ -140,8 +140,8 @@ export default function RichEditor({
           aria-label="Markdown source"
           className={
             minimal
-              ? "writing-surface min-h-24 flex-1 border-0 bg-transparent px-0 font-mono text-[13px] shadow-none focus-visible:ring-0"
-              : "min-h-72 font-mono text-[13px]"
+              ? "writing-surface min-h-24 flex-1 border-0 bg-transparent px-0 font-mono text-body-dense shadow-none focus-visible:ring-0"
+              : "min-h-72 font-mono text-body-dense"
           }
           value={content}
           onChange={(event) => onChange(event.target.value)}
@@ -205,7 +205,7 @@ function SlashMenu({
     <div
       role="listbox"
       aria-label="Insert block"
-      className="panel absolute z-50 max-h-64 w-64 overflow-y-auto rounded-lg p-1 text-[13px]"
+      className="panel absolute z-50 max-h-64 w-64 overflow-y-auto rounded-lg p-1 text-body-dense"
     >
       {items.map((command, index) => (
         <button
@@ -394,7 +394,7 @@ function RichMarkdownEditor({
         role: "textbox",
         "aria-label": "Rich note content",
         "aria-multiline": "true",
-        class: `${compact ? "min-h-24 p-2 text-[13px] leading-6" : floating ? "prose-reading flex-1 font-[family-name:var(--font-reading)] text-foreground" : "min-h-72 max-w-[var(--measure-prose)] p-4 text-sm leading-7"} ${editable ? "writing-surface outline-none" : "outline-none [&_*]:cursor-text"} [&_p]:mb-4 [&_h1]:text-2xl [&_h2]:text-xl [&_h2]:mb-3 [&_h3]:text-lg [&_h3]:mb-2 [&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-6 [&_ol]:pl-6 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-4 [&_blockquote]:italic [&_pre]:overflow-auto [&_pre]:bg-muted [&_pre]:p-3 [&_a]:text-primary [&_a]:underline`,
+        class: `${compact ? "min-h-24 p-2 text-body-dense leading-6" : floating ? "prose-reading flex-1 font-[family-name:var(--font-reading)] text-foreground" : "min-h-72 max-w-[var(--measure-prose)] p-4 text-sm leading-7"} ${editable ? "writing-surface outline-none" : "outline-none [&_*]:cursor-text"} [&_p]:mb-4 [&_h1]:text-2xl [&_h2]:text-xl [&_h2]:mb-3 [&_h3]:text-lg [&_h3]:mb-2 [&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-6 [&_ol]:pl-6 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-4 [&_blockquote]:italic [&_pre]:overflow-auto [&_pre]:bg-muted [&_pre]:p-3 [&_a]:text-primary [&_a]:underline`,
       },
     },
     onSelectionUpdate: ({ editor }) => {
@@ -605,7 +605,7 @@ function RichMarkdownEditor({
           <div
             role="listbox"
             aria-label="Link a record"
-            className="panel z-50 max-h-64 w-72 overflow-y-auto rounded-lg p-1 text-[13px]"
+            className="panel z-50 max-h-64 w-72 overflow-y-auto rounded-lg p-1 text-body-dense"
           >
             {linkMatches.map((artifact, index) => (
               <button

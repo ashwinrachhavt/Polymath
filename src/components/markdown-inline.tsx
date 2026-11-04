@@ -52,7 +52,10 @@ export function inline(raw: string): ReactNode[] {
     }
     if (part.startsWith("【") && part.endsWith("】")) {
       return (
-        <span key={i} className="bg-muted text-muted-foreground mx-0.5 inline-block rounded px-1 py-px align-baseline text-[11px]">
+        <span
+          key={i}
+          className="bg-muted text-muted-foreground mx-0.5 inline-block rounded px-1 py-px align-baseline text-data"
+        >
           {part.slice(1, -1)}
         </span>
       );
@@ -61,7 +64,11 @@ export function inline(raw: string): ReactNode[] {
       return <strong key={i}>{part.slice(2, -2)}</strong>;
     }
     if (part.startsWith("`") && part.endsWith("`") && part.length > 2) {
-      return <code key={i} className="bg-muted rounded px-1 py-0.5 text-[0.85em]">{part.slice(1, -1)}</code>;
+      return (
+        <code key={i} className="bg-muted rounded px-1 py-0.5 text-[0.85em]">
+          {part.slice(1, -1)}
+        </code>
+      );
     }
     if (part.startsWith("*") && part.endsWith("*") && part.length > 2) {
       return <em key={i}>{part.slice(1, -1)}</em>;

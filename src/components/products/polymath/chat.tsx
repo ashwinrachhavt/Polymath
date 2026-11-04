@@ -53,12 +53,7 @@ export default function Chat({ initialId }: { initialId?: string }) {
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="panel min-h-[520px] rounded-xl p-5">
           {runId ? (
-            <ChatSurface
-              runId={runId}
-              subject={subject}
-              title="Polymath"
-              className="h-full"
-            />
+            <ChatSurface runId={runId} subject={subject} title="Polymath" className="h-full" />
           ) : (
             <div className="flex h-full flex-col">
               <div className="mb-4 flex flex-wrap gap-2">
@@ -72,17 +67,17 @@ export default function Chat({ initialId }: { initialId?: string }) {
                   void begin();
                 }}
               >
-                <label className="flex flex-col gap-1.5 text-[13px]">
+                <label className="flex flex-col gap-1.5 text-body-dense">
                   <span className="font-medium">Your question</span>
                   <textarea
-                    className="min-h-[120px] w-full resize-none rounded-lg border border-border bg-background p-3 text-[13px] leading-6 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="min-h-[120px] w-full resize-none rounded-lg border border-border bg-background p-3 text-body-dense leading-6 outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     placeholder="What do these sources support? What is still uncertain?"
                     value={message}
                     onChange={(event) => setMessage(event.target.value)}
                   />
                 </label>
                 {error && (
-                  <p role="alert" className="mt-2 text-[12px] text-destructive">
+                  <p role="alert" className="mt-2 text-label text-destructive">
                     {error}
                   </p>
                 )}
@@ -90,11 +85,11 @@ export default function Chat({ initialId }: { initialId?: string }) {
                   <button
                     type="submit"
                     disabled={!message.trim() || starting}
-                    className="inline-flex min-h-9 items-center rounded-md bg-primary px-3 text-[13px] font-medium text-primary-foreground disabled:opacity-50"
+                    className="inline-flex min-h-9 items-center rounded-md bg-primary px-3 text-body-dense font-medium text-primary-foreground disabled:opacity-50"
                   >
                     {starting ? "Starting" : "Start the conversation"}
                   </button>
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-data text-muted-foreground">
                     A run starts when you send, and reserves budget first.
                   </p>
                 </div>
@@ -105,11 +100,11 @@ export default function Chat({ initialId }: { initialId?: string }) {
 
         <aside className="space-y-4">
           <div className="panel rounded-xl p-4">
-            <p className="text-[13px] font-medium">Context</p>
-            <label className="mt-2 flex flex-col gap-1.5 text-[12px]">
+            <p className="text-body-dense font-medium">Context</p>
+            <label className="mt-2 flex flex-col gap-1.5 text-label">
               <span className="text-muted-foreground">Ask about</span>
               <select
-                className="min-h-9 rounded-md border border-border bg-background px-2 text-[13px]"
+                className="min-h-9 rounded-md border border-border bg-background px-2 text-body-dense"
                 value={subject.type}
                 onChange={(event) => setSubject({ ...subject, type: event.target.value as ChatSubject["type"] })}
               >
@@ -118,18 +113,18 @@ export default function Chat({ initialId }: { initialId?: string }) {
                 <option value="artifact">An artifact</option>
               </select>
             </label>
-            <label className="mt-3 flex flex-col gap-1.5 text-[12px]">
+            <label className="mt-3 flex flex-col gap-1.5 text-label">
               <span className="text-muted-foreground">Record id</span>
               <input
-                className="min-h-9 rounded-md border border-border bg-background px-2 font-mono text-[12px]"
+                className="min-h-9 rounded-md border border-border bg-background px-2 font-mono text-label"
                 value={subject.id}
                 onChange={(event) => setSubject({ ...subject, id: event.target.value })}
               />
             </label>
           </div>
           <div className="panel rounded-xl p-4">
-            <p className="text-[13px] font-medium">What this can do</p>
-            <ul className="mt-2 space-y-1.5 text-[12px] leading-relaxed text-muted-foreground">
+            <p className="text-body-dense font-medium">What this can do</p>
+            <ul className="mt-2 space-y-1.5 text-label leading-relaxed text-muted-foreground">
               <li>Search the workspace&apos;s documents and cite the passages it used.</li>
               <li>Read a connected service when the run&apos;s policy allows it.</li>
               <li>Propose sends, writes, and deploys for your review. It never performs them.</li>

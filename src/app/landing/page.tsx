@@ -43,36 +43,28 @@ function safeReturnTo(value: string | undefined): string | null {
   return value;
 }
 
-async function SignInLink({
-  searchParams,
-}: {
-  searchParams: Promise<{ returnTo?: string }>;
-}) {
+async function SignInLink({ searchParams }: { searchParams: Promise<{ returnTo?: string }> }) {
   const returnTo = safeReturnTo((await searchParams).returnTo);
   const signInHref = returnTo ? `/sign-in?redirect_url=${encodeURIComponent(returnTo)}` : "/sign-in";
   return (
     <Link
       href={signInHref}
-      className="rounded-lg border border-border bg-card px-6 py-3 text-[15px] font-medium transition-colors hover:bg-muted"
+      className="rounded-lg border border-border bg-card px-6 py-3 text-body font-medium transition-colors hover:bg-muted"
     >
       Sign in
     </Link>
   );
 }
 
-export default function LandingPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ returnTo?: string }>;
-}) {
+export default function LandingPage({ searchParams }: { searchParams: Promise<{ returnTo?: string }> }) {
   return (
     <div className="flex min-h-dvh flex-col bg-background text-foreground">
       <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-5">
         <span className="flex items-center gap-2.5">
-          <span aria-hidden className="polymath-mark size-7 text-[15px]">
+          <span aria-hidden className="polymath-mark size-7 text-body">
             P
           </span>
-          <span className="text-[15px] font-semibold">Polymath</span>
+          <span className="text-body font-semibold">Polymath</span>
         </span>
         <Link
           href="/polymath"
@@ -92,25 +84,27 @@ export default function LandingPage({
           </h1>
 
           <p className="mt-8 max-w-xl text-lg leading-relaxed text-muted-foreground">
-            Polymath turns everything entering your world — mail, files, pages,
-            ideas — into an ordered, trustworthy plan.
+            Polymath turns everything entering your world — mail, files, pages, ideas — into an ordered, trustworthy
+            plan.
           </p>
 
           <div className="mt-10 flex flex-wrap items-center gap-3">
             <Link
               href="/sign-up"
-              className="rounded-lg bg-primary px-6 py-3 text-[15px] font-medium text-primary-foreground transition-opacity hover:opacity-90"
+              className="rounded-lg bg-primary px-6 py-3 text-body font-medium text-primary-foreground transition-opacity hover:opacity-90"
             >
               Get early access
             </Link>
-            <Suspense fallback={
-              <Link
-                href="/sign-in"
-                className="rounded-lg border border-border bg-card px-6 py-3 text-[15px] font-medium transition-colors hover:bg-muted"
-              >
-                Sign in
-              </Link>
-            }>
+            <Suspense
+              fallback={
+                <Link
+                  href="/sign-in"
+                  className="rounded-lg border border-border bg-card px-6 py-3 text-body font-medium transition-colors hover:bg-muted"
+                >
+                  Sign in
+                </Link>
+              }
+            >
               <SignInLink searchParams={searchParams} />
             </Suspense>
           </div>
@@ -119,9 +113,12 @@ export default function LandingPage({
         <section aria-label="What Polymath is" className="pb-24">
           <div className="panel grid overflow-hidden rounded-2xl sm:grid-cols-3">
             {features.map(({ n, title, body }) => (
-              <article key={n} className="flex flex-col gap-3 border-border p-6 max-sm:border-b sm:max-[640px]:border-b sm:[&:not(:first-child)]:border-l max-sm:[&:not(:first-child)]:border-t">
-                <span className="text-muted-foreground text-[13px]">{n}</span>
-                <h2 className="text-[17px] font-semibold">{title}</h2>
+              <article
+                key={n}
+                className="flex flex-col gap-3 border-border p-6 max-sm:border-b sm:max-[640px]:border-b sm:[&:not(:first-child)]:border-l max-sm:[&:not(:first-child)]:border-t"
+              >
+                <span className="text-muted-foreground text-body-dense">{n}</span>
+                <h2 className="text-title font-semibold">{title}</h2>
                 <p className="text-sm leading-relaxed text-muted-foreground">{body}</p>
               </article>
             ))}

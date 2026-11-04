@@ -124,19 +124,19 @@ export function LiveSession({
     <section className="panel min-w-0 rounded-xl p-4">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="text-[13px] font-medium">{session.subject ?? session.taskTitle ?? "Focus session"}</h2>
+          <h2 className="text-body-dense font-medium">{session.subject ?? session.taskTitle ?? "Focus session"}</h2>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
             {tierLabels[session.strictness]} focus
             {session.plannedMinutes != null ? ` · planned ${session.plannedMinutes} min` : ""}
             {session.state === "paused" ? " · paused" : over ? " · past the planned interval" : ""}
           </p>
         </div>
-        <span className="inline-flex min-h-6 items-center rounded-sm border border-border bg-muted/60 px-2 text-[11px] font-medium">
+        <span className="inline-flex min-h-6 items-center rounded-sm border border-border bg-muted/60 px-2 text-data font-medium">
           {tierLabels[session.strictness]}
         </span>
       </div>
       {handoff ? (
-        <p className="mb-3 border-b border-border pb-3 text-[13px] text-muted-foreground">
+        <p className="mb-3 border-b border-border pb-3 text-body-dense text-muted-foreground">
           Last time: {handoff.nextStep}
         </p>
       ) : null}
@@ -197,7 +197,7 @@ export function LiveSession({
           )}
           {requestedAt ? (
             <div className="w-full rounded-lg border border-dashed border-border p-3">
-              <p className="text-[13px] font-medium">Abandon requested</p>
+              <p className="text-body-dense font-medium">Abandon requested</p>
               <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
                 Nothing is lost while the door is open - the timer keeps running. The state is in Postgres, not a modal,
                 so closing this tab changes nothing.
@@ -222,7 +222,7 @@ export function LiveSession({
           )}
         </div>
         {error ? (
-          <p className="text-destructive text-[13px]" role="alert">
+          <p className="text-destructive text-body-dense" role="alert">
             {error}
           </p>
         ) : null}

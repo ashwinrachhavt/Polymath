@@ -38,13 +38,18 @@ export async function NeonBoard({ raw = {} }: { raw?: RawSearchParams }) {
   return (
     <div className="p-4 md:p-6">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
-        <h1 className="text-[15px] font-medium">Board</h1>
+        <h1 className="text-body font-medium">Board</h1>
       </div>
       <div className="mb-4">
         <ListToolbar
           searchPlaceholder="Search tasks"
           filters={[
-            { key: "priority", label: "Priority", allLabel: "Any priority", options: WORK_PRIORITIES.map((v) => ({ value: v, label: v[0]!.toUpperCase() + v.slice(1) })) },
+            {
+              key: "priority",
+              label: "Priority",
+              allLabel: "Any priority",
+              options: WORK_PRIORITIES.map((v) => ({ value: v, label: v[0]!.toUpperCase() + v.slice(1) })),
+            },
           ]}
           total={filtered ? cards.length : undefined}
           noun={cards.length === 1 ? "task" : "tasks"}

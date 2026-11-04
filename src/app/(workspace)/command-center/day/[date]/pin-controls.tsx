@@ -55,7 +55,7 @@ export function PinControls({
       <select
         value={artifactId}
         onChange={(event) => setArtifactId(event.target.value)}
-        className="text-[13px] rounded-md border border-border bg-transparent px-2 py-1"
+        className="text-body-dense rounded-md border border-border bg-transparent px-2 py-1"
         aria-label="Pin a record to this day"
       >
         <option value="">Pin a record…</option>
@@ -72,7 +72,7 @@ export function PinControls({
           if (!artifactId) return;
           pin(artifactId);
         }}
-        className="text-[13px] rounded-md border border-border px-2 py-1 disabled:opacity-50"
+        className="text-body-dense rounded-md border border-border px-2 py-1 disabled:opacity-50"
       >
         {pending ? "Pinning…" : "Pin"}
       </button>

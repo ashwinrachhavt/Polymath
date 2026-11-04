@@ -64,9 +64,11 @@ export function AddSources({ projectId, vault }: { projectId: string; vault: Vau
           headers: { "Idempotency-Key": crypto.randomUUID() },
           body,
         });
-        const payload = (await response.json().catch(() => null)) as
-          | { documentId?: string; fileStatus?: string; title?: string }
-          | null;
+        const payload = (await response.json().catch(() => null)) as {
+          documentId?: string;
+          fileStatus?: string;
+          title?: string;
+        } | null;
         // Quarantine must be checked before the documentId test: a quarantined
         // file answers 200 with a fileId and no documentId, so the generic
         // upload-failed branch would otherwise swallow the specific reason.
@@ -123,7 +125,7 @@ export function AddSources({ projectId, vault }: { projectId: string; vault: Vau
       >
         <Input
           aria-label="Add a URL or YouTube link"
-          className="h-8 min-w-0 flex-1 text-[13px]"
+          className="h-8 min-w-0 flex-1 text-body-dense"
           placeholder="https:// or a YouTube link"
           value={url}
           onChange={(event) => setUrl(event.target.value)}
@@ -167,7 +169,7 @@ export function AddSources({ projectId, vault }: { projectId: string; vault: Vau
         >
           <select
             aria-label="Pick a document from the Vault"
-            className="border-input bg-background h-8 min-w-0 flex-1 rounded-md border px-2 text-[13px]"
+            className="border-input bg-background h-8 min-w-0 flex-1 rounded-md border px-2 text-body-dense"
             value={picked}
             onChange={(event) => setPicked(event.target.value)}
           >
@@ -178,7 +180,13 @@ export function AddSources({ projectId, vault }: { projectId: string; vault: Vau
               </option>
             ))}
           </select>
-          <Button type="submit" size="sm" variant="outline" disabled={addingVault || !picked} aria-label="Add the picked document">
+          <Button
+            type="submit"
+            size="sm"
+            variant="outline"
+            disabled={addingVault || !picked}
+            aria-label="Add the picked document"
+          >
             {addingVault ? <Loader2 aria-hidden className="animate-spin" /> : <Plus aria-hidden />}
           </Button>
         </form>
