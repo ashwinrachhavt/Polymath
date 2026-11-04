@@ -219,7 +219,9 @@ export function ChatSurface({
   // they had scrolled up to reread something.
   const forceScrollRef = useRef(false);
   const chat = useChatStream(runId, { onCitation, ...(initial?.length ? { initial: { blocks: initial } } : {}) });
-  const busy = chat.connection === "connecting" || chat.connection === "streaming";
+  // A reconnect pause keeps the run's blocks streaming — a pause, not a loss.
+  const busy =
+    chat.connection === "connecting" || chat.connection === "streaming" || chat.connection === "reconnecting";
   /*
    * The stage chip: the run's own stage facts first (the same failed report
    * the Supervision panel classifies), the transport state only as the live

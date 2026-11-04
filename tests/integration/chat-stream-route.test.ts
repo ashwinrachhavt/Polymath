@@ -159,18 +159,20 @@ suite("chat stream route (real Postgres)", () => {
     expect(calls[0].url).toContain("/eve/v1/session/wrun_abc/stream?startIndex=4");
     expect((calls[0].init.headers as Record<string, string>).accept).toBe("application/x-ndjson");
 
-    expect(out.map((frame) => frame.type)).toEqual(["message", "delta", "block", "end"]);
-    expect(out[0]).toMatchObject({ type: "message", role: "user", text: "How much is my rent?", cursor: 4 });
-    expect(out[1]).toMatchObject({ type: "delta", blockId: "assistant:t1:0", text: "Rent is ", cursor: 5 });
+    expect(out.map((frame) => frame.type)).toEqual(["run", "message", "delta", "block", "end"]);
+    // Every connection opens with the run's own durable stage facts.
+    expect(out[0]).toMatchObject({ type: "run", runId, state: "running", lastTurnFailed: false });
+    expect(out[1]).toMatchObject({ type: "message", role: "user", text: "How much is my rent?", cursor: 4 });
+    expect(out[2]).toMatchObject({ type: "delta", blockId: "assistant:t1:0", text: "Rent is ", cursor: 5 });
     // The completed block is authoritative and carries the finish reason.
-    expect(out[2]).toMatchObject({
+    expect(out[3]).toMatchObject({
       type: "block",
       blockId: "assistant:t1:0",
       text: "Rent is 2,400.",
       finishReason: "stop",
       cursor: 6,
     });
-    expect(out[3]).toMatchObject({ type: "end", state: "succeeded", cursor: 7 });
+    expect(out[4]).toMatchObject({ type: "end", state: "succeeded", cursor: 7 });
     // No frame after the terminal event: the client would otherwise reconnect.
     expect(out.some((frame) => frame.type === "delta" && (frame as { text: string }).text === "leak")).toBe(false);
 
@@ -197,8 +199,8 @@ suite("chat stream route (real Postgres)", () => {
       ),
     );
     const split = await frames(await streamOf(splitRun));
-    expect(split).toHaveLength(1);
-    expect(split[0]).toMatchObject({ type: "delta", text: "split text" });
+    expect(split).toHaveLength(2);
+    expect(split[1]).toMatchObject({ type: "delta", text: "split text" });
   });
 
   it("turns a missing session and a failing upstream into frames, not transport errors", async () => {
@@ -206,10 +208,11 @@ suite("chat stream route (real Postgres)", () => {
     // the chat, and a cancelled run must not be reported as succeeded.
     const noSession = await makeRun(a.workspaceId, "cancelled", null);
     const first = await frames(await streamOf(noSession));
-    expect(first).toHaveLength(2);
-    expect(first[0]).toMatchObject({ type: "error", code: "stream_unavailable" });
-    expect(first[0]).toMatchObject({ message: expect.stringContaining("no agent session") });
-    expect(first[1]).toMatchObject({ type: "end", state: "cancelled" });
+    expect(first).toHaveLength(3);
+    expect(first[0]).toMatchObject({ type: "run", state: "cancelled" });
+    expect(first[1]).toMatchObject({ type: "error", code: "stream_unavailable" });
+    expect(first[1]).toMatchObject({ message: expect.stringContaining("no agent session") });
+    expect(first[2]).toMatchObject({ type: "end", state: "cancelled" });
 
     // Eve answers non-2xx (a stranded session answers 409): still a frame.
     const live = await makeRun(a.workspaceId, "running", "wrun_down");
@@ -218,8 +221,9 @@ suite("chat stream route (real Postgres)", () => {
       vi.fn(async () => new Response("nope", { status: 500 })),
     );
     const second = await frames(await streamOf(live));
-    expect(second).toHaveLength(1);
-    expect(second[0]).toMatchObject({
+    expect(second).toHaveLength(2);
+    expect(second[0]).toMatchObject({ type: "run", state: "running" });
+    expect(second[1]).toMatchObject({
       type: "error",
       code: "stream_unavailable",
       message: expect.stringContaining("500"),
@@ -234,8 +238,11 @@ suite("chat stream route (real Postgres)", () => {
       }),
     );
     const thirdLive = await frames(await streamOf(live));
-    expect(thirdLive).toHaveLength(1);
-    expect(thirdLive[0]).toMatchObject({
+    expect(thirdLive).toHaveLength(2);
+    // The run frame rides the error path too: a reconnect over an unreachable
+    // bridge still opens with what the rows know.
+    expect(thirdLive[0]).toMatchObject({ type: "run", state: "running" });
+    expect(thirdLive[1]).toMatchObject({
       type: "error",
       code: "stream_unavailable",
       message: expect.stringContaining("unreachable"),
@@ -253,8 +260,8 @@ suite("chat stream route (real Postgres)", () => {
       }),
     );
     const third = await frames(await streamOf(done));
-    expect(third.map((frame) => frame.type)).toEqual(["error", "end"]);
-    expect(third[1]).toMatchObject({ type: "end", state: "succeeded" });
+    expect(third.map((frame) => frame.type)).toEqual(["run", "error", "end"]);
+    expect(third[2]).toMatchObject({ type: "end", state: "succeeded" });
     // A finished run is read to its durable tail, never followed: `follow=false`
     // is what keeps the proxy from holding a connection open on a done run.
     expect(replayUrls[0]).toContain("follow=false");
@@ -292,26 +299,26 @@ suite("chat stream route (real Postgres)", () => {
     ]);
 
     const out = await frames(await streamOf(runId));
-    expect(out.map((frame) => frame.type)).toEqual(["block", "block", "end"]);
+    expect(out.map((frame) => frame.type)).toEqual(["run", "block", "block", "end"]);
     // The block ids match what threadBlocks derives from the stored side, so a
     // replay replaces the SSR blocks instead of duplicating them.
-    expect(out[0]).toMatchObject({
+    expect(out[1]).toMatchObject({
       type: "block",
       blockId: "assistant:superagent:a:0",
       text: "Ask the owner for the lease.",
     });
-    expect(out[1]).toMatchObject({
+    expect(out[2]).toMatchObject({
       type: "block",
       blockId: "assistant:superagent:b:1",
       text: "Nothing covers this yet.",
     });
-    expect(out[2]).toMatchObject({ type: "end", state: "succeeded", cursor: 3 });
+    expect(out[3]).toMatchObject({ type: "end", state: "succeeded", cursor: 3 });
     expect(out.some((frame) => frame.type === "error")).toBe(false);
 
     // A resume from the applied cursor folds only the newer rows.
     const resume = await frames(await streamOf(runId, 2));
-    expect(resume.map((frame) => frame.type)).toEqual(["block", "end"]);
-    expect(resume[0]).toMatchObject({ blockId: "assistant:superagent:b:1", cursor: 3 });
+    expect(resume.map((frame) => frame.type)).toEqual(["run", "block", "end"]);
+    expect(resume[1]).toMatchObject({ blockId: "assistant:superagent:b:1", cursor: 3 });
   });
 
   it("follows a live machinery run by polling its rows and ends at the real terminal state", async () => {
@@ -341,9 +348,9 @@ suite("chat stream route (real Postgres)", () => {
 
     try {
       const out = await frames(await streamOf(runId));
-      expect(out.map((frame) => frame.type)).toEqual(["block", "block", "end"]);
+      expect(out.map((frame) => frame.type)).toEqual(["run", "block", "block", "end"]);
       expect(out.some((frame) => frame.type === "error")).toBe(false);
-      expect(out[2]).toMatchObject({ type: "end", state: "succeeded" });
+      expect(out[3]).toMatchObject({ type: "end", state: "succeeded" });
     } finally {
       clearTimeout(engineFinishes);
     }
@@ -376,14 +383,120 @@ suite("chat stream route (real Postgres)", () => {
         const { done, value } = await reader.read();
         if (done) break;
         got += new TextDecoder().decode(value);
-        if (got.length > 0) break;
       }
     } catch {
-      // Cancelled by the bail timer — silence is the assertion.
+      // Cancelled by the bail timer — the stream held silently past the head.
     } finally {
       clearTimeout(bail);
     }
-    expect(got).toBe("");
+    // The head carries the run's durable stage facts; nothing follows it — no
+    // error frame ends the wait. (The first cut of the replay guard errored
+    // here — "This run has no agent session." — and told the surface the
+    // conversation had ended before the machinery could answer.)
+    const out = got
+      .split("\n")
+      .map((line) => decodeFrame(line))
+      .filter((frame): frame is NonNullable<typeof frame> => frame !== null);
+    expect(out.map((frame) => frame.type)).toEqual(["run"]);
+    expect(out[0]).toMatchObject({ state: "running", lastTurnFailed: false });
+  });
+
+  it("opens every connection with the run's durable failure facts, dead bridge included", async () => {
+    // The facts a chip needs are the rows': a failed run row, and whether the
+    // run's newest turn boundary is a failure — a newer human message or turn
+    // supersedes an older failure, the supervision panel's rule.
+    const failed = await makeRun(a.workspaceId, "failed", null);
+    await holder.db!.insert(runEvents).values([
+      {
+        workspaceId: a.workspaceId,
+        runId: failed,
+        sequence: 1,
+        type: "message",
+        data: { role: "user", content: "How much is my rent?" },
+      },
+      {
+        workspaceId: a.workspaceId,
+        runId: failed,
+        sequence: 2,
+        type: "turn.failed",
+        data: { reason: "The bridge died mid-turn." },
+      },
+    ]);
+    const out = await frames(await streamOf(failed));
+    expect(out[0]).toMatchObject({ type: "run", state: "failed", lastTurnFailed: true });
+
+    // The person spoke again after the failure: the newest boundary supersedes it.
+    const superseded = await makeRun(a.workspaceId, "failed", null);
+    await holder.db!.insert(runEvents).values([
+      {
+        workspaceId: a.workspaceId,
+        runId: superseded,
+        sequence: 1,
+        type: "message",
+        data: { role: "user", content: "Try again." },
+      },
+      {
+        workspaceId: a.workspaceId,
+        runId: superseded,
+        sequence: 2,
+        type: "turn.failed",
+        data: {},
+      },
+      {
+        workspaceId: a.workspaceId,
+        runId: superseded,
+        sequence: 3,
+        type: "message",
+        data: { role: "user", content: "How about now?" },
+      },
+    ]);
+    const again = await frames(await streamOf(superseded));
+    expect(again[0]).toMatchObject({ type: "run", state: "failed", lastTurnFailed: false });
+
+    // The bridge dialect (machinery runs) writes the person's turn as
+    // `message.received` rather than a bare `message`; it supersedes the same
+    // way — one run's frame fact, two writers.
+    const echoed = await makeRun(a.workspaceId, "failed", null);
+    await holder.db!.insert(runEvents).values([
+      {
+        workspaceId: a.workspaceId,
+        runId: echoed,
+        sequence: 1,
+        type: "turn.failed",
+        data: {},
+      },
+      {
+        workspaceId: a.workspaceId,
+        runId: echoed,
+        sequence: 2,
+        type: "message.received",
+        data: { message: "Try again." },
+      },
+    ]);
+    const echoedFrames = await frames(await streamOf(echoed));
+    expect(echoedFrames[0]).toMatchObject({ type: "run", state: "failed", lastTurnFailed: false });
+
+    // A live run whose bridge is unreachable still opens with the facts — the
+    // reconnect must not retry blind.
+    const live = await makeRun(a.workspaceId, "running", "wrun_dark");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new TypeError("fetch failed");
+      }),
+    );
+    const dark = await frames(await streamOf(live));
+    expect(dark.map((frame) => frame.type)).toEqual(["run", "error"]);
+    expect(dark[0]).toMatchObject({ type: "run", state: "running", lastTurnFailed: false });
+
+    // A finished run over a dead bridge still settles: the row's terminal
+    // state rides the end frame, so the surface pins the failure instead of
+    // reconnecting forever against a bridge that will never answer.
+    const finishedDark = await makeRun(a.workspaceId, "failed", "wrun_gone");
+    const settled = await frames(await streamOf(finishedDark));
+    expect(settled.map((frame) => frame.type)).toEqual(["run", "error", "end"]);
+    expect(settled[0]).toMatchObject({ type: "run", state: "failed", lastTurnFailed: false });
+    expect(settled[2]).toMatchObject({ type: "end", state: "failed" });
   });
 
   it("answers 404 for a foreign or malformed run and 503 without a bridge secret, without calling Eve", async () => {
