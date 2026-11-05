@@ -104,6 +104,12 @@ export const DEFAULT_ALLOWED_TOOLS = [
   // never silent idea writes. Same prepare-risk class as tasks.create: the
   // owner's accept is the only path that creates an idea artifact.
   "zettels.propose",
+  // Diagram agent (spec art_Yi8Fwsqn): generates or refines a diagram from
+  // LLM-authored Mermaid and persists it immediately as a versioned canvas +
+  // diagram artifact — locked decision 3's deliberate no-review-queue
+  // exception, reversible through version history. Without a row here the
+  // tool is a dead 403 on every call.
+  "diagram.create",
   // Composio Instant tools (spec #316): derived capability names from the
   // generated catalog, granted to default profiles for the same reason as the
   // generic reads above. Regenerate with: pnpm exec tsx scripts/sync-instant-catalog.ts

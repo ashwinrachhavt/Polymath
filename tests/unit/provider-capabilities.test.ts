@@ -165,6 +165,10 @@ const NATIVE_TOOLS = [
   // Task 24: proposes review-queue zettel ideas from run material; the
   // implementation lives in this repo, so no catalog row.
   "zettels.propose",
+  // Diagram agent (spec art_Yi8Fwsqn): generates or refines diagrams from
+  // LLM-authored Mermaid and persists them in-workspace; implemented here,
+  // so no catalog row.
+  "diagram.create",
   // ASH-283: Notion writes are proposal-only capabilities with a local
   // executor in the actions domain, not gateway-toolkit capabilities.
   "notion.page.append",

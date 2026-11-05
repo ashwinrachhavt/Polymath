@@ -167,6 +167,18 @@ export const TOOL_OPERATION_REGISTRY: Record<string, ToolOperationSpec> = {
     note: "Persists zettel proposals in the review queue; never creates idea artifacts.",
   },
   /*
+   * The diagram tool (spec art_Yi8Fwsqn, locked decision 3) is the deliberate
+   * no-review-queue exception: it persists a versioned canvas + diagram
+   * artifact straight into the workspace, so prepare would misstate it. The
+   * honest authority is document.create - an internal knowledge write, local
+   * only, never an external call - and version history is its reversibility.
+   */
+  "diagram.create": {
+    capability: "document.create",
+    effectClass: "internal_write",
+    note: "Persists a guarded Mermaid source as a versioned canvas + diagram artifact in the workspace; no external calls.",
+  },
+  /*
    * ASH-282: proposing a calendar move persists a review card, so this is an
    * internal write under action.prepare. Approval moves the local event only;
    * Google-sourced events are advice-only and never written back.
