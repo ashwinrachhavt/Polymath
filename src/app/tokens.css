@@ -1,6 +1,6 @@
 /* Hallmark · Furrow tokens · redesign: polish · shape: app screen · posture: restrained · hero: none · theme: Furrow (by request) */
 
-.dark {
+.dark:root {
   color-scheme: dark;
   /* Furrow night: the same hue bands re-derived (paper L 14%, ink L 93%,
      accent chroma -0.03 / L +5). The aliases above point at these roles, so
