@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import postgres from "postgres";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { makeTestDb } from "../helpers/test-workspace";
 
 /*
@@ -36,6 +36,7 @@ const RETIREMENTS = [
   "src/db/migrations/0285_drop_dead_runtime_tables.sql",
   "src/db/migrations/0286_drop_zero_use_tables.sql",
   "src/db/migrations/0269_drop_retired_tables.sql",
+  "src/db/migrations/0287_drop_zettel_proposals.sql",
 ];
 
 async function schemaSnapshot(sql: postgres.Sql): Promise<string> {

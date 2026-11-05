@@ -1,10 +1,17 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { auditEvents, blobObjects } from "@/domains/audit/schema";
-import { documents, files } from "@/domains/knowledge/schema";
+import { artifacts, claimEvidence, claims, concepts, documents, files, sources } from "@/domains/knowledge/schema";
 import type { ExtractionResult } from "@/integrations/extraction/provider";
 import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
+
+/*
+ * Direct creation honesty (real Postgres): the trigger is the acceptance, so
+ * the card that lands must already be honest — the quote verbatim in its
+ * section, the span exact, the provenance rows written, the capacity cap
+ * respected, and a second identical run skipped by the same-span gate.
+ */
 
 const handle = makeTestDb();
 const suite = handle ? describe : describe.skip;
@@ -27,14 +34,7 @@ vi.mock("@/integrations/object-store/object-store", () => ({
 }));
 
 import { extractDocument } from "@/domains/knowledge/extraction";
-import {
-  acceptZettel,
-  listZettelProposals,
-  proposeZettels,
-  rejectZettel,
-  zettelDedupeKey,
-} from "@/domains/knowledge/zettels";
-import { artifacts, claimEvidence, claims, concepts, sources, zettelProposals } from "@/domains/knowledge/schema";
+import { createZettelsFromSource, zettelDedupeKey } from "@/domains/knowledge/zettels";
 import type { ZettelExtractor } from "@/integrations/zettels/extractor";
 
 const TEXT =
@@ -95,33 +95,41 @@ async function seed(auth: { workspaceId: string; userId: string }, text = TEXT, 
   return doc;
 }
 
-suite("proposeZettels (real Postgres)", () => {
-  it("proposes title, one claim, verbatim span and document id", async () => {
+/** The card's dedupe key and verbatim span, from its metadata. */
+async function cardSpan(artifactId: string) {
+  const [card] = await holder.db!.select().from(artifacts).where(eq(artifacts.id, artifactId));
+  const meta = card.metadata as { dedupeKey?: string } | null;
+  if (!meta?.dedupeKey) throw new Error("card has no dedupeKey");
+  const [, , sourcePart, spanPart] = meta.dedupeKey.split(":");
+  const [start, end] = spanPart.split("-").map(Number);
+  return { card, key: meta.dedupeKey, sourcePart, start, end };
+}
+
+suite("createZettelsFromSource honesty (real Postgres)", () => {
+  it("creates cards with verbatim spans and document provenance", async () => {
     const auth = await workspace();
     const doc = await seed(auth);
-    const { proposals: rows } = await proposeZettels(auth, {
+    const { created } = await createZettelsFromSource(auth, {
       documentId: doc.id,
       extractor: extractor([
         { title: "Monthly rent", content: "Rent is $1,200 a month.", quote: Q1 },
         { title: "Deposit", content: "The landlord holds the deposit until move out.", quote: Q2 },
       ]),
     });
-    expect(rows).toHaveLength(2);
-    expect(rows[0]).toMatchObject({
-      documentId: doc.id,
-      title: "Monthly rent",
-      claim: "Rent is $1,200 a month.",
-      status: "proposed",
-      proposer: "fake@1",
-    });
-    expect(TEXT.slice(rows[0].spanStart, rows[0].spanEnd)).toBe(Q1);
-    expect(rows[0].dedupeKey).toBe(zettelDedupeKey("doc", doc.id, rows[0].spanStart, rows[0].spanEnd));
+    expect(created).toHaveLength(2);
+    expect(created[0]).toMatchObject({ artifactId: expect.any(String), title: "Monthly rent" });
+
+    const { card, key, sourcePart, start, end } = await cardSpan(created[0]!.artifactId);
+    expect(card.kind).toBe("zettel");
+    expect(TEXT.slice(start, end)).toBe(Q1);
+    expect(key).toBe(zettelDedupeKey("doc", doc.id, start, end));
+    expect(sourcePart).toBe(doc.id);
   });
 
   it("drops invented quotes, empty fields and short quotes", async () => {
     const auth = await workspace();
     const doc = await seed(auth);
-    const { proposals: rows } = await proposeZettels(auth, {
+    const { created } = await createZettelsFromSource(auth, {
       documentId: doc.id,
       extractor: extractor([
         { title: "Invented", content: "x", quote: "The tenant may keep a dragon in the flat." },
@@ -130,40 +138,13 @@ suite("proposeZettels (real Postgres)", () => {
         { title: "Real", content: "real", quote: Q2 },
       ]),
     });
-    expect(rows.map((r) => r.title)).toEqual(["Real"]);
+    expect(created.map((c) => c.title)).toEqual(["Real"]);
   });
 
-  it("a concurrent double-submit still creates exactly one artifact set (§11)", async () => {
+  it("keeps negation verbatim: a paraphrase that drops the 'not' never lands", async () => {
     const auth = await workspace();
     const doc = await seed(auth);
-    const {
-      proposals: [p],
-    } = await proposeZettels(auth, {
-      documentId: doc.id,
-      extractor: extractor([{ title: "Rent", content: "c", quote: Q1 }]),
-    });
-    const results = await Promise.allSettled([
-      acceptZettel(auth, { proposalId: p.id }),
-      acceptZettel(auth, { proposalId: p.id }),
-    ]);
-    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
-    expect(results.filter((r) => r.status === "rejected")).toHaveLength(1);
-    const db = holder.db!;
-    expect(
-      await db.select({ id: artifacts.id }).from(artifacts).where(eq(artifacts.workspaceId, auth.workspaceId)),
-    ).toHaveLength(1);
-    expect(
-      await db.select({ id: claims.id }).from(claims).where(eq(claims.workspaceId, auth.workspaceId)),
-    ).toHaveLength(1);
-    expect(await db.select().from(claimEvidence).where(eq(claimEvidence.workspaceId, auth.workspaceId))).toHaveLength(
-      1,
-    );
-  });
-
-  it("keeps negation verbatim: a paraphrase that drops the 'not' never lands (§11)", async () => {
-    const auth = await workspace();
-    const doc = await seed(auth);
-    const { proposals: rows } = await proposeZettels(auth, {
+    const { created } = await createZettelsFromSource(auth, {
       documentId: doc.id,
       extractor: extractor([
         { title: "Pets allowed", content: "Pets are allowed.", quote: "Pets are allowed without written consent." },
@@ -174,48 +155,35 @@ suite("proposeZettels (real Postgres)", () => {
         },
       ]),
     });
-    expect(rows.map((r) => r.title)).toEqual(["No pets"]);
-    expect(TEXT.slice(rows[0].spanStart, rows[0].spanEnd)).toBe("Pets are not allowed without written consent.");
-  });
-
-  it("re-running lands on the same rows (dedupe key) and does not revive a decision", async () => {
-    const auth = await workspace();
-    const doc = await seed(auth);
-    const ex = extractor([{ title: "Rent", content: "c", quote: Q1 }]);
-    const {
-      proposals: [first],
-    } = await proposeZettels(auth, { documentId: doc.id, extractor: ex });
-    await rejectZettel(auth, { proposalId: first.id });
-    expect((await proposeZettels(auth, { documentId: doc.id, extractor: ex })).proposals).toHaveLength(0);
-    const all = (await listZettelProposals(auth, doc.id)).proposals;
-    expect(all).toHaveLength(1);
-    expect(all[0].status).toBe("rejected");
+    expect(created.map((c) => c.title)).toEqual(["No pets"]);
+    const { start, end } = await cardSpan(created[0]!.artifactId);
+    expect(TEXT.slice(start, end)).toBe("Pets are not allowed without written consent.");
   });
 
   it("needs a succeeded extraction and a document in the caller's workspace", async () => {
     const auth = await workspace();
     const other = await workspace();
     const pending = await seed(auth, TEXT, false);
-    await expect(proposeZettels(auth, { documentId: pending.id, extractor: extractor([]) })).rejects.toThrow(
-      "no succeeded extraction",
-    );
+    await expect(
+      createZettelsFromSource(auth, { documentId: pending.id, extractor: extractor([]) }),
+    ).rejects.toThrow("no succeeded extraction");
     const doc = await seed(auth);
-    await expect(proposeZettels(other, { documentId: doc.id, extractor: extractor([]) })).rejects.toThrow(
-      "not found in workspace",
-    );
+    await expect(
+      createZettelsFromSource(other, { documentId: doc.id, extractor: extractor([]) }),
+    ).rejects.toThrow("not found in workspace");
   });
 
-  it("caps proposals per document by source size", async () => {
+  it("caps cards per document by source size", async () => {
     const auth = await workspace();
     // The per-source bound is size-derived now (capForSize): this source is
     // ~1.2k chars, so the small band caps it at 2 — the flat 20 is gone.
     const sentences = Array.from({ length: 25 }, (_, i) => `Clause number ${i} states a distinct obligation.`);
     const doc = await seed(auth, sentences.join(" "));
-    const { proposals: rows } = await proposeZettels(auth, {
+    const { created } = await createZettelsFromSource(auth, {
       documentId: doc.id,
       extractor: extractor(sentences.map((q, i) => ({ title: `T${i}`, content: "c", quote: q }))),
     });
-    expect(rows).toHaveLength(2);
+    expect(created).toHaveLength(2);
   });
 
   it("caps a medium single-section source at 5 without a merge", async () => {
@@ -229,113 +197,95 @@ suite("proposeZettels (real Postgres)", () => {
     expect(sentences.join(" ").length).toBeGreaterThan(2_000);
     expect(sentences.join(" ").length).toBeLessThanOrEqual(12_000);
     const doc = await seed(auth, sentences.join(" "));
-    const { proposals: rows } = await proposeZettels(auth, {
+    const { created } = await createZettelsFromSource(auth, {
       documentId: doc.id,
       extractor: extractor(sentences.map((q, i) => ({ title: `T${i}`, content: "c", quote: q }))),
     });
-    expect(rows).toHaveLength(5);
+    expect(created).toHaveLength(5);
   });
-});
 
-suite("accept and reject (real Postgres)", () => {
-  async function one() {
+  it("a second identical run lands on the same-span gate and creates nothing more", async () => {
     const auth = await workspace();
     const doc = await seed(auth);
-    const {
-      proposals: [p],
-    } = await proposeZettels(auth, {
+    const pass = {
       documentId: doc.id,
-      extractor: extractor([{ title: "Monthly rent", content: "Rent is $1,200 a month.", quote: Q1 }]),
-    });
-    return { auth, doc, p };
-  }
-  const counts = async (workspaceId: string) => [
-    (await holder.db!.select().from(concepts).where(eq(concepts.workspaceId, workspaceId))).length,
-    (await holder.db!.select().from(claims).where(eq(claims.workspaceId, workspaceId))).length,
-    (await holder.db!.select().from(claimEvidence).where(eq(claimEvidence.workspaceId, workspaceId))).length,
-  ];
+      extractor: extractor([{ title: "Rent", content: "c", quote: Q1 }]),
+    };
+    const first = await createZettelsFromSource(auth, pass);
+    expect(first.created).toHaveLength(1);
 
-  it("accept writes the concept and an evidence link to the exact span", async () => {
-    const { auth, doc, p } = await one();
-    const { conceptId, claimId } = await acceptZettel(auth, { proposalId: p.id });
-    const [concept] = await holder.db!.select().from(concepts).where(eq(concepts.id, conceptId));
-    expect(concept).toMatchObject({ term: "Monthly rent", definition: "Rent is $1,200 a month.", sourceQuote: Q1 });
-    const [ev] = await holder.db!.select().from(claimEvidence).where(eq(claimEvidence.claimId, claimId));
-    expect(ev).toMatchObject({
-      quote: Q1,
-      startOffset: p.spanStart,
-      endOffset: p.spanEnd,
-      extractionId: p.extractionId,
-    });
-    const [src] = await holder.db!.select().from(sources).where(eq(sources.id, ev.sourceId));
-    expect(src).toMatchObject({ kind: "document", title: "lease" });
-    const [row] = await holder.db!.select().from(zettelProposals).where(eq(zettelProposals.id, p.id));
-    expect(row).toMatchObject({ status: "accepted", conceptId, claimId, documentId: doc.id });
+    const again = await createZettelsFromSource(auth, pass);
+    expect(again.created).toEqual([]);
+    expect(again.skippedSpans).toBe(1);
+    const cards = await holder.db!.select().from(artifacts).where(eq(artifacts.workspaceId, auth.workspaceId));
+    expect(cards).toHaveLength(1);
   });
 
-  it("a second accept or a reject after accept is refused and writes nothing more", async () => {
-    const { auth, p } = await one();
-    await acceptZettel(auth, { proposalId: p.id });
-    const before = await counts(auth.workspaceId);
-    await expect(acceptZettel(auth, { proposalId: p.id })).rejects.toThrow("already decided");
-    await expect(rejectZettel(auth, { proposalId: p.id })).rejects.toThrow("already decided");
-    expect(await counts(auth.workspaceId)).toEqual(before);
-  });
-
-  it("reject writes nothing: no concept, claim, evidence or source", async () => {
-    const { auth, p } = await one();
-    await rejectZettel(auth, { proposalId: p.id });
-    expect(await counts(auth.workspaceId)).toEqual([0, 0, 0]);
-    expect((await holder.db!.select().from(sources).where(eq(sources.workspaceId, auth.workspaceId))).length).toBe(0);
-    await expect(acceptZettel(auth, { proposalId: p.id })).rejects.toThrow("already decided");
-  });
-
-  it("decisions are audited: accept and reject each leave one row", async () => {
-    const { auth, p } = await one();
-    await acceptZettel(auth, { proposalId: p.id });
-    // Accepting is card creation now: the audit row's subject is the card the
-    // proposal became, and the action is zettel.created.
-    const [accepted] = await holder.db!.select().from(zettelProposals).where(eq(zettelProposals.id, p.id));
-    const acceptAudits = await holder
-      .db!.select()
-      .from(auditEvents)
-      .where(eq(auditEvents.subjectId, accepted.artifactId!));
-    expect(acceptAudits.map((r) => r.action)).toEqual(["zettel.created"]);
-    expect(acceptAudits[0]!.summary).toBe('Created zettel "Monthly rent"');
-
-    const second = await one();
-    await rejectZettel(second.auth, { proposalId: second.p.id });
-    const rejected = await holder
-      .db!.select()
-      .from(auditEvents)
-      .where(eq(auditEvents.subjectId, second.p.id));
-    // No proposal wording in the reject row: the declined title is model
-    // output the owner rejected, not workspace-shared content.
-    expect(rejected.map((r) => r.action)).toEqual(["zettel.rejected"]);
-    expect(rejected[0]!.summary).toBe("Rejected zettel proposal");
-  });
-
-  it("another workspace cannot decide it", async () => {
-    const { p } = await one();
-    const other = await workspace();
-    await expect(acceptZettel(other, { proposalId: p.id })).rejects.toThrow("not found");
-    await expect(rejectZettel(other, { proposalId: p.id })).rejects.toThrow("not found");
-  });
-
-  it("two accepts with the same term reuse the concept", async () => {
+  it("two sources with the same term reuse the concept", async () => {
     const auth = await workspace();
     const d1 = await seed(auth);
     const d2 = await seed(auth);
-    const mk = async (id: string) =>
-      (
-        await proposeZettels(auth, {
-          documentId: id,
-          extractor: extractor([{ title: "Monthly rent", content: "c", quote: Q1 }]),
-        })
-      ).proposals[0];
-    const a = await acceptZettel(auth, { proposalId: (await mk(d1.id)).id });
-    const b = await acceptZettel(auth, { proposalId: (await mk(d2.id)).id });
-    expect(b.conceptId).toBe(a.conceptId);
-    expect((await counts(auth.workspaceId))[1]).toBe(2);
+    const mk = (id: string) =>
+      createZettelsFromSource(auth, {
+        documentId: id,
+        extractor: extractor([{ title: "Monthly rent", content: "c", quote: Q1 }]),
+      });
+    const first = await mk(d1.id);
+    const second = await mk(d2.id);
+
+    const [claimA] = await holder
+      .db!.select()
+      .from(claims)
+      .where(eq(claims.artifactId, first.created[0]!.artifactId));
+    const [claimB] = await holder
+      .db!.select()
+      .from(claims)
+      .where(eq(claims.artifactId, second.created[0]!.artifactId));
+    // Concept reuse is keyed by (workspace, term, sense): both cards share it.
+    expect(claimB.id).not.toBe(claimA.id);
+    expect((await holder.db!.select().from(concepts).where(eq(concepts.workspaceId, auth.workspaceId))).length).toBe(1);
+    expect((await holder.db!.select().from(claims).where(eq(claims.workspaceId, auth.workspaceId))).length).toBe(2);
+  });
+
+  it("the evidence row pins the exact span in the extraction", async () => {
+    const auth = await workspace();
+    const doc = await seed(auth);
+    const { created } = await createZettelsFromSource(auth, {
+      documentId: doc.id,
+      extractor: extractor([{ title: "Monthly rent", content: "Rent is $1,200 a month.", quote: Q1 }]),
+    });
+
+    const [claim] = await holder
+      .db!.select()
+      .from(claims)
+      .where(eq(claims.artifactId, created[0]!.artifactId));
+    const [concept] = await holder
+      .db!.select()
+      .from(concepts)
+      .where(and(eq(concepts.workspaceId, auth.workspaceId), eq(concepts.term, "Monthly rent")));
+    expect(concept).toMatchObject({ term: "Monthly rent", definition: "Rent is $1,200 a month.", sourceQuote: Q1 });
+    const [ev] = await holder.db!.select().from(claimEvidence).where(eq(claimEvidence.claimId, claim.id));
+    expect(ev.quote).toBe(Q1);
+    const { start, end } = await cardSpan(created[0]!.artifactId);
+    expect(ev.startOffset).toBe(start);
+    expect(ev.endOffset).toBe(end);
+    const [src] = await holder.db!.select().from(sources).where(eq(sources.id, ev.sourceId));
+    expect(src).toMatchObject({ kind: "document", title: "lease" });
+  });
+
+  it("creation is audited: one zettel.created row naming the card", async () => {
+    const auth = await workspace();
+    const doc = await seed(auth);
+    const { created } = await createZettelsFromSource(auth, {
+      documentId: doc.id,
+      extractor: extractor([{ title: "Monthly rent", content: "Rent is $1,200 a month.", quote: Q1 }]),
+    });
+
+    const audits = await holder
+      .db!.select()
+      .from(auditEvents)
+      .where(eq(auditEvents.subjectId, created[0]!.artifactId));
+    expect(audits.map((r) => r.action)).toEqual(["zettel.created"]);
+    expect(audits[0]!.summary).toBe('Created zettel "Monthly rent"');
   });
 });

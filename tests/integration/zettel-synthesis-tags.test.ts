@@ -8,14 +8,18 @@ import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace"
  * The mix carries its parents with it: a synthesis zettel inherits the union
  * of its parents' tags (normalized — lowercase-deduped, capped at 12), and
  * after the commit the new card joins the semantic graph best-effort, the way
- * acceptZettel does. An embedding failure must never fail a mix that
- * succeeded; the idempotency receipt must survive the extension untouched.
+ * createZettelsFromSource does. An embedding failure must never fail a mix
+ * that succeeded; the idempotency receipt must survive the extension untouched.
  */
 
 const handle = makeTestDb();
 const suite = handle ? describe : describe.skip;
 const holder: { db: ReturnType<typeof drizzle> | undefined } = { db: undefined };
-vi.mock("@/lib/db", () => ({ get db() { return holder.db; } }));
+vi.mock("@/lib/db", () => ({
+  get db() {
+    return holder.db;
+  },
+}));
 vi.mock("@/lib/db-transaction", () => ({
   get withTransaction() {
     return (fn: Parameters<typeof import("@/lib/db-transaction").withTransaction>[0]) =>
@@ -58,9 +62,16 @@ type OwnerAuth = ReturnType<typeof ownerAuth>;
 
 /** A linkable note card carrying tags, seeded straight into the artifact store. */
 async function seedTaggedCard(auth: OwnerAuth, title: string, tags: string[]) {
-  const [card] = await holder.db!
-    .insert(artifacts)
-    .values({ workspaceId: auth.workspaceId, kind: "note", title, tags, createdBy: auth.userId, updatedBy: auth.userId })
+  const [card] = await holder
+    .db!.insert(artifacts)
+    .values({
+      workspaceId: auth.workspaceId,
+      kind: "note",
+      title,
+      tags,
+      createdBy: auth.userId,
+      updatedBy: auth.userId,
+    })
     .returning({ id: artifacts.id });
   return card.id;
 }
@@ -107,16 +118,28 @@ suite("synthesizeZettel carries its parents' tags (real Postgres)", () => {
     const replay = await synthesizeZettel(auth, input);
 
     expect(replay).toEqual(first);
-    const edges = await holder.db!
-      .select()
+    const edges = await holder
+      .db!.select()
       .from(artifactLinks)
-      .where(and(eq(artifactLinks.workspaceId, auth.workspaceId), eq(artifactLinks.artifactId, first.id), eq(artifactLinks.linkType, "source")));
+      .where(
+        and(
+          eq(artifactLinks.workspaceId, auth.workspaceId),
+          eq(artifactLinks.artifactId, first.id),
+          eq(artifactLinks.linkType, "source"),
+        ),
+      );
     expect(edges).toHaveLength(2);
     expect(edges.map((e) => e.targetId).sort()).toEqual([a, b].sort());
-    const cards = await holder.db!
-      .select({ id: artifacts.id })
+    const cards = await holder
+      .db!.select({ id: artifacts.id })
       .from(artifacts)
-      .where(and(eq(artifacts.workspaceId, auth.workspaceId), eq(artifacts.kind, "zettel"), inArray(artifacts.id, [first.id])));
+      .where(
+        and(
+          eq(artifacts.workspaceId, auth.workspaceId),
+          eq(artifacts.kind, "zettel"),
+          inArray(artifacts.id, [first.id]),
+        ),
+      );
     expect(cards).toHaveLength(1);
   });
 

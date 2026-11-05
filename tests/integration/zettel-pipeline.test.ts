@@ -90,7 +90,7 @@ suite("the zettelization pipeline (real Postgres)", () => {
     const sectionTwoPassage = "Rent is due on the first of each month.";
     const text = `## Section 1\nA first section about the porch, with no rent in it.\n\n## Section 2\n${sectionTwoPassage}`;
     const { auth, artifactId } = await seedTextArtifact("reach", text);
-    const { proposeZettels } = await import("@/domains/knowledge/zettels");
+    const { createZettelsFromSource } = await import("@/domains/knowledge/zettels");
 
     // Section 1's candidate reaches across the document for a passage only
     // section 2 contains. Evidence is per-section, so it must be dropped
@@ -100,8 +100,8 @@ suite("the zettelization pipeline (real Postgres)", () => {
       extract: async (section: string) =>
         section.includes("Section 1") ? [{ title: "Reach", content: "A claim", quote: sectionTwoPassage }] : [],
     };
-    const { proposals } = await proposeZettels(auth, { sourceArtifactId: artifactId, extractor });
-    expect(proposals).toEqual([]);
+    const { created } = await createZettelsFromSource(auth, { sourceArtifactId: artifactId, extractor });
+    expect(created).toEqual([]);
   });
 
   it("reads every section of a 30,000-character document", async () => {
@@ -117,8 +117,8 @@ suite("the zettelization pipeline (real Postgres)", () => {
         return [] as never[];
       },
     };
-    const { proposeZettels } = await import("@/domains/knowledge/zettels");
-    const result = await proposeZettels(auth, { documentId, extractor });
+    const { createZettelsFromSource } = await import("@/domains/knowledge/zettels");
+    const result = await createZettelsFromSource(auth, { documentId, extractor });
 
     expect(seen.length).toBeGreaterThan(1);
     expect(seen.join("")).not.toContain("…"); // nothing sliced by the extractor's cap
@@ -134,8 +134,8 @@ suite("the zettelization pipeline (real Postgres)", () => {
     const text = Array.from({ length: 25 }, (_, i) => `## Section ${i}\n\n${"Body text. ".repeat(300)}\n`).join("\n");
     const { auth, documentId } = await seedDocument("over", text);
     const extractor = { name: "fake", extract: async () => [] as never[] };
-    const { proposeZettels } = await import("@/domains/knowledge/zettels");
-    const result = await proposeZettels(auth, { documentId, extractor });
+    const { createZettelsFromSource } = await import("@/domains/knowledge/zettels");
+    const result = await createZettelsFromSource(auth, { documentId, extractor });
 
     expect(result.unreadChars).toBeGreaterThan(0);
     expect(result.unreadSections).toBe(13);
@@ -152,10 +152,10 @@ suite("the zettelization pipeline (real Postgres)", () => {
         { title: "Invented", content: "A claim", quote: "this sentence is not in the document anywhere at all" },
       ],
     };
-    const { proposeZettels } = await import("@/domains/knowledge/zettels");
-    const { proposals, readChars } = await proposeZettels(auth, { documentId, extractor });
+    const { createZettelsFromSource } = await import("@/domains/knowledge/zettels");
+    const { created, readChars } = await createZettelsFromSource(auth, { documentId, extractor });
 
-    expect(proposals.map((p) => p.title)).toEqual(["Real"]);
+    expect(created.map((c) => c.title)).toEqual(["Real"]);
     expect(readChars).toBe(text.length);
   });
 });
