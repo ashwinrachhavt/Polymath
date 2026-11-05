@@ -17,6 +17,7 @@ import { selfMembership } from "@/domains/identity/members";
 import { actionError } from "@/lib/action-error";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
+import type { Result } from "@/lib/result";
 import type { AuthContext } from "@/domains/identity/resolve";
 
 /*
@@ -24,8 +25,6 @@ import type { AuthContext } from "@/domains/identity/resolve";
  * caller sends only the keys it owns plus the version it rendered, and the
  * domain compare-and-sets. A viewer can read preferences but not move them.
  */
-
-type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
 // Invitations are admin+ (ASH-121). The domain re-checks; this action-layer
 // guard keeps the authorization legible where the action sweep looks.

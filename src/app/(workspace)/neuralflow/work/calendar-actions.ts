@@ -21,8 +21,8 @@ import { ProposalConflictError, ProposalNotFoundError, StaleRevisionError } from
 import { createEvent } from "@/domains/calendar/commands";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
+import { bindGuarded } from "@/lib/result";
 
-type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 const known = [
   EventNotFoundError,
   EventVersionConflictError,
@@ -36,18 +36,14 @@ const known = [
   AttemptAlreadyClaimedError,
 ];
 
-async function guarded<T extends object>(run: () => Promise<T>): Promise<Result<T>> {
-  try {
-    const value = await run();
-    revalidatePath("/neuralflow/work");
-    return { ok: true, ...value };
-  } catch (error) {
-    if (known.some((E) => error instanceof E)) return { ok: false, error: (error as Error).message };
-    if (error instanceof Error && error.message.startsWith("task not found"))
-      return { ok: false, error: "That task no longer exists." };
-    throw error;
-  }
-}
+const guarded = bindGuarded({
+  domainErrors: known,
+  onSuccess: () => revalidatePath("/neuralflow/work"),
+  mapError: (error) => {
+    if (error instanceof Error && error.message.startsWith("task not found")) return "That task no longer exists.";
+    return undefined;
+  },
+});
 
 const uuid = z.string().uuid();
 

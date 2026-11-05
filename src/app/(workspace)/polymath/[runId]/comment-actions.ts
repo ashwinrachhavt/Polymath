@@ -5,6 +5,7 @@ import { z } from "zod";
 import { MessageCommentError, addMessageComment, resolveMessageComment } from "@/domains/agents/message-comments";
 import { getAuthContext, type AuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
+import { bindGuarded, type Result } from "@/lib/result";
 
 /*
  * Message comments on a conversation (plan Task 9). The same shape the note
@@ -24,18 +25,7 @@ async function authorize(): Promise<AuthContext> {
   return auth;
 }
 
-type Result<T extends object> = ({ ok: true } & T) | { ok: false; error: string };
-
-async function guarded<T extends object>(run: () => Promise<T>): Promise<Result<T>> {
-  try {
-    const value = await run();
-    revalidate();
-    return { ok: true, ...value };
-  } catch (error) {
-    if (error instanceof MessageCommentError) return { ok: false, error: (error as Error).message };
-    throw error;
-  }
-}
+const guarded = bindGuarded({ domainErrors: [MessageCommentError], onSuccess: revalidate });
 
 const key = z.string().uuid();
 

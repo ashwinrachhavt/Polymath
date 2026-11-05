@@ -8,6 +8,7 @@ import { requireRole } from "@/lib/auth/guards";
 import { db } from "@/lib/db";
 import { agentQuestions } from "@/domains/agents/schema";
 import { sendFollowUp } from "@/domains/agents/thread";
+import type { MessageResult } from "@/lib/result";
 
 /*
  * Answering the question a run is suspended on.
@@ -19,9 +20,11 @@ import { sendFollowUp } from "@/domains/agents/thread";
  * a question that was already answered.
  */
 
-type Result = { ok: true } | { ok: false; message: string };
-
-export async function answerRunQuestion(input: { runId: string; questionId: string; answer: string }): Promise<Result> {
+export async function answerRunQuestion(input: {
+  runId: string;
+  questionId: string;
+  answer: string;
+}): Promise<MessageResult> {
   const parsed = z
     .object({
       runId: z.string().uuid(),
@@ -72,7 +75,7 @@ export async function answerRunQuestion(input: { runId: string; questionId: stri
  * run: the run stays waiting_input and reads as a parked turn in the triage
  * panel. The owner writes on the run surface when they want it to continue.
  */
-export async function dismissQuestionAction(input: { questionId: string }): Promise<Result> {
+export async function dismissQuestionAction(input: { questionId: string }): Promise<MessageResult> {
   const parsed = z.object({ questionId: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false, message: "That question is no longer open." };
 

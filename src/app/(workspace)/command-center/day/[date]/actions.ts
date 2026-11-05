@@ -4,14 +4,13 @@ import { revalidatePath } from "next/cache";
 import { pinArtifactToDay, unpinArtifactFromDay } from "@/domains/daybook/commands";
 import { getAuthContext, type AuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
+import type { Result } from "@/lib/result";
 
 /*
  * Day-page pin actions. A pin is the daybook's only write: one row keyed
  * (workspace, user, local date, artifact). Anything else on the page derives
  * from canonical records and has no action here.
  */
-
-type Result = { ok: true } | { ok: false; error: string };
 
 async function authorize(): Promise<AuthContext> {
   const auth = await getAuthContext();
@@ -34,10 +33,7 @@ export async function pinArtifactAction(input: {
   return { ok: true };
 }
 
-export async function unpinArtifactAction(input: {
-  localDate: string;
-  artifactId: string;
-}): Promise<Result> {
+export async function unpinArtifactAction(input: { localDate: string; artifactId: string }): Promise<Result> {
   try {
     const auth = await authorize();
     await unpinArtifactFromDay(auth, input);
