@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { mergeCandidates } from "@/domains/knowledge/zettel-merge";
 
-const c = (title: string, claim: string, start: number) => ({
+const c = (title: string, content: string, start: number) => ({
   title,
-  claim,
+  content,
   quote: `q-${title}`,
   start,
   end: start + 10,
@@ -27,11 +27,11 @@ describe("mergeCandidates", () => {
     expect(out).toHaveLength(1);
   });
   it("caps the survivors at the source maximum", async () => {
-    const input = Array.from({ length: 30 }, (_, i) => c(`I${i}`, `claim ${i}`, i * 10));
+    const input = Array.from({ length: 30 }, (_, i) => c(`I${i}`, `content ${i}`, i * 10));
     const out = await mergeCandidates(input, { provider: provider(input.map((_, i) => i)) as never, max: 20 });
     expect(out).toHaveLength(20);
   });
-  it("sends only titles and claims, never the quote text", async () => {
+  it("sends only titles and content, never the quote text", async () => {
     const spy = provider([0]);
     await mergeCandidates([c("A", "one", 0)], { provider: spy as never });
     expect(JSON.stringify(spy.generate.mock.calls)).not.toContain("q-A");

@@ -11,11 +11,16 @@ describe("openRouterZettelExtractor", () => {
     expect(() => openRouterZettelExtractor({} as NodeJS.ProcessEnv)).toThrow(EmbeddingUnconfiguredError);
   });
   it("parses the model's JSON and sends the document as data", async () => {
-    const f = reply(JSON.stringify({ zettels: [{ title: "T", claim: "C", quote: "Q" }] }));
+    const f = reply(JSON.stringify({ zettels: [{ title: "T", content: "C", quote: "Q" }] }));
     const out = await openRouterZettelExtractor(env, f as unknown as typeof fetch).extract("doc text");
-    expect(out).toEqual([{ title: "T", claim: "C", quote: "Q" }]);
+    expect(out).toEqual([{ title: "T", content: "C", quote: "Q" }]);
     const body = JSON.parse(String((f.mock.calls[0] as unknown as [string, RequestInit])[1].body));
     expect(body.messages[1]).toEqual({ role: "user", content: "doc text" });
+  });
+  it("keeps a candidate that names no quote - the quote is optional evidence", async () => {
+    const f = reply(JSON.stringify({ zettels: [{ title: "T", content: "C" }] }));
+    const out = await openRouterZettelExtractor(env, f as unknown as typeof fetch).extract("doc text");
+    expect(out).toEqual([{ title: "T", content: "C" }]);
   });
   it("fails closed on junk and on HTTP errors without keeping provider text", async () => {
     await expect(
@@ -24,6 +29,31 @@ describe("openRouterZettelExtractor", () => {
     await expect(
       openRouterZettelExtractor(env, reply("secret", 500) as unknown as typeof fetch).extract("x"),
     ).rejects.toThrow("(HTTP 500)");
+  });
+});
+
+describe("the content contract (LLM-chosen length, verbatim quote)", () => {
+  it("asks for content of whatever length the idea needs and never padding", async () => {
+    const f = reply(JSON.stringify({ zettels: [] }));
+    await openRouterZettelExtractor(env, f as unknown as typeof fetch).extract("doc text");
+    const body = JSON.parse(String((f.mock.calls[0] as unknown as [string, RequestInit])[1].body));
+    const system: string = body.messages[0].content;
+    expect(system).toContain('"content"');
+    expect(system).toContain("As long as the idea needs");
+    expect(system).toContain("one sentence to a few paragraphs");
+    expect(system).toContain("Never pad, never truncate");
+    expect(system).toContain("Short ideas get short cards");
+    // The fixed one-sentence claim rule is retired.
+    expect(system).not.toContain("standalone sentence");
+  });
+
+  it("keeps the verbatim-quote rule and allows omitting the quote", async () => {
+    const f = reply(JSON.stringify({ zettels: [] }));
+    await openRouterZettelExtractor(env, f as unknown as typeof fetch).extract("doc text");
+    const body = JSON.parse(String((f.mock.calls[0] as unknown as [string, RequestInit])[1].body));
+    const system: string = body.messages[0].content;
+    expect(system).toContain("VERBATIM");
+    expect(system).toContain('Omit "quote"');
   });
 });
 
@@ -55,7 +85,7 @@ describe("defaultZettelExtractor", () => {
               {
                 content: {
                   parts: [
-                    { text: JSON.stringify({ zettels: [{ title: "T", claim: "C", quote: "verbatim passage" }] }) },
+                    { text: JSON.stringify({ zettels: [{ title: "T", content: "C", quote: "verbatim passage" }] }) },
                   ],
                 },
               },
@@ -71,13 +101,13 @@ describe("defaultZettelExtractor", () => {
     );
     expect(x.name).toBe("gemini:gemini-3.5-flash-lite");
     const out = await x.extract("doc text");
-    expect(out).toEqual([{ title: "T", claim: "C", quote: "verbatim passage" }]);
+    expect(out).toEqual([{ title: "T", content: "C", quote: "verbatim passage" }]);
     expect(events).toEqual(["reserve", "settle"]);
   });
 });
 
 describe("the size-derived cap (capForSize wiring)", () => {
-  const one = { title: "T", claim: "C", quote: "Q" };
+  const one = { title: "T", content: "C", quote: "Q" };
 
   it("asks for at most `max` in the prompt when one is passed", async () => {
     const f = reply(JSON.stringify({ zettels: [one] }));

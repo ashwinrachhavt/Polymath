@@ -48,7 +48,7 @@ const extractor = {
   extract: async () => [
     {
       title: "Rent timing",
-      claim: "The tenant pays rent on the first of each month.",
+      content: "The tenant pays rent on the first of each month.",
       quote: QUOTE,
       start: TEXT.indexOf(QUOTE),
       end: TEXT.indexOf(QUOTE) + QUOTE.length,
@@ -166,9 +166,9 @@ suite("corpus dedup against accepted ideas (real Postgres)", () => {
     const { auditEvents } = await import("@/domains/audit/schema");
     await holder.db!.insert(auditEvents).values({
       workspaceId: auth.workspaceId,
-      action: "capture.zettels_proposed",
+      action: "capture.zettels_created",
       subjectType: "capture",
-      summary: "Proposed 1 zettel for review",
+      summary: "Created 1 zettel",
       metadata: { documentId, readChars: 12_000, unreadChars: 423 },
     });
 

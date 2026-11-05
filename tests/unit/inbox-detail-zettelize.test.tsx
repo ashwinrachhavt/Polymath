@@ -66,7 +66,7 @@ describe("InboxDetail zettelize verb", () => {
   it("disables Zettelize with the provider reason when no model is configured", () => {
     const html = renderDetail(textCapture(), {
       zettelProviderReady: false,
-      zettelProviderReason: "Zettel proposals need a model. Set OPENROUTER_API_KEY or GEMINI_API_KEY.",
+      zettelProviderReason: "Zettelize needs a model. Set OPENROUTER_API_KEY or GEMINI_API_KEY.",
     });
     expect(html).toContain("Zettelize");
     expect(html).toContain("disabled");
