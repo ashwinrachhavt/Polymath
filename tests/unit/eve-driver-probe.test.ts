@@ -12,8 +12,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { isEveAlive } from "@/domains/agents/eve-driver";
 
-// The driver loads child_process with require() at call time, which resolves
-// to the same CJS exports object this spy patches.
+// The driver used to load child_process with require() at call time. It is
+// fetch-based now; this require still resolves the same CJS exports object,
+// so the no-process guard below can keep watching it.
 const cp = createRequire(import.meta.url) as NodeRequire;
 
 beforeEach(() => {
@@ -25,36 +26,69 @@ afterEach(() => {
 });
 
 describe("eve liveness probe", () => {
-  it("GETs the health route, not the session route", () => {
-    const spy = vi.spyOn(cp("child_process") as typeof import("child_process"), "execFileSync").mockReturnValue("200");
-    expect(isEveAlive("http://127.0.0.1:59999")).toBe(true);
-    const [command, args = []] = spy.mock.calls[0];
-    expect(command).toBe("curl");
-    const url = args.find((a: string) => a.startsWith("http"));
+  /*
+   * The probe was a sync execFileSync curl; it is fetch-based with one retry
+   * per failure now (a cold dev server's first health answer can miss the
+   * probe budget — the 2026-11-05 ticket-run loss). The execFileSync guard
+   * stays: the probe must never spawn a process again.
+   */
+  it("GETs the health route, not the session route", async () => {
+    const cpSpy = vi.spyOn(cp("child_process") as typeof import("child_process"), "execFileSync");
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 200 }));
+    await expect(isEveAlive("http://127.0.0.1:59999")).resolves.toBe(true);
+    expect(cpSpy).not.toHaveBeenCalled();
+    const [url, init = {}] = fetchSpy.mock.calls[0];
     expect(url).toBe("http://127.0.0.1:59999/eve/v1/health");
     expect(url).not.toContain("/session");
-    // A GET: no -X POST in the argv.
-    expect(args).not.toContain("-X");
+    // A GET: no method override in the init.
+    expect((init as RequestInit).method).toBeUndefined();
   });
 
-  it("reports a dead server when the probe fails", () => {
-    vi.spyOn(cp("child_process") as typeof import("child_process"), "execFileSync").mockImplementation(() => {
-      throw new Error("connect ECONNREFUSED");
-    });
-    expect(isEveAlive("http://127.0.0.1:59999")).toBe(false);
+  it("reports a dead server when the probe fails", async () => {
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("connect ECONNREFUSED"));
+    await expect(isEveAlive("http://127.0.0.1:59999")).resolves.toBe(false);
   });
 
   /*
    * Value: protects=the probe never declaring a broken eve server alive;
    * fails_when=a 500 counts as reachable and a stream opens onto a server
    * that cannot serve the turn; why_new=extends the ISSUE-003 regression with
-   * the status-code branch the fix introduced; seam=execFileSync argv/return
-   * spy; no_claim=eve's own health route behaviour.
+   * the status-code branch the fetch-based probe kept; seam=fetch mock;
+   * no_claim=eve's own health route behaviour.
    */
-  it("reports a dead server on a non-2xx answer", () => {
+  it("reports a dead server on a non-2xx answer without retrying", async () => {
     // A 500 from the health route means eve is up but broken; claiming alive
-    // would open a stream that cannot serve the turn.
-    vi.spyOn(cp("child_process") as typeof import("child_process"), "execFileSync").mockReturnValue("500");
-    expect(isEveAlive("http://127.0.0.1:59999")).toBe(false);
+    // would open a stream that cannot serve the turn. Broken is not retried.
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 500 }));
+    await expect(isEveAlive("http://127.0.0.1:59999")).resolves.toBe(false);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  /*
+   * Value: protects=the cold-start loss seen 2026-11-05 08:32 (ticket run
+   * c46d9f22 failed "Eve is not reachable" because an idle eve server's first
+   * health answer missed the old 2s sync curl budget and the failure was
+   * final); fails_when=a probe that times out once but succeeds on the retry
+   * still reports dead; why_new=the probe now retries before declaring death,
+   * and every isEveAlive caller is async; seam=fetch mock (the probe is fetch-
+   * based now, no child_process); no_claim=eve's own health route behaviour.
+   */
+  it("recovers when the first probe times out but the retry answers", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValueOnce(new Error("The operation was aborted due to timeout"))
+      .mockResolvedValueOnce(new Response(null, { status: 200 }));
+    await expect(isEveAlive("http://127.0.0.1:59999")).resolves.toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("stays dead when every probe attempt fails", async () => {
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("connect ECONNREFUSED"));
+    await expect(isEveAlive("http://127.0.0.1:59999")).resolves.toBe(false);
+  });
+
+  it("stays dead on a non-2xx retry answer", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 500 }));
+    await expect(isEveAlive("http://127.0.0.1:59999")).resolves.toBe(false);
   });
 });
