@@ -31,10 +31,10 @@ Migrations: 111 files, highest `0284_audit_operation_id`.
 
 ## Tests
 
-554 `.test.ts` and 50 `.spec.ts` files (unit: 322, integration: 229, e2e: 50).
+555 `.test.ts` and 50 `.spec.ts` files (unit: 323, integration: 229, e2e: 50).
 ## Domains
 
-24 folders; 19 own tables.
+25 folders; 19 own tables.
 
 | Domain | Tables |
 | --- | ---: |
@@ -58,7 +58,7 @@ Migrations: 111 files, highest `0284_audit_operation_id`.
 | `superagent` | 12 |
 | `work` | 10 |
 
-No tables: `conversations`, `home`, `import`, `notifications`, `supervisor`.
+No tables: `conversations`, `diagrams`, `home`, `import`, `notifications`, `supervisor`.
 
 ## Tables
 
