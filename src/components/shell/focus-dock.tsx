@@ -15,7 +15,10 @@ type LiveSession = { id: string; state: "running" | "paused"; title: string };
 // purpose: the session is workspace-global, not per page.
 const REVALIDATE_MS = 30_000;
 const DEBOUNCE_MS = 2_000;
-let liveCache: { at: number; session: LiveSession | null } | null = null;
+// `stale` rides on the cache, not the component: once a read fails, the last
+// known session is unverified until a read succeeds, and a cache hit must not
+// re-present it as verified.
+let liveCache: { at: number; session: LiveSession | null; stale: boolean } | null = null;
 let lastFetchStartedAt = 0;
 // The in-flight fetch itself. StrictMode runs every effect twice in dev: the
 // first run's result is discarded (its cleanup cancelled it), so the second
@@ -56,10 +59,14 @@ function LiveDock({ pathname }: { pathname: string }) {
   useEffect(() => {
     if (ownsLiveControls) return; // The Focus screen renders the live controls itself.
     let cancelled = false;
-    async function load() {
+    async function load(options?: { force?: boolean }) {
       const now = Date.now();
-      if (liveCache && now - liveCache.at < REVALIDATE_MS) {
-        setRead({ path: pathname, session: liveCache.session, stale: false });
+      // The revalidate window serves navigation mounts from the cache; a
+      // focus/visibility event is an explicit re-check and always reads the
+      // network (still debounced, still joined) - that re-check is what a
+      // failed read depends on to surface staleness.
+      if (!options?.force && liveCache && now - liveCache.at < REVALIDATE_MS) {
+        setRead({ path: pathname, session: liveCache.session, stale: liveCache.stale });
         return;
       }
       if (!inflight) {
@@ -67,8 +74,16 @@ function LiveDock({ pathname }: { pathname: string }) {
         lastFetchStartedAt = now;
         inflight = fetchLiveSession()
           .then((session) => {
-            liveCache = { at: Date.now(), session };
+            liveCache = { at: Date.now(), session, stale: false };
             return session;
+          })
+          .catch((error) => {
+            // A failed read never claims the session ended, and never presents the
+            // last known one as verified: it is kept, marked stale, until a read
+            // succeeds. The mark lives on the cache so every later cache hit
+            // inherits it.
+            if (liveCache) liveCache = { ...liveCache, stale: true };
+            throw error;
           })
           .finally(() => {
             inflight = null;
@@ -81,15 +96,13 @@ function LiveDock({ pathname }: { pathname: string }) {
         if (cancelled) return;
         setRead({ path: pathname, session, stale: false });
       } catch {
-        // A failed read never claims the session ended, and never presents the last
-        // known one as verified: it is kept, marked stale, until a read succeeds.
         if (cancelled) return;
         setRead((prev) => (prev?.session ? { path: pathname, session: prev.session, stale: true } : prev));
       }
     }
     void load();
     const onVisible = () => {
-      if (document.visibilityState === "visible") void load();
+      if (document.visibilityState === "visible") void load({ force: true });
     };
     window.addEventListener("focus", onVisible);
     document.addEventListener("visibilitychange", onVisible);

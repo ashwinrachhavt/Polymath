@@ -118,6 +118,48 @@ describe("FocusDock", () => {
     }
   });
 
+  it("a failed focus re-check marks the cache stale, and a navigation mount inside the window inherits the cue", async () => {
+    // Regression (CI, 2026-11-05): the revalidate window used to serve the
+    // focus re-check from the cache, so the failed read the e2e journey
+    // forces never happened and the dock stayed "verified". The window
+    // governs navigation mounts; a focus event must really re-read. The
+    // resulting stale mark rides on the cache, so the next navigation mount
+    // inside the window presents the last known session as stale, not fresh.
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ session: live }) } as Response)
+      .mockResolvedValueOnce({ ok: false, json: async () => ({}) } as Response);
+    vi.stubGlobal("fetch", fetchSpy);
+    const realNow = Date.now;
+    const offset = { ms: 0 };
+    const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => realNow() + offset.ms);
+    try {
+      const first = render(h(FocusDock));
+      const dock = await screen.findByLabelText("Focus session");
+      expect(dock.textContent).not.toContain("last known");
+
+      // The focus re-check happens inside the revalidate window - but past
+      // the debounce (a focus event milliseconds after the first read is the
+      // thrash the debounce exists to absorb) - and it still reads the
+      // network, fails, and marks the session unverified.
+      offset.ms = 3_000;
+      window.dispatchEvent(new Event("focus"));
+      await waitFor(() => expect(screen.getByLabelText("Focus session").textContent).toContain("last known"));
+      expect(screen.getByLabelText("Focus session").textContent).toContain("status may be out of date");
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
+      first.unmount();
+
+      // A navigation remount inside the revalidate window reads the cache
+      // without refetching - and inherits the stale mark, not a cleared one.
+      render(h(FocusDock));
+      await screen.findByLabelText("Focus session");
+      expect(screen.getByLabelText("Focus session").textContent).toContain("status may be out of date");
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
   it("the real session also follows the owner onto /settings and /activity (preview-banner routes)", async () => {
     for (const path of ["/settings", "/activity"]) {
       pathname = path;
