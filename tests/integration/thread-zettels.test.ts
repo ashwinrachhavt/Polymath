@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { agentProfiles, messages, threads } from "@/domains/agents/schema";
 import { artifactLinks, artifactVersions, artifacts, zettelProposals } from "@/domains/knowledge/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
@@ -7,11 +7,13 @@ import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace"
 /*
  * Task 20: zettelizing a thread or a selected run of messages. The thread
  * becomes a note-kind artifact through the same source edge syncThreadToGraph
- * uses; a second pass over the same thread reuses that artifact and proposes
- * nothing new: its candidates are deduped against the thread's own earlier
- * proposals for the artifact (pending and accepted) by claim/quote overlap —
- * the span-key index alone misses a re-chunked region — and the accepted
- * corpus flags whatever survives.
+ * uses; the direct-creation pass reads it and the cards exist immediately —
+ * the extract click is the acceptance, and no proposal row is written. A
+ * second pass over the same thread reuses that artifact and creates nothing
+ * new: its candidates are deduped against the thread's own earlier cards (and
+ * any legacy pending proposals) by claim/quote overlap — the span-key index
+ * alone misses a re-chunked region — and the near-duplicate gate flags
+ * whatever survives.
  */
 
 const handle = makeTestDb();
@@ -120,11 +122,20 @@ async function bodyOf(artifactId: string): Promise<string> {
   return version.plainText ?? "";
 }
 
-async function proposalRows(artifactId: string) {
+/** The zettel cards this source artifact produced, read off their `source` edges. */
+async function cardRows(artifactId: string) {
   return holder
-    .db!.select({ id: zettelProposals.id, spanStart: zettelProposals.spanStart, spanEnd: zettelProposals.spanEnd })
-    .from(zettelProposals)
-    .where(eq(zettelProposals.sourceArtifactId, artifactId));
+    .db!.select({ id: artifacts.id, title: artifacts.title })
+    .from(artifactLinks)
+    .innerJoin(artifacts, eq(artifacts.id, artifactLinks.artifactId))
+    .where(
+      and(
+        eq(artifactLinks.targetType, "artifact"),
+        eq(artifactLinks.targetId, artifactId),
+        eq(artifactLinks.linkType, "source"),
+        eq(artifacts.kind, "zettel"),
+      ),
+    );
 }
 
 suite("thread zettelization (real Postgres)", () => {
@@ -151,34 +162,50 @@ suite("thread zettelization (real Postgres)", () => {
     expect(edge).toBeDefined();
   });
 
-  it("zettelizing a thread twice does not produce the same proposals twice over one thread", async () => {
+  it("zettelizing a thread creates the card directly and no proposal row", async () => {
+    const { auth, threadId } = await seedThread();
+    const { zettelizeThread } = await import("@/domains/knowledge/thread-zettels");
+
+    const first = await zettelizeThread(auth, { threadId, idempotencyKey: "k1" });
+    expect(first.created).toBe(1);
+
+    // The card stands on its own: kind zettel, sourced from the thread's
+    // artifact. No proposal row backs it — the click was the acceptance.
+    const cards = await cardRows(first.artifactId);
+    expect(cards).toHaveLength(1);
+    expect(cards[0].title).toBe("Rent timing");
+    const proposals = await holder.db!.select({ id: zettelProposals.id }).from(zettelProposals);
+    expect(proposals).toHaveLength(0);
+  });
+
+  it("zettelizing a thread twice does not create the same card twice over one thread", async () => {
     const { auth, threadId } = await seedThread();
     const { zettelizeThread } = await import("@/domains/knowledge/thread-zettels");
 
     const first = await zettelizeThread(auth, { threadId, idempotencyKey: "k1" });
     const second = await zettelizeThread(auth, { threadId, idempotencyKey: "k2" });
     expect(second.artifactId).toBe(first.artifactId);
-    expect(second.proposed).toBe(0);
-    expect(first.proposed).toBe(1);
+    expect(second.created).toBe(0);
+    expect(first.created).toBe(1);
 
-    // The proposal rows back the count: one set, not two.
-    const rows = await proposalRows(first.artifactId);
-    expect(rows).toHaveLength(1);
+    // The source edges back the count: one card, not two.
+    const cards = await cardRows(first.artifactId);
+    expect(cards).toHaveLength(1);
   });
 
-  // The live defect (dogfood runs 6c2533d9/4a2ef2c3): pass 1 proposed a row on
+  // The live defect (dogfood runs 6c2533d9/4a2ef2c3): pass 1 created a card on
   // span 405-666; pass 2 over the UNCHANGED thread re-chunked the same region
   // into spans 405-626 and 627-666 — different dedupe keys, so the span index
-  // let two near-duplicates insert. A deterministic stub cannot reproduce it;
+  // let two near-duplicates through. A deterministic stub cannot reproduce it;
   // this stub re-chunks on purpose, the way a live extractor does.
-  it("a second pass whose extractor re-chunks the same region proposes nothing new", async () => {
+  it("a second pass whose extractor re-chunks the same region creates nothing new", async () => {
     const { auth, threadId } = await seedThread(
       "only this reply. The lease has many clauses. Rent is due on the first of each month. The deposit is protected until move out.",
     );
     const { zettelizeThread } = await import("@/domains/knowledge/thread-zettels");
 
     const first = await zettelizeThread(auth, { threadId, idempotencyKey: "chunk-1" });
-    expect(first.proposed).toBe(1);
+    expect(first.created).toBe(1);
 
     // Pass 2 reads the same artifact text but re-chunks: two sub-spans of the
     // first quote (one with re-worded claims — quote overlap is what catches
@@ -205,21 +232,21 @@ suite("thread zettelization (real Postgres)", () => {
     };
     const second = await zettelizeThread(auth, { threadId, idempotencyKey: "chunk-2" });
     expect(second.artifactId).toBe(first.artifactId);
-    expect(second.proposed).toBe(0);
+    expect(second.created).toBe(0);
 
-    // The pass-1 row stands alone: no re-chunked near-duplicates landed.
-    const rows = await proposalRows(first.artifactId);
-    expect(rows).toHaveLength(1);
+    // The pass-1 card stands alone: no re-chunked near-duplicates landed.
+    const cards = await cardRows(first.artifactId);
+    expect(cards).toHaveLength(1);
   });
 
-  it("a genuinely new claim on a second pass still proposes", async () => {
+  it("a genuinely new claim on a second pass still creates a card", async () => {
     const { auth, threadId } = await seedThread(
       "only this reply. The lease has many clauses. Rent is due on the first of each month. The deposit is protected until move out.",
     );
     const { zettelizeThread } = await import("@/domains/knowledge/thread-zettels");
 
     const first = await zettelizeThread(auth, { threadId, idempotencyKey: "new-1" });
-    expect(first.proposed).toBe(1);
+    expect(first.created).toBe(1);
 
     // A different region with a different claim overlaps nothing — the dedupe
     // must suppress repeats, not the conversation's unread material.
@@ -231,9 +258,9 @@ suite("thread zettelization (real Postgres)", () => {
       },
     ];
     const second = await zettelizeThread(auth, { threadId, idempotencyKey: "new-2" });
-    expect(second.proposed).toBe(1);
+    expect(second.created).toBe(1);
 
-    const rows = await proposalRows(second.artifactId);
-    expect(rows).toHaveLength(2);
+    const cards = await cardRows(second.artifactId);
+    expect(cards).toHaveLength(2);
   });
 });

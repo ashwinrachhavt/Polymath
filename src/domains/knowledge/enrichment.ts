@@ -10,10 +10,11 @@ import {
   documentEnrichment,
   documentExtractions,
   documents,
-  zettelProposals,
+  artifactLinks,
+  artifacts,
   type EnrichmentStage,
 } from "./schema";
-import { proposeZettels } from "./zettels";
+import { createZettelsFromSource } from "./zettels";
 
 /*
  * The document enrichment state machine (ASH-174/ASH-184). After a source is
@@ -21,9 +22,9 @@ import { proposeZettels } from "./zettels";
  *
  *   extract  - already owned by extraction.ts; mirrored here, never re-run
  *   embed    - chunk + embed the succeeded extraction text (embedExtraction)
- *   zettels  - propose zettel cards from the text (proposeZettels)
- *   link     - embed the document's accepted zettel cards, so they join the
- *              semantic graph (embedArtifact per card)
+ *   zettels  - create zettel cards from the text (createZettelsFromSource)
+ *   link     - embed the document's zettel cards, so they join the semantic
+ *              graph (embedArtifact per card)
  *
  * One row per document per stage is the whole state: a failure is a `failed`
  * row with `last_error`, visible and retryable, and a worker restart loses
@@ -127,16 +128,22 @@ async function runStage(
       });
       if (outcome.status === "failed") return fail(outcome.error);
     } else if (stage === "zettels") {
-      await proposeZettels(auth, { documentId, extractor: input.providers?.zettels });
+      await createZettelsFromSource(auth, { documentId, extractor: input.providers?.zettels });
     } else if (stage === "link") {
+      // The document's zettel cards, read off their `source` edges — cards
+      // this document's own zettelize passes created, whatever surface or
+      // review decision made them.
       const cards = await db
-        .select({ artifactId: zettelProposals.artifactId })
-        .from(zettelProposals)
+        .select({ artifactId: artifactLinks.artifactId })
+        .from(artifactLinks)
+        .innerJoin(artifacts, eq(artifacts.id, artifactLinks.artifactId))
         .where(
           and(
-            eq(zettelProposals.workspaceId, auth.workspaceId),
-            eq(zettelProposals.documentId, documentId),
-            eq(zettelProposals.status, "accepted"),
+            eq(artifactLinks.workspaceId, auth.workspaceId),
+            eq(artifactLinks.targetType, "document"),
+            eq(artifactLinks.targetId, documentId),
+            eq(artifactLinks.linkType, "source"),
+            eq(artifacts.kind, "zettel"),
           ),
         );
       for (const card of cards) {
@@ -183,8 +190,9 @@ export async function advanceDocumentEnrichment(
 
   for (const stage of ENRICHMENT_STAGES.slice(1)) {
     const row = rows.find((r) => r.stage === stage);
-    // The link stage re-runs even after success: accepting a zettel later adds
-    // a card the last pass never saw, and embedArtifact is idempotent per card.
+    // The link stage re-runs even after success: a later zettelize pass may
+    // add a card the last pass never saw, and embedArtifact is idempotent
+    // per card.
     if (!row || row.status === "skipped" || (row.status === "succeeded" && stage !== "link")) continue;
     const outcome = await runStage(auth, { documentId: input.documentId, stage, providers: input.providers });
     if (!outcome.ok) break;

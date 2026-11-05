@@ -48,6 +48,21 @@ describe("verifyReadingSummary", () => {
     expect(out.keyClaims).toHaveLength(7);
     expect(out.openQuestions).toEqual(["a", "b", "c", "d", "e"]);
   });
+
+  it("keeps a long claim whole — the claim is the card's content, no length clamp", () => {
+    // The old 400-char clamp retired with the review queue: content length is
+    // the summarizer's judgment, capped only by the card title's own rule.
+    const longClaim = `${"The renewal window reopens every March and requires written notice, ".repeat(8)}and rent then rises by 4%.`;
+    const quote = "The lease renews on March 1.";
+    const out = verifyReadingSummary(TEXT, {
+      summary: "x",
+      keyClaims: [{ claim: longClaim, quote }],
+      openQuestions: [],
+    });
+    expect(out.keyClaims).toHaveLength(1);
+    expect(out.keyClaims[0].claim).toBe(longClaim);
+    expect(out.keyClaims[0].claim.length).toBeGreaterThan(400);
+  });
 });
 
 describe("summaryToMarkdown", () => {

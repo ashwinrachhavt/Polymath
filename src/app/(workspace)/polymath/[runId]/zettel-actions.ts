@@ -15,9 +15,9 @@ import { requireRole } from "@/lib/auth/guards";
  * is looking at, so the action resolves the thread server-side from the run —
  * the toolbar needs no new props and the chat surface does not grow. The
  * client mints the idempotency key; the server makes the thread artifact (or
- * reuses it) and runs the proposal pipeline — propose only, nothing becomes
- * knowledge here. The unread-character count rides back so the caller can say
- * what was not read.
+ * reuses it) and runs the direct-creation pass — the extract click is the
+ * acceptance, so real idea cards come out the other end. The
+ * unread-character count rides back so the caller can say what was not read.
  */
 
 const revalidate = () => revalidatePath("/polymath/[runId]", "page");
@@ -38,7 +38,7 @@ const zettelizeInput = z.object({
   idempotencyKey: z.string().uuid(),
 });
 
-export type ZettelizeThreadActionResult = Result<{ artifactId: string; proposed: number; unreadChars: number }>;
+export type ZettelizeThreadActionResult = Result<{ artifactId: string; created: number; unreadChars: number }>;
 
 export async function zettelizeThreadAction(
   input: z.input<typeof zettelizeInput>,
