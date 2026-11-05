@@ -32,81 +32,118 @@
 }
 
 /*
- * Owner direction (2026-10-28, the mockups): the Notion-feel light register
- * across the whole product. This supersedes the 2026-10-19 "stronghold" note:
- * the ground is now a neutral near-white grey, cards are pure white, and the
- * page title is a bold sans heading in the content column — not a serif on a
- * sticky bar. The one accent stays a soft charcoal for primary actions.
+ * Design system: Furrow (dealt 1/3, seed personal-workspace-knowledge-work-
+ * 79fe·66919601·2026-11-05·r0, genre modern-minimal), locked in design.md at
+ * the repo root. This supersedes the 2026-10-28 "Notion-feel" register note
+ * that lived here: the ground is now a warm manila paper, not a neutral grey;
+ * rules and lists are ruled in near-black ink; one tangerine signal marks the
+ * primary action, the current selection and state; a grass green says what is
+ * in date. Faces: Red Hat Display 600 for display, Red Hat Text for body and
+ * UI, Red Hat Mono for figures (readouts, ids, dates, counts). Labels, chips
+ * and tabs run sentence case and untracked.
  *
  * What that means in values:
- * 1. A neutral, near-white ground with generous whitespace. Surfaces separate
- *    by the lightest hairline that still reads; nothing presses or glows.
- * 2. One quiet accent for the whole product: a soft warm charcoal, used for
- *    primary actions, the focus ring, links. Statuses carry their own quiet
- *    tints (green ready, blue in-flight, amber working, red failing) as pills.
- * 3. Flat panels. A card is a 1px border and a white fill, 12px corners.
- *    Floating layers get one soft, warm-tinted shadow. Everything else is
- *    whitespace.
+ * 1. A warm paper ground in three lightness steps. Sheets (cards) sit a step
+ *    above the paper, separated by 1px rules, not shadows. Only floating
+ *    layers (menus, dialogs, popovers) lift.
+ * 2. One signal accent: tangerine (oklch 70% 0.19 40) for primary actions,
+ *    the focus ring and the active state — nothing else. Statuses keep
+ *    their quiet tints (green in date, water in-flight, sienna-amber
+ *    working, red failing) as pills.
+ * 3. Ruled records: lists under a 1px ink rule, hairlines between rows, a
+ *    2px rule over a total. Tables before cards; density is the design.
+ * 4. Dark mode re-derives the same hue bands (paper L 14%, ink L 93%,
+ *    accent chroma -0.03 / L +5): the same product at night, hue never
+ *    moving between modes. Elevation is lightness; shadows are off.
  */
-
 :root {
-  --radius: 0.75rem;
+  color-scheme: light;
+  --radius: 0.625rem;
   --page-gutter: 16px;
   --page-width: 1200px;
 
-  --background: oklch(0.984 0.002 95);
-  --foreground: oklch(0.25 0.006 75);
+  /* Furrow material: warm manila paper in three steps, near-black ink,
+     1px rules. A card is a sheet a step above the paper; the grid tone is
+     for chart/ruled backgrounds, not borders. */
+  --paper: oklch(96% 0.011 85);
+  --paper-2: oklch(99.5% 0.005 85);
+  --paper-3: oklch(92% 0.016 85);
+  --ink: oklch(18% 0.006 60);
+  --ink-2: oklch(28% 0.008 60);
+  --ink-muted: oklch(44% 0.012 60);
+  --rule: oklch(88% 0.013 85);
+  --sheet: oklch(99.3% 0.004 85);
+  --grid: oklch(90% 0.014 85);
+  --grid-strong: oklch(85% 0.018 85);
 
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.25 0.006 75);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.25 0.006 75);
+  /* The one signal: tangerine, ink on it, used for the primary action, the
+     current selection and state — nothing else. */
+  --signal: oklch(70% 0.19 40);
+  --signal-ink: oklch(18% 0.006 60);
+  --signal-soft: oklch(91% 0.05 50);
 
-  /* The product's one accent: a soft warm charcoal, Opal-style. */
-  --primary: oklch(0.3 0.01 75);
-  --primary-foreground: oklch(0.985 0.002 95);
+  --focus: oklch(60% 0.19 40);
+  --error: oklch(52% 0.19 27);
+  --success: oklch(50% 0.12 150);
+  --green: oklch(48% 0.11 150);
+  --contour: oklch(62% 0.07 58);
+  --water: oklch(60% 0.05 232);
+  --hedge: oklch(50% 0.1 150);
 
-  --secondary: oklch(0.958 0.003 95);
-  --secondary-foreground: oklch(0.25 0.006 75);
+  /* shadcn semantic aliases point at the Furrow roles; components keep
+     reading --background/--foreground/--primary with no knowledge of the
+     theme underneath. */
+  --background: var(--paper);
+  --foreground: var(--ink);
 
-  --muted: oklch(0.962 0.003 95);
-  --muted-foreground: oklch(0.5 0.007 80);
+  --card: var(--sheet);
+  --card-foreground: var(--ink);
+  --popover: var(--paper-2);
+  --popover-foreground: var(--ink);
 
-  --accent: oklch(0.95 0.003 95);
-  --accent-foreground: oklch(0.25 0.006 75);
+  --primary: var(--signal);
+  --primary-foreground: var(--signal-ink);
 
-  --destructive: oklch(0.53 0.15 25);
+  --secondary: var(--paper-3);
+  --secondary-foreground: var(--ink);
 
-  --success: oklch(0.5 0.11 155);
-  --info: oklch(0.5 0.11 245);
-  /* Tone roles for non-pill uses (row text, glyphs, banners): the pill
-     wheel's own hues exposed as plain colors so hard-coded Tailwind
-     ambers/teals die without inventing new ones. Values mirror
-     .pill-working / .pill-teal; -wash is their background mix base for
-     hairline borders and faint fills. */
+  --muted: var(--paper-3);
+  --muted-foreground: var(--ink-muted);
+
+  --accent: var(--signal-soft);
+  --accent-foreground: var(--ink);
+
+  --destructive: var(--error);
+  --info: var(--water);
+
+  /* Status wheel for pills: sienna-amber working, teal in-flight, violet
+     deferred/waiting; -wash is the background mix base for hairline fills
+     and borders. Values keep their quiet chroma inside Furrow's bands. */
   --tone-attention: oklch(0.52 0.1 70);
   --tone-attention-wash: oklch(0.72 0.12 80);
   --tone-teal: oklch(0.55 0.09 195);
   --tone-teal-wash: oklch(0.72 0.1 195);
+  --tone-violet: oklch(0.52 0.11 300);
+  --tone-violet-wash: oklch(0.72 0.1 300);
 
-  --border: oklch(0.916 0.003 95);
-  --input: oklch(0.916 0.003 95);
-  --ring: oklch(0.38 0.012 75);
+  --border: var(--rule);
+  --input: var(--rule);
+  --ring: var(--focus);
 
-  --chart-1: oklch(0.45 0.02 75);
-  --chart-2: oklch(0.6 0.07 168);
-  --chart-3: oklch(0.55 0.08 268);
-  --chart-4: oklch(0.65 0.09 96);
-  --chart-5: oklch(0.58 0.08 330);
+  --chart-1: var(--contour);
+  --chart-2: var(--water);
+  --chart-3: var(--hedge);
+  --chart-4: var(--signal);
+  --chart-5: var(--ink-2);
 
-  --sidebar: oklch(0.98 0.002 95);
-  --sidebar-foreground: oklch(0.25 0.006 75);
-  --sidebar-primary: oklch(0.3 0.01 75);
-  --sidebar-primary-foreground: oklch(0.985 0.002 95);
-  --sidebar-accent: oklch(0.944 0.003 95);
-  --sidebar-accent-foreground: oklch(0.25 0.006 75);
-  --sidebar-border: oklch(0.92 0.003 95);
-  --sidebar-ring: oklch(0.38 0.012 75);
+  --sidebar: var(--paper);
+  --sidebar-foreground: var(--ink);
+  --sidebar-primary: var(--signal);
+  --sidebar-primary-foreground: var(--signal-ink);
+  --sidebar-accent: var(--paper-3);
+  --sidebar-accent-foreground: var(--ink);
+  --sidebar-border: var(--rule);
+  --sidebar-ring: var(--focus);
 
   /* Kept defined for any straggler referencing them; the flat panel no
      longer uses inset edges. */
@@ -114,8 +151,44 @@
   --edge-shade: oklch(0 0 0 / 0%);
 
   /* One soft shadow, reserved for layers that genuinely float (menus,
-     dialogs, popovers). Warm-tinted to the ground, never grey-black. */
-  --shadow: 0 1px 2px oklch(0.35 0.01 80 / 4%), 0 8px 24px oklch(0.35 0.01 80 / 6%);
+     dialogs, popovers). Ink-tinted to the ground, never grey-black. */
+  --shadow: 0 1px 2px oklch(18% 0.006 60 / 6%), 0 8px 24px oklch(18% 0.006 60 / 8%);
+  --shadow-panel:
+    0 1px 2px oklch(18% 0.006 60 / 5%), 0 4px 12px oklch(18% 0.006 60 / 4%), 0 12px 40px oklch(18% 0.006 60 / 7%);
+
+  /* Hallmark shared scaffolding: rhythm, motion, layering, measure. */
+  --space-3xs: 2px;
+  --space-2xs: 4px;
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 40px;
+  --space-2xl: 64px;
+  --space-3xl: 96px;
+  --space-4xl: 144px;
+  --dur-micro: 120ms;
+  --dur-short: 220ms;
+  --dur-long: 420ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --z-base: 1;
+  --z-raised: 10;
+  --z-dropdown: 100;
+  --z-sticky: 200;
+  --z-sticky-nav: 300;
+  --z-modal: 400;
+  --z-toast: 500;
+  --z-tooltip: 600;
+  --rule-hair: 1px;
+  --display-weight: 600;
+  --container: 1440px;
+  --gutter: 64px;
+  --gap-columns: 32px;
+  --section-gap-s: 120px;
+  --section-gap: 144px;
+  --section-gap-l: 176px;
 
   /* One prose measure for reading surfaces (deslop spec §4.3). The competing
      widths (708px / 720px / 72ch / 75ch / max-w-3xl) are retired onto this
@@ -133,13 +206,7 @@
      which never host the editor). */
   --canvas-min: calc(100dvh - var(--topbar-h, 48px) - 64px);
 
-  /* Panel depth — where a surface needs lift instead of a hairline border.
-     Three layers (contact, key, ambient) in the same warm charcoal as
-     --shadow, one step softer. Dark mode re-points it next to --shadow. */
-  --shadow-panel:
-    0 1px 2px oklch(0.35 0.01 80 / 5%), 0 4px 12px oklch(0.35 0.01 80 / 4%), 0 12px 40px oklch(0.35 0.01 80 / 7%);
-
-  /* One product, one accent: a soft warm charcoal used everywhere. The
+  /* One product, one signal: the tangerine used everywhere. The
      --app-accent alias and the [data-app] scopes stay so components that
      read them keep working without knowing any app name. */
   --app-accent: var(--primary);
@@ -184,20 +251,45 @@
   --color-app-accent: var(--app-accent);
   --color-app-accent-foreground: var(--app-accent-foreground);
 
-  /* Inter is the Notion/Linear register: a neutral grotesque that stays
-     quiet at 13px. Geist Mono stays for readouts and keyboard hints. */
-  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  /* Furrow roles as utilities (bg-sheet, text-ink-muted, bg-signal, ...).
+     The shadcn aliases above resolve through these, so a token swap never
+     touches a component. */
+  --color-paper: var(--paper);
+  --color-paper-2: var(--paper-2);
+  --color-paper-3: var(--paper-3);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-muted: var(--ink-muted);
+  --color-rule: var(--rule);
+  --color-sheet: var(--sheet);
+  --color-grid: var(--grid);
+  --color-grid-strong: var(--grid-strong);
+  --color-signal: var(--signal);
+  --color-signal-ink: var(--signal-ink);
+  --color-signal-soft: var(--signal-soft);
+  --color-focus: var(--focus);
+  --color-error: var(--error);
+  --color-green: var(--green);
+  --color-contour: var(--contour);
+  --color-water: var(--water);
+  --color-hedge: var(--hedge);
+  --color-tone-attention: var(--tone-attention);
+  --color-tone-teal: var(--tone-teal);
+  --color-tone-violet: var(--tone-violet);
+
+  /* Red Hat is the Furrow register: Display 600 for heads, Text for body
+     and UI, Mono for figures (readouts, ids, dates, counts). */
+  --font-sans: var(--font-red-hat-text), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-red-hat-mono), ui-monospace, monospace;
   /* Reading surfaces: transcript answers, note bodies, document previews —
      the text a person reads for a minute, set like Perplexity sets its
      answers. UI chrome (nav, composer, tables, pills) stays sans. A system
      serif stack: no download, no shift, renders instantly. */
   --font-reading: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
-  /* Page headings are bold sans in the mockups; the serif display retired.
-     The token stays so older references resolve. */
-  --font-display: var(--font-sans);
+  --font-display: var(--font-red-hat-display), var(--font-red-hat-text), ui-sans-serif, sans-serif;
 
   --tracking-tight: -0.011em;
+  --tracking-display: -0.035em;
 
   --radius-sm: calc(var(--radius) * 0.5);
   --radius-md: calc(var(--radius) * 0.75);
@@ -225,56 +317,40 @@
 }
 
 .dark {
-  /* The same calm register, inverted: a neutral near-black ground, panels a
-     breath lighter, hairlines at low alpha, the accent inverted to a soft
-     off-white so dark mode stays the same product. */
-  --background: oklch(0.185 0.002 80);
-  --foreground: oklch(0.93 0.003 85);
+  color-scheme: dark;
+  /* Furrow night: the same hue bands re-derived (paper L 14%, ink L 93%,
+     accent chroma -0.03 / L +5). The aliases above point at these roles, so
+     dark mode is one re-derivation, not a second theme. Elevation is
+     lightness, not shadow; hairlines sit a step apart in lightness. */
+  --paper: oklch(14% 0.008 85);
+  --paper-2: oklch(17% 0.008 85);
+  --paper-3: oklch(11% 0.01 85);
+  --ink: oklch(93% 0.006 85);
+  --ink-2: oklch(82% 0.008 80);
+  --ink-muted: oklch(58% 0.012 80);
+  --rule: oklch(24% 0.013 85);
+  --sheet: oklch(19% 0.004 85);
+  --grid: oklch(22% 0.014 85);
+  --grid-strong: oklch(27% 0.018 85);
 
-  --card: oklch(0.22 0.003 80);
-  --card-foreground: oklch(0.93 0.003 85);
-  --popover: oklch(0.23 0.003 80);
-  --popover-foreground: oklch(0.93 0.003 85);
+  --signal: oklch(75% 0.16 40);
+  --signal-ink: oklch(14% 0.008 85);
+  --signal-soft: oklch(26% 0.045 50);
 
-  --primary: oklch(0.92 0.003 85);
-  --primary-foreground: oklch(0.235 0.004 78);
+  --focus: oklch(72% 0.19 40);
+  --error: oklch(68% 0.17 27);
+  --success: oklch(72% 0.1 150);
+  --green: oklch(68% 0.1 150);
+  --contour: oklch(66% 0.06 58);
+  --water: oklch(66% 0.045 232);
+  --hedge: oklch(62% 0.09 150);
 
-  --secondary: oklch(0.255 0.003 80);
-  --secondary-foreground: oklch(0.93 0.003 85);
-
-  --muted: oklch(0.255 0.003 80);
-  --muted-foreground: oklch(0.68 0.006 82);
-
-  --accent: oklch(0.27 0.003 80);
-  --accent-foreground: oklch(0.93 0.003 85);
-
-  --destructive: oklch(0.65 0.15 25);
-
-  --success: oklch(0.7 0.11 155);
-  --info: oklch(0.7 0.11 245);
   /* Dark lifts mirror .dark .pill-teal; pill-working ships one tone for
      both modes, so --tone-attention does not flip. */
   --tone-teal: oklch(0.8 0.08 195);
   --tone-teal-wash: oklch(0.76 0.09 195);
-
-  --border: oklch(0.29 0.003 80);
-  --input: oklch(0.29 0.003 80);
-  --ring: oklch(0.82 0.005 85);
-
-  --chart-1: oklch(0.85 0.01 85);
-  --chart-2: oklch(0.76 0.08 168);
-  --chart-3: oklch(0.72 0.09 268);
-  --chart-4: oklch(0.8 0.1 96);
-  --chart-5: oklch(0.74 0.09 330);
-
-  --sidebar: oklch(0.2 0.002 80);
-  --sidebar-foreground: oklch(0.93 0.003 85);
-  --sidebar-primary: oklch(0.92 0.003 85);
-  --sidebar-primary-foreground: oklch(0.235 0.004 78);
-  --sidebar-accent: oklch(0.27 0.003 80);
-  --sidebar-accent-foreground: oklch(0.93 0.003 85);
-  --sidebar-border: oklch(0.29 0.003 80);
-  --sidebar-ring: oklch(0.82 0.005 85);
+  --tone-violet: oklch(0.8 0.09 300);
+  --tone-violet-wash: oklch(0.76 0.09 300);
 
   --edge-light: oklch(1 0 0 / 0%);
   --edge-shade: oklch(0 0 0 / 0%);
@@ -334,8 +410,8 @@
     color: var(--info);
   }
   .pill-working {
-    background: color-mix(in oklab, oklch(0.72 0.12 80) 16%, transparent);
-    color: oklch(0.52 0.1 70);
+    background: color-mix(in oklab, var(--tone-attention-wash) 16%, transparent);
+    color: var(--tone-attention);
   }
   .pill-danger {
     background: color-mix(in oklab, var(--destructive) 10%, transparent);
@@ -347,25 +423,26 @@
      (the mockup's Waiting pill); teal as the wheel's remaining stop. Dark
      mode lifts the lightness so the tints read on the near-black ground. */
   .pill-violet {
-    background: color-mix(in oklab, oklch(0.62 0.11 300) 13%, transparent);
-    color: oklch(0.52 0.11 300);
+    background: color-mix(in oklab, var(--tone-violet-wash) 13%, transparent);
+    color: var(--tone-violet);
   }
   .pill-teal {
-    background: color-mix(in oklab, oklch(0.72 0.1 195) 13%, transparent);
-    color: oklch(0.55 0.09 195);
+    background: color-mix(in oklab, var(--tone-teal-wash) 13%, transparent);
+    color: var(--tone-teal);
   }
   .dark .pill-violet {
-    background: color-mix(in oklab, oklch(0.72 0.1 300) 16%, transparent);
-    color: oklch(0.8 0.09 300);
+    background: color-mix(in oklab, var(--tone-violet-wash) 16%, transparent);
+    color: var(--tone-violet);
   }
   .dark .pill-teal {
-    background: color-mix(in oklab, oklch(0.76 0.09 195) 16%, transparent);
-    color: oklch(0.8 0.08 195);
+    background: color-mix(in oklab, var(--tone-teal-wash) 16%, transparent);
+    color: var(--tone-teal);
   }
 
-  /* Dotted section divider with a centered label (Artifacts "OCTOBER 2026",
-     home "YOUR CONVERSATIONS"). A hairline says "regions"; the dotted rule
-     with a small-caps label says "a named passage of the same list". */
+  /* Dotted section divider with a centered label (Artifacts "October 2026",
+     home "Your conversations"). A hairline says "regions"; the dotted rule
+     with a small label says "a named passage of the same list". Sentence
+     case, untracked — the labels keep the divider, drop the caps. */
   .rule-label {
     display: flex;
     align-items: center;
@@ -373,8 +450,6 @@
     color: var(--muted-foreground);
     font-size: 11px;
     font-weight: 500;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
   }
   .rule-label::before,
   .rule-label::after {
@@ -383,13 +458,11 @@
     border-top: 1px dashed var(--border);
   }
 
-  /* Caps-labelled stat strip (Day, Spending): label in small caps, the value
-     large beneath it, the gloss under that. */
+  /* Labelled stat strip (Day, Spending): label small and untracked, the
+     value large beneath it, the gloss under that. */
   .stat-label {
     font-size: 11px;
     font-weight: 500;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
     color: var(--muted-foreground);
   }
 }
