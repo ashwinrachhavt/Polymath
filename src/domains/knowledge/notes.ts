@@ -7,6 +7,7 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { escapeLike } from "@/lib/list-params";
 import { ARTIFACT_EMBEDDING_OWNER_TYPE, embedArtifact, safeArtifactEmbedError, type ArtifactEmbedOutcome } from "./embedding";
+import { materializeSemanticEdges } from "./relations";
 import { artifactLinks, artifactVersions, artifacts, embeddings, recoveryCopies, workingDrafts } from "./schema";
 import type { EmbeddingProvider } from "@/integrations/embeddings/provider";
 
@@ -759,7 +760,7 @@ export async function synthesizeZettel(
   return withTransaction(async (tx) => {
     const { value } = await withReceipt(tx, auth, input.idempotencyKey, { op: "synthesizeZettel", ...input }, async () => {
       const parents = await tx
-        .select({ id: artifacts.id, title: artifacts.title, kind: artifacts.kind })
+        .select({ id: artifacts.id, title: artifacts.title, kind: artifacts.kind, tags: artifacts.tags })
         .from(artifacts)
         .where(and(
           eq(artifacts.workspaceId, auth.workspaceId),
@@ -777,6 +778,15 @@ export async function synthesizeZettel(
         content: { format: "markdown", text },
         plainText: text,
       });
+      // The synthesis card inherits its parents' tags: the union, normalized
+      // (lowercase-deduped, capped at 12), so the mix starts life describing
+      // everything it came from. A direct write is safe where setNoteTags'
+      // compare-and-set would not be — the row was created in this same
+      // transaction and no other writer can hold it yet.
+      const tags = normalizeNoteTags(
+        ordered.flatMap((p) => (Array.isArray(p.tags) ? p.tags.filter((t): t is string => typeof t === "string") : [])),
+      );
+      await tx.update(artifacts).set({ tags }).where(eq(artifacts.id, created.id));
       await tx.insert(artifactLinks).values(
         ordered.map((p) => ({
           workspaceId: auth.workspaceId,
@@ -790,6 +800,19 @@ export async function synthesizeZettel(
       );
       return { id: created.id, version: created.version };
     });
+    return value;
+  }).then(async (value) => {
+    // The mix has committed; the new card joins the semantic graph best-effort,
+    // riding the accept pattern's guard (createZettelFromSource): a failed or
+    // unconfigured embedding pass never blocks a mix that succeeded.
+    try {
+      await embedArtifact(auth, { artifactId: value.id });
+      await materializeSemanticEdges(auth, value.id);
+    } catch (cause) {
+      console.error(
+        `embedArtifact after zettel synthesis failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+      );
+    }
     return value;
   });
 }
