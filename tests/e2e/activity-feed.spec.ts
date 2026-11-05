@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import postgres from "postgres";
+import { waitSettled } from "./helpers/settled";
 
 /*
  * The Activity rail reads the workspace's real audit events - the read
@@ -177,7 +178,12 @@ test("a grouped conversion renders one outcome row with a steps disclosure", asy
       returning id`;
     stepId = step!.id;
 
-    await page.goto("/activity");
+    // Both navigations carry ?q={tag}: the fold needs the outcome AND its
+    // step inside the initial 50-row keyset window, and the shard's shared
+    // dev workspace accumulates audit events from the other tests' last
+    // minute of churn — an unfiltered window is position-luck, not logic.
+    // The tag-matched view holds exactly this test's two rows.
+    await page.goto(`/activity?q=${encodeURIComponent(tag)}`);
     // The outcome renders as one sentence; the step is folded underneath.
     // Row-scoped: other real conversions in the shared QA database render the
     // same sentence, so assertions anchor to this test's own outcome row.
@@ -191,7 +197,7 @@ test("a grouped conversion renders one outcome row with a steps disclosure", asy
     await expect(page.locator(`a[href$="/polymath/notes?id=${noteId}"]`).first()).toBeVisible();
 
     // Deep-linking the step row highlights the outcome and opens its steps.
-    await page.goto(`/activity?event=${stepId}`);
+    await page.goto(`/activity?q=${encodeURIComponent(tag)}&event=${stepId}`);
     await expect(page.locator(`li[data-deep-linked="true"]`)).toContainText("You converted a capture");
     await expect(page.getByText(`Capture proposal accepted ${tag}`)).toBeVisible();
   } finally {
@@ -228,6 +234,10 @@ test("Load more walks the keyset cursor to the end of a 55-row feed", async ({ p
     // text= locator counts the chrome too.
     const entries = page.locator("main li").filter({ hasText: `Load more ${tag}` });
     await expect(entries).toHaveCount(50);
+    // Hydrate before clicking: the load-more handler attaches with the
+    // island's hydration, and a pre-hydration click is a silent no-op (the
+    // old ?pages=N walk was a server link and had no such gap).
+    await waitSettled(page);
     // The keyset peek cannot know the exact remaining count, so the control
     // is plainly "Load more" — a button in the feed island since the
     // incremental append rework (it calls the loadActivityPage server action
