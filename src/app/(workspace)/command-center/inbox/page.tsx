@@ -113,7 +113,7 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
                         })}
                         aria-current={active ? "page" : undefined}
                         className={cn(
-                          "inline-flex h-6 items-center gap-1.5 rounded-md px-2.5 text-xs outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+                          "inline-flex h-6 items-center gap-1.5 rounded-md px-2 text-xs outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring sm:px-2.5",
                           active
                             ? "bg-background font-medium text-foreground shadow-sm"
                             : "text-muted-foreground hover:text-foreground",
