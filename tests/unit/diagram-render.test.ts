@@ -42,6 +42,7 @@ import {
   DIAGRAM_TYPES,
   EDITABLE_DIAGRAM_TYPES,
   supportsElementEdit,
+  type DiagramRenderMode,
   type DiagramRenderResult,
   type DiagramToolOutput,
   type DiagramType,
@@ -199,6 +200,14 @@ describe("DiagramToolOutput shape (spec §3)", () => {
       "diagramType",
       "renderMode",
     ]);
+  });
+
+  it("spells exactly the two render modes the wire frame may carry", () => {
+    const modes: Record<DiagramRenderMode, string> = {
+      excalidraw: "editable scene",
+      "image-fallback": "SVG only",
+    };
+    expect(Object.keys(modes)).toStrictEqual(["excalidraw", "image-fallback"]);
   });
 });
 
