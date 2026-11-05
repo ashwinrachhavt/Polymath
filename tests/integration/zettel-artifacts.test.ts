@@ -56,7 +56,7 @@ const TEXT =
   "The tenant pays monthly rent of twelve hundred dollars. The landlord keeps the security deposit until move out. Pets are not allowed without written consent.";
 const Q1 = "The tenant pays monthly rent of twelve hundred dollars.";
 const Q2 = "The landlord keeps the security deposit until move out.";
-const extractor = (cands: Array<{ title: string; claim: string; quote: string }>): ZettelExtractor => ({
+const extractor = (cands: Array<{ title: string; content: string; quote: string }>): ZettelExtractor => ({
   name: "fake@1",
   extract: async () => cands,
 });
@@ -123,7 +123,7 @@ async function acceptOne(auth: { workspaceId: string; userId: string; role: "own
     proposals: [proposal],
   } = await proposeZettels(auth, {
     documentId: docId,
-    extractor: extractor([{ title: "Monthly rent", claim: "Rent is $1,200 a month.", quote: Q1 }]),
+    extractor: extractor([{ title: "Monthly rent", content: "Rent is $1,200 a month.", quote: Q1 }]),
   });
   return { proposal, result: await acceptZettel(auth, { proposalId: proposal.id }) };
 }
@@ -236,7 +236,7 @@ suite("zettel cards (real Postgres)", () => {
       proposals: [p1],
     } = await proposeZettels(auth, {
       documentId: doc.id,
-      extractor: extractor([{ title: "Deposit", claim: "The landlord holds the deposit.", quote: Q2 }]),
+      extractor: extractor([{ title: "Deposit", content: "The landlord holds the deposit.", quote: Q2 }]),
     });
     const { rejectZettel } = await import("@/domains/knowledge/zettels");
     await rejectZettel(auth, { proposalId: p1.id });

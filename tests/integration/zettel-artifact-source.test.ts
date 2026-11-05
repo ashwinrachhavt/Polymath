@@ -66,8 +66,12 @@ suite("proposeZettels from an artifact (real Postgres)", () => {
     const extractor = {
       name: "fake@1",
       extract: async () => [
-        { title: "Monthly rent", claim: "Rent is $1,200 a month.", quote: Q1 },
-        { title: "Invented", claim: "Not in the body.", quote: "this sentence is not in the artifact anywhere at all" },
+        { title: "Monthly rent", content: "Rent is $1,200 a month.", quote: Q1 },
+        {
+          title: "Invented",
+          content: "Not in the body.",
+          quote: "this sentence is not in the artifact anywhere at all",
+        },
       ],
     };
     const { proposals: rows } = await proposeZettels(auth, { sourceArtifactId: artifact.id, extractor });
@@ -140,7 +144,7 @@ suite("proposeZettels from an artifact (real Postgres)", () => {
     const { proposeZettels, acceptZettel } = await import("@/domains/knowledge/zettels");
     const extractor = {
       name: "fake@1",
-      extract: async () => [{ title: "Monthly rent", claim: "Rent is $1,200 a month.", quote: Q1 }],
+      extract: async () => [{ title: "Monthly rent", content: "Rent is $1,200 a month.", quote: Q1 }],
     };
     const {
       proposals: [proposal],

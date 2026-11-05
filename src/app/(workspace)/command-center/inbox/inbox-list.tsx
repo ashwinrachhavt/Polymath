@@ -155,7 +155,7 @@ export function InboxList({
   // The bulk zettelize outcome: what actually queued versus what the action
   // skipped, kept while the toolbar is up so the honest answer survives the
   // transition (rows stay in the list until the worker files them).
-  const [zettel, setZettel] = useState<{ queued: number; skipped: number; awaitingReview: number } | null>(null);
+  const [zettel, setZettel] = useState<{ queued: number; skipped: number } | null>(null);
   // Each bulk click mounts a fresh queue watch; the key re-arms the poller
   // after a previous watch already settled itself.
   const [zettelPass, setZettelPass] = useState(0);
@@ -223,7 +223,7 @@ export function InboxList({
   }
 
   /*
-   * Bulk zettelize: one proposal pass for the selection. The action is the
+   * Bulk zettelize: one creation pass for the selection. The action is the
    * authority on eligibility - captures already filed, without readable text,
    * or not open arrive back as skipped - so the summary renders what actually
    * queued instead of guessing from previews. The selection is kept (like the
@@ -241,7 +241,7 @@ export function InboxList({
         setBulkErrors([{ id: "zettelize", title: "Zettelize", message: result.message }]);
         return;
       }
-      setZettel({ queued: result.queued, skipped: result.skipped, awaitingReview: result.awaitingReview });
+      setZettel({ queued: result.queued, skipped: result.skipped });
       setZettelPass((n) => n + 1);
     });
   }
@@ -367,17 +367,15 @@ export function InboxList({
           {zettel ? (
             <p className="w-full text-body-dense" role="status">
               <span className="text-muted-foreground">
-                {zettel.queued ? `Queued ${zettel.queued} for zettel proposals.` : "Nothing queued."}
+                {zettel.queued
+                  ? `Creating zettels for ${zettel.queued} capture${zettel.queued === 1 ? "" : "s"}…`
+                  : "Nothing queued."}
                 {zettel.skipped
                   ? ` Skipped ${zettel.skipped} not eligible (no readable text, already filed, or not open).`
                   : ""}
-                {zettel.awaitingReview ? ` Already in review: ${zettel.awaitingReview} waiting.` : ""}
               </span>{" "}
-              <Link
-                href="/polymath/ideas#in-review"
-                className="text-foreground font-medium underline underline-offset-4"
-              >
-                Review ideas
+              <Link href="/polymath/ideas" className="text-foreground font-medium underline underline-offset-4">
+                See in Ideas
               </Link>
             </p>
           ) : null}

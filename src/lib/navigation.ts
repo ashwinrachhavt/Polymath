@@ -269,9 +269,38 @@ export function isBrowserPreviewPath(pathname: string) {
  * A conversation surface: the transcript is the page, and the shell folds to
  * it (no header bar, the sidebar collapsed to its icon rail). One definition
  * so app-shell's headerless and side-nav's auto-collapse cannot drift.
+ *
+ * Only the chat home and a single conversation run are immersive. Static
+ * workspace pages (Notes, Vault, Skills, …) keep the shell, so a single
+ * segment after /polymath/ is a run only when it is not a registered page —
+ * a new static subroute under /polymath/ must be added to the set below or it
+ * renders headerless.
  */
+const polymathStaticSegments = new Set([
+  "notes",
+  "notebook",
+  "ideas",
+  "knowledge",
+  "skills",
+  "library",
+  "artifacts",
+  "files",
+  "graph",
+  "wiki",
+  "sources",
+  "specialists",
+  "dossiers",
+]);
+
 export function isConversationSurface(pathname: string) {
-  return pathname === "/polymath" || pathname.startsWith("/polymath/");
+  if (pathname === "/polymath") return true;
+  // Guard the prefix before slicing: any other route (/command-center/inbox,
+  // /neuralflow/work, /onboarding, …) is a shelled page, never a conversation.
+  if (!pathname.startsWith("/polymath/")) return false;
+  const rest = pathname.slice("/polymath/".length);
+  if (!rest) return true;
+  const [head] = rest.split("/");
+  return !polymathStaticSegments.has(head);
 }
 
 export const moreDestination = {

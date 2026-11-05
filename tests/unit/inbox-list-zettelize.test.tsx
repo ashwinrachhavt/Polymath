@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
  * exactly the selected ids, surfaces the action's skipped rows honestly (no
  * readable text, already filed, or not open - the list sees previews, not
  * bodies, so the action is the eligibility authority), and answers with a
- * status line + the Ideas #in-review link, never a spinner.
+ * status line + the Ideas link, never a spinner.
  *
  * Value: protects=the queued/skipped honesty contract on the bulk path;
  * fails_when=the summary guesses eligibility from previews or drops the skip
@@ -72,12 +72,11 @@ afterEach(() => {
 });
 
 describe("InboxList bulk zettelize", () => {
-  it("queues exactly the selection and surfaces the action's skipped rows with the review link", async () => {
+  it("queues exactly the selection and surfaces the action's skipped rows with the Ideas link", async () => {
     generateZettelsAction.mockResolvedValueOnce({
       ok: true,
       queued: 1,
       skipped: 1,
-      awaitingReview: 4,
       captureIds: [FIRST.id],
     });
     const screen = renderList([FIRST, SECOND, FILED]);
@@ -97,10 +96,9 @@ describe("InboxList bulk zettelize", () => {
 
     expect(generateZettelsAction).toHaveBeenCalledWith(expect.objectContaining({ captureIds: [FIRST.id, SECOND.id] }));
     const status = screen.getByRole("status");
-    expect(status.textContent).toContain("Queued 1 for zettel proposals.");
+    expect(status.textContent).toContain("Creating zettels for 1 capture…");
     expect(status.textContent).toContain("Skipped 1 not eligible");
-    expect(status.textContent).toContain("Already in review: 4 waiting.");
-    expect(screen.getByRole("link", { name: "Review ideas" }).getAttribute("href")).toBe("/polymath/ideas#in-review");
+    expect(screen.getByRole("link", { name: "See in Ideas" }).getAttribute("href")).toBe("/polymath/ideas");
   });
 
   it("answers nothing queued when every selected row is skipped", async () => {
@@ -108,7 +106,6 @@ describe("InboxList bulk zettelize", () => {
       ok: true,
       queued: 0,
       skipped: 2,
-      awaitingReview: 0,
       captureIds: [],
     });
     const screen = renderList([FIRST, SECOND]);
@@ -147,13 +144,13 @@ describe("InboxList bulk zettelize", () => {
   it("disables Zettelize with the provider reason when no model is configured", () => {
     const screen = renderList([FIRST], {
       zettelProviderReady: false,
-      zettelProviderReason: "Zettel proposals need a model. Set OPENROUTER_API_KEY or GEMINI_API_KEY.",
+      zettelProviderReason: "Zettelize needs a model. Set OPENROUTER_API_KEY or GEMINI_API_KEY.",
     });
     await_select(screen);
 
     const button = screen.getByRole("button", { name: "Zettelize" }) as HTMLButtonElement;
     expect(button.disabled).toBe(true);
-    expect(button.title).toBe("Zettel proposals need a model. Set OPENROUTER_API_KEY or GEMINI_API_KEY.");
+    expect(button.title).toBe("Zettelize needs a model. Set OPENROUTER_API_KEY or GEMINI_API_KEY.");
   });
 });
 

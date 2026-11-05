@@ -4,7 +4,6 @@ import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
 import {
   MAX_ZETTEL_SOURCE_CAPTURES,
-  countPendingZettelProposals,
   countQueuedZettelPasses,
   countZettelSourceCaptures,
   requestZettelGeneration,
@@ -19,7 +18,7 @@ import { capturesTag } from "@/lib/cache-tags";
  * "Generate zettels" from the inbox: one click over the open captures that
  * carry text. The action only queues the work - a model call never runs inside
  * the request - so the button returns as soon as the outbox rows commit, and
- * the proposals appear in the Ideas collection at /polymath/ideas.
+ * the cards appear in the Ideas collection at /polymath/ideas.
  *
  * The client sends one idempotency key per click: a double-submit returns the
  * first answer and queues nothing new. Inside a request the outbox dispatch key
@@ -30,15 +29,13 @@ export type GenerateZettelsResult =
   | {
       ok: true;
       /**
-       * Captures queued for a proposal pass. The model runs in the outbox rather
-       * than inside this request, so the number of proposals is not known when
-       * the action returns - this count is what was asked for, and
-       * `awaitingReview` is the queue it is filling. Reporting a proposal total
-       * here would be a number nobody has produced yet.
+       * Captures queued for a creation pass. The model runs in the outbox rather
+       * than inside this request, so the number of cards is not known when the
+       * action returns - this count is what was asked for. Reporting a card
+       * total here would be a number nobody has produced yet.
        */
       queued: number;
       skipped: number;
-      awaitingReview: number;
       replayed: boolean;
     }
   | { ok: false; message: string };
@@ -89,28 +86,23 @@ export async function generateZettelsAction(raw: {
     ok: true,
     queued: outcome.queued,
     skipped: outcome.skipped,
-    awaitingReview: await countPendingZettelProposals(auth),
     replayed: outcome.replayed,
   };
 }
 
-export type ZettelQueueStatus =
-  { ok: true; phase: "working" | "done"; label: string; reviewing: number } | { ok: false; message: string };
+export type ZettelQueueStatus = { ok: true; phase: "working" | "done"; label: string } | { ok: false; message: string };
 
 /**
  * The queue-wide status read a watching verb polls: how many zettelize passes
- * are still owed, and how many proposals wait for review. Counts only - the
- * outbox owns the work, this owns the words.
+ * are still owed. The count is the whole story - the outbox owns the work,
+ * this owns the words - because the cards, not a review queue, are where the
+ * outcome lands.
  */
 export async function zettelQueueStatusAction(): Promise<ZettelQueueStatus> {
   const auth = await authorize();
   try {
-    const [queuedPasses, awaitingReview] = await Promise.all([
-      countQueuedZettelPasses(auth),
-      countPendingZettelProposals(auth),
-    ]);
-    const counts = { queuedPasses, awaitingReview };
-    return { ok: true, phase: zettelQueuePhase(counts), label: zettelQueueLabel(counts), reviewing: awaitingReview };
+    const counts = { queuedPasses: await countQueuedZettelPasses(auth) };
+    return { ok: true, phase: zettelQueuePhase(counts), label: zettelQueueLabel(counts) };
   } catch (cause) {
     return { ok: false, message: cause instanceof Error ? cause.message : "Could not read the zettel queue." };
   }

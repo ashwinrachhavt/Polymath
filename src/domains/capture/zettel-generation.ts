@@ -7,8 +7,8 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import { EmbeddingUnconfiguredError } from "@/integrations/embeddings/provider";
 import type { ZettelExtractor } from "@/integrations/zettels/extractor";
 import { extractDocument } from "@/domains/knowledge/extraction";
-import { zettelProposals } from "@/domains/knowledge/schema";
-import { proposeZettels } from "@/domains/knowledge/zettels";
+import { embedArtifact } from "@/domains/knowledge/embedding";
+import { createZettelsFromSource, type ZettelCardsResult } from "@/domains/knowledge/zettels";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { ConflictError, StaleWriteError, convertCaptureToDocument } from "./commands";
@@ -16,22 +16,24 @@ import { captures } from "./schema";
 
 /*
  * "Generate zettels" from the inbox: one control over the open captures that
- * carry text, so a morning's reading becomes zettel proposals without opening
- * each capture.
+ * carry text, so a morning's reading becomes idea cards without opening each
+ * capture.
  *
  * Two halves, deliberately split. `requestZettelGeneration` is the request
  * half: it picks the captures, takes the receipt, and enqueues one outbox row
  * per capture - all in the caller's transaction, with no model call. The
  * handler is the work half: file the capture as a library document, read its
- * text, and propose zettels. A request never waits on a generation call, and
- * the queue, not the click, carries the retries.
+ * text, and create the zettel cards directly. A request never waits on a
+ * generation call, and the queue, not the click, carries the retries.
  *
- * Nothing here accepts a zettel. Proposals land as `proposed` rows in the same
- * review queue a per-document pass fills, and the dedupe key is
- * zettelDedupeKey's (document + verbatim span), so a second click lands on the
- * rows the first one made. A candidate whose quote is not verbatim in the
- * capture's text is dropped by proposeZettels rather than cited: the capture id
- * is the provenance on the audit row, never an invented quotation.
+ * Nothing here proposes. The triggering click is the permission, so the
+ * handler writes the cards (the same authorship-is-acceptance pattern a chat
+ * save uses) and no proposal row waits for a second decision. Dedupe stands
+ * in for review: a second pass lands on the cards the first one made (same
+ * span, same dedupe key), and a near-duplicate of an existing card is
+ * skipped rather than minted. A candidate whose quote is not verbatim in the
+ * capture's text is dropped rather than cited: the capture id is the
+ * provenance on the audit row, never an invented quotation.
  */
 
 export const ZETTEL_GENERATION_TOPIC = "capture.zettels_requested";
@@ -91,15 +93,6 @@ export async function countZettelSourceCaptures(auth: AuthContext, input: { ids?
   return row?.n ?? 0;
 }
 
-/** Zettel proposals a person has not decided yet - the depth of the review queue this pass fills. */
-export async function countPendingZettelProposals(auth: AuthContext): Promise<number> {
-  const [row] = await db
-    .select({ n: count() })
-    .from(zettelProposals)
-    .where(and(eq(zettelProposals.workspaceId, auth.workspaceId), eq(zettelProposals.status, "proposed")));
-  return row?.n ?? 0;
-}
-
 /** Count outbox rows that have not settled yet: the pending zettelize passes. */
 export async function countQueuedZettelPasses(auth: AuthContext): Promise<number> {
   const [row] = await db
@@ -118,20 +111,18 @@ export async function countQueuedZettelPasses(auth: AuthContext): Promise<number
 }
 
 /**
- * The status vocabulary a watching zettelize verb speaks, derived from counts
- * that already exist: no new table, no new state machine. Working counts the
- * outbox rows still owed; done covers the rest - proposals waiting on a human
- * is the good outcome, a clear queue the calm one. The watch never reports
- * failure here: a queue-wide status read with zero owed rows is simply caught
- * up.
+ * The status vocabulary a watching zettelize verb speaks, derived from the
+ * count that already exists: no new table, no new state machine. Working
+ * counts the outbox rows still owed; done covers the rest - the cards are in
+ * the library. The watch never reports failure here: a queue-wide status read
+ * with zero owed rows is simply caught up.
  */
-export function zettelQueuePhase(input: { queuedPasses: number; awaitingReview: number }): "working" | "done" {
+export function zettelQueuePhase(input: { queuedPasses: number }): "working" | "done" {
   return input.queuedPasses > 0 ? "working" : "done";
 }
 
-export function zettelQueueLabel(input: { queuedPasses: number; awaitingReview: number }): string {
-  if (input.queuedPasses > 0) return "Proposing ideas…";
-  return input.awaitingReview > 0 ? "Ideas are waiting for your review." : "The ideas queue is clear.";
+export function zettelQueueLabel(input: { queuedPasses: number }): string {
+  return input.queuedPasses > 0 ? "Creating zettels…" : "The ideas queue is clear.";
 }
 
 export type ZettelGenerationRequest = {
@@ -177,7 +168,7 @@ export async function requestZettelGeneration(
               action: "capture.zettels_requested",
               subjectType: "capture",
               subjectId: row.id,
-              summary: "Queued for zettel proposals",
+              summary: "Queued for zettel creation",
             },
             tx,
           );
@@ -202,21 +193,22 @@ export type ZettelGenerationDeps = {
 };
 
 /**
- * The work half: one capture in, proposals out. A capture that already became
+ * The work half: one capture in, cards out. A capture that already became
  * a task, note, or draft keeps that home - the owner chose it, and filing a
  * second document would be a silent duplicate. A capture that never became a
  * document is filed through the one intake path, so its text, extraction,
  * lineage edge, and audit row are the ordinary ones.
  *
- * Returns how many proposals this pass created. Zero is a normal answer: the
- * capture already had proposals (a second click), it had no claims, or the
- * model is not configured. A malformed event or a failed extraction throws, so
- * the dispatcher retries with backoff instead of losing the request.
+ * Returns how many cards this pass created. Zero is a normal answer: the
+ * capture offered no text to read, it made no claims, every candidate was a
+ * repeat, or the model is not configured. A malformed event or a failed
+ * extraction throws, so the dispatcher retries with backoff instead of
+ * losing the request.
  */
 export async function runZettelGenerationRequested(
   event: ClaimedOutboxEvent,
   deps: ZettelGenerationDeps = {},
-): Promise<{ proposed: number; unreadChars: number }> {
+): Promise<{ created: number; unreadChars: number }> {
   const raw = event.payload ?? {};
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
     throw new Error(`${ZETTEL_GENERATION_TOPIC} has a malformed payload (${typeof raw}); redeploy the producer`);
@@ -235,13 +227,13 @@ export async function runZettelGenerationRequested(
     .where(and(eq(captures.id, captureId), eq(captures.workspaceId, event.workspaceId)))
     .limit(1);
   if (!capture || capture.archivedAt || capture.parkedAt || capture.processingState === "discarded")
-    return { proposed: 0, unreadChars: 0 };
+    return { created: 0, unreadChars: 0 };
 
   let documentId = capture.convertedType === "document" ? capture.convertedId : null;
   if (!documentId) {
     // Converted to something the owner chose is a decision, not a failure.
-    if (capture.convertedType) return { proposed: 0, unreadChars: 0 };
-    if (!zettelSourceText(capture)) return { proposed: 0, unreadChars: 0 };
+    if (capture.convertedType) return { created: 0, unreadChars: 0 };
+    if (!zettelSourceText(capture)) return { created: 0, unreadChars: 0 };
     try {
       const filed = await convertCaptureToDocument(auth, { captureId: capture.id, expectedVersion: capture.version });
       documentId = filed.documentId;
@@ -264,53 +256,62 @@ export async function runZettelGenerationRequested(
       }
     }
   }
-  if (!documentId) return { proposed: 0, unreadChars: 0 };
+  if (!documentId) return { created: 0, unreadChars: 0 };
 
   const extraction = await extractDocument(auth, { documentId });
   if (!extraction.ok) throw new Error(extraction.error);
 
   /*
-   * The count and the insert are one transaction, so the audit row commits with
-   * the proposals it describes and two racing passes cannot both see zero.
+   * The pass and its audit are one transaction, so the audit row commits with
+   * the cards it describes and two racing passes cannot both see zero.
    */
-  return withTransaction(async (tx) => {
-    const [existing] = await tx
-      .select({ n: count() })
-      .from(zettelProposals)
-      .where(and(eq(zettelProposals.workspaceId, auth.workspaceId), eq(zettelProposals.documentId, documentId)));
-    // The extraction pipeline proposes on its own; a second pass would pay for
-    // the same document twice and stack near-duplicate rows the dedupe key
-    // cannot merge (two runs quote different spans).
-    if ((existing?.n ?? 0) > 0) return { proposed: 0, unreadChars: 0 };
+  const outcome = await withTransaction(
+    async (tx): Promise<{ created: number; unreadChars: number; cards: ZettelCardsResult["created"] }> => {
+      let pass: ZettelCardsResult;
+      try {
+        pass = await createZettelsFromSource(auth, { documentId, extractor: deps.extractor, tx });
+      } catch (cause) {
+        // No model configured is a skip, not a failure: retrying five times cannot
+        // conjure a key, and the inbox disables the control in that state anyway.
+        if (cause instanceof EmbeddingUnconfiguredError) return { created: 0, unreadChars: 0, cards: [] };
+        throw cause;
+      }
 
-    let created: Array<{ id: string }>;
-    let readReport: { readChars: number; unreadChars: number; unreadSections: number };
+      if (pass.created.length > 0) {
+        await recordAudit(
+          auth,
+          {
+            action: "capture.zettels_created",
+            subjectType: "capture",
+            subjectId: capture.id,
+            summary: `Created ${pass.created.length} zettel${pass.created.length === 1 ? "" : "s"}`,
+            metadata: {
+              documentId,
+              readChars: pass.readChars,
+              unreadChars: pass.unreadChars,
+              unreadSections: pass.unreadSections,
+              skippedRepeats: pass.skippedRepeats,
+              skippedDuplicates: pass.skippedDuplicates,
+              skippedSpans: pass.skippedSpans,
+            },
+          },
+          tx,
+        );
+      }
+      return { created: pass.created.length, unreadChars: pass.unreadChars, cards: pass.created };
+    },
+  );
+  // Whoever owns the commit owns the embeds: the new cards join the semantic
+  // graph best-effort after the transaction lands, and a failed or
+  // unconfigured embedding pass never blocks the cards themselves.
+  for (const card of outcome.cards) {
     try {
-      ({ proposals: created, ...readReport } = await proposeZettels(auth, {
-        documentId,
-        extractor: deps.extractor,
-        tx,
-      }));
+      await embedArtifact(auth, { artifactId: card.artifactId });
     } catch (cause) {
-      // No model configured is a skip, not a failure: retrying five times cannot
-      // conjure a key, and the inbox disables the control in that state anyway.
-      if (cause instanceof EmbeddingUnconfiguredError) return { proposed: 0, unreadChars: 0 };
-      throw cause;
-    }
-
-    if (created.length > 0) {
-      await recordAudit(
-        auth,
-        {
-          action: "capture.zettels_proposed",
-          subjectType: "capture",
-          subjectId: capture.id,
-          summary: `Proposed ${created.length} zettel${created.length === 1 ? "" : "s"} for review`,
-          metadata: { documentId, ...readReport },
-        },
-        tx,
+      console.error(
+        `embedArtifact after zettel creation failed: ${cause instanceof Error ? cause.message : String(cause)}`,
       );
     }
-    return { proposed: created.length, unreadChars: readReport.unreadChars };
-  });
+  }
+  return { created: outcome.created, unreadChars: outcome.unreadChars };
 }

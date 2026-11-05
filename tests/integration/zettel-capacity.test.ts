@@ -102,7 +102,7 @@ suite("the size-derived proposal cap (real Postgres)", () => {
       name: "fake",
       extract: async (section: string, options?: { max?: number }) => {
         seen.push({ chars: section.length, max: options?.max });
-        return Array.from({ length: 6 }, (_, i) => ({ title: `T${i}`, claim: `Claim ${i}`, quote: sentence(i) }));
+        return Array.from({ length: 6 }, (_, i) => ({ title: `T${i}`, content: `Claim ${i}`, quote: sentence(i) }));
       },
     };
     const { proposals } = await proposeZettels(auth, { sourceArtifactId: artifactId, extractor });
@@ -124,7 +124,7 @@ suite("the size-derived proposal cap (real Postgres)", () => {
       if (input.system) systems.push(input.system);
       return {
         text: JSON.stringify({
-          zettels: Array.from({ length: 8 }, (_, i) => ({ title: `T${i}`, claim: `Claim ${i}`, quote: sentence(1) })),
+          zettels: Array.from({ length: 8 }, (_, i) => ({ title: `T${i}`, content: `Claim ${i}`, quote: sentence(1) })),
         }),
       };
     };
@@ -152,7 +152,7 @@ suite("the size-derived proposal cap (real Postgres)", () => {
         const base = section.includes("Part 2") ? 5 : 1;
         return [0, 1, 2, 3].map((k) => ({
           title: `T${base + k}`,
-          claim: `Claim ${base + k}`,
+          content: `Claim ${base + k}`,
           quote: sentence(base + k),
         }));
       },

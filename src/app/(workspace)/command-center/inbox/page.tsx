@@ -155,7 +155,7 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
               rawQuery={query}
               zettelProviderReady={generation?.configured ?? false}
               zettelProviderReason={
-                generation?.reason ?? "Zettel proposals need a model. Set OPENROUTER_API_KEY or GEMINI_API_KEY."
+                generation?.reason ?? "Zettelize needs a model. Set OPENROUTER_API_KEY or GEMINI_API_KEY."
               }
               rows={rows.map((capture) => ({
                 id: capture.id,
@@ -229,7 +229,7 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
             priorWriting={selected?.priorWriting ?? null}
             zettelProviderReady={generation?.configured ?? false}
             zettelProviderReason={
-              generation?.reason ?? "Zettel proposals need a model. Set OPENROUTER_API_KEY or GEMINI_API_KEY."
+              generation?.reason ?? "Zettelize needs a model. Set OPENROUTER_API_KEY or GEMINI_API_KEY."
             }
             proposals={(selected?.proposals ?? []).map((proposal) => ({
               id: proposal.id,

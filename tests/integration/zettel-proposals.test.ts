@@ -41,7 +41,7 @@ const TEXT =
   "The tenant pays monthly rent of twelve hundred dollars. The landlord keeps the security deposit until move out. Pets are not allowed without written consent.";
 const Q1 = "The tenant pays monthly rent of twelve hundred dollars.";
 const Q2 = "The landlord keeps the security deposit until move out.";
-const extractor = (cands: Array<{ title: string; claim: string; quote: string }>): ZettelExtractor => ({
+const extractor = (cands: Array<{ title: string; content: string; quote: string }>): ZettelExtractor => ({
   name: "fake@1",
   extract: async () => cands,
 });
@@ -102,8 +102,8 @@ suite("proposeZettels (real Postgres)", () => {
     const { proposals: rows } = await proposeZettels(auth, {
       documentId: doc.id,
       extractor: extractor([
-        { title: "Monthly rent", claim: "Rent is $1,200 a month.", quote: Q1 },
-        { title: "Deposit", claim: "The landlord holds the deposit until move out.", quote: Q2 },
+        { title: "Monthly rent", content: "Rent is $1,200 a month.", quote: Q1 },
+        { title: "Deposit", content: "The landlord holds the deposit until move out.", quote: Q2 },
       ]),
     });
     expect(rows).toHaveLength(2);
@@ -124,10 +124,10 @@ suite("proposeZettels (real Postgres)", () => {
     const { proposals: rows } = await proposeZettels(auth, {
       documentId: doc.id,
       extractor: extractor([
-        { title: "Invented", claim: "x", quote: "The tenant may keep a dragon in the flat." },
-        { title: "", claim: "no title", quote: Q1 },
-        { title: "Short", claim: "short", quote: "rent" },
-        { title: "Real", claim: "real", quote: Q2 },
+        { title: "Invented", content: "x", quote: "The tenant may keep a dragon in the flat." },
+        { title: "", content: "no title", quote: Q1 },
+        { title: "Short", content: "short", quote: "rent" },
+        { title: "Real", content: "real", quote: Q2 },
       ]),
     });
     expect(rows.map((r) => r.title)).toEqual(["Real"]);
@@ -140,7 +140,7 @@ suite("proposeZettels (real Postgres)", () => {
       proposals: [p],
     } = await proposeZettels(auth, {
       documentId: doc.id,
-      extractor: extractor([{ title: "Rent", claim: "c", quote: Q1 }]),
+      extractor: extractor([{ title: "Rent", content: "c", quote: Q1 }]),
     });
     const results = await Promise.allSettled([
       acceptZettel(auth, { proposalId: p.id }),
@@ -166,10 +166,10 @@ suite("proposeZettels (real Postgres)", () => {
     const { proposals: rows } = await proposeZettels(auth, {
       documentId: doc.id,
       extractor: extractor([
-        { title: "Pets allowed", claim: "Pets are allowed.", quote: "Pets are allowed without written consent." },
+        { title: "Pets allowed", content: "Pets are allowed.", quote: "Pets are allowed without written consent." },
         {
           title: "No pets",
-          claim: "Pets need written consent.",
+          content: "Pets need written consent.",
           quote: "Pets are not allowed without written consent.",
         },
       ]),
@@ -181,7 +181,7 @@ suite("proposeZettels (real Postgres)", () => {
   it("re-running lands on the same rows (dedupe key) and does not revive a decision", async () => {
     const auth = await workspace();
     const doc = await seed(auth);
-    const ex = extractor([{ title: "Rent", claim: "c", quote: Q1 }]);
+    const ex = extractor([{ title: "Rent", content: "c", quote: Q1 }]);
     const {
       proposals: [first],
     } = await proposeZettels(auth, { documentId: doc.id, extractor: ex });
@@ -213,7 +213,7 @@ suite("proposeZettels (real Postgres)", () => {
     const doc = await seed(auth, sentences.join(" "));
     const { proposals: rows } = await proposeZettels(auth, {
       documentId: doc.id,
-      extractor: extractor(sentences.map((q, i) => ({ title: `T${i}`, claim: "c", quote: q }))),
+      extractor: extractor(sentences.map((q, i) => ({ title: `T${i}`, content: "c", quote: q }))),
     });
     expect(rows).toHaveLength(2);
   });
@@ -231,7 +231,7 @@ suite("proposeZettels (real Postgres)", () => {
     const doc = await seed(auth, sentences.join(" "));
     const { proposals: rows } = await proposeZettels(auth, {
       documentId: doc.id,
-      extractor: extractor(sentences.map((q, i) => ({ title: `T${i}`, claim: "c", quote: q }))),
+      extractor: extractor(sentences.map((q, i) => ({ title: `T${i}`, content: "c", quote: q }))),
     });
     expect(rows).toHaveLength(5);
   });
@@ -245,7 +245,7 @@ suite("accept and reject (real Postgres)", () => {
       proposals: [p],
     } = await proposeZettels(auth, {
       documentId: doc.id,
-      extractor: extractor([{ title: "Monthly rent", claim: "Rent is $1,200 a month.", quote: Q1 }]),
+      extractor: extractor([{ title: "Monthly rent", content: "Rent is $1,200 a month.", quote: Q1 }]),
     });
     return { auth, doc, p };
   }
@@ -293,9 +293,15 @@ suite("accept and reject (real Postgres)", () => {
   it("decisions are audited: accept and reject each leave one row", async () => {
     const { auth, p } = await one();
     await acceptZettel(auth, { proposalId: p.id });
-    const accepted = await holder.db!.select().from(auditEvents).where(eq(auditEvents.subjectId, p.id));
-    expect(accepted.map((r) => r.action)).toEqual(["zettel.accepted"]);
-    expect(accepted[0]!.summary).toBe('Accepted zettel "Monthly rent"');
+    // Accepting is card creation now: the audit row's subject is the card the
+    // proposal became, and the action is zettel.created.
+    const [accepted] = await holder.db!.select().from(zettelProposals).where(eq(zettelProposals.id, p.id));
+    const acceptAudits = await holder
+      .db!.select()
+      .from(auditEvents)
+      .where(eq(auditEvents.subjectId, accepted.artifactId!));
+    expect(acceptAudits.map((r) => r.action)).toEqual(["zettel.created"]);
+    expect(acceptAudits[0]!.summary).toBe('Created zettel "Monthly rent"');
 
     const second = await one();
     await rejectZettel(second.auth, { proposalId: second.p.id });
@@ -321,7 +327,7 @@ suite("accept and reject (real Postgres)", () => {
       (
         await proposeZettels(auth, {
           documentId: id,
-          extractor: extractor([{ title: "Monthly rent", claim: "c", quote: Q1 }]),
+          extractor: extractor([{ title: "Monthly rent", content: "c", quote: Q1 }]),
         })
       ).proposals[0];
     const a = await acceptZettel(auth, { proposalId: (await mk(d1.id)).id });

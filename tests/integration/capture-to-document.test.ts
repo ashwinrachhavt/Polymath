@@ -184,10 +184,10 @@ suite("convertCaptureToDocument", () => {
         extract: async () => [
           {
             title: "One idea per card",
-            claim: "A zettel holds exactly one idea.",
+            content: "A zettel holds exactly one idea.",
             quote: "A zettel carries one idea, verbatim evidence",
           },
-          { title: "Invented", claim: "Not in the text.", quote: "this passage was never written down anywhere" },
+          { title: "Invented", content: "Not in the text.", quote: "this passage was never written down anywhere" },
         ],
       },
     });

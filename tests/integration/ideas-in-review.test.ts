@@ -40,7 +40,7 @@ import type { ZettelExtractor } from "@/integrations/zettels/extractor";
 const TEXT = "The tenant pays monthly rent of twelve hundred dollars.";
 const Q1 = "The tenant pays monthly rent of twelve hundred dollars.";
 
-const extractor = (cands: Array<{ title: string; claim: string; quote: string }>): ZettelExtractor => ({
+const extractor = (cands: Array<{ title: string; content: string; quote: string }>): ZettelExtractor => ({
   name: "fake@1",
   extract: async () => cands,
 });
@@ -88,7 +88,7 @@ async function seedDocumentProposal(auth: ReturnType<typeof ownerAuth>) {
   if (!r.ok) throw new Error("seed failed");
   const { proposals } = await proposeZettels(auth, {
     documentId: doc.id,
-    extractor: extractor([{ title: "Monthly rent", claim: "Rent is $1,200 a month.", quote: Q1 }]),
+    extractor: extractor([{ title: "Monthly rent", content: "Rent is $1,200 a month.", quote: Q1 }]),
   });
   return { doc, proposal: proposals[0] };
 }
@@ -120,7 +120,7 @@ async function seedArtifactProposal(auth: ReturnType<typeof ownerAuth>, title = 
   await db.update(artifacts).set({ currentVersionId: version.id }).where(eq(artifacts.id, artifact.id));
   const { proposals } = await proposeZettels(auth, {
     sourceArtifactId: artifact.id,
-    extractor: extractor([{ title: "Deposit rule", claim: "The deposit is held.", quote: Q1 }]),
+    extractor: extractor([{ title: "Deposit rule", content: "The deposit is held.", quote: Q1 }]),
   });
   return { artifact, proposal: proposals[0] };
 }

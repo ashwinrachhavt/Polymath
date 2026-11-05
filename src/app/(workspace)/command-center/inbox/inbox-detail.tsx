@@ -457,9 +457,9 @@ export function InboxDetail({
       {zettelPass > 0 ? (
         <div className="mt-3 flex flex-col items-start gap-1">
           <p className="text-muted-foreground text-body-dense" role="status">
-            Queued for zettel proposals.{" "}
-            <Link href="/polymath/ideas#in-review" className="text-foreground font-medium underline underline-offset-4">
-              Review ideas
+            Creating zettels…{" "}
+            <Link href="/polymath/ideas" className="text-foreground font-medium underline underline-offset-4">
+              See in Ideas
             </Link>
           </p>
           <ZettelQueueWatch key={zettelPass} />

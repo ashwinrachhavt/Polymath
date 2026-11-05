@@ -3,6 +3,7 @@ import {
   additionalDestinationsIn,
   featureDestinations,
   isBrowserPreviewPath,
+  isConversationSurface,
   destinations,
   destinationForPath,
 } from "@/lib/navigation";
@@ -97,6 +98,59 @@ describe("navigation", () => {
    * returns, so no separate negative assertion is kept; /apps preview tools
    * keep their donor labels, only the rail governs.
    */
+
+  /*
+   * The shell folds headerless only on real conversation surfaces; every
+   * static workspace page (Notes, Vault, Skills, …) keeps the top bar and the
+   * open rail. The static-segment set lives in navigation.ts, so a new
+   * subroute added there without registering it fails the run-id case below —
+   * enumerate the set here to catch that drift at review time.
+   */
+  it("keeps the shell on every static /polymath subroute", () => {
+    const staticSegments = [
+      "notes",
+      "notebook",
+      "ideas",
+      "knowledge",
+      "skills",
+      "library",
+      "artifacts",
+      "files",
+      "graph",
+      "wiki",
+      "sources",
+      "specialists",
+      "dossiers",
+    ];
+    for (const segment of staticSegments) {
+      expect(isConversationSurface(`/polymath/${segment}`)).toBe(false);
+    }
+    // Deep paths keep their static head segment: depth never folds the shell.
+    expect(isConversationSurface("/polymath/notes/anything")).toBe(false);
+    expect(isConversationSurface("/polymath/skills/some-id/sub")).toBe(false);
+  });
+
+  it("folds the shell only on the chat home and a conversation run", () => {
+    expect(isConversationSurface("/polymath")).toBe(true);
+    // A single segment that is not a registered static subroute is a run id.
+    expect(isConversationSurface("/polymath/abc123")).toBe(true);
+    expect(isConversationSurface("/polymath/a1b2c3d4e5f6")).toBe(true);
+  });
+
+  /*
+   * Regression guard: the predicate must verify the /polymath prefix before
+   * slicing it off. A bare slice of an unrelated route yields garbage that
+   * reads as an unregistered run id and folds the shell on the entire
+   * workspace outside /polymath — the CI-wide failure this case pins shut.
+   */
+  it("keeps the shell on every route outside /polymath", () => {
+    expect(isConversationSurface("/")).toBe(false);
+    expect(isConversationSurface("/onboarding")).toBe(false);
+    expect(isConversationSurface("/command-center/inbox")).toBe(false);
+    expect(isConversationSurface("/command-center/day")).toBe(false);
+    expect(isConversationSurface("/neuralflow/work")).toBe(false);
+    expect(isConversationSurface("/more")).toBe(false);
+  });
 
   it("rails exactly the twenty-one destinations in order", () => {
     // Conversations left the rail when its threads moved into the Assistant;
