@@ -35,10 +35,10 @@ shadcn aliases point at these roles). The roles:
   --signal-soft: oklch(91% 0.05 50);
   --focus: oklch(60% 0.19 40);
   --error: oklch(52% 0.19 27);
-  --success: oklch(50% 0.12 150);
+  --success: oklch(46% 0.13 150);
   --green: oklch(48% 0.11 150);
   --contour: oklch(62% 0.07 58);
-  --water: oklch(60% 0.05 232);
+  --water: oklch(48% 0.06 232);
   --hedge: oklch(50% 0.1 150);
   --sheet: oklch(99.3% 0.004 85);
   --font-display: var(--font-red-hat-display), …; /* Red Hat Display 600 */
