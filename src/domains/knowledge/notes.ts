@@ -1,4 +1,4 @@
-import { and, count, desc, eq, ilike, inArray, isNotNull, isNull, notInArray, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, ilike, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { recordAudit } from "@/domains/audit/record";
 import { withReceipt } from "@/domains/audit/receipt";
@@ -90,23 +90,32 @@ export async function syncNoteLinks(tx: TxDrizzle, auth: AuthContext, artifactId
     ? await tx
         .select({ id: artifacts.id, title: artifacts.title, kind: artifacts.kind })
         .from(artifacts)
-        .where(and(eq(artifacts.workspaceId, auth.workspaceId), inArray(artifacts.kind, [...LINKABLE_KINDS]), isNull(artifacts.archivedAt)))
+        .where(
+          and(
+            eq(artifacts.workspaceId, auth.workspaceId),
+            inArray(artifacts.kind, [...LINKABLE_KINDS]),
+            isNull(artifacts.archivedAt),
+          ),
+        )
     : [];
   const byTitle = new Map(candidates.map((c) => [c.title.toLowerCase(), { id: c.id, kind: c.kind }]));
   const wanted = new Map<string, { label: string; kind: (typeof LINKABLE_KINDS)[number] }>();
   for (const title of titles) {
     const hit = byTitle.get(title.toLowerCase());
-    if (hit && hit.id !== artifactId && !wanted.has(hit.id)) wanted.set(hit.id, { label: title, kind: hit.kind as (typeof LINKABLE_KINDS)[number] });
+    if (hit && hit.id !== artifactId && !wanted.has(hit.id))
+      wanted.set(hit.id, { label: title, kind: hit.kind as (typeof LINKABLE_KINDS)[number] });
   }
   const existing = await tx
     .select({ id: artifactLinks.id, targetId: artifactLinks.targetId })
     .from(artifactLinks)
-    .where(and(
-      eq(artifactLinks.workspaceId, auth.workspaceId),
-      eq(artifactLinks.artifactId, artifactId),
-      inArray(artifactLinks.targetType, [...LINKABLE_KINDS]),
-      eq(artifactLinks.linkType, "reference"),
-    ));
+    .where(
+      and(
+        eq(artifactLinks.workspaceId, auth.workspaceId),
+        eq(artifactLinks.artifactId, artifactId),
+        inArray(artifactLinks.targetType, [...LINKABLE_KINDS]),
+        eq(artifactLinks.linkType, "reference"),
+      ),
+    );
   const stale = existing.filter((row) => !wanted.has(row.targetId)).map((row) => row.id);
   if (stale.length) await tx.delete(artifactLinks).where(inArray(artifactLinks.id, stale));
   const kept = new Set(existing.filter((row) => wanted.has(row.targetId)).map((row) => row.targetId));
@@ -115,15 +124,20 @@ export async function syncNoteLinks(tx: TxDrizzle, auth: AuthContext, artifactId
   const suggested = await tx
     .select({ id: artifactLinks.id, targetId: artifactLinks.targetId })
     .from(artifactLinks)
-    .where(and(
-      eq(artifactLinks.workspaceId, auth.workspaceId),
-      eq(artifactLinks.artifactId, artifactId),
-      inArray(artifactLinks.targetType, [...LINKABLE_KINDS]),
-      inArray(artifactLinks.linkType, ["semantic", "dismissed"]),
-    ));
+    .where(
+      and(
+        eq(artifactLinks.workspaceId, auth.workspaceId),
+        eq(artifactLinks.artifactId, artifactId),
+        inArray(artifactLinks.targetType, [...LINKABLE_KINDS]),
+        eq(artifactLinks.linkType, "semantic"),
+      ),
+    );
   const upgradable = suggested.filter((row) => wanted.has(row.targetId) && !kept.has(row.targetId));
   for (const row of upgradable) {
-    await tx.update(artifactLinks).set({ linkType: "reference", label: wanted.get(row.targetId)!.label }).where(eq(artifactLinks.id, row.id));
+    await tx
+      .update(artifactLinks)
+      .set({ linkType: "reference", label: wanted.get(row.targetId)!.label })
+      .where(eq(artifactLinks.id, row.id));
   }
   const upgraded = new Set(upgradable.map((row) => row.targetId));
   const fresh = [...wanted.entries()].filter(([id]) => !kept.has(id) && !upgraded.has(id));
@@ -160,7 +174,12 @@ async function claimVersion(tx: TxDrizzle, auth: AuthContext, artifactId: string
         isNull(artifacts.archivedAt),
       ),
     )
-    .returning({ id: artifacts.id, version: artifacts.version, title: artifacts.title, currentVersionId: artifacts.currentVersionId });
+    .returning({
+      id: artifacts.id,
+      version: artifacts.version,
+      title: artifacts.title,
+      currentVersionId: artifacts.currentVersionId,
+    });
   if (row) return row;
   const [exists] = await tx
     .select({ id: artifacts.id })
@@ -183,7 +202,13 @@ export async function createNoteInTx(
 ): Promise<{ id: string; versionId: string; version: number }> {
   const [artifact] = await tx
     .insert(artifacts)
-    .values({ workspaceId: auth.workspaceId, kind: input.kind ?? "note", title: input.title, createdBy: auth.userId, updatedBy: auth.userId })
+    .values({
+      workspaceId: auth.workspaceId,
+      kind: input.kind ?? "note",
+      title: input.title,
+      createdBy: auth.userId,
+      updatedBy: auth.userId,
+    })
     .returning({ id: artifacts.id, version: artifacts.version });
   const empty = { type: "doc", content: [] };
   const [version] = await tx
@@ -198,10 +223,19 @@ export async function createNoteInTx(
       createdBy: auth.userId,
     })
     .returning({ id: artifactVersions.id });
-  await tx.update(artifacts).set({ currentVersionId: version.id, embedError: null }).where(eq(artifacts.id, artifact.id));
+  await tx
+    .update(artifacts)
+    .set({ currentVersionId: version.id, embedError: null })
+    .where(eq(artifacts.id, artifact.id));
   await recordAudit(
     auth,
-    { action: "note.created", subjectType: "artifact", subjectId: artifact.id, summary: `Created ${input.kind ?? "note"} "${input.title}"`, metadata: { versionId: version.id, kind: input.kind ?? "note" } },
+    {
+      action: "note.created",
+      subjectType: "artifact",
+      subjectId: artifact.id,
+      summary: `Created ${input.kind ?? "note"} "${input.title}"`,
+      metadata: { versionId: version.id, kind: input.kind ?? "note" },
+    },
     tx,
   );
   await emit(tx, auth, "note.created", { artifactId: artifact.id, versionId: version.id });
@@ -213,7 +247,9 @@ export async function createNote(
   input: Keyed & { title: string; content?: NoteContent; plainText?: string; kind?: NoteKind },
 ): Promise<{ id: string; versionId: string; version: number }> {
   return withTransaction(async (tx) => {
-    const { value } = await withReceipt(tx, auth, input.idempotencyKey, { op: "createNote", ...input }, async () => createNoteInTx(tx, auth, input));
+    const { value } = await withReceipt(tx, auth, input.idempotencyKey, { op: "createNote", ...input }, async () =>
+      createNoteInTx(tx, auth, input),
+    );
     return value;
   });
 }
@@ -229,35 +265,48 @@ export async function autosaveNoteDraft(
   input: Keyed & { artifactId: string; expectedVersion: number; content: NoteContent; plainText?: string },
 ): Promise<{ version: number }> {
   return withTransaction(async (tx) => {
-    const { value } = await withReceipt(tx, auth, input.idempotencyKey, { op: "autosaveNoteDraft", ...input }, async () => {
-      const artifact = await claimVersion(tx, auth, input.artifactId, input.expectedVersion);
-      await tx
-        .insert(workingDrafts)
-        .values({
-          workspaceId: auth.workspaceId,
-          artifactId: artifact.id,
-          content: input.content,
-          baseVersionId: artifact.currentVersionId,
-          createdBy: auth.userId,
-          updatedBy: auth.userId,
-        })
-        .onConflictDoUpdate({
-          target: workingDrafts.artifactId,
-          set: { content: input.content, baseVersionId: artifact.currentVersionId, updatedAt: new Date(), updatedBy: auth.userId },
-        });
-      const [latestCopy] = await tx
-        .select({ createdAt: recoveryCopies.createdAt })
-        .from(recoveryCopies)
-        .where(and(eq(recoveryCopies.artifactId, artifact.id), eq(recoveryCopies.workspaceId, auth.workspaceId)))
-        .orderBy(desc(recoveryCopies.createdAt))
-        .limit(1);
-      if (!latestCopy || Date.now() - latestCopy.createdAt.getTime() > 5 * 60 * 1000) {
-        await tx.insert(recoveryCopies).values({ workspaceId: auth.workspaceId, artifactId: artifact.id, content: input.content });
-      }
-      await syncNoteLinks(tx, auth, artifact.id, markdownOf(input.content, input.plainText));
-      await emit(tx, auth, "note.autosaved", { artifactId: artifact.id, version: artifact.version });
-      return { version: artifact.version };
-    });
+    const { value } = await withReceipt(
+      tx,
+      auth,
+      input.idempotencyKey,
+      { op: "autosaveNoteDraft", ...input },
+      async () => {
+        const artifact = await claimVersion(tx, auth, input.artifactId, input.expectedVersion);
+        await tx
+          .insert(workingDrafts)
+          .values({
+            workspaceId: auth.workspaceId,
+            artifactId: artifact.id,
+            content: input.content,
+            baseVersionId: artifact.currentVersionId,
+            createdBy: auth.userId,
+            updatedBy: auth.userId,
+          })
+          .onConflictDoUpdate({
+            target: workingDrafts.artifactId,
+            set: {
+              content: input.content,
+              baseVersionId: artifact.currentVersionId,
+              updatedAt: new Date(),
+              updatedBy: auth.userId,
+            },
+          });
+        const [latestCopy] = await tx
+          .select({ createdAt: recoveryCopies.createdAt })
+          .from(recoveryCopies)
+          .where(and(eq(recoveryCopies.artifactId, artifact.id), eq(recoveryCopies.workspaceId, auth.workspaceId)))
+          .orderBy(desc(recoveryCopies.createdAt))
+          .limit(1);
+        if (!latestCopy || Date.now() - latestCopy.createdAt.getTime() > 5 * 60 * 1000) {
+          await tx
+            .insert(recoveryCopies)
+            .values({ workspaceId: auth.workspaceId, artifactId: artifact.id, content: input.content });
+        }
+        await syncNoteLinks(tx, auth, artifact.id, markdownOf(input.content, input.plainText));
+        await emit(tx, auth, "note.autosaved", { artifactId: artifact.id, version: artifact.version });
+        return { version: artifact.version };
+      },
+    );
     return value;
   });
 }
@@ -279,42 +328,57 @@ export async function commitNoteSnapshot(
   },
 ): Promise<{ versionId: string; versionNumber: number; version: number }> {
   const value = await withTransaction(async (tx) => {
-    const { value } = await withReceipt(tx, auth, input.idempotencyKey, { op: "commitNoteSnapshot", ...input }, async () => {
-      const artifact = await claimVersion(tx, auth, input.artifactId, input.expectedVersion);
-      const [max] = await tx
-        .select({ n: sql<number>`coalesce(max(${artifactVersions.versionNumber}), 0)` })
-        .from(artifactVersions)
-        .where(eq(artifactVersions.artifactId, artifact.id));
-      const [snapshot] = await tx
-        .insert(artifactVersions)
-        .values({
-          workspaceId: auth.workspaceId,
+    const { value } = await withReceipt(
+      tx,
+      auth,
+      input.idempotencyKey,
+      { op: "commitNoteSnapshot", ...input },
+      async () => {
+        const artifact = await claimVersion(tx, auth, input.artifactId, input.expectedVersion);
+        const [max] = await tx
+          .select({ n: sql<number>`coalesce(max(${artifactVersions.versionNumber}), 0)` })
+          .from(artifactVersions)
+          .where(eq(artifactVersions.artifactId, artifact.id));
+        const [snapshot] = await tx
+          .insert(artifactVersions)
+          .values({
+            workspaceId: auth.workspaceId,
+            artifactId: artifact.id,
+            versionNumber: max.n + 1,
+            content: input.content,
+            plainText: input.plainText ?? null,
+            reason: "edited",
+            note: input.note ?? null,
+            createdBy: auth.userId,
+          })
+          .returning({ id: artifactVersions.id, versionNumber: artifactVersions.versionNumber });
+        await tx
+          .update(artifacts)
+          .set({ currentVersionId: snapshot.id, embedError: null })
+          .where(eq(artifacts.id, artifact.id));
+        await tx
+          .delete(workingDrafts)
+          .where(and(eq(workingDrafts.artifactId, artifact.id), eq(workingDrafts.workspaceId, auth.workspaceId)));
+        await syncNoteLinks(tx, auth, artifact.id, markdownOf(input.content, input.plainText));
+        await recordAudit(
+          auth,
+          {
+            action: "note.snapshot",
+            subjectType: "artifact",
+            subjectId: artifact.id,
+            summary: `Saved version ${snapshot.versionNumber} of "${artifact.title}"`,
+            metadata: { versionId: snapshot.id, versionNumber: snapshot.versionNumber },
+          },
+          tx,
+        );
+        await emit(tx, auth, "note.snapshot", {
           artifactId: artifact.id,
-          versionNumber: max.n + 1,
-          content: input.content,
-          plainText: input.plainText ?? null,
-          reason: "edited",
-          note: input.note ?? null,
-          createdBy: auth.userId,
-        })
-        .returning({ id: artifactVersions.id, versionNumber: artifactVersions.versionNumber });
-      await tx.update(artifacts).set({ currentVersionId: snapshot.id, embedError: null }).where(eq(artifacts.id, artifact.id));
-      await tx.delete(workingDrafts).where(and(eq(workingDrafts.artifactId, artifact.id), eq(workingDrafts.workspaceId, auth.workspaceId)));
-      await syncNoteLinks(tx, auth, artifact.id, markdownOf(input.content, input.plainText));
-      await recordAudit(
-        auth,
-        {
-          action: "note.snapshot",
-          subjectType: "artifact",
-          subjectId: artifact.id,
-          summary: `Saved version ${snapshot.versionNumber} of "${artifact.title}"`,
-          metadata: { versionId: snapshot.id, versionNumber: snapshot.versionNumber },
-        },
-        tx,
-      );
-      await emit(tx, auth, "note.snapshot", { artifactId: artifact.id, versionId: snapshot.id, versionNumber: snapshot.versionNumber });
-      return { versionId: snapshot.id, versionNumber: snapshot.versionNumber, version: artifact.version };
-    });
+          versionId: snapshot.id,
+          versionNumber: snapshot.versionNumber,
+        });
+        return { versionId: snapshot.id, versionNumber: snapshot.versionNumber, version: artifact.version };
+      },
+    );
     return value;
   });
   // A committed version is the text the card embeds from; refresh its
@@ -338,7 +402,13 @@ export async function renameNote(
       await tx.update(artifacts).set({ title: input.title }).where(eq(artifacts.id, artifact.id));
       await recordAudit(
         auth,
-        { action: "note.renamed", subjectType: "artifact", subjectId: artifact.id, summary: `Renamed note to "${input.title}"`, metadata: {} },
+        {
+          action: "note.renamed",
+          subjectType: "artifact",
+          subjectId: artifact.id,
+          summary: `Renamed note to "${input.title}"`,
+          metadata: {},
+        },
         tx,
       );
       await emit(tx, auth, "note.renamed", { artifactId: artifact.id });
@@ -369,7 +439,13 @@ export async function setNoteTags(
       await tx.update(artifacts).set({ tags }).where(eq(artifacts.id, artifact.id));
       await recordAudit(
         auth,
-        { action: "note.tags_changed", subjectType: "artifact", subjectId: artifact.id, summary: `Tagged note "${artifact.title}" as ${tags.length ? tags.join(", ") : "untagged"}`, metadata: { tags } },
+        {
+          action: "note.tags_changed",
+          subjectType: "artifact",
+          subjectId: artifact.id,
+          summary: `Tagged note "${artifact.title}" as ${tags.length ? tags.join(", ") : "untagged"}`,
+          metadata: { tags },
+        },
         tx,
       );
       await emit(tx, auth, "note.tags_changed", { artifactId: artifact.id, tags });
@@ -385,7 +461,13 @@ export async function listNoteTags(auth: AuthContext): Promise<string[]> {
     const rows = await tx
       .select({ tag: sql<string>`jsonb_array_elements_text(${artifacts.tags})` })
       .from(artifacts)
-      .where(and(eq(artifacts.workspaceId, auth.workspaceId), inArray(artifacts.kind, [...LINKABLE_KINDS]), isNull(artifacts.archivedAt)))
+      .where(
+        and(
+          eq(artifacts.workspaceId, auth.workspaceId),
+          inArray(artifacts.kind, [...LINKABLE_KINDS]),
+          isNull(artifacts.archivedAt),
+        ),
+      )
       .groupBy(sql`1`)
       .orderBy(sql`1`);
     return rows.map((row) => row.tag);
@@ -421,7 +503,11 @@ const noteExcerptSql = sql<string | null>`coalesce(
   ${artifactVersions.plainText}
 )`;
 
-export async function listNotes(auth: AuthContext, limit = 50, kinds: readonly ("note" | "zettel")[] = LINKABLE_KINDS): Promise<NoteListItem[]> {
+export async function listNotes(
+  auth: AuthContext,
+  limit = 50,
+  kinds: readonly ("note" | "zettel")[] = LINKABLE_KINDS,
+): Promise<NoteListItem[]> {
   return withTransaction(async (tx) => {
     const rows = await tx
       .select({
@@ -438,46 +524,67 @@ export async function listNotes(auth: AuthContext, limit = 50, kinds: readonly (
       .from(artifacts)
       .leftJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
       .leftJoin(workingDrafts, eq(workingDrafts.artifactId, artifacts.id))
-      .where(and(eq(artifacts.workspaceId, auth.workspaceId), inArray(artifacts.kind, [...kinds]), isNull(artifacts.archivedAt)))
+      .where(
+        and(
+          eq(artifacts.workspaceId, auth.workspaceId),
+          inArray(artifacts.kind, [...kinds]),
+          isNull(artifacts.archivedAt),
+        ),
+      )
       .orderBy(desc(artifacts.updatedAt))
       .limit(limit);
-    return rows.map((row) => ({ ...row, hasDraft: row.draftArtifactId !== null, draftArtifactId: undefined }) as unknown as NoteListItem);
+    return rows.map(
+      (row) =>
+        ({ ...row, hasDraft: row.draftArtifactId !== null, draftArtifactId: undefined }) as unknown as NoteListItem,
+    );
   });
 }
 
 /** One page of notes for the sidebar list; the total honours search and the drafts filter. */
 export async function pageNotes(
   auth: AuthContext,
-  input: { query?: string; draftsOnly?: boolean; tag?: string; kinds?: readonly ("note" | "zettel")[]; limit: number; offset: number },
+  input: {
+    query?: string;
+    draftsOnly?: boolean;
+    tag?: string;
+    kinds?: readonly ("note" | "zettel")[];
+    limit: number;
+    offset: number;
+  },
 ): Promise<{ items: NoteListItem[]; total: number }> {
   return withTransaction(async (tx) => {
-    const filters = [eq(artifacts.workspaceId, auth.workspaceId), inArray(artifacts.kind, [...(input.kinds ?? LINKABLE_KINDS)]), isNull(artifacts.archivedAt)];
+    const filters = [
+      eq(artifacts.workspaceId, auth.workspaceId),
+      inArray(artifacts.kind, [...(input.kinds ?? LINKABLE_KINDS)]),
+      isNull(artifacts.archivedAt),
+    ];
     if (input.draftsOnly) filters.push(isNotNull(workingDrafts.artifactId));
-    if (input.tag?.trim()) filters.push(sql`${artifacts.tags} @> ${JSON.stringify([input.tag.trim().toLowerCase()])}::jsonb`);
+    if (input.tag?.trim())
+      filters.push(sql`${artifacts.tags} @> ${JSON.stringify([input.tag.trim().toLowerCase()])}::jsonb`);
     if (input.query?.trim()) {
       const like = `%${escapeLike(input.query.trim())}%`;
       filters.push(or(ilike(artifacts.title, like), ilike(artifactVersions.plainText, like))!);
     }
     const where = and(...filters);
     const rows = await tx
-        .select({
-          id: artifacts.id,
-          title: artifacts.title,
-          kind: artifacts.kind,
-          status: artifacts.status,
-          version: artifacts.version,
-          updatedAt: artifacts.updatedAt,
-          excerpt: noteExcerptSql,
-          tags: artifacts.tags,
-          draftArtifactId: workingDrafts.artifactId,
-        })
-        .from(artifacts)
-        .leftJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
-        .leftJoin(workingDrafts, eq(workingDrafts.artifactId, artifacts.id))
-        .where(where)
-        .orderBy(desc(artifacts.updatedAt), desc(artifacts.id))
-        .limit(input.limit)
-        .offset(input.offset);
+      .select({
+        id: artifacts.id,
+        title: artifacts.title,
+        kind: artifacts.kind,
+        status: artifacts.status,
+        version: artifacts.version,
+        updatedAt: artifacts.updatedAt,
+        excerpt: noteExcerptSql,
+        tags: artifacts.tags,
+        draftArtifactId: workingDrafts.artifactId,
+      })
+      .from(artifacts)
+      .leftJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
+      .leftJoin(workingDrafts, eq(workingDrafts.artifactId, artifacts.id))
+      .where(where)
+      .orderBy(desc(artifacts.updatedAt), desc(artifacts.id))
+      .limit(input.limit)
+      .offset(input.offset);
     const [totalRow] = await tx
       .select({ n: count() })
       .from(artifacts)
@@ -486,7 +593,11 @@ export async function pageNotes(
       .where(where);
     return {
       total: totalRow?.n ?? 0,
-      items: rows.map(({ draftArtifactId, ...row }) => ({ ...row, tags: readTags(row.tags), hasDraft: draftArtifactId !== null })),
+      items: rows.map(({ draftArtifactId, ...row }) => ({
+        ...row,
+        tags: readTags(row.tags),
+        hasDraft: draftArtifactId !== null,
+      })),
     };
   });
 }
@@ -537,7 +648,9 @@ export async function getNote(auth: AuthContext, artifactId: string): Promise<No
       .from(artifacts)
       .leftJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
       .leftJoin(workingDrafts, eq(workingDrafts.artifactId, artifacts.id))
-      .where(and(eq(artifacts.id, artifactId), eq(artifacts.workspaceId, auth.workspaceId), isNull(artifacts.archivedAt)))
+      .where(
+        and(eq(artifacts.id, artifactId), eq(artifacts.workspaceId, auth.workspaceId), isNull(artifacts.archivedAt)),
+      )
       .limit(1);
     // The Notes editor autosaves prose over the row's content, so a
     // machine-structured kind (a report, a deck, an infographic) must never
@@ -559,7 +672,13 @@ export async function getNote(auth: AuthContext, artifactId: string): Promise<No
       embedError: safeArtifactEmbedError(row.embedError),
       indexed: row.indexed,
       content: (row.content as NoteContent | null) ?? null,
-      draft: row.draftContent ? { content: row.draftContent as NoteContent, baseVersionId: row.draftBaseVersionId, updatedAt: row.draftUpdatedAt! } : null,
+      draft: row.draftContent
+        ? {
+            content: row.draftContent as NoteContent,
+            baseVersionId: row.draftBaseVersionId,
+            updatedAt: row.draftUpdatedAt!,
+          }
+        : null,
     };
   });
 }
@@ -583,7 +702,13 @@ export async function retryNoteEmbedding(
     const [found] = await tx
       .select({ id: artifacts.id, kind: artifacts.kind })
       .from(artifacts)
-      .where(and(eq(artifacts.id, input.artifactId), eq(artifacts.workspaceId, auth.workspaceId), isNull(artifacts.archivedAt)))
+      .where(
+        and(
+          eq(artifacts.id, input.artifactId),
+          eq(artifacts.workspaceId, auth.workspaceId),
+          isNull(artifacts.archivedAt),
+        ),
+      )
       .limit(1);
     return found ?? null;
   });
@@ -632,7 +757,9 @@ export async function listNoteVersions(auth: AuthContext, artifactId: string, li
     const [owned] = await tx
       .select({ id: artifacts.id })
       .from(artifacts)
-      .where(and(eq(artifacts.id, artifactId), eq(artifacts.workspaceId, auth.workspaceId), isNull(artifacts.archivedAt)))
+      .where(
+        and(eq(artifacts.id, artifactId), eq(artifacts.workspaceId, auth.workspaceId), isNull(artifacts.archivedAt)),
+      )
       .limit(1);
     if (!owned) return [];
     return tx
@@ -665,7 +792,11 @@ export type NoteLinkItem = {
 
 const excerptOf = (text: string | null) => {
   if (!text) return null;
-  const line = text.split("\n").map((l) => l.trim()).find((l) => l.length > 0) ?? null;
+  const line =
+    text
+      .split("\n")
+      .map((l) => l.trim())
+      .find((l) => l.length > 0) ?? null;
   return line ? line.slice(0, 240) : null;
 };
 
@@ -688,7 +819,7 @@ export async function listNoteOutlinks(auth: AuthContext, artifactId: string): P
         and(
           eq(artifactLinks.workspaceId, auth.workspaceId),
           eq(artifactLinks.artifactId, artifactId),
-          notInArray(artifactLinks.linkType, ["semantic", "dismissed"]),
+          ne(artifactLinks.linkType, "semantic"),
           inArray(artifactLinks.targetType, [...LINKABLE_KINDS]),
           isNull(artifacts.archivedAt),
         ),
@@ -718,7 +849,7 @@ export async function listNoteBacklinks(auth: AuthContext, artifactId: string): 
           eq(artifactLinks.workspaceId, auth.workspaceId),
           inArray(artifactLinks.targetType, [...LINKABLE_KINDS]),
           eq(artifactLinks.targetId, artifactId),
-          notInArray(artifactLinks.linkType, ["semantic", "dismissed"]),
+          ne(artifactLinks.linkType, "semantic"),
           isNull(artifacts.archivedAt),
         ),
       )

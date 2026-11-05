@@ -9,10 +9,7 @@ import {
   FieldDecisions,
   ObligationDecisions,
   PartyDecisions,
-  ProposeZettelsButton,
-  ZettelDecisions,
 } from "./decision-buttons";
-import { listZettelProposals } from "@/domains/knowledge/zettels";
 import { RetryExtractionButton } from "./retry-extraction-button";
 import { RetryCaptureButton } from "./retry-capture-button";
 import { documentStatus, type DocumentStatusTone } from "@/domains/knowledge/status";
@@ -130,7 +127,6 @@ export async function KnowledgeSurface({ searchParams }: { searchParams: Promise
       <ReviewWorkbench
         review={review}
         backHref={params.folder ? `/polymath/knowledge?folder=${params.folder}` : "/polymath/knowledge"}
-        zettels={await listZettelProposals(auth, review.document.id)}
         partyOptions={partyOptions as never}
         suggestedTitle={suggestedTitle && suggestedTitle !== review.document.title ? suggestedTitle : null}
         classification={classificationValue}
@@ -253,11 +249,9 @@ function ReviewWorkbench({
   partyOptions,
   suggestedTitle,
   classification,
-  zettels,
   statement,
   judgments,
 }: {
-  zettels: Awaited<ReturnType<typeof listZettelProposals>>;
   review: NonNullable<Awaited<ReturnType<typeof getDocumentReview>>>;
   backHref: string;
   partyOptions: Map<string, { kind: "contact" | "company"; id: string; name: string; via: string }[]>;
@@ -439,48 +433,6 @@ function ReviewWorkbench({
                         : obligation.status === "rejected"
                           ? "Rejected"
                           : "Superseded by a newer document"}
-                    </p>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-
-          <h3 className="mt-2 text-body-dense font-medium">Proposed zettels</h3>
-          {extraction?.status === "succeeded" ? <ProposeZettelsButton documentId={doc.id} /> : null}
-          {zettels.unreadChars > 0 ? (
-            <p className="text-xs text-(--tone-attention)">
-              Read {zettels.readChars} of {zettels.readChars + zettels.unreadChars} characters — {zettels.unreadChars}{" "}
-              in {zettels.unreadSections} {zettels.unreadSections === 1 ? "section was" : "sections were"} not read.
-            </p>
-          ) : null}
-          {zettels.proposals.length === 0 ? (
-            <p className="text-muted-foreground text-xs">No zettels proposed yet.</p>
-          ) : (
-            <ul className="flex flex-col gap-2">
-              {zettels.proposals.map((z) => (
-                <li key={z.id} className="panel rounded-lg px-3.5 py-3 transition-colors hover:bg-muted/40">
-                  <p className="text-body-dense font-medium">{z.title}</p>
-                  <p className="text-body-dense">{z.claim}</p>
-                  <p className="text-muted-foreground mt-1 line-clamp-2 text-xs">
-                    &ldquo;{z.quote}&rdquo; · chars {z.spanStart}-{z.spanEnd}
-                  </p>
-                  {z.duplicateOf ? (
-                    <p className="mt-1 text-xs text-(--tone-attention)">
-                      Already exists as{" "}
-                      <Link href={`/polymath/ideas/${z.duplicateOf.id}`} className="underline">
-                        &ldquo;{z.duplicateOf.title}&rdquo;
-                      </Link>
-                      . Accepting will create a near-duplicate.
-                    </p>
-                  ) : null}
-                  {z.status === "proposed" ? (
-                    <div className="mt-2">
-                      <ZettelDecisions proposalId={z.id} />
-                    </div>
-                  ) : (
-                    <p className="text-muted-foreground mt-1 text-xs">
-                      {z.status === "accepted" ? "Accepted. Concept and evidence link written." : "Rejected"}
                     </p>
                   )}
                 </li>

@@ -210,12 +210,13 @@ export async function relatedNotes(
 }
 
 /**
- * The cards this one is explicitly linked to — the edges a person accepted.
+ * The cards this one is explicitly linked to — edges a person or a creation
+ * path saved: `source` provenance, sibling `related` seeds, canvas ties.
  *
- * `relatedNotes` only reads materialized `semantic` edges, and accepting a
- * suggestion promotes the edge out of `semantic` into `related`, so an
- * accepted link disappeared from every surface that used that read alone.
- * This is the other half: both directions, newest edge first.
+ * `relatedNotes` only reads materialized `semantic` edges, and an explicit
+ * edge suppresses its semantic twin (materialization skips explicitly-linked
+ * pairs), so a card's two halves stay distinct: this is the explicit half,
+ * both directions, title order.
  */
 export async function linkedNotes(auth: AuthContext, artifactId: string): Promise<RelatedNote[]> {
   const result = await db.execute(sql`
@@ -227,7 +228,9 @@ export async function linkedNotes(auth: AuthContext, artifactId: string): Promis
     join artifacts a
       on a.id = case when l.artifact_id = ${artifactId} then l.target_id else l.artifact_id end
     where l.workspace_id = ${auth.workspaceId}
-      and l.link_type <> 'semantic'
+      -- Legacy veto tombstones ('dismissed') stay excluded until a data
+      -- purge retires them; a rejected link must not resurface as a linked idea.
+      and l.link_type not in ('semantic', 'dismissed')
       and (l.artifact_id = ${artifactId} or l.target_id = ${artifactId})
       and a.workspace_id = ${auth.workspaceId}
       and a.archived_at is null
@@ -244,53 +247,15 @@ export async function linkedNotes(auth: AuthContext, artifactId: string): Promis
 }
 
 /**
- * Confirm a suggestion: flip the semantic edge into an explicit 'related'
- * edge, direction normalized to viewer -> target, score kept as provenance.
- * Returns false when there is no suggestion to promote.
+ * The card's links as one list: the edges a person saved (explicit, title
+ * order) first, then the machine's nearest neighbours (score order),
+ * deduplicated by id — an explicit edge outranks its semantic twin. This is
+ * the read the idea modal renders. There is no promotion step to pass, so
+ * both kinds are plain links.
  */
-export async function promoteSemanticLink(
-  auth: AuthContext,
-  input: { artifactId: string; targetId: string },
-): Promise<boolean> {
-  return withTransaction(async (tx) => {
-    const rows = await tx
-      .select({
-        id: artifactLinks.id,
-        from: artifactLinks.artifactId,
-        to: artifactLinks.targetId,
-        score: artifactLinks.score,
-      })
-      .from(artifactLinks)
-      .where(
-        and(
-          eq(artifactLinks.workspaceId, auth.workspaceId),
-          eq(artifactLinks.linkType, "semantic"),
-          or(
-            and(eq(artifactLinks.artifactId, input.artifactId), eq(artifactLinks.targetId, input.targetId)),
-            and(eq(artifactLinks.artifactId, input.targetId), eq(artifactLinks.targetId, input.artifactId)),
-          ),
-        ),
-      );
-    if (!rows.length) return false;
-    const forward = rows.find((r) => r.from === input.artifactId) ?? rows[0];
-    const [target] = await tx
-      .select({ title: artifacts.title })
-      .from(artifacts)
-      .where(eq(artifacts.id, input.targetId));
-    const reverse = rows.filter((r) => r.id !== forward.id).map((r) => r.id);
-    if (reverse.length) await tx.delete(artifactLinks).where(inArray(artifactLinks.id, reverse));
-    await tx
-      .update(artifactLinks)
-      .set({
-        artifactId: input.artifactId,
-        targetId: input.targetId,
-        label: target?.title ?? "",
-        linkType: "related",
-        context: "Confirmed from a semantic relation.",
-      })
-      .where(eq(artifactLinks.id, forward.id));
-    return true;
-  });
+export function mergeIdeaLinks(explicit: RelatedNote[], semantic: RelatedNote[]): RelatedNote[] {
+  const seen = new Set(explicit.map((row) => row.id));
+  return [...explicit, ...semantic.filter((row) => !seen.has(row.id))];
 }
 
 export function firstLine(text: string | null): string | null {
@@ -347,41 +312,39 @@ export async function listCardGraph(auth: AuthContext): Promise<{ nodes: GraphNo
     .where(
       and(
         eq(artifactLinks.workspaceId, auth.workspaceId),
-        ne(artifactLinks.linkType, "dismissed"),
         inArray(artifactLinks.artifactId, ids),
         inArray(artifactLinks.targetId, ids),
+        // Legacy veto tombstones: the dismiss state machine is gone, but a
+        // row a person once rejected must not resurface as a graph edge.
+        // Transitional — a data purge of 'dismissed' rows retires this filter.
+        ne(artifactLinks.linkType, "dismissed"),
       ),
     );
   return { nodes, edges: rows };
 }
 
-/** Tie two cards with an explicit 'related' edge, upgrading a suggestion when one exists. */
+/**
+ * Tie two cards with an explicit 'related' edge. Links are automatic now, so
+ * this is the one place a person overrides the machine: any edge already
+ * joining the pair — a semantic neighbour included — becomes the explicit
+ * one, direction normalized to viewer -> target. Tying a pair once rejected
+ * (a legacy dismissed edge) is a fresh decision, not a state to remember.
+ */
 export async function linkCards(auth: AuthContext, input: { artifactId: string; targetId: string }): Promise<void> {
   if (input.artifactId === input.targetId) return;
-  if (await promoteSemanticLink(auth, input)) return;
   await withTransaction(async (tx) => {
-    // Tying a pair the owner once rejected is a fresh decision: revive that
-    // edge, direction normalized to viewer -> target.
-    const rejected = await tx
-      .select({ id: artifactLinks.id })
+    const existing = await tx
+      .select({ id: artifactLinks.id, from: artifactLinks.artifactId })
       .from(artifactLinks)
-      .where(
-        and(pairWhere(auth.workspaceId, input.artifactId, input.targetId), eq(artifactLinks.linkType, "dismissed")),
-      )
-      .orderBy(sql`(${artifactLinks.artifactId} = ${input.artifactId}) desc`);
-    if (rejected.length) {
-      const [keep, ...extra] = rejected;
-      if (extra.length)
-        await tx.delete(artifactLinks).where(
-          inArray(
-            artifactLinks.id,
-            extra.map((r) => r.id),
-          ),
-        );
-      const [target] = await tx
-        .select({ title: artifacts.title, kind: artifacts.kind })
-        .from(artifacts)
-        .where(eq(artifacts.id, input.targetId));
+      .where(pairWhere(auth.workspaceId, input.artifactId, input.targetId));
+    const [target] = await tx
+      .select({ title: artifacts.title, kind: artifacts.kind })
+      .from(artifacts)
+      .where(and(eq(artifacts.workspaceId, auth.workspaceId), eq(artifacts.id, input.targetId)));
+    if (existing.length) {
+      const forward = existing.find((r) => r.from === input.artifactId) ?? existing[0];
+      const extras = existing.filter((r) => r.id !== forward.id).map((r) => r.id);
+      if (extras.length) await tx.delete(artifactLinks).where(inArray(artifactLinks.id, extras));
       await tx
         .update(artifactLinks)
         .set({
@@ -392,7 +355,7 @@ export async function linkCards(auth: AuthContext, input: { artifactId: string; 
           linkType: "related",
           context: null,
         })
-        .where(eq(artifactLinks.id, keep.id));
+        .where(eq(artifactLinks.id, forward.id));
       return;
     }
     const found = await tx
@@ -405,22 +368,7 @@ export async function linkCards(auth: AuthContext, input: { artifactId: string; 
           inArray(artifacts.kind, ["note", "zettel"]),
         ),
       );
-    const target = found.find((c) => c.id === input.targetId);
     if (found.length !== 2 || !target) throw new Error("Both cards must be notes or zettels in this workspace.");
-    const existing = await tx
-      .select({ id: artifactLinks.id })
-      .from(artifactLinks)
-      .where(
-        and(
-          eq(artifactLinks.workspaceId, auth.workspaceId),
-          ne(artifactLinks.linkType, "semantic"),
-          or(
-            and(eq(artifactLinks.artifactId, input.artifactId), eq(artifactLinks.targetId, input.targetId)),
-            and(eq(artifactLinks.artifactId, input.targetId), eq(artifactLinks.targetId, input.artifactId)),
-          ),
-        ),
-      );
-    if (existing.length) return;
     await tx
       .insert(artifactLinks)
       .values({
@@ -437,8 +385,8 @@ export async function linkCards(auth: AuthContext, input: { artifactId: string; 
 
 /* ---------------------------------------------------------------------------
  * Curating links (ASH-110 section 6): similarity is not a relationship. The
- * owner names what a link means and why, rejects a suggestion for good, or
- * removes a link; none of it touches either note.
+ * owner names what a link means and why or removes a link; none of it
+ * touches either note.
  * ------------------------------------------------------------------------- */
 
 export { RELATION_TYPES, RELATION_LABELS, type RelationType } from "./relation-vocabulary";
@@ -472,7 +420,7 @@ export async function setLinkRelation(
     .where(
       and(
         pairWhere(auth.workspaceId, input.artifactId, input.targetId),
-        notInArray(artifactLinks.linkType, ["semantic", "dismissed"]),
+        notInArray(artifactLinks.linkType, ["semantic"]),
       ),
     )
     .returning({ id: artifactLinks.id });
@@ -486,23 +434,10 @@ export async function removeLink(auth: AuthContext, input: { artifactId: string;
     .where(
       and(
         pairWhere(auth.workspaceId, input.artifactId, input.targetId),
-        notInArray(artifactLinks.linkType, ["semantic", "dismissed", "reference"]),
+        notInArray(artifactLinks.linkType, ["semantic", "reference"]),
       ),
     )
     .returning({ id: artifactLinks.id });
   if (!rows.length)
     throw new LinkEditError("Remove a [[wiki link]] by editing the note text; there is no curated link to remove.");
-}
-
-/** Reject a suggestion; it stays rejected across re-embeds. */
-export async function dismissSemanticLink(
-  auth: AuthContext,
-  input: { artifactId: string; targetId: string },
-): Promise<boolean> {
-  const rows = await db
-    .update(artifactLinks)
-    .set({ linkType: "dismissed" })
-    .where(and(pairWhere(auth.workspaceId, input.artifactId, input.targetId), eq(artifactLinks.linkType, "semantic")))
-    .returning({ id: artifactLinks.id });
-  return rows.length > 0;
 }

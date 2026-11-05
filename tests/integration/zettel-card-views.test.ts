@@ -35,7 +35,7 @@ vi.mock("@/integrations/object-store/object-store", () => ({
 import { extractDocument } from "@/domains/knowledge/extraction";
 import { createNote, setNoteTags } from "@/domains/knowledge/notes";
 import { acceptZettel, pageZettelCards, proposeZettels, rejectZettel } from "@/domains/knowledge/zettels";
-import { dismissSemanticLink } from "@/domains/knowledge/relations";
+import { relatedNotes } from "@/domains/knowledge/relations";
 import { artifactLinks } from "@/domains/knowledge/schema";
 import { db } from "@/lib/db";
 import type { ZettelExtractor } from "@/integrations/zettels/extractor";
@@ -163,7 +163,7 @@ suite("zettel card views (real Postgres)", () => {
     expect(all.total).toBe(2);
   });
 
-  it("carries pending suggested links in the metadata projection, excluding dismissed", async () => {
+  it("semantic neighbours read through the merged-links path, not the card metadata projection", async () => {
     const auth = await workspace();
     const doc = await seedDoc(auth);
     const {
@@ -184,11 +184,10 @@ suite("zettel card views (real Postgres)", () => {
         label: "Other card",
       },
     ]);
+    // The card item carries no link projection; links render from the
+    // relations read (explicit + semantic merged) when the card opens.
     const page = await pageZettelCards(auth, { limit: 10, offset: 0 });
-    const card = page.items.find((c) => c.id === accepted.artifactId);
-    expect(card?.suggestedLinks).toEqual([{ targetId: other.id, targetTitle: "Other card" }]);
-    await dismissSemanticLink(auth, { artifactId: accepted.artifactId, targetId: other.id });
-    const after = await pageZettelCards(auth, { limit: 10, offset: 0 });
-    expect(after.items.find((c) => c.id === accepted.artifactId)?.suggestedLinks).toEqual([]);
+    expect(page.items.find((c) => c.id === accepted.artifactId)).toBeDefined();
+    expect((await relatedNotes(auth, accepted.artifactId)).map((r) => r.id)).toEqual([other.id]);
   });
 });

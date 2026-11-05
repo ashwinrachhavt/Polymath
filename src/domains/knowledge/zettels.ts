@@ -9,7 +9,7 @@ import { escapeLike } from "@/lib/list-params";
 import { currentExtractionIdSubquery } from "./versions";
 import { mergeCandidates, type SectionCandidate } from "./zettel-merge";
 import { splitSections } from "./zettel-chunking";
-import { capForSize, SUGGESTED_LINKS_PER_COLLECTION_CARD } from "./zettel-capacity";
+import { capForSize } from "./zettel-capacity";
 import { defaultZettelExtractor, type ZettelExtractor } from "@/integrations/zettels/extractor";
 import { generationProvider } from "@/integrations/generation/provider";
 import {
@@ -129,7 +129,9 @@ async function listEarlierProposals(
     .where(
       and(
         eq(zettelProposals.workspaceId, auth.workspaceId),
-        origin.path === "doc" ? eq(zettelProposals.documentId, origin.id) : eq(zettelProposals.sourceArtifactId, origin.id),
+        origin.path === "doc"
+          ? eq(zettelProposals.documentId, origin.id)
+          : eq(zettelProposals.sourceArtifactId, origin.id),
         inArray(zettelProposals.status, ["proposed", "accepted"]),
       ),
     );
@@ -142,7 +144,11 @@ async function listEarlierProposals(
  * before the claim's artifact pointer was written are invisible here; their
  * embeddings still catch them through the near-duplicate gate.
  */
-async function listEarlierCards(auth: AuthContext, origin: { path: "doc" | "artifact"; id: string }, conn: Pick<TxDrizzle, "select">) {
+async function listEarlierCards(
+  auth: AuthContext,
+  origin: { path: "doc" | "artifact"; id: string },
+  conn: Pick<TxDrizzle, "select">,
+) {
   return conn
     .select({ claim: claims.statement, quote: artifactLinks.context })
     .from(claims)
@@ -533,65 +539,6 @@ export async function listZettelProposals(auth: AuthContext, documentId: string)
   };
 }
 
-/** A pending proposal as the Ideas surface's "In review" queue reads it: the
- * claim, its verbatim quote, and the one source it was drawn from. */
-export type PendingZettelProposal = {
-  id: string;
-  title: string;
-  claim: string;
-  quote: string;
-  createdAt: Date;
-  duplicateOf: { id: string; title: string } | null;
-  source: { kind: "document" | "artifact"; id: string; title: string };
-};
-
-/**
- * Every pending proposal in the workspace, newest first, across both source
- * kinds — document extractions and filed conversations. The Ideas "In review"
- * segment reads this; a decision removes the row, so the queue drains itself
- * and no second registry has to be kept in step.
- */
-export async function listPendingZettelProposals(auth: AuthContext): Promise<PendingZettelProposal[]> {
-  const flagged = alias(artifacts, "flagged_idea");
-  const documentSource = alias(documents, "document_source");
-  const artifactSource = alias(artifacts, "artifact_source");
-  const rows = await db
-    .select({
-      proposal: zettelProposals,
-      documentTitle: documentSource.title,
-      artifactTitle: artifactSource.title,
-      duplicateOf: { id: flagged.id, title: flagged.title },
-    })
-    .from(zettelProposals)
-    .leftJoin(documentSource, eq(documentSource.id, zettelProposals.documentId))
-    .leftJoin(artifactSource, eq(artifactSource.id, zettelProposals.sourceArtifactId))
-    .leftJoin(flagged, eq(flagged.id, zettelProposals.duplicateOfArtifactId))
-    .where(and(eq(zettelProposals.workspaceId, auth.workspaceId), eq(zettelProposals.status, "proposed")))
-    .orderBy(desc(zettelProposals.createdAt));
-  // The one-source check (num_nonnulls(document_id, source_artifact_id) = 1)
-  // means exactly one join matches and its title is not null; the foreign-key
-  // cascades mean a pending proposal's source row always exists.
-  return rows.map((row) => {
-    const base = {
-      id: row.proposal.id,
-      title: row.proposal.title,
-      claim: row.proposal.claim,
-      quote: row.proposal.quote,
-      createdAt: row.proposal.createdAt,
-      duplicateOf: row.duplicateOf?.id ? row.duplicateOf : null,
-    };
-    if (row.proposal.documentId) {
-      return {
-        ...base,
-        source: { kind: "document" as const, id: row.proposal.documentId, title: row.documentTitle ?? "" },
-      };
-    }
-    return {
-      ...base,
-      source: { kind: "artifact" as const, id: row.proposal.sourceArtifactId!, title: row.artifactTitle ?? "" },
-    };
-  });
-}
 /*
  * Direct creation core (the authorship-is-acceptance pattern
  * saveMessageAsIdea established): the triggering action - a Zettelize click,
@@ -602,9 +549,7 @@ export async function listPendingZettelProposals(auth: AuthContext): Promise<Pen
  * surface is repointed.
  */
 
-type ZettelCardSource =
-  | { kind: "document"; documentId: string }
-  | { kind: "artifact"; artifactId: string };
+type ZettelCardSource = { kind: "document"; documentId: string } | { kind: "artifact"; artifactId: string };
 
 export type ZettelCardCreateInput = {
   source: ZettelCardSource;
@@ -806,7 +751,10 @@ export async function createZettelFromSource(
         createdBy: auth.userId,
       })
       .returning({ id: artifactVersions.id });
-    await conn.update(artifacts).set({ currentVersionId: cardVersion.id, embedError: null }).where(eq(artifacts.id, card.id));
+    await conn
+      .update(artifacts)
+      .set({ currentVersionId: cardVersion.id, embedError: null })
+      .where(eq(artifacts.id, card.id));
 
     const [claim] = await conn
       .insert(claims)
@@ -864,7 +812,9 @@ export async function createZettelFromSource(
         ),
       );
     const seenSiblings = new Set<string>();
-    const distinct = siblings.filter((s) => (seenSiblings.has(s.artifactId) ? false : (seenSiblings.add(s.artifactId), true)));
+    const distinct = siblings.filter((s) =>
+      seenSiblings.has(s.artifactId) ? false : (seenSiblings.add(s.artifactId), true),
+    );
     if (distinct.length > 0) {
       await conn.insert(artifactLinks).values(
         distinct.map((s) => ({
@@ -1073,8 +1023,6 @@ export type ZettelCardItem = {
   sourceTitle: string | null;
   /* §6/§14.12: the inert practice suggestion from metadata.bloom, when set. */
   bloom: { level: number; levelName: string } | null;
-  /* §14.9: pending semantic suggestions for the in-strip accept/dismiss. */
-  suggestedLinks: { targetId: string; targetTitle: string }[];
 };
 
 /*
@@ -1140,34 +1088,6 @@ export async function pageZettelCards(
       .from(artifacts)
       .leftJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
       .where(where);
-    // §14.9: the semantic suggestions still awaiting a decision on these
-    // cards, for the metadata-strip accept/dismiss. Bounded per card.
-    const suggestionRows = rows.length
-      ? await tx
-          .select({
-            artifactId: artifactLinks.artifactId,
-            targetId: artifactLinks.targetId,
-            label: artifactLinks.label,
-          })
-          .from(artifactLinks)
-          .where(
-            and(
-              eq(artifactLinks.workspaceId, auth.workspaceId),
-              eq(artifactLinks.linkType, "semantic"),
-              inArray(
-                artifactLinks.artifactId,
-                rows.map((r) => r.id),
-              ),
-            ),
-          )
-      : [];
-    const suggestionsByCard = new Map<string, { targetId: string; targetTitle: string }[]>();
-    for (const suggestion of suggestionRows) {
-      const list = suggestionsByCard.get(suggestion.artifactId) ?? [];
-      if (list.length < SUGGESTED_LINKS_PER_COLLECTION_CARD)
-        list.push({ targetId: suggestion.targetId, targetTitle: suggestion.label ?? "Untitled" });
-      suggestionsByCard.set(suggestion.artifactId, list);
-    }
     return {
       total: totalRow?.n ?? 0,
       items: rows.map((row) => {
@@ -1191,7 +1111,6 @@ export async function pageZettelCards(
             typeof bloom?.level === "number" && typeof bloom?.levelName === "string"
               ? { level: bloom.level, levelName: bloom.levelName }
               : null,
-          suggestedLinks: suggestionsByCard.get(row.id) ?? [],
         };
       }),
     };

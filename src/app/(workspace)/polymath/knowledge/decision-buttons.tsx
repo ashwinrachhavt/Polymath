@@ -2,16 +2,11 @@
 
 import { useRouter } from "next/navigation";
 import { useId, useState } from "react";
-import { motion } from "motion/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { motionTransition } from "@/components/motion-config";
 import {
   acceptDocumentObligation,
   acceptField,
-  acceptZettelAction,
-  proposeZettelsAction,
-  rejectZettelAction,
   acceptPartyDecision,
   acceptClassificationAction,
   applyTitleAction,
@@ -281,59 +276,6 @@ export function ApplyTitleButton({
         onClick={() => run("apply-title", () => applyTitleAction(documentId, title, expectedVersion))}
       >
         {pending === "apply-title" ? "Applying…" : `Apply suggested title: ${title}`}
-      </Button>
-      <ErrorLine id={errorId} error={error} />
-    </div>
-  );
-}
-
-/** Accept / Reject one proposed zettel. Reject writes nothing but the decision. */
-export function ZettelDecisions({ proposalId }: { proposalId: string }) {
-  const { pending, error, errorId, run } = useDecision();
-  return (
-    <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-1.5">
-        <motion.span className="inline-flex" whileTap={{ scale: 0.97 }} transition={motionTransition}>
-          <Button
-            type="button"
-            size="xs"
-            disabled={pending !== null}
-            onClick={() => run(`accept-${proposalId}`, () => acceptZettelAction(proposalId))}
-          >
-            {pending === `accept-${proposalId}` ? "Accepting…" : "Accept"}
-          </Button>
-        </motion.span>
-        <motion.span className="inline-flex" whileTap={{ scale: 0.97 }} transition={motionTransition}>
-          <Button
-            type="button"
-            size="xs"
-            variant="outline"
-            disabled={pending !== null}
-            onClick={() => run(`reject-${proposalId}`, () => rejectZettelAction(proposalId))}
-          >
-            {pending === `reject-${proposalId}` ? "Rejecting…" : "Reject"}
-          </Button>
-        </motion.span>
-      </div>
-      <ErrorLine id={errorId} error={error} />
-    </div>
-  );
-}
-
-/** Ask for zettel proposals from this document. */
-export function ProposeZettelsButton({ documentId }: { documentId: string }) {
-  const { pending, error, errorId, run } = useDecision();
-  return (
-    <div className="flex flex-col gap-1">
-      <Button
-        type="button"
-        size="xs"
-        variant="outline"
-        className="w-fit"
-        disabled={pending !== null}
-        onClick={() => run("propose", () => proposeZettelsAction(documentId))}
-      >
-        {pending === "propose" ? "Reading…" : "Propose zettels"}
       </Button>
       <ErrorLine id={errorId} error={error} />
     </div>
