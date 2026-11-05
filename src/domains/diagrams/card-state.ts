@@ -40,7 +40,7 @@ export type DiagramCardState =
 export type LaterAttempt = "none" | "pending" | "settled";
 
 /** The eve tool's runtime name is the filename slug (eve tools/definition.d.ts). */
-export const DIAGRAM_TOOL_NAME = "diagram";
+const DIAGRAM_TOOL_NAME = "diagram";
 
 export function isDiagramTool(tool: { label: string }): boolean {
   return tool.label === DIAGRAM_TOOL_NAME;
@@ -80,7 +80,8 @@ function failureOf(tool: DiagramToolView): { message: string; detail: string | n
     const envelope = output as { ok?: unknown; error?: unknown };
     if (envelope.ok === false) {
       const error = typeof envelope.error === "string" && envelope.error.trim().length > 0 ? envelope.error : null;
-      const detail = tool.status === "error" && typeof tool.detail === "string" && tool.detail.length > 0 ? tool.detail : null;
+      const detail =
+        tool.status === "error" && typeof tool.detail === "string" && tool.detail.length > 0 ? tool.detail : null;
       return { message: error ?? "The diagram call was refused.", detail };
     }
   }
