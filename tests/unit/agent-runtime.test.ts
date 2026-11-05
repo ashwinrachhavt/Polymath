@@ -1,11 +1,7 @@
 import { describe, expect, it } from "vitest";
-import {
-  RUNTIME_CONTRACT_VERSION,
-  capabilityGrant,
-  runtimeStartRequest,
-} from "@/domains/agents/runtime/contracts";
-import { FakeAgentRuntime } from "@/domains/agents/runtime/fake";
-import { makeStartRequest, runFakeRuntimeContract } from "@/domains/agents/runtime/contract-suite";
+import { RUNTIME_CONTRACT_VERSION, capabilityGrant, runtimeStartRequest } from "@/domains/agents/runtime/contracts";
+import { FakeAgentRuntime } from "../fixtures/agent-runtime/fake";
+import { makeStartRequest, runFakeRuntimeContract } from "../fixtures/agent-runtime/contract-suite";
 
 /*
  * RT02 (ASH-116): the contracts are validated at the boundary, and the fake
@@ -20,12 +16,8 @@ describe("runtime contracts: validation", () => {
     expect(() =>
       runtimeStartRequest.parse({ ...good, identity: { ...good.identity, executionGeneration: 0 } }),
     ).toThrow();
-    expect(() =>
-      runtimeStartRequest.parse({ ...good, dispatchKey: "" }),
-    ).toThrow();
-    expect(() =>
-      capabilityGrant.parse({ ...good.grant, expiresAt: "soon" }),
-    ).toThrow();
+    expect(() => runtimeStartRequest.parse({ ...good, dispatchKey: "" })).toThrow();
+    expect(() => capabilityGrant.parse({ ...good.grant, expiresAt: "soon" })).toThrow();
     expect(good.identity.contractVersion).toBe(RUNTIME_CONTRACT_VERSION);
   });
 
