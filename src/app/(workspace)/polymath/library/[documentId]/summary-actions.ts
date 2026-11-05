@@ -1,15 +1,20 @@
 "use server";
 
-import { acceptReadingSummary, summarizeReading, type VerifiedReadingSummary } from "@/domains/knowledge/reading-summary";
+import {
+  acceptReadingSummary,
+  summarizeReading,
+  type VerifiedReadingSummary,
+} from "@/domains/knowledge/reading-summary";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 
 /*
  * The reader's summarize actions (ASH-292). Summarizing runs one generation
- * call against the workspace's quota and returns the verified proposal -
- * nothing is written until the owner accepts. Accepting writes the note,
- * the source link, and the zettel proposals in one idempotent boundary, so
- * both steps need a real member: a viewer reads, a member summarizes.
+ * call against the workspace's quota and returns the verified summary -
+ * nothing is written until the owner accepts. Accepting writes the note, the
+ * source link, and one zettel card per verified claim in one idempotent
+ * boundary, so both steps need a real member: a viewer reads, a member
+ * summarizes.
  */
 
 export async function summarizeReadingAction(
@@ -29,7 +34,7 @@ export async function acceptReadingSummaryAction(input: {
   documentId: string;
   summary: VerifiedReadingSummary;
   idempotencyKey: string;
-}): Promise<{ ok: true; noteId: string; proposals: number } | { ok: false; error: string }> {
+}): Promise<{ ok: true; noteId: string; created: number } | { ok: false; error: string }> {
   const auth = await getAuthContext();
   requireRole(auth, "member");
   try {
@@ -39,7 +44,7 @@ export async function acceptReadingSummaryAction(input: {
       proposer: "reading-summary",
       idempotencyKey: input.idempotencyKey,
     });
-    return { ok: true, noteId: result.note.id, proposals: result.proposals };
+    return { ok: true, noteId: result.note.id, created: result.created };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Could not save this summary." };
   }

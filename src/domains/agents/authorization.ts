@@ -156,15 +156,26 @@ export const TOOL_OPERATION_REGISTRY: Record<string, ToolOperationSpec> = {
     note: "Persists a CRM contact proposal in the review queue; approval creates local contact/company/correspondence rows only.",
   },
   /*
-   * Proposing ideas from run material persists zettel-proposal rows the owner
-   * reviews, so this is an internal write under action.prepare - not a read.
-   * No idea artifact is created and nothing leaves the workspace: the owner's
-   * accept is the only path that creates one.
+   * Creating ideas from run material writes zettel card artifacts the owner
+   * keeps - an internal write under action.prepare, not a read. The tool
+   * call itself is the acceptance; nothing leaves the workspace.
    */
   "zettels.propose": {
     capability: "action.prepare",
     effectClass: "internal_write",
-    note: "Persists zettel proposals in the review queue; never creates idea artifacts.",
+    note: "Creates zettel idea cards from run material directly (the tool call is the acceptance); nothing external is written.",
+  },
+  /*
+   * The diagram tool (spec art_Yi8Fwsqn, locked decision 3) is the deliberate
+   * no-review-queue exception: it persists a versioned canvas + diagram
+   * artifact straight into the workspace, so prepare would misstate it. The
+   * honest authority is document.create - an internal knowledge write, local
+   * only, never an external call - and version history is its reversibility.
+   */
+  "diagram.create": {
+    capability: "document.create",
+    effectClass: "internal_write",
+    note: "Persists a guarded Mermaid source as a versioned canvas + diagram artifact in the workspace; no external calls.",
   },
   /*
    * ASH-282: proposing a calendar move persists a review card, so this is an

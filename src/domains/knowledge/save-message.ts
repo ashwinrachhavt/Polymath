@@ -12,9 +12,9 @@ import { saveAnswerAsNote } from "./save-answer";
  *
  * Authorship is acceptance: saving a message as an idea is the owner's own
  * act, so it writes the artifact directly and never creates a
- * `zettel_proposals` row — only model extractions go through the proposal
- * queue. Both saves are idempotent under one key per save; a replayed key
- * returns the first save rather than minting a second.
+ * `zettel_proposals` row — no model surface does anymore either. Both saves
+ * are idempotent under one key per save; a replayed key returns the first
+ * save rather than minting a second.
  */
 
 /** The idea title: the message's first sentence, capped at 120 characters. */

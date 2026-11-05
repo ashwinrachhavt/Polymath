@@ -141,6 +141,17 @@ export const STUBBED_TOOLS = {
       status: "awaiting owner approval",
     },
   },
+  // Diagram agent (spec art_Yi8Fwsqn): persistence is immediate, not
+  // propose-then-review — the stub returns the created shape so an eval can
+  // never write a real canvas + artifact version into the workspace.
+  diagram: {
+    response: {
+      ok: true,
+      canvasId: "00000000-0000-0000-0000-000000000000",
+      artifactId: "00000000-0000-0000-0000-000000000000",
+      version: 1,
+    },
+  },
   documents_search: { response: { ok: true, query: "", results: [] } },
   // ASH-279 / ASH-283: both only ever propose, so the stub is the "queued"
   // shape and an eval can never reach Notion or spend a generation call.
@@ -222,7 +233,12 @@ export const STUBBED_TOOLS = {
   wiki_lint: { response: { ok: true, findings: [] } },
   wiki_read: { response: { ok: true, articles: [] } },
   zettels_propose: {
-    response: { ok: true, proposals: [{ id: "00000000-0000-0000-0000-000000000000", duplicateOf: null }] },
+    response: {
+      ok: true,
+      created: [{ id: "00000000-0000-0000-0000-000000000000", title: "Stub idea" }],
+      skipped: { repeats: 0, duplicates: 0, sameSpans: 0 },
+      unreadChars: 0,
+    },
   },
 } satisfies Readonly<Record<string, ToolStubOutcome>>;
 

@@ -74,8 +74,11 @@ mockups/
 # `agent/` is a duplicate the installer writes for other runtimes. Their
 # fixture TS is deliberately broken and must never enter the app build.
 # Installed versions are recorded in the tracked skills-lock.json.
+# Anchored to the repo root: unanchored, the pattern also matched
+# eve/polymath/agent/ — where all 36 files are tracked — and silently
+# ignored every NEW eve tool module added there.
 .agents/
-agent/
+/agent/
 .claude/skills/
 # Hallmark run output: before/after screenshots and wiring records. Evidence
 # is uploaded to the PR, not committed (spec: .hallmark/ stays out of the diff).

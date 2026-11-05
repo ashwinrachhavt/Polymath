@@ -181,8 +181,12 @@ export function citationsFromToolOutput(output: unknown): ChatCitation[] {
  * is replaced by a marker: the pill then shows the outcome line and the
  * citation list, not unbounded provider JSON that every viewer's stream would
  * serialize and every surface's state would hold for the run's lifetime.
+ *
+ * Exported because tool authors must budget against the same number — a
+ * result the tool keeps under this cap is never replaced by the truncated
+ * marker (see domains/diagrams/diagrams.ts diagramToolPayload).
  */
-const MAX_TOOL_PAYLOAD = 8_192;
+export const MAX_TOOL_PAYLOAD = 8_192;
 
 function capPayload(value: unknown): unknown {
   let size: number;

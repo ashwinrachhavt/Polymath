@@ -4,27 +4,28 @@ import { toolAllowed } from "../lib/policy";
 // Relative, not "@/...": eve bundles this agent from its own package root and
 // does not carry the app's tsconfig paths (see hooks/bridge.ts).
 import { getRunBySessionRef } from "../../../../src/domains/agents/queries";
-import { proposeZettels } from "../../../../src/domains/knowledge/zettels";
+import { createZettelsFromSource } from "../../../../src/domains/knowledge/zettels";
 import { db } from "../../../../src/lib/db";
 import { documentExtractions, documents } from "../../../../src/domains/knowledge/schema";
 import { and, eq } from "drizzle-orm";
 import { createHash } from "node:crypto";
 
 /*
- * Proposes ideas (zettels) from material a run has in hand. The proposal-only
- * clause is the whole point: rows land in the owner's review queue, and the
- * owner's accept is the only path that creates an idea artifact. The run's
- * frozen policy must allow zettels.propose.
+ * Creates ideas (zettels) from material a run has in hand. The tool call is
+ * the acceptance: the ideas become idea cards in the workspace's knowledge
+ * graph immediately - no proposal row waits for a second human click. The
+ * run's frozen policy must allow zettels.propose.
  *
- * When an artifactId is given, the text argument is ignored and the proposal
+ * When an artifactId is given, the text argument is ignored and the creation
  * pass reads the artifact's current version - the model cannot attribute a
  * quote to a body it invented. Free text goes through a transient document
  * keyed by the dedupe id, so a retry with the same id re-reads the same
- * stored source and resolves the same proposals instead of queuing duplicates.
+ * stored source and re-dedupes against the cards it already made instead of
+ * minting duplicates.
  */
 export default defineTool({
   description:
-    "Propose ideas (zettels) from source text or a saved artifact. Proposals wait in the owner's review queue; the tool does not create any idea artifact.",
+    "Create ideas (zettels) from source text or a saved artifact. Ideas become knowledge cards immediately - the tool call is the acceptance, and near-duplicates of existing cards are skipped.",
   inputSchema: z.object({
     text: z.string().min(1).max(200_000),
     dedupeId: z.string().max(200),
@@ -47,13 +48,19 @@ export default defineTool({
     // (checked above) is the real gate. Same construction as wiki_ingest.ts.
     const auth = { userId: current.principalId, workspaceId, role: "member" as const };
     const result = input.artifactId
-      ? await proposeZettels(auth, { sourceArtifactId: input.artifactId })
-      : await proposeZettels(auth, {
+      ? await createZettelsFromSource(auth, { sourceArtifactId: input.artifactId })
+      : await createZettelsFromSource(auth, {
           documentId: await resolveTransientDocument(workspaceId, input.dedupeId, input.text),
         });
     return {
       ok: true as const,
-      proposals: result.proposals.map((p) => ({ id: p.id, duplicateOf: p.duplicateOfArtifactId })),
+      created: result.created.map((c) => ({ id: c.artifactId, title: c.title })),
+      skipped: {
+        repeats: result.skippedRepeats,
+        duplicates: result.skippedDuplicates,
+        sameSpans: result.skippedSpans,
+      },
+      unreadChars: result.unreadChars,
     };
   },
 });

@@ -326,6 +326,10 @@ suite("documents.search for the agent (real Postgres + pgvector)", () => {
       // Task 24: idea proposals persist as review-queue zettel proposals - an
       // internal write, denied on every call without the grant.
       "zettels.propose",
+      // Diagram agent (spec art_Yi8Fwsqn): generation persists a versioned
+      // canvas + diagram artifact immediately - an internal write, denied on
+      // every call without the grant.
+      "diagram.create",
       // Composio Instant tools (spec #316): granted to default profiles; the
       // closed list stays deliberate — widening shows up in this diff.
       "instant.composio.composio_ask_oracle",

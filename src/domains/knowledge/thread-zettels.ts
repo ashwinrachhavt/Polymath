@@ -7,23 +7,23 @@ import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { withReceipt } from "@/domains/audit/receipt";
 import { commitNoteSnapshot, createNoteInTx } from "./notes";
 import { ThreadEmptyError, ThreadNotFoundError, transcriptMarkdown } from "./thread-graph";
-import { proposeZettels } from "./zettels";
+import { createZettelsFromSource } from "./zettels";
 import { artifactLinks, artifactVersions, artifacts } from "./schema";
 
 /*
  * Zettelizing a conversation (plan Task 20): the thread's messages become one
  * note-kind artifact through the same source edge syncThreadToGraph uses, and
- * the ordinary proposal pipeline reads it. Note-kind, not "transcript": a
+ * the direct-creation pass reads it. Note-kind, not "transcript": a
  * thread-sourced idea's provenance card must not read as a recording, and the
  * two thread-to-artifact paths stay consistent, differing only in which
  * messages are in the body. A second pass over an unchanged thread reuses
- * that artifact and proposes nothing new: its candidates are deduped against
- * the thread's own earlier proposals for the artifact (pending and accepted)
- * by claim/quote overlap — the span-key index alone misses a re-chunked
- * region — and the accepted corpus flags whatever survives.
+ * that artifact and creates nothing new: its candidates are deduped against
+ * the thread's own earlier proposals and cards for the artifact by
+ * claim/quote overlap — the span-key index alone misses a re-chunked region —
+ * and the near-duplicate gate flags whatever survives.
  */
 
-export type ZettelizeThreadResult = { artifactId: string; proposed: number; unreadChars: number };
+export type ZettelizeThreadResult = { artifactId: string; created: number; unreadChars: number };
 
 /** The newest `count` conversation messages, oldest first — what "the last 5" means. */
 export async function listLastMessageIds(auth: AuthContext, threadId: string, count: number): Promise<string[]> {
@@ -72,8 +72,8 @@ export async function zettelizeThread(
       note: "Conversation updated",
     });
   }
-  const result = await proposeZettels(auth, { sourceArtifactId: body.artifactId });
-  return { artifactId: body.artifactId, proposed: result.proposals.length, unreadChars: result.unreadChars };
+  const result = await createZettelsFromSource(auth, { sourceArtifactId: body.artifactId });
+  return { artifactId: body.artifactId, created: result.created.length, unreadChars: result.unreadChars };
 }
 
 async function upsertThreadArtifact(
