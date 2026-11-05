@@ -98,10 +98,11 @@ async function seed(auth: { workspaceId: string; userId: string }, text = TEXT, 
 /** The card's dedupe key and verbatim span, from its metadata. */
 async function cardSpan(artifactId: string) {
   const [card] = await holder.db!.select().from(artifacts).where(eq(artifacts.id, artifactId));
-  const key = (card.metadata as { dedupeKey?: string } | null)?.dedupeKey!;
-  const [, , sourcePart, spanPart] = key.split(":");
+  const meta = card.metadata as { dedupeKey?: string } | null;
+  if (!meta?.dedupeKey) throw new Error("card has no dedupeKey");
+  const [, , sourcePart, spanPart] = meta.dedupeKey.split(":");
   const [start, end] = spanPart.split("-").map(Number);
-  return { card, key, sourcePart, start, end };
+  return { card, key: meta.dedupeKey, sourcePart, start, end };
 }
 
 suite("createZettelsFromSource honesty (real Postgres)", () => {

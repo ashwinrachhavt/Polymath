@@ -55,7 +55,6 @@ import type { ZettelExtractor } from "@/integrations/zettels/extractor";
 const TEXT =
   "The tenant pays monthly rent of twelve hundred dollars. The landlord keeps the security deposit until move out. Pets are not allowed without written consent.";
 const Q1 = "The tenant pays monthly rent of twelve hundred dollars.";
-const Q2 = "The landlord keeps the security deposit until move out.";
 const extractor = (cands: Array<{ title: string; content: string; quote: string }>): ZettelExtractor => ({
   name: "fake@1",
   extract: async () => cands,
