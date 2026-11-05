@@ -73,7 +73,7 @@ export function ScanAgentSessions() {
       {result ? (
         <div className="text-xs text-muted-foreground" role="status">
           <p>
-            {result.imported} imported, {result.updated} updated, {result.decode.records.toLocaleString()} records read
+            {result.imported} imported · {result.updated} updated, {result.decode.records.toLocaleString()} records read
             {result.decode.skippedRecords > 0
               ? `, ${result.decode.skippedRecords} lines skipped (kept counted, not fatal)`
               : ""}
