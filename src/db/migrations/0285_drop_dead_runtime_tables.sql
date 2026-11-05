@@ -7,9 +7,9 @@
 -- tool_invocations foreign keys; the now-orphaned trigger functions go too.
 -- `agent_profile_revisions` stays — captureProfileRevision still writes it.
 --> statement-breakpoint
-DROP TABLE "runtime_executions" CASCADE;--> statement-breakpoint
-DROP TABLE "runtime_signals" CASCADE;--> statement-breakpoint
-DROP TABLE "tool_invocations" CASCADE;--> statement-breakpoint
+DROP TABLE IF EXISTS "runtime_executions" CASCADE;--> statement-breakpoint
+DROP TABLE IF EXISTS "runtime_signals" CASCADE;--> statement-breakpoint
+DROP TABLE IF EXISTS "tool_invocations" CASCADE;--> statement-breakpoint
 DROP FUNCTION IF EXISTS "runtime_executions_freeze_identity"();--> statement-breakpoint
 DROP FUNCTION IF EXISTS "runtime_signals_freeze_identity"();--> statement-breakpoint
 DROP FUNCTION IF EXISTS "tool_invocations_freeze_identity"();
