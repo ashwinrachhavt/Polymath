@@ -18,14 +18,7 @@ import {
 import { createEngine } from "@/domains/agents/engine";
 import { ensureProfile } from "@/domains/agents/commands";
 import { createEveDriver, eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
-import {
-  dismissSemanticLink,
-  LinkEditError,
-  promoteSemanticLink,
-  RELATION_TYPES,
-  removeLink,
-  setLinkRelation,
-} from "@/domains/knowledge/relations";
+import { LinkEditError, RELATION_TYPES, removeLink, setLinkRelation } from "@/domains/knowledge/relations";
 import {
   NOTE_AI_ACTIONS,
   NoteAIError,
@@ -196,21 +189,6 @@ export async function renameNoteAction(input: z.input<typeof renameInput>): Prom
   return guarded(async () => ({ version: (await renameNote(auth, parsed.data)).version }));
 }
 
-const linkRelatedInput = z.object({ artifactId: z.string().uuid(), targetId: z.string().uuid() });
-
-/** Confirm a "related by meaning" suggestion into the explicit graph. */
-export async function linkRelatedNoteAction(
-  input: z.input<typeof linkRelatedInput>,
-): Promise<Result<{ linked: true }>> {
-  const parsed = linkRelatedInput.safeParse(input);
-  if (!parsed.success) return { ok: false, error: "That suggestion is not valid." };
-  const auth = await authorize();
-  return guarded(async () => {
-    if (!(await promoteSemanticLink(auth, parsed.data))) throw new NoteNotFoundError();
-    return { linked: true as const };
-  });
-}
-
 const relationInput = z.object({
   artifactId: z.string().uuid(),
   targetId: z.string().uuid(),
@@ -229,19 +207,15 @@ export async function setLinkRelationAction(input: z.input<typeof relationInput>
   });
 }
 
-/** Remove a curated link or reject a suggestion; neither touches the notes. */
-export async function removeLinkAction(
-  input: z.input<typeof linkRelatedInput> & { dismiss?: boolean },
-): Promise<Result<{ removed: true }>> {
-  const parsed = linkRelatedInput.safeParse(input);
+/** Remove a curated link; it does not touch the notes. */
+const removeLinkInput = z.object({ artifactId: z.string().uuid(), targetId: z.string().uuid() });
+
+export async function removeLinkAction(input: z.input<typeof removeLinkInput>): Promise<Result<{ removed: true }>> {
+  const parsed = removeLinkInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "That link is not valid." };
   const auth = await authorize();
   return guarded(async () => {
-    if (input.dismiss) {
-      if (!(await dismissSemanticLink(auth, parsed.data))) throw new NoteNotFoundError();
-    } else {
-      await removeLink(auth, parsed.data);
-    }
+    await removeLink(auth, parsed.data);
     return { removed: true as const };
   });
 }

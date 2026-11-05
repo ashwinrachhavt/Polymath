@@ -13,7 +13,11 @@ import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
 const handle = makeTestDb();
 const suite = handle ? describe : describe.skip;
 const holder: { db: ReturnType<typeof drizzle> | undefined } = { db: undefined };
-vi.mock("@/lib/db", () => ({ get db() { return holder.db; } }));
+vi.mock("@/lib/db", () => ({
+  get db() {
+    return holder.db;
+  },
+}));
 vi.mock("@/lib/db-transaction", () => ({
   get withTransaction() {
     return (fn: Parameters<typeof import("@/lib/db-transaction").withTransaction>[0]) =>
@@ -22,8 +26,24 @@ vi.mock("@/lib/db-transaction", () => ({
 }));
 
 import { ARTIFACT_EMBEDDING_OWNER_TYPE, embedArtifact } from "@/domains/knowledge/embedding";
-import { autosaveNoteDraft, commitNoteSnapshot, createNote, getNote, listNoteBacklinks, listNoteOutlinks, synthesizeZettel } from "@/domains/knowledge/notes";
-import { dismissSemanticLink, linkCards, listCardGraph, removeLink, setLinkRelation, materializeSemanticEdges, promoteSemanticLink, relatedNotes } from "@/domains/knowledge/relations";
+import {
+  autosaveNoteDraft,
+  commitNoteSnapshot,
+  createNote,
+  getNote,
+  listNoteBacklinks,
+  listNoteOutlinks,
+  synthesizeZettel,
+} from "@/domains/knowledge/notes";
+import {
+  linkCards,
+  listCardGraph,
+  removeLink,
+  setLinkRelation,
+  materializeSemanticEdges,
+  mergeIdeaLinks,
+  relatedNotes,
+} from "@/domains/knowledge/relations";
 
 /** Deterministic 1536-wide vectors: basis directions per key. */
 function vec(dims: number[]): number[] {
@@ -46,9 +66,15 @@ beforeAll(() => {
   vi.stubEnv("OPENAI_API_KEY", "");
   vi.stubEnv("OPENROUTER_API_KEY", "");
 });
-afterAll(async () => { vi.unstubAllEnvs(); await handle?.client.end(); });
+afterAll(async () => {
+  vi.unstubAllEnvs();
+  await handle?.client.end();
+});
 
-const workspace = async () => ({ ...await seedWorkspace(holder.db!, `sr-${crypto.randomUUID()}`), role: "owner" as const });
+const workspace = async () => ({
+  ...(await seedWorkspace(holder.db!, `sr-${crypto.randomUUID()}`)),
+  role: "owner" as const,
+});
 
 async function writeNote(auth: { workspaceId: string; userId: string; role: "owner" }, title: string, text: string) {
   const note = await createNote(auth, { title });
@@ -72,11 +98,16 @@ suite("card embeddings and semantic relations (real Postgres)", () => {
     const again = await embedArtifact(auth, { artifactId: note.id, provider });
     expect(again).toEqual({ status: "succeeded", chunks: 1 });
 
-    const rows = await holder.db!.select().from(embeddings).where(and(
-      eq(embeddings.workspaceId, auth.workspaceId),
-      eq(embeddings.ownerType, ARTIFACT_EMBEDDING_OWNER_TYPE),
-      eq(embeddings.ownerId, note.id),
-    ));
+    const rows = await holder
+      .db!.select()
+      .from(embeddings)
+      .where(
+        and(
+          eq(embeddings.workspaceId, auth.workspaceId),
+          eq(embeddings.ownerType, ARTIFACT_EMBEDDING_OWNER_TYPE),
+          eq(embeddings.ownerId, note.id),
+        ),
+      );
     expect(rows).toHaveLength(1);
     expect(rows[0].model).toBe("fake@1");
 
@@ -152,26 +183,31 @@ suite("card embeddings and semantic relations (real Postgres)", () => {
     expect(edges[0].linkType).toBe("semantic");
     // Re-embedding rewrites, never doubles; semantic edges stay out of outlinks/backlinks.
     await embedArtifact(auth, { artifactId: b.id, provider });
-    expect(await holder.db!.select().from(artifactLinks).where(eq(artifactLinks.workspaceId, auth.workspaceId))).toHaveLength(1);
+    expect(
+      await holder.db!.select().from(artifactLinks).where(eq(artifactLinks.workspaceId, auth.workspaceId)),
+    ).toHaveLength(1);
     expect(await listNoteOutlinks(auth, b.id)).toEqual([]);
     expect(await listNoteBacklinks(auth, a.id)).toEqual([]);
   });
 
-  it("confirming a suggestion promotes it to a durable related edge that survives re-embed", async () => {
+  it("tying two already-adjacent cards upgrades the semantic edge in place, and it survives re-embed", async () => {
     const auth = await workspace();
     const a = await writeNote(auth, "One", "one body");
     const b = await writeNote(auth, "Two", "two body");
     const provider = fakeProvider({ "one body": vec([4]), "two body": vec([4]) });
     for (const n of [a, b]) await embedArtifact(auth, { artifactId: n.id, provider });
-    expect(await promoteSemanticLink(auth, { artifactId: a.id, targetId: b.id })).toBe(true);
-    const [edge] = await holder.db!.select().from(artifactLinks).where(eq(artifactLinks.workspaceId, auth.workspaceId));
-    expect(edge).toMatchObject({ artifactId: a.id, targetId: b.id, linkType: "related" });
+    // The semantic edge exists (b -> a); tying a to b turns that very row
+    // explicit instead of adding a second one.
+    await linkCards(auth, { artifactId: a.id, targetId: b.id });
+    const edges = await holder.db!.select().from(artifactLinks).where(eq(artifactLinks.workspaceId, auth.workspaceId));
+    expect(edges).toHaveLength(1);
+    expect(edges[0]).toMatchObject({ artifactId: a.id, targetId: b.id, linkType: "related" });
     expect((await listNoteOutlinks(auth, a.id)).map((l) => l.id)).toEqual([b.id]);
+    // A re-embed does not bring the semantic shadow back — the explicit edge is the link.
     await embedArtifact(auth, { artifactId: b.id, provider });
     const after = await holder.db!.select().from(artifactLinks).where(eq(artifactLinks.workspaceId, auth.workspaceId));
     expect(after).toHaveLength(1);
     expect(after[0].linkType).toBe("related");
-    expect(await promoteSemanticLink(auth, { artifactId: a.id, targetId: b.id })).toBe(false);
   });
 
   it("materialization is idempotent, and a typed [[link]] upgrades a suggestion", async () => {
@@ -182,7 +218,12 @@ suite("card embeddings and semantic relations (real Postgres)", () => {
     for (const n of [a, b]) await embedArtifact(auth, { artifactId: n.id, provider });
     expect(await materializeSemanticEdges(auth, b.id)).toBe(1);
     expect(await materializeSemanticEdges(auth, b.id)).toBe(1);
-    await autosaveNoteDraft(auth, { artifactId: a.id, expectedVersion: 2, content: { type: "doc", content: [] }, plainText: "skip a\n\nSee [[Skip beta]]." });
+    await autosaveNoteDraft(auth, {
+      artifactId: a.id,
+      expectedVersion: 2,
+      content: { type: "doc", content: [] },
+      plainText: "skip a\n\nSee [[Skip beta]].",
+    });
     const rows = await holder.db!.select().from(artifactLinks).where(eq(artifactLinks.workspaceId, auth.workspaceId));
     expect(rows.filter((r) => r.linkType === "reference")).toHaveLength(1);
     expect(await materializeSemanticEdges(auth, b.id)).toBe(0);
@@ -209,7 +250,7 @@ suite("card embeddings and semantic relations (real Postgres)", () => {
     await expect(synthesizeZettel(auth, { sourceIds: [a.id] })).rejects.toThrow("at least two");
   });
 
-  it("curating links: name the relation and why, reject a suggestion for good, remove a link, notes untouched", async () => {
+  it("curating links: name the relation and why, remove a link, notes untouched", async () => {
     const auth = await workspace();
     const a = await writeNote(auth, "Claim", "c");
     const b = await writeNote(auth, "Evidence", "e");
@@ -217,17 +258,17 @@ suite("card embeddings and semantic relations (real Postgres)", () => {
     const provider = fakeProvider({ c: vec([7]), e: vec([7]), n: vec([7]) });
     for (const n of [a, b, c]) await embedArtifact(auth, { artifactId: n.id, provider });
 
-    // Reject a suggestion: it leaves the panel and a re-embed does not bring it back.
+    // Semantic edges and explicit links both read through outlinks once tied.
     expect((await relatedNotes(auth, a.id)).map((r) => r.id).sort()).toEqual([b.id, c.id].sort());
-    expect(await dismissSemanticLink(auth, { artifactId: a.id, targetId: c.id })).toBe(true);
-    await embedArtifact(auth, { artifactId: a.id, provider });
-    await embedArtifact(auth, { artifactId: c.id, provider });
-    expect((await relatedNotes(auth, a.id)).map((r) => r.id)).toEqual([b.id]);
-    expect((await listNoteOutlinks(auth, a.id)).map((l) => l.id)).not.toContain(c.id);
 
-    // Accept, then say what it means and why.
+    // Tie the pair, then say what it means and why.
     await linkCards(auth, { artifactId: a.id, targetId: b.id });
-    await setLinkRelation(auth, { artifactId: a.id, targetId: b.id, linkType: "supports", why: "b measures the claim" });
+    await setLinkRelation(auth, {
+      artifactId: a.id,
+      targetId: b.id,
+      linkType: "supports",
+      why: "b measures the claim",
+    });
     const [out] = await listNoteOutlinks(auth, a.id);
     expect(out).toMatchObject({ id: b.id, linkType: "supports", context: "b measures the claim" });
     expect((await listNoteBacklinks(auth, b.id))[0]).toMatchObject({ id: a.id, linkType: "supports" });
@@ -238,8 +279,31 @@ suite("card embeddings and semantic relations (real Postgres)", () => {
     expect((await listCardGraph(auth)).nodes).toHaveLength(3);
     await expect(removeLink(auth, { artifactId: a.id, targetId: b.id })).rejects.toThrow();
 
-    // Tying a rejected pair again is a fresh decision.
+    // Tying the pair again is a fresh edge, not a resurrection of the old one.
     await linkCards(auth, { artifactId: a.id, targetId: c.id });
     expect((await listNoteOutlinks(auth, a.id)).map((l) => l.id)).toEqual([c.id]);
+  });
+});
+
+describe("mergeIdeaLinks (pure)", () => {
+  const row = (id: string, explicit: boolean): Parameters<typeof mergeIdeaLinks>[0][number] => ({
+    id,
+    title: `t-${id}`,
+    kind: "zettel",
+    excerpt: null,
+    score: 0.9,
+    alreadyLinked: explicit,
+  });
+
+  it("merges explicit and semantic links, explicit first, semantic duplicates dropped", () => {
+    const explicit = [row("a", true), row("b", true)];
+    const semantic = [row("b", false), row("c", false)];
+    expect(mergeIdeaLinks(explicit, semantic).map((r) => r.id)).toEqual(["a", "b", "c"]);
+  });
+
+  it("returns whichever half exists", () => {
+    expect(mergeIdeaLinks([], [row("c", false)]).map((r) => r.id)).toEqual(["c"]);
+    expect(mergeIdeaLinks([row("a", true)], [])).toEqual([row("a", true)]);
+    expect(mergeIdeaLinks([], [])).toEqual([]);
   });
 });

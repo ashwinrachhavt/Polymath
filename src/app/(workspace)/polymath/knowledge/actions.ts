@@ -13,8 +13,6 @@ import { acceptAssertions, acceptParty, type PartyDecision } from "@/domains/kno
 import { acceptObligation, rejectObligation } from "@/domains/knowledge/obligations";
 import { captureUrl } from "@/domains/knowledge/capture-url";
 import { createFolder, FolderError } from "@/domains/knowledge/folders";
-import { acceptZettel, proposeZettels, rejectZettel } from "@/domains/knowledge/zettels";
-import { EmbeddingUnconfiguredError } from "@/integrations/embeddings/provider";
 import { applyTitle } from "@/domains/knowledge/naming";
 import {
   acceptClassification,
@@ -40,9 +38,9 @@ import { db } from "@/lib/db";
 
 const uuid = z.string().uuid();
 
-// A decision is visible on two surfaces: the workbench and the Ideas "In
-// review" queue. One mutation revalidates both, so neither cache can show a
-// proposal the other just decided.
+// A decision is visible on two surfaces: the workbench and the Ideas
+// collection (a card's links can change with a decision). One mutation
+// revalidates both, so neither cache can show a state the other just changed.
 const revalidate = () => {
   revalidatePath("/polymath/knowledge");
   revalidatePath("/polymath/ideas");
@@ -327,48 +325,4 @@ export async function captureUrlAction(url: string): Promise<CaptureUrlActionRes
     ok: true,
     message: result.created ? "Captured. It is in the inbox." : "That address is already in the inbox.",
   };
-}
-
-/** Ask for zettel proposals from one succeeded document. Proposes only; nothing becomes knowledge yet. */
-export async function proposeZettelsAction(documentId: string): Promise<{ ok: true; created: number }> {
-  const id = uuid.parse(documentId);
-  const auth = await authorize();
-  try {
-    const { proposals } = await proposeZettels(auth, { documentId: id });
-    revalidate();
-    return { ok: true, created: proposals.length };
-  } catch (cause) {
-    if (cause instanceof EmbeddingUnconfiguredError) {
-      throw new Error("Zettel proposals need OPENROUTER_API_KEY to be set.");
-    }
-    if (cause instanceof Error && /no succeeded extraction/.test(cause.message)) {
-      throw new Error("This document has no extracted text yet.");
-    }
-    throw cause;
-  }
-}
-
-/** Accept writes the concept and the evidence link; reject writes only the decision. */
-export async function acceptZettelAction(proposalId: string): Promise<{ ok: true }> {
-  const id = uuid.parse(proposalId);
-  const auth = await authorize();
-  try {
-    await acceptZettel(auth, { proposalId: id });
-    revalidate();
-    return { ok: true };
-  } catch (cause) {
-    wrap("This zettel", cause);
-  }
-}
-
-export async function rejectZettelAction(proposalId: string): Promise<{ ok: true }> {
-  const id = uuid.parse(proposalId);
-  const auth = await authorize();
-  try {
-    await rejectZettel(auth, { proposalId: id });
-    revalidate();
-    return { ok: true };
-  } catch (cause) {
-    wrap("This zettel", cause);
-  }
 }

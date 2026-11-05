@@ -384,17 +384,20 @@ export async function countMeaningUncoveredByState(
  * piece of work; a claim leads back to its supporting passage and a related
  * card includes the reason for the connection where available). One batched
  * read over the link graph for a page of hits; the caller attaches each entry
- * to its hit. Explicit edges only: "semantic" candidates are machine guesses
- * until promoted and "dismissed" edges were rejected, so neither is ever
- * shown as a connection. Archived cards on the far side are dropped. The
- * edge's recorded context is the reason/passage the spec asks for - a
+ * to its hit. Explicit edges only: a semantic edge is a similarity signal
+ * with no recorded reason, so it renders as a plain link on the cards but
+ * never as a search connection. Legacy 'dismissed' veto tombstones stay
+ * excluded too, until a data purge retires them. Archived cards on the far
+ * side are dropped. The edge's recorded context is the reason/passage the
+ * spec asks for - a
  * "source" edge carries the supporting quote verbatim.
  */
 type HitConnection = {
   id: string;
   title: string;
   kind: string;
-  /** Why the edge exists (artifactLinkTypes minus semantic/dismissed). */
+  /** Why the edge exists (artifactLinkTypes minus semantic; legacy
+   * 'dismissed' tombstones stay excluded until their rows are purged). */
   linkType: string;
   /** The passage or reason recorded with the edge, when there is one. */
   context: string | null;
