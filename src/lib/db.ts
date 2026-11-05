@@ -1,6 +1,8 @@
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
+import { dbQueryLogger } from "./db-query-log";
+
 /*
  * postgres-js over TCP, the same driver db-transaction.ts uses. The neon-http
  * driver was tried here and rejected for two reasons: it speaks Neon's HTTPS
@@ -43,4 +45,9 @@ export const db = drizzle(
     connect_timeout: 10,
     max_lifetime: 3600,
   }),
+  // The query-log logger is a no-op unless a withQueryLog context is active
+  // and POLYMATH_DB_QUERY_LOG allows it — otherwise byte-identical to the
+  // NoopLogger drizzle would fall back to. Transaction sessions inherit the
+  // same options object, so tx statements attribute to the ambient context.
+  { logger: dbQueryLogger },
 );
