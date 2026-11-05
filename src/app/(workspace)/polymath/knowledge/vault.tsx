@@ -291,7 +291,7 @@ function ListView({
     <div className="min-w-0">
       <div
         className={cn(
-          "text-muted-foreground border-border grid items-center gap-3 border-b px-2 pb-1.5 text-data font-medium tracking-wide uppercase",
+          "text-muted-foreground border-border grid items-center gap-3 border-b px-2 pb-1.5 text-data font-medium",
           ROW_GRID,
         )}
       >

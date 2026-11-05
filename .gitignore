@@ -69,6 +69,18 @@ mockups/
 .superpowers/
 .claude/worktrees/
 
+# Vendored skill tooling (skills.sh installs: e.g. nutlope/hallmark). The
+# canonical copy lives in .agents/skills; .claude/skills symlinks to it and
+# `agent/` is a duplicate the installer writes for other runtimes. Their
+# fixture TS is deliberately broken and must never enter the app build.
+# Installed versions are recorded in the tracked skills-lock.json.
+.agents/
+agent/
+.claude/skills/
+# Hallmark run output: before/after screenshots and wiring records. Evidence
+# is uploaded to the PR, not committed (spec: .hallmark/ stays out of the diff).
+.hallmark/
+
 # Drizzle snapshots: exactly one is tracked — the newest, matching the
 # journal's last entry (see scripts/check-snapshot-invariant.ts and
 # src/db/migrations/README.md). Rolling the baseline forward: flip the

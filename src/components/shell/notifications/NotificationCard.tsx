@@ -219,11 +219,8 @@ function RunActionBar({ runState, onOpen }: { runState: RunState; onOpen: () => 
 
   return (
     <div className="flex items-center gap-1.5">
-      {/* The spec's pulse dot, in .pill-violet's own colours (light and dark). */}
-      <span
-        aria-hidden
-        className="size-2 shrink-0 animate-pulse rounded-full bg-[oklch(0.62_0.11_300)] dark:bg-[oklch(0.72_0.10_300)]"
-      />
+      {/* The spec's pulse dot, in the tone-violet token (flips with the theme). */}
+      <span aria-hidden className="bg-tone-violet size-2 shrink-0 animate-pulse rounded-full" />
       <OpenOverflowButton label="Open" onOpen={onOpen} />
     </div>
   );

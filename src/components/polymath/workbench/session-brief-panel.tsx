@@ -42,7 +42,7 @@ export function SessionBriefPanel({ brief }: { brief: SessionBriefData }) {
       className="border-border/70 bg-muted/20 flex w-full flex-col gap-3 rounded-lg border px-4 py-3"
     >
       <header className="flex items-baseline justify-between gap-2">
-        <h2 className="text-muted-foreground text-data font-medium tracking-wide uppercase">Session brief</h2>
+        <h2 className="text-muted-foreground text-data font-medium">Session brief</h2>
         <p
           className="text-muted-foreground/80 text-data"
           aria-label={`Evidence: ${tierCounts.grounded} grounded, ${tierCounts.inferred} inferred, ${tierCounts.hypothesis} hypotheses`}
@@ -72,7 +72,7 @@ export function SessionBriefPanel({ brief }: { brief: SessionBriefData }) {
 function SectionLabel({ label, tier }: { label: string; tier?: EvidenceTier | null }) {
   return (
     <div className="flex items-center justify-between gap-2">
-      <h3 className="text-muted-foreground text-data font-medium tracking-wide uppercase">{label}</h3>
+      <h3 className="text-muted-foreground text-data font-medium">{label}</h3>
       {tier ? <EvidenceBadge tier={tier} /> : null}
     </div>
   );
