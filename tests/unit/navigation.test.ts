@@ -137,6 +137,21 @@ describe("navigation", () => {
     expect(isConversationSurface("/polymath/a1b2c3d4e5f6")).toBe(true);
   });
 
+  /*
+   * Regression guard: the predicate must verify the /polymath prefix before
+   * slicing it off. A bare slice of an unrelated route yields garbage that
+   * reads as an unregistered run id and folds the shell on the entire
+   * workspace outside /polymath — the CI-wide failure this case pins shut.
+   */
+  it("keeps the shell on every route outside /polymath", () => {
+    expect(isConversationSurface("/")).toBe(false);
+    expect(isConversationSurface("/onboarding")).toBe(false);
+    expect(isConversationSurface("/command-center/inbox")).toBe(false);
+    expect(isConversationSurface("/command-center/day")).toBe(false);
+    expect(isConversationSurface("/neuralflow/work")).toBe(false);
+    expect(isConversationSurface("/more")).toBe(false);
+  });
+
   it("rails exactly the twenty-one destinations in order", () => {
     // Conversations left the rail when its threads moved into the Assistant;
     // the route still resolves (old links keep working) but it is no longer a

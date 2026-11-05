@@ -294,8 +294,11 @@ const polymathStaticSegments = new Set([
 
 export function isConversationSurface(pathname: string) {
   if (pathname === "/polymath") return true;
+  // Guard the prefix before slicing: any other route (/command-center/inbox,
+  // /neuralflow/work, /onboarding, …) is a shelled page, never a conversation.
+  if (!pathname.startsWith("/polymath/")) return false;
   const rest = pathname.slice("/polymath/".length);
-  if (!rest) return false;
+  if (!rest) return true;
   const [head] = rest.split("/");
   return !polymathStaticSegments.has(head);
 }
