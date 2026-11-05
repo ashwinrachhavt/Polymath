@@ -63,6 +63,10 @@ async function authorize(): Promise<AuthContext> {
   return auth;
 }
 
+// Shared leaves: every action validates uuid ids and idempotency keys the same way.
+const id = z.string().uuid();
+const key = z.string().uuid();
+
 const createInput = z.object({
   title: z.string().trim().min(1).max(300),
   dueAt: z.coerce.date().optional(),
@@ -179,7 +183,7 @@ export type CompleteTaskResult =
   | { ok: false; kind: "conflict" | "validation"; error: string; sentenceRecorded?: boolean };
 
 export async function completeTaskAction(taskId: string, sentence?: string): Promise<CompleteTaskResult> {
-  const parsed = z.string().uuid().safeParse(taskId);
+  const parsed = id.safeParse(taskId);
   if (!parsed.success) return { ok: false, kind: "conflict", error: "That task no longer exists." };
   const noted = completionSentence.safeParse(sentence);
   if (!noted.success)
@@ -255,7 +259,7 @@ export async function reopenTaskAction(
   taskId: string,
   expectedVersion: number,
 ): Promise<{ ok: true; from: "done" | "cancelled"; note: string | null } | { ok: false; error: string }> {
-  const parsed = z.string().uuid().safeParse(taskId);
+  const parsed = id.safeParse(taskId);
   if (!parsed.success || !Number.isInteger(expectedVersion) || expectedVersion < 1) {
     return { ok: false, error: "That task no longer exists." };
   }
@@ -308,9 +312,6 @@ async function guarded<T extends object>(auth: AuthContext, run: () => Promise<T
     throw error;
   }
 }
-
-const key = z.string().uuid();
-const id = z.string().uuid();
 
 const patchInput = z.object({
   taskId: id,
@@ -383,8 +384,10 @@ export async function addDependencyAction(
   return guarded(auth, async () => ({ dependencyId: (await addDependency(auth, parsed.data)).id }));
 }
 
+const removeDependencyInput = z.object({ dependencyId: id, idempotencyKey: key });
+
 export async function removeDependencyAction(input: { dependencyId: string; idempotencyKey: string }): Promise<Result> {
-  const parsed = z.object({ dependencyId: id, idempotencyKey: key }).safeParse(input);
+  const parsed = removeDependencyInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "That dependency no longer exists." };
   const auth = await authorize();
   return guarded(auth, async () => {
@@ -419,17 +422,17 @@ const focusTransitionInput = z.object({
   nextStep: z.string().trim().max(500).optional().default(""),
 });
 
+const startSessionInput = z.object({
+  subject: z.string().trim().max(200).optional().default(""),
+  plannedMinutes: z.number().int().min(1).max(480).nullable(),
+  taskId: id.optional(),
+  // Spec §1: the tier is the session's contract; the domain re-validates
+  // against the same enum inside the transaction.
+  strictness: z.enum(focusStrictness.enumValues).optional(),
+});
+
 export async function startSessionAction(input: unknown): Promise<FocusResult> {
-  const parsed = z
-    .object({
-      subject: z.string().trim().max(200).optional().default(""),
-      plannedMinutes: z.number().int().min(1).max(480).nullable(),
-      taskId: z.string().uuid().optional(),
-      // Spec §1: the tier is the session's contract; the domain re-validates
-      // against the same enum inside the transaction.
-      strictness: z.enum(focusStrictness.enumValues).optional(),
-    })
-    .safeParse(input);
+  const parsed = startSessionInput.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the session and try again." };
   }
@@ -551,8 +554,10 @@ export async function createBlocklistEntryAction(input: unknown): Promise<FocusR
   return { ok: true };
 }
 
+const archiveBlocklistInput = z.object({ blockId: id });
+
 export async function archiveBlocklistEntryAction(input: unknown): Promise<FocusResult> {
-  const parsed = z.object({ blockId: z.string().uuid() }).safeParse(input);
+  const parsed = archiveBlocklistInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Reload and try again." };
   const auth = await authorize();
   try {
