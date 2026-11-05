@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath, updateTag } from "next/cache";
+import { revalidatePath } from "next/cache";
 import { and, eq, sql } from "drizzle-orm";
 import { decideProposal, ProposalConflictError, reviseProposal } from "@/domains/actions/commands";
 import { LOCAL_WRITERS } from "./local-writes";
@@ -11,7 +11,6 @@ import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { getAuthContext } from "@/lib/auth";
 import type { AuthContext } from "@/domains/identity/resolve";
-import { feedTag } from "@/lib/cache-tags";
 import { requireRole } from "@/lib/auth/guards";
 import type { Result } from "@/lib/result";
 
@@ -29,11 +28,9 @@ import type { Result } from "@/lib/result";
  * executes.
  */
 
-// Every decision changes the workspace's pending-proposal set, which the
-// shell's cached triage feed reads; each action expires it with its auth
-// context (the feed tag is workspace-scoped).
-const revalidate = (auth: AuthContext) => {
-  updateTag(feedTag(auth));
+// Every decision changes the workspace's pending-proposal set; reviews own
+// the canonical queue view of it.
+const revalidate = (_auth: AuthContext) => {
   revalidatePath("/reviews");
   revalidatePath("/");
 };

@@ -9,15 +9,10 @@ import { AppShell } from "@/components/shell/app-shell";
 import type { WorkspaceSwitcherData } from "@/components/shell/workspace-switcher";
 import { clerkConfigured, devAuthBypass } from "@/lib/clerk";
 import { getAuthContext, UnauthorizedError } from "@/lib/auth";
-import {
-  cachedOpenInvitationsForEmail,
-  cachedPreferences,
-  cachedSwitchableWorkspaces,
-  cachedTriageFeed,
-} from "@/lib/cached-shell-reads";
+import { cachedOpenInvitationsForEmail, cachedPreferences, cachedSwitchableWorkspaces } from "@/lib/cached-shell-reads";
+import { listTriageFeed, type TriageFeed } from "@/domains/notifications/feed";
 import { resolveInterfaceMode } from "@/domains/identity/preferences";
 import type { AuthContext } from "@/domains/identity/resolve";
-import type { TriageFeed } from "@/domains/notifications/feed";
 
 /*
  * Every destination shares the shell. A route group rather than a path
@@ -92,7 +87,7 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
     if (authContext) {
       const [preferences, feed, switcher] = await Promise.all([
         cachedPreferences(authContext),
-        cachedTriageFeed(authContext).catch(() => notifications),
+        listTriageFeed(authContext).catch(() => notifications),
         loadWorkspaceSwitcher(authContext).catch(() => null),
       ]);
       interfaceMode = resolveInterfaceMode(preferences.interfaceMode, preferences.timezone);

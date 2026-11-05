@@ -4,16 +4,17 @@ import { cacheLife, cacheTag } from "next/cache";
 import { openInvitationsForEmail } from "@/domains/identity/invitations";
 import { getPreferences } from "@/domains/identity/preferences";
 import { listSwitchableWorkspaces } from "@/domains/identity/resolve";
-import { listTriageFeed } from "@/domains/notifications/feed";
 import type { AuthContext } from "@/domains/identity/resolve";
-import { feedTag, invitationsTag, prefsTag, workspacesTag } from "@/lib/cache-tags";
+import { invitationsTag, prefsTag, workspacesTag } from "@/lib/cache-tags";
 
 /*
  * The workspace shell's reads, behind the repo's 'use cache' wrapper pattern
- * (the same shape neuralflow/work/data.ts uses for its page data). These four
+ * (the same shape neuralflow/work/data.ts uses for its page data). These three
  * sit under every route in the (workspace) group, so their cost is paid on
  * every navigation; caching them turns a per-navigation refetch chain into a
- * tag-expired read.
+ * tag-expired read. The triage feed deliberately stays uncached: the decision
+ * queue must reflect freshly written rows on the very next render, and its
+ * read is one query inside the layout's parallel batch anyway.
  *
  * Identity is resolved outside: every wrapper takes plain values (AuthContext
  * fields, a user id, an email) as its cache key — a cached scope cannot read
@@ -31,13 +32,6 @@ export async function cachedPreferences(auth: AuthContext) {
   cacheTag(prefsTag(auth));
   cacheLife("minutes"); // invalidated on every preference write
   return getPreferences(auth);
-}
-
-/** The triage feed (notifications bell) — workspace chrome that may breathe. */
-export async function cachedTriageFeed(auth: AuthContext) {
-  cacheTag(feedTag(auth));
-  cacheLife("seconds"); // chrome between mutations; tags expire it on write
-  return listTriageFeed(auth);
 }
 
 /** Switcher rows: every active membership for the signed-in user. */
