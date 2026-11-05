@@ -228,9 +228,11 @@ test("Load more walks the keyset cursor to the end of a 55-row feed", async ({ p
     // text= locator counts the chrome too.
     const entries = page.locator("main li").filter({ hasText: `Load more ${tag}` });
     await expect(entries).toHaveCount(50);
-    // The keyset peek cannot know the exact remaining count, so the link is
-    // plainly "Load more" (see page.tsx).
-    await page.getByRole("link", { name: "Load more" }).click();
+    // The keyset peek cannot know the exact remaining count, so the control
+    // is plainly "Load more" — a button in the feed island since the
+    // incremental append rework (it calls the loadActivityPage server action
+    // and appends the presented rows client-side).
+    await page.getByRole("button", { name: "Load more" }).click();
     await expect(entries).toHaveCount(55);
   } finally {
     if (client) {

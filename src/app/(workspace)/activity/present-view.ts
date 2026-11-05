@@ -10,9 +10,12 @@ import type { EventCategory } from "@/domains/audit/events/registry";
  * so existing consumers keep one import.
  */
 
-export { groupActivityByDay, mergeDayGroups, type ActivityDayGroup } from "./day-groups";
+// Re-exports kept only where a consumer imports them from here (the page and
+// the action read ACTIVITY_PAGE_SIZE, the unit test reads groupActivityByDay);
+// everything else imports day-groups directly. knip fails on unused re-exports.
+export { groupActivityByDay } from "./day-groups";
 
-export { ACTIVITY_PAGE_SIZE, ACTIVITY_MAX_PAGES } from "./day-groups";
+export { ACTIVITY_PAGE_SIZE } from "./day-groups";
 
 /** The category filter's options, in registry order. */
 export const ACTIVITY_CATEGORY_OPTIONS: Array<{ value: EventCategory; label: string }> = [
