@@ -100,14 +100,22 @@ export async function KnowledgeSurface({ searchParams }: { searchParams: Promise
   const review = params.doc ? await getDocumentReview(auth, { documentId: params.doc }) : null;
 
   if (review) {
-    // The detail view: decisions are the whole screen when one document is open.
-    const partyOptions = new Map(
-      (await resolvePartyCandidates(auth, { documentId: review.document.id }).catch(() => [])).map(
-        (o: { partyId: string; options: unknown }) => [o.partyId, o.options],
-      ),
-    );
-    const classification = await getOpenClassification(auth, review.document.id);
+    // The detail view: decisions are the whole screen when one document is
+    // open. The review gates the branch; everything else is independent of it
+    // given the document id, so the reads below resolve in one wave — the
+    // judgment read chains off the statement it scores (spec W2).
+    const documentId = review.document.id;
+    const statementPromise = statementForDocument(auth, documentId);
+    const [partyRows, classification, statement, judgments] = await Promise.all([
+      resolvePartyCandidates(auth, { documentId }).catch(() => []),
+      getOpenClassification(auth, documentId),
+      statementPromise,
+      statementPromise.then((statement) => (statement ? judgeTransactions(auth, statement.transactions) : [])),
+    ]);
     const classificationValue = classification as Awaited<ReturnType<typeof getOpenClassification>> | null;
+    const partyOptions = new Map(
+      (partyRows as { partyId: string; options: unknown }[]).map((o) => [o.partyId, o.options]),
+    );
     const suggestedTitle = suggestTitle(
       review.document.docType ?? classificationValue?.proposedType ?? "",
       Object.fromEntries(
@@ -121,8 +129,6 @@ export async function KnowledgeSurface({ searchParams }: { searchParams: Promise
           ]),
       ),
     );
-    const statement = await statementForDocument(auth, review.document.id);
-    const judgments = statement ? await judgeTransactions(auth, statement.transactions) : [];
     return (
       <ReviewWorkbench
         review={review}

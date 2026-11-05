@@ -167,17 +167,21 @@ export async function IdeasSurface({ searchParams }: { searchParams: Promise<Raw
   const view: IdeaView = (VIEWS as readonly string[]).includes(requested) ? (requested as IdeaView) : "cards";
   const tag = typeof raw.tag === "string" && raw.tag.trim() ? raw.tag.trim().toLowerCase() : undefined;
   const ideaParam = typeof raw.idea === "string" && raw.idea.trim() ? raw.idea.trim() : undefined;
-  const found = await pageZettelCards(auth, {
-    query: list.q,
-    tag,
-    limit: list.pageSize,
-    offset: offsetFor(list.page, list.pageSize),
-    // The dictionary view reads alphabetically and the others newest-first;
-    // the ordering has to be the query's, or page 2 starts the alphabet again.
-    sort: view === "dictionary" ? "title" : "recent",
-  });
+  // The two reads are independent given the workspace; resolve them in one
+  // wave and gate the page-end redirect on the page's total afterwards (spec W2).
+  const [found, allTags] = await Promise.all([
+    pageZettelCards(auth, {
+      query: list.q,
+      tag,
+      limit: list.pageSize,
+      offset: offsetFor(list.page, list.pageSize),
+      // The dictionary view reads alphabetically and the others newest-first;
+      // the ordering has to be the query's, or page 2 starts the alphabet again.
+      sort: view === "dictionary" ? "title" : "recent",
+    }),
+    listNoteTags(auth),
+  ]);
   redirectPastEnd(BASE, raw, list.page, list.pageSize, found.total);
-  const allTags = await listNoteTags(auth);
   const filtered = Boolean(list.q || tag);
 
   // The modal's card, fetched on the server so a deep link renders the full
