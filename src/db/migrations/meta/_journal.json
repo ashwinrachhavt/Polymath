@@ -782,6 +782,13 @@
       "when": 1793873233984,
       "tag": "0285_drop_dead_runtime_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 286,
+      "version": "7",
+      "when": 1793873527751,
+      "tag": "0286_drop_zero_use_tables",
+      "breakpoints": true
     }
   ]
 }

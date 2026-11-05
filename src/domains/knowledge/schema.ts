@@ -744,21 +744,6 @@ export const notebookSources = pgTable(
   ],
 );
 
-export const notebookQuestions = pgTable(
-  "notebook_questions",
-  {
-    id: primaryId(),
-    workspaceId: tenantId(),
-    notebookId: uuid("notebook_id")
-      .notNull()
-      .references(() => notebooks.id, { onDelete: "cascade" }),
-    question: text("question").notNull(),
-    status: dossierQuestionStatus("status").notNull().default("open"),
-    answer: text("answer"),
-    ...mutable,
-  },
-  (t) => [index("notebook_questions_open_idx").on(t.notebookId, t.status)],
-);
 
 /*
  * Automations: a prompt on a schedule. The cron dispatcher finds due rows and
