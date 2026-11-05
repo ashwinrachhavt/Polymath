@@ -32,10 +32,11 @@ function db(): postgres.Sql | null {
   return process.env.DATABASE_URL ? postgres(process.env.DATABASE_URL, { max: 1 }) : null;
 }
 
-async function seedCards(names: string[]): Promise<string[]> {
+async function seedCards(names: string[]): Promise<{ title: string; id: string }[]> {
   const client = db();
   if (!client) throw new Error("DATABASE_URL not configured — the private-DB pattern requires it");
   const titles = names.map(cardTitle);
+  const created: string[] = [];
   try {
     const [owner] = await client<{ workspace_id: string }[]>`
       select m.workspace_id
@@ -54,17 +55,42 @@ async function seedCards(names: string[]): Promise<string[]> {
           values (${owner.workspace_id}, ${art.id}, 1, ${JSON.stringify({ format: "markdown", text: `Body of ${title}.` })}::jsonb, ${`Body of ${title}.`})
           returning id`;
         await tx`update artifacts set current_version_id = ${ver.id} where id = ${art.id}`;
+        created.push(art.id);
       }
     });
   } finally {
     await client.end();
   }
-  return titles;
+  return titles.map((title, i) => ({ title, id: created[i] }));
+}
+
+// The optimistic temp edge appears before linkCardsAction commits, so a
+// reload can race the in-flight action and lose the row. Wait for the
+// persisted row instead — this is the honest signal that connect survived.
+async function expectLinkRows(ids: string[], n: number): Promise<void> {
+  const client = db();
+  if (!client) throw new Error("DATABASE_URL not configured");
+  try {
+    await expect
+      .poll(
+        async () => {
+          const [row] = await client<{ n: number }[]>`
+            select count(*)::int as n from artifact_links
+            where link_type = 'related'
+              and (artifact_id = any(${ids}) or target_id = any(${ids}))`;
+          return row?.n ?? 0;
+        },
+        { timeout: 15_000, message: `expected ${n} persisted related link row(s)` },
+      )
+      .toBe(n);
+  } finally {
+    await client.end();
+  }
 }
 
 test("crucible mixes three cards into a selected synthesis node and stays playable", async ({ page }) => {
   test.setTimeout(180_000);
-  const titles = await seedCards(["Alpha", "Beta", "Gamma"]);
+  const titles = (await seedCards(["Alpha", "Beta", "Gamma"])).map((c) => c.title);
   await page.goto("/polymath/graph");
 
   for (const title of titles) {
@@ -95,13 +121,18 @@ test("crucible mixes three cards into a selected synthesis node and stays playab
 
 test("crucible connect and drag-connect leave edges that survive a reload", async ({ page }) => {
   test.setTimeout(180_000);
-  const titles = await seedCards(["Delta", "Epsilon", "Zeta", "Eta"]);
+  const cards = await seedCards(["Delta", "Epsilon", "Zeta", "Eta"]);
+  const titles = cards.map((c) => c.title);
   await page.goto("/polymath/graph");
 
   // Panel connect on two crucible cards.
   await page.getByRole("button", { name: `Add ${titles[0]} to the crucible` }).click();
   await page.getByRole("button", { name: `Add ${titles[1]} to the crucible` }).click();
   await page.getByRole("button", { name: "Connect", exact: true }).click();
+  await expectLinkRows(
+    cards.map((c) => c.id),
+    1,
+  );
   await expect(page.locator(".react-flow__edge", { hasText: "related" })).toHaveCount(1);
 
   // Drag from Zeta's source handle onto Eta's target handle.
@@ -111,6 +142,10 @@ test("crucible connect and drag-connect leave edges that survive a reload", asyn
   await page.mouse.down();
   await target.hover();
   await page.mouse.up();
+  await expectLinkRows(
+    cards.map((c) => c.id),
+    2,
+  );
   await expect(page.locator(".react-flow__edge", { hasText: "related" })).toHaveCount(2);
 
   // Both links are real rows: a reload re-derives the same edges from the db.
