@@ -18,6 +18,7 @@ import { syncNotionAccount } from "@/domains/integrations/notion";
 import { setSenderAliasGrant } from "@/domains/actions/policy";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
+import type { Result } from "@/lib/result";
 
 /*
  * Connector actions (D09 foundation). These manage Polymath's bookkeeping rows
@@ -26,8 +27,6 @@ import { requireRole } from "@/lib/auth/guards";
  * callback that would flip it to `active` lands with the provider work. No
  * provider is called and nothing is written externally from here.
  */
-
-type Result = { ok: true } | { ok: false; error: string };
 
 const revalidate = () => revalidatePath("/command-center/integrations");
 

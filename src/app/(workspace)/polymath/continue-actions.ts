@@ -4,6 +4,7 @@ import { z } from "zod";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 import { retryRun, sendFollowUp } from "@/domains/agents/thread";
+import type { MessageResult } from "@/lib/result";
 
 /*
  * Continuing the conversation.
@@ -19,14 +20,14 @@ import { retryRun, sendFollowUp } from "@/domains/agents/thread";
  * the one already open.
  */
 
-type Result = { ok: true; runId: string; continued: boolean } | { ok: false; message: string };
-
 const input = z.object({
   runId: z.string().uuid(),
   text: z.string().trim().min(1).max(8000),
 });
 
-export async function continueConversation(raw: unknown): Promise<Result> {
+export async function continueConversation(
+  raw: unknown,
+): Promise<MessageResult<{ runId: string; continued: boolean }>> {
   const parsed = input.safeParse(raw);
   if (!parsed.success) return { ok: false, message: "Write a message first." };
 

@@ -6,6 +6,7 @@ import { SynthesisError, synthesizeZettel } from "@/domains/knowledge/notes";
 import { linkCards } from "@/domains/knowledge/relations";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
+import type { Result } from "@/lib/result";
 
 /* Graph canvas writes: tie two cards, or combine several into one new zettel. */
 
@@ -15,8 +16,6 @@ const combineInput = z.object({
   title: z.string().trim().max(300).optional(),
   idempotencyKey: z.string().uuid().optional(),
 });
-
-type Result<T extends object> = ({ ok: true } & T) | { ok: false; error: string };
 
 export async function linkCardsAction(input: z.input<typeof linkInput>): Promise<Result<object>> {
   const parsed = linkInput.safeParse(input);

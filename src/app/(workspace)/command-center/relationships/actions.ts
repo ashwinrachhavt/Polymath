@@ -32,6 +32,7 @@ import { db } from "@/lib/db";
 import { linkDraftToRecord } from "@/app/(workspace)/projects-links";
 import { getAuthContext, type AuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
+import type { Result } from "@/lib/result";
 
 /*
  * Relationships mutations. Each action authenticates, parses, then delegates
@@ -97,8 +98,6 @@ const contactFields = {
   notes: z.string().max(10_000).optional(),
   companyId: uuid.nullable().optional(),
 };
-
-type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
 function fail(error: unknown): { ok: false; error: string } {
   if (error instanceof ConflictError || error instanceof StaleWriteError || error instanceof NotFoundError) {

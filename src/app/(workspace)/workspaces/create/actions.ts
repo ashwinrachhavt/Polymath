@@ -6,6 +6,7 @@ import { writeActiveWorkspaceCookie } from "@/lib/active-workspace";
 import { actionError } from "@/lib/action-error";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
+import type { Result } from "@/lib/result";
 
 /*
  * Workspace creation (spec D3). Any signed-in user may create a workspace and
@@ -15,8 +16,6 @@ import { requireRole } from "@/lib/auth/guards";
  * there, where the product's first-run gate picks the route. A slug
  * collision comes back as the domain's authored copy.
  */
-
-type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
 export async function createWorkspaceAction(input: { name: string; slug?: string }): Promise<Result<{ slug: string }>> {
   let auth;

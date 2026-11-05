@@ -9,6 +9,7 @@ import { listLastMessageIds, zettelizeThread } from "@/domains/knowledge/thread-
 import { db } from "@/lib/db";
 import { getAuthContext, type AuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
+import type { Result } from "@/lib/result";
 
 /*
  * Zettelizing a conversation (plan Task 20). The client knows only the run it
@@ -27,8 +28,6 @@ async function authorize(): Promise<AuthContext> {
   requireRole(auth, "member");
   return auth;
 }
-
-type Result<T extends object> = ({ ok: true } & T) | { ok: false; error: string };
 
 const zettelizeInput = z.object({
   runId: z.string().uuid(),

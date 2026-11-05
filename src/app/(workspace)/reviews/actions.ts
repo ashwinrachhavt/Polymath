@@ -11,6 +11,7 @@ import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
+import type { Result } from "@/lib/result";
 
 /*
  * Reviews decisions (canonical queue). Every write carries the idempotency
@@ -25,8 +26,6 @@ import { requireRole } from "@/lib/auth/guards";
  * the proposal's intent key. A rejected or merely recorded decision never
  * executes.
  */
-
-type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
 const revalidate = () => {
   revalidatePath("/reviews");
@@ -51,9 +50,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * the client keeps its decided card + alert and must NOT refresh them away;
  * a refresh is only honest when the decision itself never landed.
  */
-type DecideResult =
-  | { ok: true; outcome: EffectOutcome | null }
-  | { ok: false; error: string; decided?: boolean };
+type DecideResult = { ok: true; outcome: EffectOutcome | null } | { ok: false; error: string; decided?: boolean };
 
 export async function decideProposalAction(input: {
   idempotencyKey: string;
@@ -204,7 +201,12 @@ export async function reviseProposalAction(input: {
       payload,
     });
     revalidate();
-    return { ok: true, revisionId: revised.revisionId, revisionNumber: revised.revisionNumber, version: revised.version };
+    return {
+      ok: true,
+      revisionId: revised.revisionId,
+      revisionNumber: revised.revisionNumber,
+      version: revised.version,
+    };
   } catch (error) {
     return fail(error);
   }

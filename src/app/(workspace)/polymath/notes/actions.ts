@@ -48,6 +48,7 @@ import { resolveConnectedAccount } from "@/domains/integrations/queries";
 import { composioNotionClient } from "@/integrations/notion/client";
 import { noteNotionDedupeKey, proposeNotionPageUpdate } from "@/domains/knowledge/notion-proposals";
 import { requireRole } from "@/lib/auth/guards";
+import { bindGuarded, type Result } from "@/lib/result";
 
 /*
  * Notes mutations on the canonical artifact rows (ASH-141 / B04). A note
@@ -68,7 +69,6 @@ async function authorize(): Promise<AuthContext> {
   return auth;
 }
 
-type Result<T extends object> = ({ ok: true } & T) | { ok: false; error: string };
 const domainErrors = [
   LinkEditError,
   NoteNotFoundError,
@@ -79,16 +79,7 @@ const domainErrors = [
   NoteCommentError,
 ];
 
-async function guarded<T extends object>(run: () => Promise<T>): Promise<Result<T>> {
-  try {
-    const value = await run();
-    revalidate();
-    return { ok: true, ...value };
-  } catch (error) {
-    if (domainErrors.some((E) => error instanceof E)) return { ok: false, error: (error as Error).message };
-    throw error;
-  }
-}
+const guarded = bindGuarded({ domainErrors, onSuccess: revalidate });
 
 const content = z.record(z.string(), z.unknown());
 const key = z.string().uuid().optional();

@@ -7,6 +7,7 @@ import { writeActiveWorkspaceCookie } from "@/lib/active-workspace";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 import { capturesTag, focusTag, tasksTag } from "@/lib/cache-tags";
+import type { Result } from "@/lib/result";
 
 /*
  * Workspace switching (tenancy activation, spec D1). Self-service for every
@@ -15,8 +16,6 @@ import { capturesTag, focusTag, tasksTag } from "@/lib/cache-tags";
  * per-device cookie and flushes the shell. Switching never mutates either
  * workspace; the next request's resolver does the rest.
  */
-
-type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
 async function authorize() {
   const auth = await getAuthContext();
