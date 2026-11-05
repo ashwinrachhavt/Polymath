@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { renderHook, waitFor } from "@testing-library/react";
+import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 /*
@@ -48,6 +48,13 @@ import { useChatStream } from "@/components/chat/use-chat-stream";
 const RUN = "6557a1d2-0000-4000-8000-000000000001";
 
 afterEach(() => {
+  // Cleanup matters here even though every assertion passes: a rendered
+  // hook's pending react-dom scheduler task can fire after this file's
+  // jsdom teardown and throw "window is not defined" as an uncaught
+  // exception, failing the whole vitest run. setup.ui.ts registers
+  // afterEach(cleanup) for the ui project, but this is a .ts file, so it
+  // runs in the unit project and must arrange its own cleanup.
+  cleanup();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });

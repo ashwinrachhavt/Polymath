@@ -602,7 +602,7 @@ export async function listPendingZettelProposals(auth: AuthContext): Promise<Pen
  * surface is repointed.
  */
 
-export type ZettelCardSource =
+type ZettelCardSource =
   | { kind: "document"; documentId: string }
   | { kind: "artifact"; artifactId: string };
 
@@ -624,7 +624,7 @@ export type ZettelCardCreateInput = {
   auditMetadata?: Record<string, unknown>;
 };
 
-export type ZettelCardCreated = { artifactId: string; conceptId: string; claimId: string };
+type ZettelCardCreated = { artifactId: string; conceptId: string; claimId: string };
 export type ZettelCardCreateResult = ZettelCardCreated | { skipped: "duplicate" | "same-span" };
 
 /**
