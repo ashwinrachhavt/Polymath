@@ -32,7 +32,7 @@ function CardNodeView({ id, data, selected }: NodeProps<CardNode>) {
     >
       <Handle type="target" position={Position.Left} className="!size-2 !border-border !bg-muted-foreground" />
       <div className="flex items-center justify-between gap-2">
-        <span className="text-data uppercase tracking-wide text-muted-foreground">{data.kind}</span>
+        <span className="text-data text-muted-foreground">{data.kind}</span>
         <a
           href={`/polymath/notes?id=${id}`}
           className="nodrag text-data text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
