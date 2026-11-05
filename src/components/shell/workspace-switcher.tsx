@@ -84,9 +84,7 @@ export function WorkspaceSwitcher({ data }: { data: WorkspaceSwitcherData | null
           sideOffset={6}
           className="panel bg-popover text-popover-foreground shadow-raised z-50 w-72 rounded-xl p-2 outline-none"
         >
-          <p className="text-muted-foreground px-2 pt-1 pb-2 text-data font-medium uppercase tracking-wider">
-            Workspaces
-          </p>
+          <p className="text-muted-foreground px-2 pt-1 pb-2 text-data font-medium">Workspaces</p>
           <div className="flex flex-col gap-0.5">
             {data.memberships.map((membership) => {
               const isCurrent = membership.workspaceId === data.currentWorkspaceId;
