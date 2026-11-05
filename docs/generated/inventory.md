@@ -31,7 +31,7 @@ Migrations: 113 files, highest `0286_drop_zero_use_tables`.
 
 ## Tests
 
-561 `.test.ts` and 50 `.spec.ts` files (unit: 328, integration: 230, e2e: 50).
+560 `.test.ts` and 50 `.spec.ts` files (unit: 328, integration: 230, e2e: 50).
 ## Domains
 
 24 folders; 18 own tables.
