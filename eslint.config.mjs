@@ -15,6 +15,25 @@ const eslintConfig = defineConfig([
     },
   },
   {
+    // `forEach` callbacks run concurrently with the enclosing function: an
+    // `await` inside one does not block the code after the loop, so a loop the
+    // author meant to sequence silently races. Every loop that actually awaits
+    // should be a `for...of`. Flags any `await` lexically inside a `forEach`
+    // call (including a nested function's own `await` — if a callback returns
+    // a promise without awaiting, that is fine; an await in a nested async
+    // closure is still a sequencing smell worth rewriting explicitly).
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "CallExpression[callee.property.name='forEach'] AwaitExpression",
+          message:
+            "`await` inside a forEach callback does not block the enclosing function; the loop races ahead. Use a `for...of` loop to await each iteration.",
+        },
+      ],
+    },
+  },
+  {
     // Two <main> elements render on app routes (shell #content main plus the
     // route-level loading skeleton), so a bare page.locator("main") resolves
     // to 2 elements and fails CI under strict mode. Scope to "#content".
@@ -26,6 +45,11 @@ const eslintConfig = defineConfig([
           selector: "CallExpression[callee.property.name='locator'][arguments.0.value='main']",
           message:
             'Bare locator("main") matches both the shell #content main and the route loading skeleton. Use locator("#content").',
+        },
+        {
+          selector: "CallExpression[callee.property.name='forEach'] AwaitExpression",
+          message:
+            "`await` inside a forEach callback does not block the enclosing function; the loop races ahead. Use a `for...of` loop to await each iteration.",
         },
       ],
     },
