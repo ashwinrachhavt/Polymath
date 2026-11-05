@@ -116,24 +116,3 @@ export const userProgress = pgTable(
 );
 
 /** One row per day, for streaks and the weekly review. */
-export const dailySnapshots = pgTable(
-  "daily_snapshots",
-  {
-    id: primaryId(),
-    workspaceId: tenantId(),
-    userId: uuid("user_id").notNull(),
-    onDate: date("on_date").notNull(),
-    outcomesAccepted: integer("outcomes_accepted").notNull().default(0),
-    outcomesCompleted: integer("outcomes_completed").notNull().default(0),
-    focusMinutes: integer("focus_minutes").notNull().default(0),
-    tasksCompleted: integer("tasks_completed").notNull().default(0),
-    reviewsDecided: integer("reviews_decided").notNull().default(0),
-    capturesProcessed: integer("captures_processed").notNull().default(0),
-    pointsEarned: integer("points_earned").notNull().default(0),
-    ...recorded,
-  },
-  (t) => [
-    uniqueIndex("daily_snapshots_day_key").on(t.workspaceId, t.userId, t.onDate),
-    index("daily_snapshots_range_idx").on(t.workspaceId, t.onDate),
-  ],
-);

@@ -153,8 +153,7 @@ export const syncCursors = pgTable(
 
 /*
  * A trigger is a standing intent to start work when something happens
- * upstream. The dedupe key plus the delivery id in webhook_inbox is what keeps
- * a replayed provider delivery from starting the work twice.
+ * upstream.
  */
 export const triggers = pgTable(
   "triggers",

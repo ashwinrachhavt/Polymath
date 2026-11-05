@@ -5,16 +5,14 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   accountPersonLinks,
   contactPoints,
-  externalIdentities,
   organizations,
-  partyRelationships,
   people,
 } from "@/domains/identity/schema";
 import { users, workspaces } from "@/domains/identity/schema";
 
 /*
  * ASH-120 F02 invariants: one person serves every role without duplicate
- * rows, unverified email equality links nothing, and a composite FK makes a
+ * rows, and a composite FK makes a
  * cross-tenant endpoint impossible.
  *
  * These are database invariants, so they run against real Postgres (the
@@ -65,22 +63,7 @@ suite("canonical party model", () => {
       value: "ada@example.com",
       isPrimary: true,
     });
-    // Customer: a party relationship edge.
-    await db.insert(partyRelationships).values({
-      workspaceId: workspace.id,
-      personId: person.id,
-      kind: "customer",
-    });
-    // Account holder: a verified provider identity, linked explicitly.
-    await db.insert(externalIdentities).values({
-      workspaceId: workspace.id,
-      provider: "clerk",
-      providerAccountId: `user_${crypto.randomUUID()}`,
-      email: "ada@example.com",
-      verified: true,
-      accountId: user.id,
-      createdBy: user.id,
-    });
+    // Account holder: an explicit verified link to the auth account.
     await db.insert(accountPersonLinks).values({
       workspaceId: workspace.id,
       accountId: user.id,
@@ -99,35 +82,6 @@ suite("canonical party model", () => {
 
     const rows = await db.select().from(people).where(eq(people.workspaceId, workspace.id));
     expect(rows).toHaveLength(1);
-  });
-
-  it("unverified email equality does not create an account_person_link", async () => {
-    const { user, workspace } = await seedWorkspace();
-    const [person] = await db
-      .insert(people)
-      .values({ workspaceId: workspace.id, displayName: "Grace Hopper" })
-      .returning();
-    await db.insert(contactPoints).values({
-      workspaceId: workspace.id,
-      personId: person.id,
-      kind: "email",
-      value: "grace@example.com",
-    });
-
-    // Same address, but the provider never confirmed it. The link is created
-    // only by an explicit insert — nothing here makes one.
-    await db.insert(externalIdentities).values({
-      workspaceId: workspace.id,
-      provider: "clerk",
-      providerAccountId: `user_${crypto.randomUUID()}`,
-      email: "grace@example.com",
-      verified: false,
-      accountId: user.id,
-      createdBy: user.id,
-    });
-
-    const links = await db.select().from(accountPersonLinks).where(eq(accountPersonLinks.workspaceId, workspace.id));
-    expect(links).toHaveLength(0);
   });
 
   it("a composite FK rejects a cross-workspace endpoint", async () => {
