@@ -274,9 +274,7 @@ function BacklinkRow({
         >
           {link.title}
         </Link>
-        {link.kind === "zettel" && (
-          <span className="text-data uppercase tracking-wide text-muted-foreground/70">zettel</span>
-        )}
+        {link.kind === "zettel" && <span className="text-data text-muted-foreground/70">zettel</span>}
         {/* Editing a link is an action on the row, not part of reading it:
             quiet until the row is hovered or focused, still reachable by tab. */}
         <span className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
@@ -306,14 +304,10 @@ function LinkRow({
   return (
     <li className="group relative rounded-md border border-transparent px-2 py-1 hover:border-border hover:bg-muted/40 focus-within:border-border focus-within:bg-muted/40">
       <Link className="text-body-dense underline-offset-2 hover:underline" href={`/polymath/notes?id=${link.id}`}>
-        {link.kind === "zettel" && (
-          <span className="mr-1 text-data uppercase tracking-wide text-muted-foreground">zettel</span>
-        )}
+        {link.kind === "zettel" && <span className="mr-1 text-data text-muted-foreground">zettel</span>}
         {link.title}
       </Link>
-      <span className="ml-2 text-data uppercase tracking-wide text-muted-foreground/70">
-        {RELATION_NAME[link.linkType] ?? link.linkType}
-      </span>
+      <span className="ml-2 text-data text-muted-foreground/70">{RELATION_NAME[link.linkType] ?? link.linkType}</span>
       <LinkEditor noteId={noteId} link={link} outgoing={outgoing} />
       {(link.context || link.excerpt) && (
         <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
@@ -1269,9 +1263,7 @@ export function NoteEditor({
                         href={`/polymath/notes?id=${r.id}`}
                         title={r.excerpt ?? r.title}
                       >
-                        {r.kind === "zettel" && (
-                          <span className="text-data uppercase tracking-wide text-muted-foreground">zettel</span>
-                        )}
+                        {r.kind === "zettel" && <span className="text-data text-muted-foreground">zettel</span>}
                         <span className="truncate">{r.title}</span>
                         <span className="tabular-nums text-data text-muted-foreground">
                           {Math.round(r.score * 100)}%

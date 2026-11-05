@@ -22,21 +22,18 @@ export const clerkAppearance = {
     colorBorder: "var(--border)",
     colorRing: "var(--ring)",
     borderRadius: "var(--radius)",
-    fontFamily: "var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif",
-    fontFamilyButtons: "var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif",
+    fontFamily: "var(--font-red-hat-text), ui-sans-serif, system-ui, sans-serif",
+    fontFamilyButtons: "var(--font-red-hat-text), ui-sans-serif, system-ui, sans-serif",
   },
   elements: {
     rootBox: "mx-auto w-full max-w-[400px]",
     card: "border border-border bg-card text-card-foreground shadow-[var(--shadow)]",
     headerTitle: "text-foreground tracking-tight",
     headerSubtitle: "text-muted-foreground",
-    socialButtonsBlockButton:
-      "border border-border bg-background text-foreground hover:bg-muted",
+    socialButtonsBlockButton: "border border-border bg-background text-foreground hover:bg-muted",
     formFieldLabel: "text-foreground",
-    formFieldInput:
-      "border border-input bg-background text-foreground focus:ring-2 focus:ring-ring",
-    formButtonPrimary:
-      "bg-primary text-primary-foreground hover:opacity-90 focus:ring-2 focus:ring-ring",
+    formFieldInput: "border border-input bg-background text-foreground focus:ring-2 focus:ring-ring",
+    formButtonPrimary: "bg-primary text-primary-foreground hover:opacity-90 focus:ring-2 focus:ring-ring",
     footerActionLink: "text-primary hover:underline",
     identityPreviewEditButton: "text-primary",
     userButtonPopoverCard: "border border-border bg-card shadow-[var(--shadow)]",

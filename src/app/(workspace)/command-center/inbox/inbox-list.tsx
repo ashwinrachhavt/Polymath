@@ -327,7 +327,7 @@ export function InboxList({
           role="toolbar"
           aria-label="Bulk actions"
           aria-live="polite"
-          className="sticky bottom-3 mx-3 mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-2 shadow-[var(--shadow)] transition-all duration-150 max-sm:fixed max-sm:inset-x-3 max-sm:bottom-3 max-sm:z-30 max-sm:min-h-[44px]"
+          className="sticky bottom-3 mx-3 mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-2 shadow-[var(--shadow)] max-sm:fixed max-sm:inset-x-3 max-sm:bottom-3 max-sm:z-30 max-sm:min-h-[44px]"
         >
           <span className="readout pl-1 text-body-dense">{selected.size} selected</span>
           <div className="ml-auto flex flex-wrap items-center gap-1.5">

@@ -77,7 +77,7 @@ export default function LandingPage({ searchParams }: { searchParams: Promise<{ 
       <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-6">
         <section className="flex flex-1 flex-col justify-center py-20">
           <h1 className="max-w-3xl text-[clamp(2.75rem,7vw,4.25rem)] font-bold leading-[1.05] tracking-[-0.02em]">
-            <span className="inline-flex items-center rounded-[0.6em] bg-[oklch(0.93_0.05_150)] px-[0.32em] py-[0.04em] text-[oklch(0.27_0.008_75)]">
+            <span className="inline-flex items-center rounded-[0.6em] bg-success-wash px-[0.32em] py-[0.04em] text-foreground">
               Understanding
             </span>{" "}
             is the bottleneck.

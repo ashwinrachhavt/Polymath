@@ -1,18 +1,23 @@
 import type { Metadata } from "next";
-import { Geist_Mono, Inter } from "next/font/google";
+import { Red_Hat_Display, Red_Hat_Mono, Red_Hat_Text } from "next/font/google";
 
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { MotionProvider } from "@/components/motion-config";
 import { ThemeProvider } from "@/components/theme-provider";
 import "./globals.css";
 
-const inter = Inter({
-  variable: "--font-inter",
+const redHatDisplay = Red_Hat_Display({
+  variable: "--font-red-hat-display",
   subsets: ["latin"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const redHatText = Red_Hat_Text({
+  variable: "--font-red-hat-text",
+  subsets: ["latin"],
+});
+
+const redHatMono = Red_Hat_Mono({
+  variable: "--font-red-hat-mono",
   subsets: ["latin"],
 });
 
@@ -26,16 +31,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${inter.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${redHatDisplay.variable} ${redHatText.variable} ${redHatMono.variable} h-full antialiased`}
     >
       {/* Auth providers sit inside <body>; cacheComponents requires it. */}
       <body className="flex min-h-full flex-col">
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-          disableTransitionOnChange
-        >
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <MotionProvider>{children}</MotionProvider>
         </ThemeProvider>
         {/*

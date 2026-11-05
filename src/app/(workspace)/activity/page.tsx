@@ -205,7 +205,7 @@ async function ActivitySurface({ searchParams }: { searchParams: SearchParams })
             {groups.map((group, groupIndex) => (
               <section key={group.key}>
                 <h2
-                  className={`readout text-muted-foreground pb-1 text-xs font-medium tracking-wide uppercase ${groupIndex > 0 ? "pt-5" : "pt-2"}`}
+                  className={`readout text-muted-foreground pb-1 text-xs font-medium ${groupIndex > 0 ? "pt-5" : "pt-2"}`}
                 >
                   {group.label}
                 </h2>

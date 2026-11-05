@@ -87,9 +87,7 @@ export function RunReview({ runId, initial }: { runId: string; initial: RunRevie
       {critiqueVisible ? (
         <div className="border-border rounded-md border px-3 py-2.5">
           <div className="flex items-baseline justify-between gap-2">
-            <h2 className="text-muted-foreground text-data font-medium tracking-wide uppercase">
-              What the agent noted about this run
-            </h2>
+            <h2 className="text-muted-foreground text-data font-medium">What the agent noted about this run</h2>
             <button
               type="button"
               aria-label="Dismiss the self-critique"

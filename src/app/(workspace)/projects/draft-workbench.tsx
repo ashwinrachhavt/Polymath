@@ -166,7 +166,7 @@ export function DraftWorkbench({
       </div>
 
       <div className="flex flex-col gap-1">
-        <p className="font-medium text-muted-foreground text-xs uppercase tracking-wide">Version history</p>
+        <p className="font-medium text-muted-foreground text-xs">Version history</p>
         <ul className="flex flex-col gap-1">
           {versions.map((row) => (
             <li key={row.versionNumber} className="flex items-baseline gap-2 text-body-dense">
@@ -187,7 +187,7 @@ export function DraftWorkbench({
       </div>
 
       <div className="flex flex-col gap-1">
-        <p className="font-medium text-muted-foreground text-xs uppercase tracking-wide">Supporting documents</p>
+        <p className="font-medium text-muted-foreground text-xs">Supporting documents</p>
         {sources.length === 0 ? (
           <p className="text-muted-foreground text-body-dense">No pinned documents on this draft.</p>
         ) : (
@@ -212,7 +212,7 @@ export function DraftWorkbench({
       </div>
 
       <div className="flex flex-col gap-2">
-        <p className="font-medium text-muted-foreground text-xs uppercase tracking-wide">Attached records</p>
+        <p className="font-medium text-muted-foreground text-xs">Attached records</p>
         {links.length === 0 ? (
           <p className="text-muted-foreground text-body-dense">
             Not attached to any task, contact, or opportunity yet.
