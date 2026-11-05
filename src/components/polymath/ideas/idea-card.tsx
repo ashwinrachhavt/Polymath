@@ -13,7 +13,7 @@ export function IdeaCard({ item, href }: { item: ZettelCardItem; href: string })
   return (
     <Link
       href={href}
-      className="flex flex-col gap-1.5 rounded-lg border border-border p-3 transition-colors hover:bg-muted/30"
+      className="flex flex-col gap-1.5 rounded-lg border border-border p-3 transition-colors outline-none hover:bg-muted/30 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
     >
       <h3 className="text-body font-medium">{item.title}</h3>
       {item.excerpt && <p className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">{item.excerpt}</p>}

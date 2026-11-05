@@ -1,6 +1,7 @@
 "use client";
 
 import { RELATION_EDGE_LABELS } from "@/domains/knowledge/relation-vocabulary";
+import { ChevronDownIcon } from "lucide-react";
 import "@xyflow/react/dist/style.css";
 import {
   Background,
@@ -126,7 +127,7 @@ function toEdge(e: GraphEdge): Edge {
     target: e.target,
     animated: false,
     label: suggested && e.score != null ? `${Math.round(e.score * 100)}%` : typed,
-    labelStyle: { fontSize: 10, fill: "var(--muted-foreground)" },
+    labelStyle: { fontSize: 11, fill: "var(--muted-foreground)" },
     labelBgStyle: { fill: "var(--background)" },
     style: suggested
       ? { stroke: "var(--muted-foreground)", strokeDasharray: "5 4", strokeWidth: 1 }
@@ -293,15 +294,16 @@ export function GraphCanvas({ nodes: initialNodes, edges: initialEdges }: { node
               type="button"
               onClick={() => setCrucible((c) => ({ ...c, open: !c.open }))}
               aria-expanded={crucible.open}
-              className="flex w-full items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-body-dense shadow-sm hover:border-muted-foreground"
+              className="flex w-full items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-body-dense shadow-raised hover:border-muted-foreground"
             >
               <span>Crucible · {crucible.ids.length} selected</span>
-              <span aria-hidden className="text-muted-foreground">
-                {crucible.open ? "▾" : "▸"}
-              </span>
+              <ChevronDownIcon
+                aria-hidden
+                className={`size-3.5 text-muted-foreground transition-transform motion-reduce:transition-none ${crucible.open ? "rotate-180" : ""}`}
+              />
             </button>
             {crucible.open && (
-              <div className="mt-2 rounded-lg border border-border bg-card p-3 shadow-lg">
+              <div className="mt-2 rounded-lg border border-border bg-card p-3 shadow-raised">
                 <ul className="max-h-40 space-y-1 overflow-y-auto text-body-dense">
                   {crucibleCards.map((n) => (
                     <li key={n.id}>

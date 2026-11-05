@@ -1009,6 +1009,25 @@ textarea {
   padding-block: 0;
 }
 
+/* The graph canvas (React Flow) speaks Furrow: the library's own chrome —
+   controls, background dots, handles, the live connection line — reads its
+   --xy-* theme variables, so it follows the tokens in both modes with no
+   second theme. Edges and node cards keep their inline styles in
+   graph-canvas.tsx. */
+.react-flow {
+  --xy-background-pattern-color: var(--grid-strong);
+  --xy-controls-box-shadow: var(--shadow);
+  --xy-controls-button-background-color: var(--card);
+  --xy-controls-button-background-color-hover: var(--muted);
+  --xy-controls-button-color: var(--muted-foreground);
+  --xy-controls-button-color-hover: var(--foreground);
+  --xy-controls-button-border-color: var(--border);
+  --xy-connectionline-stroke: var(--ink-muted);
+  --xy-handle-background-color: var(--muted-foreground);
+  --xy-handle-border-color: var(--border);
+  --xy-selection-border: 1px dashed var(--signal);
+}
+
 /* The deep-linked activity row (/activity?event=<id>): a quiet ring that
    flashes once on arrival and settles, so the linked event is findable
    without staying loud. The global reduced-motion block collapses the flash;
