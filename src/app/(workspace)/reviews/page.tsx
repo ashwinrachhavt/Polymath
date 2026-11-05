@@ -94,18 +94,19 @@ async function Reviews({ searchParams }: { searchParams: Promise<RawSearchParams
   redirectPastEnd(BASE, raw, list.page, list.pageSize, found.total);
 
   const runIds = [...new Set(found.items.map((item) => item.runId).filter((id): id is string => id !== null))];
-  const [attributions, reviewsByProposal] = await Promise.all([
+  // All three reads depend only on the page's ids — one wave, not two (spec W2;
+  // the attempt-outcome read used to run alone after this block).
+  const [attributions, reviewsByProposal, attemptOutcomes] = await Promise.all([
     listRunAttributions(auth.workspaceId, runIds),
     listProposalReviews(
       auth.workspaceId,
       found.items.map((item) => item.id),
     ),
+    latestAttemptOutcomes(
+      auth.workspaceId,
+      found.items.map((item) => item.id),
+    ),
   ]);
-
-  const attemptOutcomes = await latestAttemptOutcomes(
-    auth.workspaceId,
-    found.items.map((item) => item.id),
-  );
 
   const cards: QueueCardData[] = found.items.map((item) => ({
     outcome: attemptOutcomes.get(item.id)?.outcome ?? null,

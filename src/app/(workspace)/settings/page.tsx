@@ -32,6 +32,28 @@ export const metadata = { title: "Settings · Polymath" };
  * every save after the first conflicted.
  */
 
+/**
+ * Where a project-page scan would read local agent sessions (Workbench D3).
+ * Paths and presence only — the transcripts themselves never reach the page.
+ * Lifted out of the render path so it can ride the settings read wave.
+ */
+async function agentRootStatus(): Promise<AgentRootStatus[]> {
+  const roots = defaultRoots();
+  return Promise.all(
+    [
+      { source: "Claude Code" as const, path: roots["claude-code"] },
+      { source: "Codex" as const, path: roots.codex },
+    ].map(async (root) => {
+      try {
+        await stat(root.path);
+        return { ...root, present: true };
+      } catch {
+        return { ...root, present: false };
+      }
+    }),
+  );
+}
+
 export async function SettingsSurface() {
   await io();
   const capabilities = capabilityStatus();
@@ -46,26 +68,15 @@ export async function SettingsSurface() {
   } catch {
     return <Settings capabilities={capabilities} browserPreview />;
   }
-  const serverPreferences = await getPreferences(auth);
-  // Owner scope, same contract as actions.ts: a non-owner must not receive
-  // the raw brief in the initial RSC payload either.
-  const serverAssistantProfile = auth.role === "owner" ? await getDefaultProfile(auth) : null;
-  // Where a project-page scan would read local agent sessions (Workbench D3).
-  // Paths and presence only — the transcripts themselves never reach this page.
-  const roots = defaultRoots();
-  const agentRoots: AgentRootStatus[] = await Promise.all(
-    [
-      { source: "Claude Code" as const, path: roots["claude-code"] },
-      { source: "Codex" as const, path: roots.codex },
-    ].map(async (root) => {
-      try {
-        await stat(root.path);
-        return { ...root, present: true };
-      } catch {
-        return { ...root, present: false };
-      }
-    }),
-  );
+  // The preference, the owner-scoped brief, and the local agent-root probes
+  // are independent once auth resolves — one wave instead of two (spec W2).
+  const [serverPreferences, serverAssistantProfile, agentRoots] = await Promise.all([
+    getPreferences(auth),
+    // Owner scope, same contract as actions.ts: a non-owner must not receive
+    // the raw brief in the initial RSC payload either.
+    auth.role === "owner" ? getDefaultProfile(auth) : Promise.resolve(null),
+    agentRootStatus(),
+  ]);
   return (
     <Settings
       serverPreferences={serverPreferences}

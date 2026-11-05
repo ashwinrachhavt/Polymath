@@ -3,16 +3,16 @@ import { io } from "next/cache";
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
-import { sessionVerifiedEmail } from "@/app/(workspace)/invitations/[token]/session-email";
+import { cachedSessionVerifiedEmail } from "@/app/(workspace)/invitations/[token]/session-email";
 import { ClerkAuthProvider } from "@/components/auth/clerk-auth-provider";
 import { AppShell } from "@/components/shell/app-shell";
 import type { WorkspaceSwitcherData } from "@/components/shell/workspace-switcher";
 import { clerkConfigured, devAuthBypass } from "@/lib/clerk";
-import { getAuthContext } from "@/lib/auth";
-import { getPreferences, resolveInterfaceMode } from "@/domains/identity/preferences";
-import { openInvitationsForEmail } from "@/domains/identity/invitations";
-import { listSwitchableWorkspaces, type AuthContext } from "@/domains/identity/resolve";
+import { getAuthContext, UnauthorizedError } from "@/lib/auth";
+import { cachedOpenInvitationsForEmail, cachedPreferences, cachedSwitchableWorkspaces } from "@/lib/cached-shell-reads";
 import { listTriageFeed, type TriageFeed } from "@/domains/notifications/feed";
+import { resolveInterfaceMode } from "@/domains/identity/preferences";
+import type { AuthContext } from "@/domains/identity/resolve";
 
 /*
  * Every destination shares the shell. A route group rather than a path
@@ -48,9 +48,12 @@ import { listTriageFeed, type TriageFeed } from "@/domains/notifications/feed";
  * rather than taking the layout down, the same honesty rule as the feed.
  */
 async function loadWorkspaceSwitcher(auth: AuthContext): Promise<WorkspaceSwitcherData> {
-  const [memberships, email] = await Promise.all([listSwitchableWorkspaces(auth.userId), sessionVerifiedEmail(auth)]);
+  const [memberships, email] = await Promise.all([
+    cachedSwitchableWorkspaces(auth.userId),
+    cachedSessionVerifiedEmail(auth),
+  ]);
   const held = new Set(memberships.map((membership) => membership.workspaceId));
-  const invitations = email ? await openInvitationsForEmail(email) : [];
+  const invitations = email ? await cachedOpenInvitationsForEmail(email) : [];
   return {
     currentWorkspaceId: auth.workspaceId,
     memberships,
@@ -74,15 +77,16 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
   // no owner timezone to settle "auto" in, and the clock is never read where
   // a route may prerender.
   let interfaceMode: "library" | "action" = "library";
+  let authContext: AuthContext | null = null;
   try {
     // Resolving the preference is per-request I/O (the row, and the clock for
     // "auto"): opt the shell out of prerendering before either is read, so a
     // statically evaluated route never samples `new Date()` at build time.
     await io();
-    const authContext = await getAuthContext();
+    authContext = await getAuthContext();
     if (authContext) {
       const [preferences, feed, switcher] = await Promise.all([
-        getPreferences(authContext),
+        cachedPreferences(authContext),
         listTriageFeed(authContext).catch(() => notifications),
         loadWorkspaceSwitcher(authContext).catch(() => null),
       ]);
@@ -90,13 +94,28 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
       notifications = feed;
       workspaceSwitcher = switcher;
     }
-  } catch {
+  } catch (error) {
+    // Default deny, preserved: getAuthContext throws exactly one error when a
+    // session is required and absent, and that is the redirect. It propagates
+    // from inside this catch - nothing has rendered yet, the same point the
+    // guard below would have reached. Every other failure (a preference read,
+    // a cached read) falls through to default mode.
+    if (error instanceof UnauthorizedError) redirect("/landing");
     // A preference read failure never blocks the workspace; default mode.
   }
   if (clerkConfigured && !devAuthBypass) {
-    const { userId } = await auth();
-    if (!userId) redirect("/landing");
-    storageScope = createHash("sha256").update(userId).digest("hex");
+    if (authContext?.clerkUserId) {
+      // The context getAuthContext resolved already proves the session, and
+      // its Clerk user id is the same value auth() returned here - this layout
+      // no longer spends a second session resolution per request. Any context
+      // without one (a machine session, or resolution that failed above) falls
+      // through to the original probe below, byte-for-byte.
+      storageScope = createHash("sha256").update(authContext.clerkUserId).digest("hex");
+    } else {
+      const { userId } = await auth();
+      if (!userId) redirect("/landing");
+      storageScope = createHash("sha256").update(userId).digest("hex");
+    }
   }
   // clerkConfigured && devAuthBypass is a misconfiguration, not a mode: the
   // bypass asks for a fixed owner, but this guard would then demand a session

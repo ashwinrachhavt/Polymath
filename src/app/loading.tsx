@@ -1,23 +1,21 @@
 import { Skeleton } from "@/components/ui/skeleton";
 
 /*
- * The briefing composes several domain reads, so its first paint is a skeleton
- * rather than a jump. Three rows is the shape of the outcome list it resolves
- * into; it is not a generic spinner because a spinner tells the owner nothing
- * about what is coming.
+ * The true first paint of a cold load: while the root is resolving, the
+ * workspace layout (auth + its cached shell reads) has not rendered yet, so
+ * this skeleton is all the server can promise. It stays neutral on purpose —
+ * it previews the shell's shape (a bar over a content well), not any one
+ * page's content, because which page is coming is not known here. The old
+ * briefing-shaped skeleton promised a screen that is now a redirect bridge.
  */
 export default function Loading() {
   return (
-    <main
-      aria-busy
-      className="mx-auto flex w-full max-w-2xl flex-1 flex-col justify-center gap-3 p-6"
-    >
-      <Skeleton className="h-7 w-32" />
-      <Skeleton className="h-4 w-full max-w-prose" />
-      <div className="flex flex-col gap-2">
-        <Skeleton className="h-4 w-2/3" />
-        <Skeleton className="h-4 w-1/2" />
-        <Skeleton className="h-4 w-3/5" />
+    <main aria-busy className="flex min-h-dvh flex-col">
+      <Skeleton className="h-12 shrink-0 rounded-none" />
+      <div className="flex flex-1 flex-col gap-4 p-6">
+        <Skeleton className="h-6 w-40" />
+        <Skeleton className="h-4 w-full max-w-xl" />
+        <Skeleton className="h-24 w-full" />
       </div>
     </main>
   );
