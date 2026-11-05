@@ -31,7 +31,7 @@ Migrations: 113 files, highest `0286_drop_zero_use_tables`.
 
 ## Tests
 
-562 `.test.ts` and 50 `.spec.ts` files (unit: 329, integration: 230, e2e: 50).
+561 `.test.ts` and 50 `.spec.ts` files (unit: 328, integration: 230, e2e: 50).
 ## Domains
 
 24 folders; 18 own tables.
@@ -235,16 +235,13 @@ Totals: 90 versioned, 55 append-only, 6 versionless but guarded (each declared w
 - `/api/v1/dossiers/[[...path]]`
 - `/api/v1/drafts`
 - `/api/v1/drafts/[artifactId]/[decision]`
-- `/api/v1/exports/manifests/[manifestId]/packet`
 - `/api/v1/exports/packets/[packetId]`
 - `/api/v1/files`
 - `/api/v1/focus/blocklist`
-- `/api/v1/focus/blocklist/[blockId]`
 - `/api/v1/focus/live`
 - `/api/v1/projects`
 - `/api/v1/projects/[projectId]/generate`
 - `/api/v1/records/search`
-- `/api/v1/research/company`
 - `/api/v1/runs`
 - `/api/v1/runs/[runId]`
 - `/api/v1/runs/[runId]/cancel`
