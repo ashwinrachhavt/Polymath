@@ -174,7 +174,10 @@ suite("thread zettelization (real Postgres)", () => {
     const cards = await cardRows(first.artifactId);
     expect(cards).toHaveLength(1);
     expect(cards[0].title).toBe("Rent timing");
-    const proposals = await holder.db!.select({ id: zettelProposals.id }).from(zettelProposals);
+    const proposals = await holder
+      .db!.select({ id: zettelProposals.id })
+      .from(zettelProposals)
+      .where(eq(zettelProposals.workspaceId, auth.workspaceId));
     expect(proposals).toHaveLength(0);
   });
 
