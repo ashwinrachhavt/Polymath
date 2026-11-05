@@ -191,6 +191,42 @@ describe("frameOf", () => {
     expect(frames).toEqual([{ type: "message", runId: RUN, role: "user", text: "How much is rent?", cursor: 0 }]);
   });
 
+  /*
+   * Value: protects=transcript order after a reload (2026-11-05: the thread
+   * writer's stored rows use the bare `message` type with a `content` field,
+   * which frameOf did not fold — user messages vanished from the middle of the
+   * reloaded transcript and only the optimistic echoes at the bottom showed
+   * them, inverting question and answer); fails_when=a stored user message
+   * row produces no frame; why_new=the fold now accepts both dialects of the
+   * person-turn event (stream route's TURN_BOUNDARY_EVENT_TYPES names them
+   * together); seam=frameOf pure fold; no_claim=the thread writer's schema.
+   */
+  it("folds the thread writer's stored message dialect (bare message, content field)", () => {
+    const frames = frameOf(
+      RUN,
+      { type: "message", data: { role: "user", content: "How much is rent?", messageId: "m1" } },
+      3,
+    );
+    expect(frames).toEqual([{ type: "message", runId: RUN, role: "user", text: "How much is rent?", cursor: 3 }]);
+  });
+
+  it("drops the stored dialect's objective echo too", () => {
+    const objective = "onboarding-interview v1\nThis session is the workspace's first-run onboarding interview.";
+    expect(
+      frameOf(RUN, { type: "message", data: { role: "user", content: objective } }, 0, {
+        suppressObjectiveText: objective,
+      }),
+    ).toEqual([]);
+  });
+
+  it("does not fold an assistant-authored stored message as the person's turn", () => {
+    // The reply lane's message.completed rows carry role assistant; the bare
+    // `message` type is the thread writer's user-turn dialect, but a row that
+    // says assistant is not the person speaking.
+    const frames = frameOf(RUN, { type: "message", data: { role: "assistant", content: "Here is the answer." } }, 4);
+    expect(frames).toEqual([]);
+  });
+
   it("drops an empty received message", () => {
     expect(frameOf(RUN, { type: "message.received", data: { message: "" } }, 0)).toEqual([]);
   });
