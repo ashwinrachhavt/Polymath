@@ -320,14 +320,14 @@
 
   /* Red Hat is the Furrow register: Display 600 for heads, Text for body
      and UI, Mono for figures (readouts, ids, dates, counts). */
-  --font-sans: var(--font-red-hat-text), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-red-hat), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-red-hat-mono), ui-monospace, monospace;
   /* Reading surfaces: transcript answers, note bodies, document previews —
      the text a person reads for a minute, set like Perplexity sets its
      answers. UI chrome (nav, composer, tables, pills) stays sans. A system
      serif stack: no download, no shift, renders instantly. */
   --font-reading: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
-  --font-display: var(--font-red-hat-display), var(--font-red-hat-text), ui-sans-serif, sans-serif;
+  --font-display: var(--font-red-hat), ui-sans-serif, sans-serif;
 
   --tracking-tight: -0.011em;
   --tracking-display: -0.035em;

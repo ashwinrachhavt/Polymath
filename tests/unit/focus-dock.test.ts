@@ -27,14 +27,19 @@ vi.mock("next/link", () => ({
 }));
 vi.mock("@/components/workspace/workspace-provider", () => ({ useWorkspace: () => ({ state: preview }) }));
 
-import { FocusDock } from "@/components/shell/focus-dock";
+let FocusDock: (typeof import("@/components/shell/focus-dock"))["FocusDock"];
 
 const live = { id: "s1", state: "running", title: "Write the memo" };
 const respond = (body: unknown, ok = true) => vi.fn(async () => ({ ok, json: async () => body }) as Response);
 
-beforeEach(() => {
+beforeEach(async () => {
   preview.focus = null;
   pathname = "/command-center/inbox";
+  // The dock keeps its bounded-fetch cache and debounce window at module
+  // scope (spec W4), so each test loads a fresh module instance instead of
+  // inheriting the previous test's cache.
+  vi.resetModules();
+  FocusDock = (await import("@/components/shell/focus-dock")).FocusDock;
 });
 afterEach(() => {
   cleanup();
@@ -75,24 +80,42 @@ describe("FocusDock", () => {
   });
 
   it("a failed refresh keeps the last known session but marks it unverified, and a good read clears the mark", async () => {
-    const fetchSpy = vi
-      .fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ session: live }) } as Response)
-      .mockResolvedValueOnce({ ok: false, json: async () => ({}) } as Response)
-      .mockResolvedValue({ ok: true, json: async () => ({ session: live }) } as Response);
-    vi.stubGlobal("fetch", fetchSpy);
-    const view = render(h(FocusDock));
-    const dock = await screen.findByLabelText("Focus session");
-    expect(dock.textContent).not.toContain("last known");
+    // Inside the revalidate window the dock reuses its cache and never
+    // refetches; the test bends Date.now past the window where it needs the
+    // refetch paths (real timers, so RTL's waitFor behaves).
+    const realNow = Date.now;
+    const offset = { ms: 0 };
+    const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => realNow() + offset.ms);
+    try {
+      const fetchSpy = vi
+        .fn()
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ session: live }) } as Response)
+        .mockResolvedValueOnce({ ok: false, json: async () => ({}) } as Response)
+        .mockResolvedValue({ ok: true, json: async () => ({ session: live }) } as Response);
+      vi.stubGlobal("fetch", fetchSpy);
+      const view = render(h(FocusDock));
+      const dock = await screen.findByLabelText("Focus session");
+      expect(dock.textContent).not.toContain("last known");
 
-    pathname = "/reviews";
-    view.rerender(h(FocusDock));
-    await waitFor(() => expect(screen.getByLabelText("Focus session").textContent).toContain("last known"));
-    expect(screen.getByLabelText("Focus session").textContent).toContain("status may be out of date");
+      // Past the revalidate window a navigation re-reads; a failed read
+      // keeps the session on screen but marks it unverified.
+      offset.ms = 31_000;
+      pathname = "/reviews";
+      view.rerender(h(FocusDock));
+      await waitFor(() => expect(screen.getByLabelText("Focus session").textContent).toContain("last known"));
+      expect(screen.getByLabelText("Focus session").textContent).toContain("status may be out of date");
 
-    pathname = "/activity";
-    view.rerender(h(FocusDock));
-    await waitFor(() => expect(screen.getByLabelText("Focus session").textContent).not.toContain("last known"));
+      // A good read clears the mark. Age past the debounce window too: a
+      // navigation in the same instant as the failed refetch is exactly the
+      // thrash the debounce exists to absorb.
+      offset.ms = 64_000;
+      pathname = "/activity";
+      view.rerender(h(FocusDock));
+      await waitFor(() => expect(screen.getByLabelText("Focus session").textContent).not.toContain("last known"));
+      expect(fetchSpy).toHaveBeenCalledTimes(3);
+    } finally {
+      nowSpy.mockRestore();
+    }
   });
 
   it("the real session also follows the owner onto /settings and /activity (preview-banner routes)", async () => {

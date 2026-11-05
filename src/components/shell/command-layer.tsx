@@ -36,7 +36,13 @@ import {
 
 const subscribeToHydration = () => () => {};
 
-export function CommandLayer() {
+export function CommandLayer({
+  initialMode = null,
+  withTriggers = true,
+}: {
+  initialMode?: "search" | "capture" | null;
+  withTriggers?: boolean;
+}) {
   const hydrated = useSyncExternalStore(
     subscribeToHydration,
     () => true,
@@ -44,7 +50,7 @@ export function CommandLayer() {
   );
   const { notify } = useWorkspace();
   const router = useRouter();
-  const [mode, setMode] = useState<"search" | "capture" | null>(null);
+  const [mode, setMode] = useState<"search" | "capture" | null>(initialMode ?? null);
   const [query, setQuery] = useState("");
   const [text, setText] = useState("");
   const [saveError, setSaveError] = useState("");
@@ -69,7 +75,7 @@ export function CommandLayer() {
   // closing always stops the mic; `recording` only re-renders the controls.
   const recorder = useRef<MediaRecorder | null>(null);
   const [recording, setRecording] = useState(false);
-  const returnTo = useRef<"search" | "capture">("search");
+  const returnTo = useRef<"search" | "capture">(initialMode ?? "search");
 
   function open(next: "search" | "capture") {
     returnTo.current = next;
@@ -311,34 +317,42 @@ export function CommandLayer() {
     if (mode === null && recorder.current) recorder.current.stop();
   }, [mode]);
 
+  // Triggerless mount: the wrapper in command-layer-mount.tsx owns the
+  // triggers, so a palette loaded from it renders the dialog alone. The
+  // trigger refs stay null then; focus restore falls back to the
+  // [data-search-trigger] lookup, which finds the wrapper button.
   return (
     <>
-      <span className="contents md:hidden">
-        <button
-          ref={searchTrigger}
-          type="button"
-          disabled={!hydrated}
-          onClick={() => open("search")}
-          aria-label="Search workspace"
-          aria-keyshortcuts="Meta+K Control+K"
-          data-search-trigger
-          className="global-search disabled:opacity-50"
-        >
-          <Search aria-hidden className="size-4 shrink-0" />
-          <span className="hidden lg:inline">Search your workspace</span>
-        </button>
-      </span>
-      <Button
-        ref={captureTrigger}
-        size="sm"
-        disabled={!hydrated}
-        onClick={() => open("capture")}
-        aria-keyshortcuts="Meta+Shift+C Control+Shift+C"
-      >
-        <Plus aria-hidden />
-        <span className="hidden sm:inline">Capture</span>
-        <span className="sr-only sm:hidden">Capture</span>
-      </Button>
+      {withTriggers && (
+        <>
+          <span className="contents md:hidden">
+            <button
+              ref={searchTrigger}
+              type="button"
+              disabled={!hydrated}
+              onClick={() => open("search")}
+              aria-label="Search workspace"
+              aria-keyshortcuts="Meta+K Control+K"
+              data-search-trigger
+              className="global-search disabled:opacity-50"
+            >
+              <Search aria-hidden className="size-4 shrink-0" />
+              <span className="hidden lg:inline">Search your workspace</span>
+            </button>
+          </span>
+          <Button
+            ref={captureTrigger}
+            size="sm"
+            disabled={!hydrated}
+            onClick={() => open("capture")}
+            aria-keyshortcuts="Meta+Shift+C Control+Shift+C"
+          >
+            <Plus aria-hidden />
+            <span className="hidden sm:inline">Capture</span>
+            <span className="sr-only sm:hidden">Capture</span>
+          </Button>
+        </>
+      )}
       <Dialog
         open={mode !== null}
         onOpenChange={(value) => {

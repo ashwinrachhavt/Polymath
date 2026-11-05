@@ -8,6 +8,16 @@ import { useWorkspace } from "@/components/workspace/workspace-provider";
 
 type LiveSession = { id: string; state: "running" | "paused"; title: string };
 
+// The live-session read is bounded twice (spec W4): a result younger than
+// REVALIDATE_MS is reused across remounts and focus events, and a fetch is
+// never issued more than once per DEBOUNCE_MS, so tab switches and quick
+// page hops stop costing a round trip each. The cache is module-level on
+// purpose: the session is workspace-global, not per page.
+const REVALIDATE_MS = 30_000;
+const DEBOUNCE_MS = 2_000;
+let liveCache: { at: number; session: LiveSession | null } | null = null;
+let lastFetchStartedAt = 0;
+
 /*
  * The shell's reminder that a focus session is live while you are somewhere
  * else. On canonical routes it reads the REAL session (domains/focus, through
@@ -35,10 +45,18 @@ function LiveDock({ pathname }: { pathname: string }) {
     if (ownsLiveControls) return; // The Focus screen renders the live controls itself.
     let cancelled = false;
     async function load() {
+      const now = Date.now();
+      if (liveCache && now - liveCache.at < REVALIDATE_MS) {
+        setRead({ path: pathname, session: liveCache.session, stale: false });
+        return;
+      }
+      if (now - lastFetchStartedAt < DEBOUNCE_MS) return;
+      lastFetchStartedAt = now;
       try {
         const response = await fetch("/api/v1/focus/live", { cache: "no-store" });
         if (!response.ok) throw new Error("focus read failed");
         const body = (await response.json()) as { session: LiveSession | null };
+        liveCache = { at: Date.now(), session: body.session };
         if (!cancelled) setRead({ path: pathname, session: body.session, stale: false });
       } catch {
         // A failed read never claims the session ended, and never presents the last
