@@ -7,7 +7,7 @@ import {
   type RunIdentity,
   type RuntimeSignal,
   type RuntimeStartRequest,
-} from "./contracts";
+} from "@/domains/agents/runtime/contracts";
 
 /*
  * The shared AgentRuntime behavioral suite (RT02). Every adapter - the fake
