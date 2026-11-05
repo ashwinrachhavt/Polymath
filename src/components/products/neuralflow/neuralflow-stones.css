@@ -1,3 +1,6 @@
+/* Hallmark · neuralflow stones · redesign: polish · shape: app screen · posture: restrained · hero: none */
+/* Hallmark · waive 48 · the nf-* block below declares this product's own vitrine and stage tokens · the dark showcase is the stone's lighting, one register in both themes */
+
 /*
  * NeuralFlow-only material and motion, prefixed `nf-` because this repo's
  * Turbopack CSS rule compiles `*.module.css` as global CSS (class names are not
@@ -7,6 +10,25 @@
  * media query mirrors the operating system setting.
  */
 
+/* NeuralFlow's own material: the vitrine and stage keep one dark showcase
+   register in both themes — the donor art's lighting depends on it. */
+:root {
+  --nf-vitrine-bg: oklch(0.17 0.006 250);
+  --nf-vitrine-light: oklch(1 0 0 / 0.14);
+  --nf-vitrine-shade: oklch(0 0 0 / 0.4);
+  --nf-sheen: oklch(1 0 0 / 0.28);
+  --nf-stage-bg: oklch(0.19 0.012 285);
+  --nf-stage-ink: oklch(0.94 0.008 285);
+  --nf-stage-glow-a: oklch(0.58 0.16 300 / 0.38);
+  --nf-stage-glow-b: oklch(0.46 0.13 275 / 0.18);
+  --nf-stage-pedestal: oklch(0 0 0 / 0.75);
+  --nf-stage-caption: oklch(0.76 0.02 285);
+  --nf-stage-sub: oklch(0.96 0.006 285);
+  --nf-stage-halo: oklch(0.72 0.15 295 / 0.4);
+  --nf-stage-ring: oklch(0.82 0.1 295 / 0.55);
+  --nf-stage-shard: oklch(0.86 0.08 295 / 0.85);
+}
+
 /* A stone sits in a small dark vitrine so the donor art keeps its lighting in both themes. */
 .nf-vitrine {
   position: relative;
@@ -15,8 +37,10 @@
   flex-shrink: 0;
   overflow: hidden;
   border-radius: 6px;
-  background: oklch(0.17 0.006 250);
-  box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.14), inset 0 -1px 0 oklch(0 0 0 / 0.4);
+  background: var(--nf-vitrine-bg);
+  box-shadow:
+    inset 0 1px 0 var(--nf-vitrine-light),
+    inset 0 -1px 0 var(--nf-vitrine-shade);
 }
 .nf-vitrine img {
   display: block;
@@ -35,7 +59,7 @@
   position: absolute;
   inset: -20% auto -20% -60%;
   width: 45%;
-  background: linear-gradient(100deg, transparent, oklch(1 0 0 / 0.28), transparent);
+  background: linear-gradient(100deg, transparent, var(--nf-sheen), transparent);
   transform: skewX(-12deg);
   opacity: 0;
   pointer-events: none;
@@ -45,12 +69,22 @@
   animation: nf-sweep 700ms cubic-bezier(0.2, 0.7, 0.2, 1) 1;
 }
 @keyframes nf-sweep {
-  0% { opacity: 0; transform: translateX(0) skewX(-12deg); }
-  20% { opacity: 1; }
-  100% { opacity: 0; transform: translateX(420%) skewX(-12deg); }
+  0% {
+    opacity: 0;
+    transform: translateX(0) skewX(-12deg);
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(420%) skewX(-12deg);
+  }
 }
 .nf-tile {
-  transition: background-color 160ms ease, transform 160ms ease;
+  transition:
+    background-color 160ms ease,
+    transform 160ms ease;
 }
 .nf-tile:active {
   transform: translateY(1px);
@@ -117,48 +151,130 @@
   opacity: 0;
   pointer-events: none;
 }
-.nf-animate .nf-reveal-stone { animation: nf-turn-in 500ms ease-out both; }
-.nf-animate .nf-halo { animation: nf-pulse 900ms ease-out 120ms both; }
-.nf-animate .nf-ring { animation: nf-ripple 800ms ease-out 160ms both; }
-.nf-animate .nf-shard { animation: nf-scatter 1200ms ease-out both; }
-.nf-animate .nf-shard:nth-child(3) { --nf-dx: 3.5rem; --nf-dy: 0rem; animation-delay: 0ms; }
-.nf-animate .nf-shard:nth-child(4) { --nf-dx: 2.5rem; --nf-dy: -2.5rem; animation-delay: 50ms; }
-.nf-animate .nf-shard:nth-child(5) { --nf-dx: 0rem; --nf-dy: -3.5rem; animation-delay: 100ms; }
-.nf-animate .nf-shard:nth-child(6) { --nf-dx: -2.5rem; --nf-dy: -2.5rem; animation-delay: 150ms; }
-.nf-animate .nf-shard:nth-child(7) { --nf-dx: -3.5rem; --nf-dy: 0rem; animation-delay: 200ms; }
-.nf-animate .nf-shard:nth-child(8) { --nf-dx: -2.5rem; --nf-dy: 2.5rem; animation-delay: 250ms; }
-.nf-animate .nf-shard:nth-child(9) { --nf-dx: 0rem; --nf-dy: 3.5rem; animation-delay: 300ms; }
-.nf-animate .nf-shard:nth-child(10) { --nf-dx: 2.5rem; --nf-dy: 2.5rem; animation-delay: 350ms; }
+.nf-animate .nf-reveal-stone {
+  animation: nf-turn-in 500ms ease-out both;
+}
+.nf-animate .nf-halo {
+  animation: nf-pulse 900ms ease-out 120ms both;
+}
+.nf-animate .nf-ring {
+  animation: nf-ripple 800ms ease-out 160ms both;
+}
+.nf-animate .nf-shard {
+  animation: nf-scatter 1200ms ease-out both;
+}
+.nf-animate .nf-shard:nth-child(3) {
+  --nf-dx: 3.5rem;
+  --nf-dy: 0rem;
+  animation-delay: 0ms;
+}
+.nf-animate .nf-shard:nth-child(4) {
+  --nf-dx: 2.5rem;
+  --nf-dy: -2.5rem;
+  animation-delay: 50ms;
+}
+.nf-animate .nf-shard:nth-child(5) {
+  --nf-dx: 0rem;
+  --nf-dy: -3.5rem;
+  animation-delay: 100ms;
+}
+.nf-animate .nf-shard:nth-child(6) {
+  --nf-dx: -2.5rem;
+  --nf-dy: -2.5rem;
+  animation-delay: 150ms;
+}
+.nf-animate .nf-shard:nth-child(7) {
+  --nf-dx: -3.5rem;
+  --nf-dy: 0rem;
+  animation-delay: 200ms;
+}
+.nf-animate .nf-shard:nth-child(8) {
+  --nf-dx: -2.5rem;
+  --nf-dy: 2.5rem;
+  animation-delay: 250ms;
+}
+.nf-animate .nf-shard:nth-child(9) {
+  --nf-dx: 0rem;
+  --nf-dy: 3.5rem;
+  animation-delay: 300ms;
+}
+.nf-animate .nf-shard:nth-child(10) {
+  --nf-dx: 2.5rem;
+  --nf-dy: 2.5rem;
+  animation-delay: 350ms;
+}
 @keyframes nf-turn-in {
-  from { opacity: 0; transform: rotate(-12deg) scale(0.92); }
-  to { opacity: 1; transform: none; }
+  from {
+    opacity: 0;
+    transform: rotate(-12deg) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 @keyframes nf-pulse {
-  0% { opacity: 0; transform: scale(0.9); }
-  40% { opacity: 1; transform: scale(1.08); }
-  100% { opacity: 0; transform: scale(1.12); }
+  0% {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.12);
+  }
 }
 @keyframes nf-ripple {
-  0% { opacity: 0.6; transform: scale(0.6); }
-  100% { opacity: 0; transform: scale(1.6); }
+  0% {
+    opacity: 0.6;
+    transform: scale(0.6);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.6);
+  }
 }
 @keyframes nf-scatter {
-  0% { opacity: 0; transform: translate(0, 0) rotate(45deg) scale(0.5); }
-  45% { opacity: 1; transform: translate(calc(var(--nf-dx) * 0.6), calc(var(--nf-dy) * 0.6)) rotate(90deg) scale(1.2); }
-  100% { opacity: 0; transform: translate(var(--nf-dx), var(--nf-dy)) rotate(135deg) scale(0.5); }
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) rotate(45deg) scale(0.5);
+  }
+  45% {
+    opacity: 1;
+    transform: translate(calc(var(--nf-dx) * 0.6), calc(var(--nf-dy) * 0.6)) rotate(90deg) scale(1.2);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--nf-dx), var(--nf-dy)) rotate(135deg) scale(0.5);
+  }
 }
 
 /* Task rows: a check with the donor's spring and a strike that draws across. */
 .nf-row {
   transition: opacity 200ms ease;
 }
-.nf-row[data-done="true"] { opacity: 0.72; }
-.nf-row .nf-check:checked { animation: nf-settle 400ms ease-out 1; }
+.nf-row[data-done="true"] {
+  opacity: 0.72;
+}
+.nf-row .nf-check:checked {
+  animation: nf-settle 400ms ease-out 1;
+}
 @keyframes nf-settle {
-  0% { transform: scale(1); }
-  20% { transform: scale(0.95); }
-  60% { transform: scale(1.12); }
-  100% { transform: scale(1); }
+  0% {
+    transform: scale(1);
+  }
+  20% {
+    transform: scale(0.95);
+  }
+  60% {
+    transform: scale(1.12);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 .nf-title {
   position: relative;
@@ -175,7 +291,9 @@
   transform-origin: left center;
   transition: transform 260ms cubic-bezier(0.2, 0.7, 0.2, 1);
 }
-.nf-row[data-done="true"] .nf-title::after { transform: scaleX(1); }
+.nf-row[data-done="true"] .nf-title::after {
+  transform: scaleX(1);
+}
 
 /* Owner preference: Reduce motion. JSX also omits `nf-animate` and `nf-sheen` in this mode. */
 .nf-row[data-motion="reduce"],
@@ -221,8 +339,8 @@
   padding: 2rem 1.5rem 1.75rem;
   overflow: hidden;
   border-radius: 12px;
-  background: oklch(0.19 0.012 285);
-  color: oklch(0.94 0.008 285);
+  background: var(--nf-stage-bg);
+  color: var(--nf-stage-ink);
 }
 .nf-stage-glow {
   position: absolute;
@@ -233,7 +351,7 @@
   height: 18rem;
   transform: translateX(-50%);
   border-radius: 9999px;
-  background: radial-gradient(closest-side, oklch(0.58 0.16 300 / 0.38), oklch(0.46 0.13 275 / 0.18) 55%, transparent 78%);
+  background: radial-gradient(closest-side, var(--nf-stage-glow-a), var(--nf-stage-glow-b) 55%, transparent 78%);
   pointer-events: none;
 }
 .nf-stage > *:not(.nf-stage-glow) {
@@ -255,28 +373,26 @@
   height: 0.625rem;
   margin: -0.375rem auto 0;
   border-radius: 9999px;
-  background: radial-gradient(closest-side, oklch(0 0 0 / 0.75), transparent 78%);
+  background: radial-gradient(closest-side, var(--nf-stage-pedestal), transparent 78%);
 }
 .nf-stage-caption {
   font-size: 11px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: oklch(0.76 0.02 285);
+  color: var(--nf-stage-caption);
 }
 .nf-stage-sub {
   font-size: 2.25rem;
   line-height: 1.1;
-  color: oklch(0.96 0.006 285);
+  color: var(--nf-stage-sub);
 }
 /* Reveal particles read against the dark stage, not the page ink. */
 .nf-stage .nf-halo {
-  background: radial-gradient(closest-side, oklch(0.72 0.15 295 / 0.4), transparent);
+  background: radial-gradient(closest-side, var(--nf-stage-halo), transparent);
 }
 .nf-stage .nf-ring {
-  border-color: oklch(0.82 0.1 295 / 0.55);
+  border-color: var(--nf-stage-ring);
 }
 .nf-stage .nf-shard {
-  background: oklch(0.86 0.08 295 / 0.85);
+  background: var(--nf-stage-shard);
 }
 
 /*
@@ -307,7 +423,5 @@
 }
 .nf-jewel-status {
   font-size: 10px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
   color: var(--muted-foreground);
 }

@@ -35,13 +35,7 @@ const DiagramPreview = dynamic(() => import("./diagram-preview"), {
 /** The existing canvas surface — the canvas route, not a new one. */
 const CANVAS_HREF = "/apps/polymath/canvas";
 
-export function DiagramView({
-  title,
-  versions,
-}: {
-  title: string;
-  versions: DiagramVersionView[];
-}) {
+export function DiagramView({ title, versions }: { title: string; versions: DiagramVersionView[] }) {
   const [selected, setSelected] = useState<number | undefined>(undefined);
   const [copied, setCopied] = useState(false);
   /** Editability of the version the preview last rendered — versioned so a
@@ -140,7 +134,7 @@ export function DiagramView({
           <div className="panel space-y-3 rounded-xl p-4">
             <div className="flex items-center justify-between">
               <p className="text-xs text-muted-foreground">
-                Mermaid source for v{active.versionNumber} — the diagram regenerates from this text.
+                Mermaid source for v{active.versionNumber}: the diagram regenerates from this text.
               </p>
               <Button variant="outline" size="sm" onClick={copySource}>
                 {copied ? <Check aria-hidden /> : <Copy aria-hidden />}

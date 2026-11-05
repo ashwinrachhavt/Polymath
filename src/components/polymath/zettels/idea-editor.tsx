@@ -7,6 +7,7 @@ import Placeholder from "@tiptap/extension-placeholder";
 import { createIdeaDraftStore } from "../ideas/draft-store";
 import { createIdleDebouncer } from "../ideas/idle-debounce";
 import { saveIdeaAction } from "@/app/(workspace)/polymath/ideas/actions";
+import { Button } from "@/components/ui/button";
 
 /*
  * The idea editor: a single authored card. The draft persists under the
@@ -128,7 +129,7 @@ export function IdeaEditor({
   }, [editor]);
 
   return (
-    <div className="mx-auto max-w-2xl px-6 py-8 font-serif text-lg leading-relaxed">
+    <div className="mx-auto max-w-2xl px-6 py-8 font-[family-name:var(--font-reading)] text-lg leading-relaxed">
       <div className="mb-4 flex items-baseline justify-between">
         {label ? <h1 className="font-sans text-sm font-medium text-muted-foreground">{label}</h1> : <span />}
         <span className="font-sans text-xs text-muted-foreground">
@@ -137,7 +138,7 @@ export function IdeaEditor({
             : saveState === "saved"
               ? "Saved"
               : saveState === "error"
-                ? "Save failed - keeps retrying on edit"
+                ? "Save failed; keeps retrying on edit"
                 : ""}
         </span>
       </div>
@@ -145,8 +146,9 @@ export function IdeaEditor({
         <div className="mb-4 rounded border border-(--tone-attention-wash)/40 bg-(--tone-attention-wash)/10 p-3 font-sans text-sm">
           <p>A newer saved copy exists (saved {new Date(conflict.updatedAt).toLocaleString()}).</p>
           <div className="mt-2 flex gap-2">
-            <button
-              className="rounded border px-2 py-1"
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => {
                 // Keep mine: the server's version is the base this retry must
                 // claim. Leaving the stored (stale) version in place would
@@ -157,9 +159,10 @@ export function IdeaEditor({
               }}
             >
               Keep mine
-            </button>
-            <button
-              className="rounded border px-2 py-1"
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => {
                 // Take saved copy: adopt the server's text AND its version, or
                 // the next save claims a version the server has already passed.
@@ -170,7 +173,7 @@ export function IdeaEditor({
               }}
             >
               Take saved copy
-            </button>
+            </Button>
           </div>
         </div>
       ) : null}

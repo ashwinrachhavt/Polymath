@@ -112,7 +112,7 @@ export function HomeSurface({
         <div className="flex items-center justify-between gap-2">
           <ModelPicker models={models} current={currentModel} />
           {notice ? (
-            <p role="status" className="text-muted-foreground min-w-0 truncate text-data">
+            <p role="status" className="text-muted-foreground min-w-0 truncate text-label">
               {notice}
             </p>
           ) : null}
@@ -124,7 +124,7 @@ export function HomeSurface({
           <div className="rule-label">Your conversations</div>
           {history.map((group) => (
             <section key={group.key} aria-label={group.label}>
-              <p className="text-muted-foreground px-2 pb-1 text-data font-medium">{group.label}</p>
+              <p className="text-muted-foreground px-2 pb-1 text-label font-medium">{group.label}</p>
               <ul>
                 {group.rows.map((row) => (
                   <li key={row.id}>

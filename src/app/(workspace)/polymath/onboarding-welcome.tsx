@@ -89,7 +89,7 @@ export function OnboardingWelcome({ role, tools, priorities, personifiedBrief, o
           </Button>
         ))}
       </div>
-      <p className="text-muted-foreground text-label">Or just start typing below — everything you give it shapes it.</p>
+      <p className="text-muted-foreground text-label">Or just start typing below. Everything you give it shapes it.</p>
     </motion.section>
   );
 }

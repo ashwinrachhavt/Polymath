@@ -672,7 +672,7 @@ function ExtensionMarkdownBlock({ extraction }: { extraction: ExtensionExtractio
   return (
     <section aria-label="Original formatting kept by the extension" className="mt-3">
       <p className="text-body-dense text-muted-foreground">
-        The extension kept the original formatting{qualityLabel ? ` (${qualityLabel} markdown)` : ""} —{" "}
+        The extension kept the original formatting{qualityLabel ? ` (${qualityLabel} markdown)` : ""}:{" "}
         <button
           type="button"
           className="font-medium text-primary underline-offset-4 hover:underline"

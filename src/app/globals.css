@@ -1,5 +1,7 @@
+/* Hallmark · Furrow · built: the project · redesign: polish · shape: app screen · posture: restrained · nav: SideNav · footer: MobileNav · hero: none · theme: Furrow (by request) */
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "./tokens.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -357,68 +359,6 @@
   --text-display: 28px;
 }
 
-.dark {
-  color-scheme: dark;
-  /* Furrow night: the same hue bands re-derived (paper L 14%, ink L 93%,
-     accent chroma -0.03 / L +5). The aliases above point at these roles, so
-     dark mode is one re-derivation, not a second theme. Elevation is
-     lightness, not shadow; hairlines sit a step apart in lightness. */
-  --paper: oklch(14% 0.008 85);
-  --paper-2: oklch(17% 0.008 85);
-  --paper-3: oklch(11% 0.01 85);
-  --ink: oklch(93% 0.006 85);
-  --ink-2: oklch(82% 0.008 80);
-  --ink-muted: oklch(58% 0.012 80);
-  --rule: oklch(24% 0.013 85);
-  --sheet: oklch(19% 0.004 85);
-  --grid: oklch(22% 0.014 85);
-  --grid-strong: oklch(27% 0.018 85);
-
-  --signal: oklch(75% 0.16 40);
-  --signal-ink: oklch(14% 0.008 85);
-  --signal-soft: oklch(26% 0.045 50);
-
-  --focus: oklch(72% 0.19 40);
-  --error: oklch(68% 0.17 27);
-  --success: oklch(72% 0.1 150);
-  --green: oklch(68% 0.1 150);
-  --contour: oklch(66% 0.06 58);
-  --water: oklch(66% 0.045 232);
-  --hedge: oklch(62% 0.09 150);
-
-  /* Dark lifts mirror .dark .pill-teal; pill-working ships one tone for
-     both modes, so --tone-attention does not flip. */
-  --tone-teal: oklch(0.8 0.08 195);
-  --tone-teal-wash: oklch(0.76 0.09 195);
-  --tone-violet: oklch(0.8 0.09 300);
-  --tone-violet-wash: oklch(0.76 0.09 300);
-
-  --avatar-1: oklch(27% 0.02 255);
-  --avatar-1-ink: oklch(75% 0.04 255);
-  --avatar-2: oklch(26% 0.025 148);
-  --avatar-2-ink: oklch(76% 0.05 148);
-  --avatar-3: oklch(27% 0.03 78);
-  --avatar-3-ink: oklch(78% 0.06 78);
-  --avatar-4: oklch(27% 0.025 330);
-  --avatar-4-ink: oklch(76% 0.05 330);
-  --avatar-5: oklch(27% 0.03 292);
-  --avatar-5-ink: oklch(77% 0.05 292);
-  --avatar-6: oklch(26% 0.025 200);
-  --avatar-6-ink: oklch(75% 0.045 200);
-
-  --pill-positive: oklch(26.8% 0.031 143);
-  --pill-positive-ink: oklch(78.2% 0.068 146);
-  --pill-warm: oklch(27.8% 0.034 93);
-  --pill-warm-ink: oklch(81.3% 0.091 91);
-  --success-wash: oklch(26% 0.03 150);
-
-  --edge-light: oklch(1 0 0 / 0%);
-  --edge-shade: oklch(0 0 0 / 0%);
-
-  --shadow: 0 1px 2px oklch(0 0 0 / 35%), 0 12px 32px oklch(0 0 0 / 40%);
-  --shadow-panel: 0 1px 2px oklch(0 0 0 / 40%), 0 4px 12px oklch(0 0 0 / 30%), 0 12px 40px oklch(0 0 0 / 45%);
-}
-
 @layer components {
   /*
    * The panel. Flat and quiet: a hairline border and a fill. Depth is
@@ -451,7 +391,7 @@
     height: 20px;
     align-items: center;
     border-radius: 6px;
-    padding-inline: 7px;
+    padding-inline: var(--space-xs);
     font-size: 11px;
     font-weight: 500;
     line-height: 1;
@@ -506,7 +446,7 @@
   .rule-label {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: var(--space-sm);
     color: var(--muted-foreground);
     font-size: 11px;
     font-weight: 500;
@@ -549,7 +489,7 @@
   flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
+  gap: var(--space-md);
 }
 .screen-heading > :first-child {
   flex-basis: 20rem;
@@ -565,7 +505,7 @@
   text-wrap: balance;
 }
 .screen-description {
-  margin-top: 6px;
+  margin-top: var(--space-xs);
   max-width: 42rem;
   font-size: 13px;
   line-height: 1.625;
@@ -575,12 +515,12 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-xs);
   max-width: 100%;
 }
 .suite-screen {
   min-width: 0;
-  padding: 24px var(--page-gutter) 40px;
+  padding: var(--space-lg) var(--page-gutter) var(--space-xl);
   font-size: 13px;
 }
 .suite-screen > :is(header, div) {
@@ -589,10 +529,10 @@
   margin-inline: auto;
 }
 .suite-screen > header {
-  padding-bottom: 24px;
+  padding-bottom: var(--space-lg);
 }
 .page-header {
-  padding: 24px var(--page-gutter) 20px;
+  padding: var(--space-lg) var(--page-gutter) var(--space-md);
 }
 .page-header > .screen-heading {
   width: 100%;
@@ -604,7 +544,7 @@
   max-width: calc(var(--page-width) + var(--page-gutter) * 2);
   min-width: 0;
   margin-inline: auto;
-  padding: 24px var(--page-gutter);
+  padding: var(--space-lg) var(--page-gutter);
 }
 /* Reading pages breathe: 96px clear above and below the text column on
    desktop, 48px on small screens. Only full-page reading surfaces opt in;
@@ -617,7 +557,7 @@
     --page-gutter: 24px;
   }
   .reading-page {
-    padding-block: 96px;
+    padding-block: var(--space-3xl);
   }
 }
 /* The Notion feel (owner direction 2026-10-28; Notion Design System §5): the
@@ -638,29 +578,30 @@
   text-wrap: pretty;
 }
 .prose-reading p {
-  margin: 0 0 24px;
+  margin: 0 0 var(--space-lg);
 }
 .prose-reading :is(h1, h2) {
-  margin: 48px 0 12px;
+  margin: var(--space-2xl) 0 var(--space-sm);
   font-size: 24px;
   font-weight: 600;
   line-height: 1.3;
+  text-wrap: balance;
 }
 .prose-reading h3 {
-  margin: 40px 0 8px;
+  margin: var(--space-xl) 0 var(--space-xs);
   font-size: 18px;
   font-weight: 600;
   line-height: 1.35;
 }
 .prose-reading h4 {
-  margin: 40px 0 8px;
+  margin: var(--space-xl) 0 var(--space-xs);
   font-size: 16px;
   font-weight: 600;
   line-height: 1.4;
 }
 .prose-reading :is(ul, ol) {
-  margin: 0 0 24px;
-  padding-left: 24px;
+  margin: 0 0 var(--space-lg);
+  padding-left: var(--space-lg);
 }
 .prose-reading ul {
   list-style: disc;
@@ -671,28 +612,28 @@
 /* Inside a reading surface the list rhythm is the block rhythm, so the
    renderer's my-1/gap-0.5 scale drops out. Outside one, the utilities win. */
 .prose-reading :is(ul, ol).prose-list {
-  margin: 0 0 24px;
-  gap: 4px;
+  margin: 0 0 var(--space-lg);
+  gap: var(--space-2xs);
 }
 .prose-reading li {
   margin: 0;
 }
 .prose-reading blockquote {
-  margin: 0 0 24px;
-  padding-left: 16px;
+  margin: 0 0 var(--space-lg);
+  padding-left: var(--space-md);
   border-left: 2px solid var(--border);
   color: var(--muted-foreground);
 }
 .prose-reading hr {
-  margin: 24px 0;
+  margin: var(--space-lg) 0;
   border: 0;
   border-top: 1px solid var(--border);
 }
 .prose-reading > pre {
-  margin: 0 0 24px;
+  margin: 0 0 var(--space-lg);
 }
 .prose-reading table {
-  margin: 0 0 24px;
+  margin: 0 0 var(--space-lg);
 }
 /* Notes header chrome (Notion feel): the top-row actions and the quiet
    action row fade in on pointer hover of the header zone and stay visible
@@ -739,12 +680,12 @@
   width: min(260px, 28vw);
   height: 32px;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-xs);
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding-inline: 10px;
+  padding-inline: var(--space-sm);
   background: var(--card);
-  color: var(--muted-foreground);
+  color: var(--foreground);
   font-size: 12px;
   transition:
     border-color 150ms ease,
@@ -755,14 +696,17 @@
   border-color: color-mix(in oklab, var(--border) 55%, var(--foreground));
   color: var(--foreground);
 }
+.global-search::placeholder {
+  color: color-mix(in oklab, var(--ink-muted) 82%, var(--ink));
+}
 .command-result {
   display: flex;
   width: 100%;
   min-height: 44px;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-sm);
   border-radius: 6px;
-  padding: 8px 10px;
+  padding: var(--space-xs) var(--space-sm);
   text-align: left;
   font-size: 13px;
   transition:
@@ -777,11 +721,11 @@
 .skip-link {
   position: fixed;
   top: -100px;
-  left: 16px;
+  left: var(--space-md);
   z-index: 100;
   border: 1px solid var(--border);
   border-radius: 4px;
-  padding: 8px 16px;
+  padding: var(--space-xs) var(--space-md);
   background: var(--card);
   color: var(--foreground);
 }
@@ -814,7 +758,7 @@
     max-width: 100%;
     border: 1px solid var(--input);
     border-radius: 4px;
-    padding: 4px 8px;
+    padding: var(--space-2xs) var(--space-xs);
     background: var(--card);
     color: var(--foreground);
     font: inherit;
@@ -844,7 +788,7 @@ textarea {
     padding-top: 20px;
   }
   .suite-screen {
-    padding: 20px 16px calc(28px + env(safe-area-inset-bottom));
+    padding: 20px var(--space-md) calc(28px + env(safe-area-inset-bottom));
   }
   .suite-screen > div {
     max-width: 100%;
@@ -867,9 +811,11 @@ textarea {
   }
   body {
     @apply bg-background text-foreground;
+    overflow-x: clip;
   }
   html {
     @apply font-sans;
+    overflow-x: clip;
   }
   h1,
   h2,
@@ -943,7 +889,7 @@ textarea {
   /* 72rem: the notes rail (18rem) plus the 720px prose measure must both fit
      or the writing canvas can never reach the shared --measure-prose token. */
   --page-width: 72rem;
-  padding-block: 40px 56px;
+  padding-block: var(--space-xl) 56px;
 }
 [data-interface-mode="library"] .suite-screen > header {
   padding-bottom: 32px;
@@ -965,10 +911,10 @@ textarea {
   letter-spacing: -0.015em;
 }
 [data-interface-mode="action"] .suite-screen {
-  padding-block: 16px 28px;
+  padding-block: var(--space-md) 28px;
 }
 [data-interface-mode="action"] .suite-screen > header {
-  padding-bottom: 16px;
+  padding-bottom: var(--space-md);
 }
 [data-interface-mode="action"] main :is(a, button, [role="button"], input, select, textarea, [tabindex]):focus-visible {
   outline: 2px solid var(--foreground);
@@ -991,7 +937,7 @@ textarea {
    controls drop to the 8px-grid compact height. Scoped so the full-width
    toolbar on every other surface is untouched. */
 .rail-compact [role="search"] {
-  gap: 8px;
+  gap: var(--space-xs);
 }
 .rail-compact [role="search"] > div:first-child {
   min-width: 0;
@@ -1007,6 +953,25 @@ textarea {
   min-height: 32px;
   height: 32px;
   padding-block: 0;
+}
+
+/* The graph canvas (React Flow) speaks Furrow: the library's own chrome —
+   controls, background dots, handles, the live connection line — reads its
+   --xy-* theme variables, so it follows the tokens in both modes with no
+   second theme. Edges and node cards keep their inline styles in
+   graph-canvas.tsx. */
+.react-flow {
+  --xy-background-pattern-color: var(--grid-strong);
+  --xy-controls-box-shadow: var(--shadow);
+  --xy-controls-button-background-color: var(--card);
+  --xy-controls-button-background-color-hover: var(--muted);
+  --xy-controls-button-color: var(--muted-foreground);
+  --xy-controls-button-color-hover: var(--foreground);
+  --xy-controls-button-border-color: var(--border);
+  --xy-connectionline-stroke: var(--ink-muted);
+  --xy-handle-background-color: var(--muted-foreground);
+  --xy-handle-border-color: var(--border);
+  --xy-selection-border: 1px dashed var(--signal);
 }
 
 /* The deep-linked activity row (/activity?event=<id>): a quiet ring that

@@ -92,7 +92,7 @@ export function HistoryMenu({
             <nav aria-label="Chat history" className="flex flex-col gap-1">
               {groups.map((group) => (
                 <div key={group.key}>
-                  <p className="text-muted-foreground px-2 pt-1.5 pb-1 text-data font-medium">{group.label}</p>
+                  <p className="text-muted-foreground px-2 pt-1.5 pb-1 text-label font-medium">{group.label}</p>
                   <ul className="flex flex-col">
                     {group.rows.map((row) => (
                       <li key={row.id}>

@@ -60,10 +60,10 @@ export function ModelPicker({ models, current }: { models: ModelOption[]; curren
         aria-controls={panelId}
         disabled={pending}
         onClick={() => setOpen((state) => !state)}
-        className="text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-ring inline-flex h-7 items-center gap-1 rounded-md px-2 text-label outline-none focus-visible:ring-2 disabled:opacity-50"
+        className="text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-ring inline-flex h-8 min-w-0 max-w-full items-center gap-1 rounded-md px-2 text-label outline-none focus-visible:ring-2 disabled:opacity-50"
       >
-        {currentModel?.label ?? current}
-        <ChevronsUpDown aria-hidden className="size-3.5" />
+        <span className="min-w-0 max-w-full truncate">{currentModel?.label ?? current}</span>
+        <ChevronsUpDown aria-hidden className="size-3.5 shrink-0" />
       </button>
       {open ? (
         <div

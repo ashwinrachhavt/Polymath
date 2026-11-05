@@ -72,7 +72,7 @@ export function EvidenceBadge({ tier, className = "" }: { tier: EvidenceTier; cl
       <span>{config.label}</span>
       {/* The description rides in the accessible text, not just the tooltip: the tier's
           honesty contract is machine-readable, which is what the spec's badge test pins. */}
-      <span className="sr-only"> — {config.description}</span>
+      <span className="sr-only">: {config.description}</span>
     </span>
   );
 }
