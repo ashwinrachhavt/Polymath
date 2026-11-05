@@ -126,6 +126,22 @@
   --tone-violet: oklch(0.52 0.11 300);
   --tone-violet-wash: oklch(0.72 0.1 300);
 
+  /* Identity tints for deterministic per-person avatars (six quiet pairs,
+     keyed by id nibble in code). Ink clears WCAG AA on its own wash in both
+     modes (>= 4.5:1). */
+  --avatar-1: oklch(94.5% 0.02 255);
+  --avatar-1-ink: oklch(45% 0.04 255);
+  --avatar-2: oklch(94.5% 0.025 148);
+  --avatar-2-ink: oklch(42% 0.055 148);
+  --avatar-3: oklch(94.5% 0.035 78);
+  --avatar-3-ink: oklch(48% 0.06 78);
+  --avatar-4: oklch(94.5% 0.025 330);
+  --avatar-4-ink: oklch(45% 0.05 330);
+  --avatar-5: oklch(94% 0.035 292);
+  --avatar-5-ink: oklch(45% 0.06 292);
+  --avatar-6: oklch(94.5% 0.025 200);
+  --avatar-6-ink: oklch(45% 0.04 200);
+
   --border: var(--rule);
   --input: var(--rule);
   --ring: var(--focus);
@@ -276,6 +292,18 @@
   --color-tone-attention: var(--tone-attention);
   --color-tone-teal: var(--tone-teal);
   --color-tone-violet: var(--tone-violet);
+  --color-avatar-1: var(--avatar-1);
+  --color-avatar-1-ink: var(--avatar-1-ink);
+  --color-avatar-2: var(--avatar-2);
+  --color-avatar-2-ink: var(--avatar-2-ink);
+  --color-avatar-3: var(--avatar-3);
+  --color-avatar-3-ink: var(--avatar-3-ink);
+  --color-avatar-4: var(--avatar-4);
+  --color-avatar-4-ink: var(--avatar-4-ink);
+  --color-avatar-5: var(--avatar-5);
+  --color-avatar-5-ink: var(--avatar-5-ink);
+  --color-avatar-6: var(--avatar-6);
+  --color-avatar-6-ink: var(--avatar-6-ink);
 
   /* Red Hat is the Furrow register: Display 600 for heads, Text for body
      and UI, Mono for figures (readouts, ids, dates, counts). */
@@ -351,6 +379,19 @@
   --tone-teal-wash: oklch(0.76 0.09 195);
   --tone-violet: oklch(0.8 0.09 300);
   --tone-violet-wash: oklch(0.76 0.09 300);
+
+  --avatar-1: oklch(27% 0.02 255);
+  --avatar-1-ink: oklch(75% 0.04 255);
+  --avatar-2: oklch(26% 0.025 148);
+  --avatar-2-ink: oklch(76% 0.05 148);
+  --avatar-3: oklch(27% 0.03 78);
+  --avatar-3-ink: oklch(78% 0.06 78);
+  --avatar-4: oklch(27% 0.025 330);
+  --avatar-4-ink: oklch(76% 0.05 330);
+  --avatar-5: oklch(27% 0.03 292);
+  --avatar-5-ink: oklch(77% 0.05 292);
+  --avatar-6: oklch(26% 0.025 200);
+  --avatar-6-ink: oklch(75% 0.045 200);
 
   --edge-light: oklch(1 0 0 / 0%);
   --edge-shade: oklch(0 0 0 / 0%);

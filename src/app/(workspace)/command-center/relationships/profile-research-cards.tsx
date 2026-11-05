@@ -60,9 +60,7 @@ export function ProfileResearchCards({ cardSet }: { cardSet: PersistedCardSet })
         <ul className="grid gap-3 sm:grid-cols-2">
           {cardSet.cards.map((card, i) => (
             <li key={i} className="panel flex min-w-0 flex-col gap-1.5 rounded-xl p-4">
-              <p className="text-data font-medium tracking-wide text-muted-foreground uppercase">
-                {KIND_LABELS[card.kind] ?? card.kind}
-              </p>
+              <p className="text-data font-medium text-muted-foreground">{KIND_LABELS[card.kind] ?? card.kind}</p>
               <p className="text-body-dense font-medium">{card.title}</p>
               <p className="text-body-dense leading-relaxed text-muted-foreground">{card.body}</p>
               <p className="mt-auto flex flex-wrap gap-1.5 pt-1">

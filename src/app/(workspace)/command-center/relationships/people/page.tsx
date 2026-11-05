@@ -40,12 +40,12 @@ function avatarTint(id: string): string {
   // Six quiet tints keyed on the id's last hex nibble, so a person keeps the
   // same colour across pages and reloads without another column.
   const tints = [
-    "bg-[#E8EEF6] text-[#3B5A7E] dark:bg-[#22303f] dark:text-[#a8c3de]",
-    "bg-[#EAF3EC] text-[#3E6B45] dark:bg-[#233024] dark:text-[#a9c8ae]",
-    "bg-[#F6EEE2] text-[#7A5A2E] dark:bg-[#332b1e] dark:text-[#d3bd93]",
-    "bg-[#F3EAEF] text-[#754760] dark:bg-[#332229] dark:text-[#d0aec0]",
-    "bg-[#EDEBF6] text-[#54488E] dark:bg-[#282538] dark:text-[#b4acdc]",
-    "bg-[#EAF2F3] text-[#3E6A70] dark:bg-[#20302f] dark:text-[#a2c6c9]",
+    "bg-avatar-1 text-avatar-1-ink",
+    "bg-avatar-2 text-avatar-2-ink",
+    "bg-avatar-3 text-avatar-3-ink",
+    "bg-avatar-4 text-avatar-4-ink",
+    "bg-avatar-5 text-avatar-5-ink",
+    "bg-avatar-6 text-avatar-6-ink",
   ];
   const nibble = parseInt(id.slice(-1), 16);
   return tints[Number.isFinite(nibble) ? nibble % tints.length : 0];

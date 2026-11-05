@@ -53,7 +53,10 @@ shadcn aliases point at these roles). The roles:
 Dark: the same hue bands re-derived (paper L 14%, ink L 93%, accent chroma
 −0.03 / L +5), elevation by lightness, shadows off. Hue never moves between
 modes. Status wheel: `--tone-attention` (sienna-amber), `--tone-teal`,
-`--tone-violet`, each with a `-wash`, quiet at every chroma.
+`--tone-violet`, each with a `-wash`, quiet at every chroma. Identity tints
+`--avatar-1…6` with `-ink` foregrounds: six quiet hue-anchored pairs
+(slate-blue, grass, sienna, plum, violet, teal) for deterministic per-person
+avatars; every ink clears AA on its own wash in both modes (>= 4.5:1).
 
 ## Type
 

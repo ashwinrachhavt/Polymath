@@ -85,7 +85,7 @@ function WeekStrip({ date, days }: { date: string; days: Array<{ date: string; e
               className={`flex flex-col items-center gap-1 border-border px-2 py-4 text-center transition-colors outline-none hover:bg-sidebar-accent focus-visible:bg-sidebar-accent [&:nth-child(n+2)]:border-l ${active ? "bg-sidebar-accent" : ""}`}
             >
               <span
-                className={`text-data font-medium uppercase tracking-wide ${active ? "" : future ? "text-muted-foreground/80" : "text-muted-foreground"}`}
+                className={`text-data font-medium ${active ? "" : future ? "text-muted-foreground/80" : "text-muted-foreground"}`}
               >
                 {weekday(d.date)}
               </span>
