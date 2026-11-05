@@ -46,12 +46,19 @@ async function OnboardingSurface() {
     redirect("/polymath");
   }
 
-  const latest = await findLatestOnboardingRun(auth.workspaceId);
-  const surface = resolveReloadSurface(
-    latest,
-    latest ? await readOnboardingRun(auth, latest.id) : null,
-    readWizardState(await getOnboardingSession(auth.workspaceId)),
-  );
+  // Below the gate everything is independent of its siblings; the run read
+  // chains off the latest-run lookup it needs an id from (spec W2). The
+  // profile version rides the wave — the review branch ignores it (the brief
+  // carries its own version); the wizard used to await it as a fifth stage.
+  const latestPromise = findLatestOnboardingRun(auth.workspaceId);
+  const runPromise = latestPromise.then((latest) => (latest ? readOnboardingRun(auth, latest.id) : null));
+  const [latest, run, session, profileVersion] = await Promise.all([
+    latestPromise,
+    runPromise,
+    getOnboardingSession(auth.workspaceId),
+    readOnboardingProfileVersion(auth.workspaceId),
+  ]);
+  const surface = resolveReloadSurface(latest, run, readWizardState(session));
   if (surface.kind === "review") {
     // A run's validated brief, with the profile version its card races on.
     return surfaceWrap(
@@ -64,7 +71,7 @@ async function OnboardingSurface() {
       draft={surface.draft}
       prefill={surface.prefill}
       notice={surface.notice}
-      profileVersion={await readOnboardingProfileVersion(auth.workspaceId)}
+      profileVersion={profileVersion}
     />,
   );
 }

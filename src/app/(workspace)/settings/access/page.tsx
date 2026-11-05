@@ -27,25 +27,27 @@ async function Access() {
     );
   }
   const auth = await getAuthContext();
-  let members;
-  try {
-    members = await listMembers(auth);
-  } catch (error) {
-    if (error instanceof ForbiddenRoleError) {
-      return (
-        <Screen title="Access" description={description}>
-          <Empty title="Admins only" description="Ask a workspace owner or admin to review who has access." />
-        </Screen>
-      );
-    }
-    throw error;
-  }
-
   // The directory is a member read (D5); invitations carry candidates' email
   // addresses, so that panel stays an admin read and members see the
-  // established "Admins only" pattern instead of the data.
+  // established "Admins only" pattern instead of the data. The two reads are
+  // independent once auth resolves (spec W2): the invitation read starts in
+  // the same wave and is a no-op promise for a non-admin, so the Forbidden
+  // gate on the members read still decides the screen, unchanged.
   const isAdmin = auth.role === "admin" || auth.role === "owner";
-  const invites = isAdmin ? await listInvitations(auth) : null;
+  const [members, invites] = await Promise.all([
+    listMembers(auth).catch((error) => {
+      if (error instanceof ForbiddenRoleError) return null;
+      throw error;
+    }),
+    isAdmin ? listInvitations(auth) : Promise.resolve(null),
+  ]);
+  if (members === null) {
+    return (
+      <Screen title="Access" description={description}>
+        <Empty title="Admins only" description="Ask a workspace owner or admin to review who has access." />
+      </Screen>
+    );
+  }
 
   // The one control the matrix withholds from even the owner: demoting
   // themselves while they are the only active owner. The domain enforces the

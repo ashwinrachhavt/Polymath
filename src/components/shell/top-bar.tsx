@@ -4,7 +4,7 @@ import { WorkspaceSwitcher, type WorkspaceSwitcherData } from "@/components/shel
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ModeToggle } from "@/components/shell/mode-toggle";
 import { UserMenu } from "@/components/shell/user-menu";
-import { CommandLayer } from "@/components/shell/command-layer";
+import { CommandLayerMount } from "@/components/shell/command-layer-mount";
 import { NotificationsPanel } from "@/components/shell/notifications-panel";
 import type { TriageFeed } from "@/domains/notifications/triage";
 
@@ -38,7 +38,7 @@ export function TopBar({
       </div>
 
       <div className="ml-auto flex min-w-0 items-center gap-1">
-        <CommandLayer />
+        <CommandLayerMount />
         <NotificationsPanel feed={notifications} />
         <ModeToggle resolved={interfaceMode} />
         <ThemeToggle />

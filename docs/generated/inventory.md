@@ -31,7 +31,7 @@ Migrations: 114 files, highest `0287_drop_zettel_proposals`.
 
 ## Tests
 
-561 `.test.ts` and 50 `.spec.ts` files (unit: 328, integration: 230, e2e: 50).
+563 `.test.ts` and 51 `.spec.ts` files (unit: 330, integration: 230, e2e: 51).
 ## Domains
 
 24 folders; 18 own tables.

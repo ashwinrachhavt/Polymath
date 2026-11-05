@@ -1,13 +1,16 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { io } from "next/cache";
-import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/page-header";
 import { getAuthContext } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { artifactLinks, artifactVersions, artifacts } from "@/domains/knowledge/schema";
-import { getProjectDetail, listAttachableDocuments, listProjectRuns, projectDocumentIds } from "@/domains/knowledge/projects";
+import { listGeneratedArtifacts } from "@/domains/knowledge/artifacts";
+import {
+  getProjectDetail,
+  listAttachableDocuments,
+  listProjectRuns,
+  projectDocumentIds,
+} from "@/domains/knowledge/projects";
 import { listSources } from "@/domains/knowledge/source-readiness";
 import { parseStructuredContent } from "@/domains/knowledge/artifact-content";
 import { draftsForRuns, getDraftDetail } from "@/domains/knowledge/studio";
@@ -47,74 +50,85 @@ export const metadata = { title: "Notebook · Polymath" };
 
 const FINISHED = ["succeeded", "failed", "cancelled"];
 
-async function NotebookData({
-  projectId,
-  draftId,
-  chatId,
-}: {
-  projectId: string;
-  draftId?: string;
-  chatId?: string;
-}) {
+async function NotebookData({ projectId, draftId, chatId }: { projectId: string; draftId?: string; chatId?: string }) {
   await io();
   const auth = await getAuthContext();
   const project = await getProjectDetail(auth, projectId);
   if (!project) notFound();
 
-  const documentIds = (await projectDocumentIds(auth, projectId)) ?? [];
-  const [sources, vault, chats] = await Promise.all([
+  /*
+   * Everything below the guard is independent of its siblings once the
+   * project is in hand, so it rides one wave: each read either starts
+   * immediately or chains off the one promise it truly depends on (spec W2 —
+   * this chain used to run eight sequential phases).
+   */
+  const chatsPromise = listNotebookChats(auth, projectId);
+  const documentIdsPromise = projectDocumentIds(auth, projectId).then((ids) => ids ?? []);
+  const sourcesPromise = documentIdsPromise.then((documentIds) =>
     documentIds.length > 0 ? listSources(auth, { documentIds, limit: 100 }) : [],
-    listAttachableDocuments(auth),
-    listNotebookChats(auth, projectId),
-  ]);
-
-  const activeChat = chatId ? (chats.find((chat) => chat.runId === chatId) ?? null) : null;
-  const unavailable = eveBridgeUnavailableReason();
-  const activeChatLive =
-    activeChat !== null && !FINISHED.includes(activeChat.state) && unavailable === null;
-
-  const labels = await notebookChatLabels(auth.workspaceId, chats.map((chat) => chat.runId));
-  const threadP: Promise<ThreadEntry[]> =
-    activeChat && !activeChatLive
-      ? listThreads(auth.workspaceId, [activeChat.runId]).then((threads) => threads.get(activeChat.runId) ?? [])
-      : Promise.resolve([]);
-  const [activeThread, lastAnswer] = await Promise.all([
-    threadP,
-    activeChat ? lastGroundedAnswer(auth, activeChat.runId) : Promise.resolve(null),
-  ]);
+  );
+  const labelsPromise = chatsPromise.then((chats) =>
+    notebookChatLabels(
+      auth.workspaceId,
+      chats.map((chat) => chat.runId),
+    ),
+  );
+  const chatViewPromise = chatsPromise.then(async (chats) => {
+    const activeChat = chatId ? (chats.find((chat) => chat.runId === chatId) ?? null) : null;
+    const unavailable = eveBridgeUnavailableReason();
+    const activeChatLive = activeChat !== null && !FINISHED.includes(activeChat.state) && unavailable === null;
+    const threadPromise: Promise<ThreadEntry[]> =
+      activeChat && !activeChatLive
+        ? listThreads(auth.workspaceId, [activeChat.runId]).then((threads) => threads.get(activeChat.runId) ?? [])
+        : Promise.resolve([]);
+    const [activeThread, lastAnswer] = await Promise.all([
+      threadPromise,
+      activeChat ? lastGroundedAnswer(auth, activeChat.runId) : Promise.resolve(null),
+    ]);
+    return { activeChat, activeChatLive, activeThread, lastAnswer };
+  });
 
   // Artifacts pinned to this notebook's documents, with their stored structure.
-  const links = documentIds.length > 0
-    ? await db
-        .selectDistinct({ artifactId: artifactLinks.artifactId })
-        .from(artifactLinks)
-        .where(and(
-          eq(artifactLinks.workspaceId, auth.workspaceId),
-          eq(artifactLinks.targetType, "document"),
-          inArray(artifactLinks.targetId, documentIds),
-        ))
-    : [];
-  const rows = links.length > 0
-    ? await db
-        .select({
-          id: artifacts.id,
-          title: artifacts.title,
-          kind: artifacts.kind,
-          status: artifacts.status,
-          versionContent: artifactVersions.content,
-        })
-        .from(artifacts)
-        .leftJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
-        .where(and(
-          eq(artifacts.workspaceId, auth.workspaceId),
-          inArray(artifacts.id, links.map((l) => l.artifactId)),
-          isNull(artifacts.archivedAt),
-        ))
-        .orderBy(desc(artifacts.createdAt))
-        .limit(20)
-    : [];
+  const generatedPromise = documentIdsPromise.then((documentIds) =>
+    listGeneratedArtifacts(auth.workspaceId, documentIds),
+  );
+  // The Studio Runs panel lists generation/research runs. A conversation is a
+  // run too, but it belongs to the chat's own history, not this panel.
+  const runsPromise = listProjectRuns(auth, projectId).then((runs) =>
+    runs.filter((run) => !isNotebookChatObjective(run.objective)),
+  );
+  const runDraftsPromise = runsPromise.then((runs) =>
+    draftsForRuns(
+      auth,
+      runs.map((run) => run.id),
+    ),
+  );
+  const workbenchPromise = (draftId ? getDraftDetail(auth, draftId) : Promise.resolve(null)).then(
+    async (draftDetail) =>
+      draftDetail
+        ? {
+            draftDetail,
+            linkTitles: await resolveLinkTitles(auth, draftDetail.links),
+            linkable: await listLinkableRecords(auth),
+          }
+        : { draftDetail: null, linkTitles: {}, linkable: null },
+  );
 
-  const generated: GeneratedArtifact[] = rows.map((row) => ({
+  const [sources, vault, chats, labels, chatView, generatedRows, runs, runDrafts, workbench] = await Promise.all([
+    sourcesPromise,
+    listAttachableDocuments(auth),
+    chatsPromise,
+    labelsPromise,
+    chatViewPromise,
+    generatedPromise,
+    runsPromise,
+    runDraftsPromise,
+    workbenchPromise,
+  ]);
+  const { activeChat, activeChatLive, activeThread, lastAnswer } = chatView;
+  const { draftDetail, linkTitles, linkable } = workbench;
+
+  const generated: GeneratedArtifact[] = generatedRows.map((row) => ({
     artifactId: row.id,
     title: row.title,
     kind: row.kind,
@@ -123,15 +137,6 @@ async function NotebookData({
     // renders as a title, which is the honest shape for this pane.
     structured: parseStructuredContent(row.kind, row.versionContent),
   }));
-
-  // The Studio Runs panel lists generation/research runs. A conversation is a
-  // run too, but it belongs to the chat's own history, not this panel.
-  const runs = (await listProjectRuns(auth, projectId)).filter((run) => !isNotebookChatObjective(run.objective));
-  const runDrafts = await draftsForRuns(auth, runs.map((run) => run.id));
-  const draftDetail = draftId ? await getDraftDetail(auth, draftId) : null;
-  const [linkTitles, linkable] = draftDetail
-    ? await Promise.all([resolveLinkTitles(auth, draftDetail.links), listLinkableRecords(auth)])
-    : [{}, null];
 
   return (
     <>

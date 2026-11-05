@@ -18,7 +18,7 @@ const holder: { db: ReturnType<typeof import("drizzle-orm/postgres-js").drizzle>
 const authHolder: { ctx: { userId: string; workspaceId: string; role: "owner" | "admin" | "member" | "viewer" } } = {
   ctx: { userId: "none", workspaceId: "none", role: "owner" },
 };
-vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn(), updateTag: vi.fn() }));
 vi.mock("next/server", () => ({ connection: async () => undefined }));
 vi.mock("@/lib/auth", () => ({ getAuthContext: vi.fn(async () => authHolder.ctx) }));
 vi.mock("@/lib/db", () => ({

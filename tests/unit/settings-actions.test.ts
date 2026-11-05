@@ -13,7 +13,7 @@ const agentQueries = vi.hoisted(() => ({ getDefaultProfile: vi.fn() }));
 vi.mock("@/domains/agents/queries", () => agentQueries);
 const agentCommands = vi.hoisted(() => ({ updateDefaultProfileBrief: vi.fn() }));
 vi.mock("@/domains/agents/commands", () => agentCommands);
-vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn(), updateTag: vi.fn() }));
 
 const getAuthContext = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/auth", async (importOriginal) => {

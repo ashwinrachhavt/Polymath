@@ -32,7 +32,7 @@ vi.mock("@/lib/db", () => ({
     return holder.db;
   },
 }));
-vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn(), updateTag: vi.fn() }));
 
 import { answerRunQuestion, dismissQuestionAction } from "@/app/(workspace)/polymath/[runId]/question-actions";
 import { countRunsInFlight, listTriageFeed, triageTab, type TriageItem } from "@/domains/notifications/feed";

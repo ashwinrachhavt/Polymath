@@ -19,7 +19,7 @@ const clerkHolder: { user: unknown } = { user: null };
 
 vi.stubEnv("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY", "pk_test_placeholder");
 vi.stubEnv("CLERK_SECRET_KEY", "sk_test_placeholder");
-vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn(), updateTag: vi.fn() }));
 vi.mock("@clerk/nextjs/server", () => ({
   get currentUser() {
     return async () => clerkHolder.user;

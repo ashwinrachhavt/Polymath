@@ -10,6 +10,7 @@ import { actionProposals, actionReviews } from "@/domains/actions/schema";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { getAuthContext } from "@/lib/auth";
+import type { AuthContext } from "@/domains/identity/resolve";
 import { requireRole } from "@/lib/auth/guards";
 import type { Result } from "@/lib/result";
 
@@ -27,7 +28,9 @@ import type { Result } from "@/lib/result";
  * executes.
  */
 
-const revalidate = () => {
+// Every decision changes the workspace's pending-proposal set; reviews own
+// the canonical queue view of it.
+const revalidate = (_auth: AuthContext) => {
   revalidatePath("/reviews");
   revalidatePath("/");
 };
@@ -84,7 +87,7 @@ export async function decideProposalAction(input: {
   }
 
   if (input.decision !== "approved") {
-    revalidate();
+    revalidate(auth);
     return { ok: true, outcome: null };
   }
 
@@ -109,16 +112,16 @@ export async function decideProposalAction(input: {
         revisionId: input.revisionId,
       });
     } catch (error) {
-      revalidate();
+      revalidate(auth);
       const message = error instanceof Error ? error.message : writer.failure;
       return { ok: false, error: message, decided: true };
     }
-    revalidate();
+    revalidate(auth);
     return { ok: true, outcome: null };
   }
 
   if (!proposal || !supportsEffect(proposal.capability)) {
-    revalidate();
+    revalidate(auth);
     return { ok: true, outcome: null };
   }
 
@@ -162,10 +165,10 @@ export async function decideProposalAction(input: {
         });
       }
     });
-    revalidate();
+    revalidate(auth);
     return { ok: false, error: message, decided: true };
   }
-  revalidate();
+  revalidate(auth);
   return { ok: true, outcome };
 }
 
@@ -200,7 +203,7 @@ export async function reviseProposalAction(input: {
       expectedVersion: input.expectedVersion,
       payload,
     });
-    revalidate();
+    revalidate(auth);
     return {
       ok: true,
       revisionId: revised.revisionId,

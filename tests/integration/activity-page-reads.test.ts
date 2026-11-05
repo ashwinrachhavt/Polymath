@@ -4,6 +4,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { auditEvents } from "@/domains/audit/schema";
 import { users } from "@/domains/identity/schema";
 import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
+import { loadActivityPage } from "@/app/(workspace)/activity/actions";
+import { ACTIVITY_PAGE_SIZE } from "@/app/(workspace)/activity/present-view";
 
 /*
  * The Activity page's filtered read model against real Postgres: registry
@@ -22,6 +24,12 @@ vi.mock("@/lib/db", () => ({
     return holder.db;
   },
 }));
+
+const getAuthContext = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/auth", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/lib/auth")>();
+  return { ...original, getAuthContext };
+});
 
 import { getActivityEvent, listActivityActors, listActivityEvents } from "@/domains/audit/queries";
 
@@ -204,5 +212,55 @@ suite("listActivityActors (real Postgres)", () => {
     const actors = await listActivityActors(auth);
     expect(actors.map((actor) => actor.id).sort()).toEqual([auth.userId, other!.id].sort());
     expect(actors.find((actor) => actor.id === other!.id)?.label).toBe("Alex Rivera");
+  });
+});
+
+/*
+ * Spec W3 verification 5, against real Postgres: the incremental "Load more"
+ * action must render exactly the rows the page's own first read + the action's
+ * per-page fetches produce - same rows, same order, no duplicates, no gaps -
+ * where the old code re-walked from page 0 on every click. A cursor the page
+ * itself minted must always be accepted; a forged one must be a named
+ * failure, never a thrown render.
+ */
+suite("loadActivityPage (the incremental Load-more action, real Postgres)", () => {
+  it("appends exactly the next cursor page: same rows, order, no dupes or gaps versus one full walk", async () => {
+    const auth = await authFor(crypto.randomUUID());
+    getAuthContext.mockResolvedValue(auth);
+    const now = Date.now();
+    await holder.db!.insert(auditEvents).values(
+      Array.from({ length: 57 }, (_, i) => ({
+        workspaceId: auth.workspaceId,
+        actorKind: "user" as const,
+        action: "capture.created",
+        subjectType: "capture",
+        summary: `row ${i}`,
+        createdAt: new Date(now - i * 1000),
+      })),
+    );
+
+    // Page 1 the way the page renders it: one keyset read, no cursor.
+    const first = await listActivityEvents(auth, { limit: ACTIVITY_PAGE_SIZE, filters: { includeTechnical: true } });
+    expect(first.rows).toHaveLength(ACTIVITY_PAGE_SIZE);
+
+    // Every later page through the action, appending until it reports the end.
+    const flat: string[] = first.rows.map((row) => row.id);
+    let cursor: string | null = first.nextCursor;
+    for (let page = 0; page < 5 && cursor; page += 1) {
+      const more = await loadActivityPage({}, cursor, "UTC");
+      if (!more.ok) throw new Error("the action rejected a cursor the page itself minted");
+      flat.push(...more.groups.flatMap((group) => group.items.map((item) => item.id)));
+      cursor = more.nextCursor;
+    }
+
+    // Equivalence: identical to a single unpaginated read of the same rows.
+    const whole = await listActivityEvents(auth, { limit: 200, filters: { includeTechnical: true } });
+    expect(flat).toEqual(whole.rows.map((row) => row.id));
+    expect(new Set(flat).size).toBe(flat.length);
+  });
+
+  it("degrades a forged or malformed cursor to a named failure", async () => {
+    getAuthContext.mockResolvedValue(await authFor(crypto.randomUUID()));
+    expect(await loadActivityPage({}, "not-a-cursor", "UTC")).toEqual({ ok: false, error: "invalid-cursor" });
   });
 });

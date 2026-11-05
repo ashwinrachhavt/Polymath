@@ -1,4 +1,6 @@
 import { and, eq, inArray } from "drizzle-orm";
+import { timeAgoShort } from "@/lib/time";
+
 import { getAgentPrincipalLabels, getRun } from "@/domains/agents/queries";
 import { getCapture } from "@/domains/capture/queries";
 import { getCompanyDetail, getContactDetail } from "@/domains/crm/queries";
@@ -52,6 +54,14 @@ export type { Destination };
 export type ActivityItem = {
   id: string;
   occurredAt: Date;
+  // The relative label is computed HERE, server-side, and shipped as data.
+  // The feed island is a client component; if it recomputed the label during
+  // hydration, a row seeded seconds ago renders "Just now" on the server and
+  // "1 minute ago" on the client — the textbook hydration mismatch, and a
+  // dead island (React regenerates the tree; handlers never attach). This
+  // also honors lib/time.ts's own contract: no live ticking, a reload is the
+  // refresh.
+  timeAgo: string;
   category: EventCategory;
   sentence: string;
   title: string | null;
@@ -259,6 +269,7 @@ export function buildActivityItem(row: ActivityEventRow, input: ItemInput): Acti
   return {
     id: row.id,
     occurredAt: row.createdAt,
+    timeAgo: timeAgoShort(row.createdAt),
     category: definition.category,
     sentence,
     title: conversion?.displaySnapshot?.title ?? liveTitle,

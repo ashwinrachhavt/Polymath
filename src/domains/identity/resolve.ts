@@ -25,6 +25,14 @@ export type AuthContext = {
   workspaceId: string;
   role: AuthRole;
   /**
+   * The Clerk user the session resolves from, present for human sessions and
+   * absent for machine clients (an api_client has no Clerk user). The shell
+   * reads that want the session's verified email key their cached Clerk
+   * Backend API lookup on it, so a per-request `currentUser()` call never
+   * sits on the layout's critical path.
+   */
+  clerkUserId?: string;
+  /**
    * Machine clients only: the API key's scopes. Undefined for humans, whose
    * role check is the whole guard — requireScope is a no-op for them.
    */
@@ -74,7 +82,7 @@ export const resolveAuthContext = cache(async (clerkUserId: string): Promise<Aut
   const requested = await readActiveWorkspaceCookie();
   const selected =
     memberships.find((m) => m.workspaceId === requested) ?? memberships.find((m) => m.isPersonal) ?? memberships[0];
-  return { userId: selected.userId, workspaceId: selected.workspaceId, role: selected.role };
+  return { userId: selected.userId, workspaceId: selected.workspaceId, role: selected.role, clerkUserId };
 });
 
 /**
@@ -99,7 +107,7 @@ async function provisionFirstSignIn(clerkUserId: string): Promise<AuthContext> {
     .limit(1);
 
   if (existing.length > 0) {
-    return { userId: user.id, workspaceId: existing[0].workspaceId, role: existing[0].role };
+    return { userId: user.id, workspaceId: existing[0].workspaceId, role: existing[0].role, clerkUserId };
   }
 
   // v1: suspended owner still resolves owner; revisit when memberships serve
@@ -119,7 +127,7 @@ async function provisionFirstSignIn(clerkUserId: string): Promise<AuthContext> {
   // only runs when no membership existed, so the hot resolve path never pays
   // for it.
   await seedTaxonomyCatalog(workspace.id);
-  return { userId: user.id, workspaceId: workspace.id, role: "owner" };
+  return { userId: user.id, workspaceId: workspace.id, role: "owner", clerkUserId };
 }
 
 /** One row of the workspace switcher (spec D2): an active membership's workspace. */
