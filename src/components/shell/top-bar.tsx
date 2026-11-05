@@ -31,13 +31,13 @@ export function TopBar({
   workspaceSwitcher?: WorkspaceSwitcherData | null;
 }) {
   return (
-    <header className="border-border bg-background/85 sticky top-0 z-20 flex h-12 shrink-0 items-center gap-2 border-b px-3 backdrop-blur max-[420px]:px-4">
+    <header className="border-border bg-background/85 sticky top-0 z-20 flex h-12 shrink-0 items-center gap-2 border-b px-3 backdrop-blur">
       <div className="flex min-w-0 items-center gap-2">
         <WorkspaceSwitcher data={workspaceSwitcher} />
         <PathBreadcrumb />
       </div>
 
-      <div className="ml-auto flex min-w-0 items-center gap-1">
+      <div className="ml-auto flex min-w-0 items-center gap-1 max-[420px]:gap-0.5">
         <CommandLayerMount />
         <NotificationsPanel feed={notifications} />
         <ModeToggle resolved={interfaceMode} />
