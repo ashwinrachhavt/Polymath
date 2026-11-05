@@ -1,6 +1,9 @@
 "use client";
 
 import { useMemo } from "react";
+
+import dynamic from "next/dynamic";
+import { isDiagramTool, diagramCardStates } from "@/domains/diagrams/card-state";
 import { Button } from "@/components/ui/button";
 import { CitedText } from "./cited-text";
 import { ChainOfThought, type ThoughtStep } from "./chain-of-thought";
@@ -14,6 +17,16 @@ import type { ChatConnection, ChatState } from "./use-chat-stream";
 import type { ChatCitation } from "@/domains/agents/stream-contract";
 import { toolLabel } from "@/domains/agents/tool-labels";
 import { collectRecords } from "./record-links";
+
+// The diagram card is a heavy island: ssr:false keeps its chrome out of the
+// server bundle, matching the canvas.tsx convention. The card itself carries
+// no heavy library — render.ts lazy-imports mermaid and the converter inside
+// its own functions — so a transcript without diagrams loads zero diagram
+// bytes.
+const DiagramCard = dynamic(() => import("./diagram-card"), {
+  ssr: false,
+  loading: () => <div className="panel h-24 rounded-xl" aria-hidden />,
+});
 
 /*
  * The chain of thought for the current turn: every reasoning block and tool
@@ -35,7 +48,9 @@ function thoughtSteps(blocks: ChatState["blocks"], tools: ChatState["tools"]): T
         text: block.text,
         status: block.done ? "complete" : "running",
       })),
-    ...tools.map((tool): ThoughtStep => ({
+    ...tools
+      .filter((tool) => !isDiagramTool(tool))
+      .map((tool): ThoughtStep => ({
       id: `tool:${tool.callId}`,
       kind: "tool",
       label: toolLabel(tool.label),
@@ -80,6 +95,7 @@ export function ChatTranscript({
   retryable,
   onRetry,
   onRunFailedRetry,
+  onRefineDiagram,
 }: {
   /** Agent working on the run, shown above the transcript. */
   agent?: AgentPanelData;
@@ -110,8 +126,15 @@ export function ChatTranscript({
   onRetry: () => void;
   /** Fresh-start retry for a terminal run; absent where it cannot apply. */
   onRunFailedRetry?: () => void;
+  /**
+   * Refine-focus for a diagram card: prefills the composer and focuses it.
+   * Absent on surfaces without a composer of their own — the card then omits
+   * its Refine action rather than promising a composer it cannot reach.
+   */
+  onRefineDiagram?: (prefill: string) => void;
 }) {
   const steps = useMemo(() => thoughtSteps(blocks, tools), [blocks, tools]);
+  const diagramCards = useMemo(() => diagramCardStates(tools), [tools]);
 
   return (
     <div className="mt-auto flex min-h-full flex-col justify-end gap-4">
@@ -161,8 +184,12 @@ export function ChatTranscript({
             </div>
           ))}
           {/* The working, after the turn's answer: reasoning and tool calls
-            as one block rather than a pill per step. */}
+            as one block rather than a pill per step. Diagram calls are
+            excluded from the pills — they render as cards instead. */}
           <ChainOfThought steps={steps} streaming={busy} />
+          {diagramCards.map(({ callId, card }) => (
+            <DiagramCard key={callId} card={card} onRefine={onRefineDiagram} />
+          ))}
         </div>
       )}
 
