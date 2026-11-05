@@ -17,6 +17,18 @@ const REVALIDATE_MS = 30_000;
 const DEBOUNCE_MS = 2_000;
 let liveCache: { at: number; session: LiveSession | null } | null = null;
 let lastFetchStartedAt = 0;
+// The in-flight fetch itself. StrictMode runs every effect twice in dev: the
+// first run's result is discarded (its cleanup cancelled it), so the second
+// run must be able to JOIN the fetch instead of being debounced out of one —
+// otherwise a fresh dev mount renders nothing until a later event re-triggers.
+let inflight: Promise<LiveSession | null> | null = null;
+
+async function fetchLiveSession(): Promise<LiveSession | null> {
+  const response = await fetch("/api/v1/focus/live", { cache: "no-store" });
+  if (!response.ok) throw new Error("focus read failed");
+  const body = (await response.json()) as { session: LiveSession | null };
+  return body.session;
+}
 
 /*
  * The shell's reminder that a focus session is live while you are somewhere
@@ -50,19 +62,29 @@ function LiveDock({ pathname }: { pathname: string }) {
         setRead({ path: pathname, session: liveCache.session, stale: false });
         return;
       }
-      if (now - lastFetchStartedAt < DEBOUNCE_MS) return;
-      lastFetchStartedAt = now;
+      if (!inflight) {
+        if (now - lastFetchStartedAt < DEBOUNCE_MS) return;
+        lastFetchStartedAt = now;
+        inflight = fetchLiveSession()
+          .then((session) => {
+            liveCache = { at: Date.now(), session };
+            return session;
+          })
+          .finally(() => {
+            inflight = null;
+          });
+      }
       try {
-        const response = await fetch("/api/v1/focus/live", { cache: "no-store" });
-        if (!response.ok) throw new Error("focus read failed");
-        const body = (await response.json()) as { session: LiveSession | null };
-        liveCache = { at: Date.now(), session: body.session };
-        if (!cancelled) setRead({ path: pathname, session: body.session, stale: false });
+        // Join any fetch another effect instance (or event) already started:
+        // everyone awaiting the same round trip reads the same result.
+        const session = await inflight;
+        if (cancelled) return;
+        setRead({ path: pathname, session, stale: false });
       } catch {
         // A failed read never claims the session ended, and never presents the last
         // known one as verified: it is kept, marked stale, until a read succeeds.
-        if (!cancelled)
-          setRead((prev) => (prev?.session ? { path: pathname, session: prev.session, stale: true } : prev));
+        if (cancelled) return;
+        setRead((prev) => (prev?.session ? { path: pathname, session: prev.session, stale: true } : prev));
       }
     }
     void load();
