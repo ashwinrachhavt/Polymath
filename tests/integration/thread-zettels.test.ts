@@ -52,7 +52,7 @@ vi.mock("@/integrations/embeddings/provider", async (importOriginal) => {
   };
 });
 
-type FakeCandidate = { title: string; claim: string; quote: string };
+type FakeCandidate = { title: string; content: string; quote: string };
 
 const FULL_QUOTE = "Rent is due on the first of each month.";
 /** Overlaps the first quote's region without containing it — the containment check cannot fire on it. */
@@ -60,7 +60,7 @@ const SHIFTED_WINDOW = "of each month. The deposit is protected until move out."
 
 /** The deterministic extractor the file's earlier tests rely on: the full sentence, every pass. */
 function deterministicExtract(text: string): FakeCandidate[] {
-  return text.includes(FULL_QUOTE) ? [{ title: "Rent timing", claim: FULL_QUOTE, quote: FULL_QUOTE }] : [];
+  return text.includes(FULL_QUOTE) ? [{ title: "Rent timing", content: FULL_QUOTE, quote: FULL_QUOTE }] : [];
 }
 
 /** What the mocked extractor does on the next pass; tests reassign between zettelize calls. */
@@ -192,13 +192,13 @@ suite("thread zettelization (real Postgres)", () => {
       return [
         {
           title: "Rent timing reworded",
-          claim: "The first of each month is when rent is due.",
+          content: "The first of each month is when rent is due.",
           quote: "Rent is due on the first",
         },
-        { title: "Rent day", claim: "Rent must be paid by the first day of the month.", quote: "of each month." },
+        { title: "Rent day", content: "Rent must be paid by the first day of the month.", quote: "of each month." },
         {
           title: "Rent timing",
-          claim: FULL_QUOTE,
+          content: FULL_QUOTE,
           quote: text.slice(windowStart, windowStart + SHIFTED_WINDOW.length),
         },
       ];
@@ -226,7 +226,7 @@ suite("thread zettelization (real Postgres)", () => {
     extractorBehavior.run = () => [
       {
         title: "Deposit protection",
-        claim: "The deposit stays protected until the tenant moves out.",
+        content: "The deposit stays protected until the tenant moves out.",
         quote: "The deposit is protected until move out.",
       },
     ];

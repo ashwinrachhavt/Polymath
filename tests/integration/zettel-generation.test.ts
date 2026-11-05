@@ -1,23 +1,25 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { auditEvents, outboxEvents } from "@/domains/audit/schema";
 import { captures } from "@/domains/capture/schema";
-import { documents, zettelProposals } from "@/domains/knowledge/schema";
+import { artifactVersions, artifacts, documents, zettelProposals } from "@/domains/knowledge/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
  * "Generate zettels" from the inbox (real Postgres): the request half takes a
  * receipt and queues one outbox row per open capture that carries text; the
- * work half files each capture as a library document and proposes zettels from
- * it. The invariants this suite exists to prove:
+ * work half files each capture as a library document and creates zettel cards
+ * from it. The invariants this suite exists to prove:
  *
  *   - one click is one queue entry per capture, and a replay queues nothing;
  *   - captures with no text (a file, an unfetched link) and captured rows that
  *     already became something are not sources;
- *   - the proposals are `proposed`, never accepted - agents propose, a person
- *     disposes - and a candidate whose quote is not verbatim is dropped;
- *   - a second pass over the same document proposes nothing new.
+ *   - the pass creates cards directly - the triggering click is the
+ *     permission, and no proposal row is written - and a candidate whose
+ *     quote is not verbatim is dropped;
+ *   - a second pass over the same document creates nothing new (the span is
+ *     already a card) and embeds the new cards best-effort after the commit.
  */
 
 const handle = makeTestDb();
@@ -51,8 +53,8 @@ const Q1 = "A zettel carries one idea, verbatim evidence";
 const Q2 = "Writing them daily turns reading into thinking.";
 
 // Generation keys unset for the whole suite: the pass under test must be the
-// only consumer, so the extraction pipeline's own proposal run cannot race the
-// assertions the way it did in the zettel-view suites.
+// only consumer, so the extraction pipeline's own creation run cannot race
+// the assertions the way it did in the zettel-view suites.
 beforeAll(() => {
   holder.db = handle?.db;
   vi.stubEnv("OPENROUTER_API_KEY", "");
@@ -65,7 +67,7 @@ afterAll(async () => {
   await handle?.client.end();
 });
 
-const extractor = (cands: Array<{ title: string; claim: string; quote: string }>): ZettelExtractor => ({
+const extractor = (cands: Array<{ title: string; content: string; quote?: string }>): ZettelExtractor => ({
   name: "fake@1",
   extract: async () => cands,
 });
@@ -173,19 +175,19 @@ suite("zettel generation from the inbox", () => {
     expect(rows).toHaveLength(1);
   });
 
-  it("files the capture, proposes from its text, and drops a quote that is not in it", async () => {
-    const auth = await seed("propose");
+  it("files the capture, creates the cards directly, and drops a quote that is not in it", async () => {
+    const auth = await seed("create");
     const capture = await addCapture(auth, { text: BODY });
 
     const result = await runZettelGenerationRequested(event(auth, capture.id), {
       auth: ownerAuthFor(auth.workspaceId),
       extractor: extractor([
-        { title: "One idea per zettel", claim: "A zettel holds exactly one idea.", quote: Q1 },
-        { title: "Invented", claim: "Never written.", quote: "this passage was never in the capture" },
-        { title: "Daily writing", claim: "Writing daily turns reading into thinking.", quote: Q2 },
+        { title: "One idea per zettel", content: "A zettel holds exactly one idea.", quote: Q1 },
+        { title: "Invented", content: "Never written.", quote: "this passage was never in the capture" },
+        { title: "Daily writing", content: "Writing daily turns reading into thinking.", quote: Q2 },
       ]),
     });
-    expect(result.proposed).toBe(2);
+    expect(result.created).toBe(2);
 
     const [row] = await holder.db!.select().from(captures).where(eq(captures.id, capture.id));
     expect(row.processingState).toBe("converted");
@@ -194,41 +196,50 @@ suite("zettel generation from the inbox", () => {
     const [doc] = await holder.db!.select().from(documents).where(eq(documents.id, row.convertedId!));
     expect(doc.workspaceId).toBe(auth.workspaceId);
 
-    const proposals = await holder
+    // The triggering click is the permission: the cards exist and no proposal
+    // row waits for a second decision anywhere in this workspace.
+    const cards = await holder
       .db!.select()
-      .from(zettelProposals)
-      .where(and(eq(zettelProposals.workspaceId, auth.workspaceId), eq(zettelProposals.documentId, doc.id)));
-    expect(proposals).toHaveLength(2);
-    // Agents propose; a person disposes. Nothing here is knowledge yet.
-    expect(proposals.every((p) => p.status === "proposed")).toBe(true);
-    expect(proposals.every((p) => p.artifactId === null && p.claimId === null)).toBe(true);
-    expect(proposals.map((p) => p.quote).sort()).toEqual([Q1, Q2].sort());
+      .from(artifacts)
+      .where(and(eq(artifacts.workspaceId, auth.workspaceId), eq(artifacts.kind, "zettel")));
+    expect(cards).toHaveLength(2);
+    expect(cards.every((c) => c.status === "reviewed" && c.currentVersionId !== null)).toBe(true);
+    expect(
+      await holder.db!.select().from(zettelProposals).where(eq(zettelProposals.workspaceId, auth.workspaceId)),
+    ).toHaveLength(0);
+
+    const versions = await holder
+      .db!.select()
+      .from(artifactVersions)
+      .where(inArray(artifactVersions.artifactId, cards.map((c) => c.id)));
+    expect(versions).toHaveLength(2);
+    expect(versions.filter((v) => v.plainText?.includes("A zettel holds exactly one idea.")).length).toBe(1);
 
     const audits = await holder
       .db!.select()
       .from(auditEvents)
-      .where(and(eq(auditEvents.workspaceId, auth.workspaceId), eq(auditEvents.action, "capture.zettels_proposed")));
+      .where(and(eq(auditEvents.workspaceId, auth.workspaceId), eq(auditEvents.action, "capture.zettels_created")));
     expect(audits).toHaveLength(1);
     expect(audits[0].subjectId).toBe(capture.id);
-    expect(audits[0].metadata).toMatchObject({ documentId: doc.id });
+    expect(audits[0].metadata).toMatchObject({ documentId: doc.id, skippedDuplicates: 0 });
   });
 
-  it("proposes nothing on a second pass over the same document", async () => {
+  it("creates nothing new on a second pass over the same document", async () => {
     const auth = await seed("second-pass");
     const capture = await addCapture(auth, { text: BODY });
     const deps = {
       auth: ownerAuthFor(auth.workspaceId),
-      extractor: extractor([{ title: "One idea", claim: "One idea.", quote: Q1 }]),
+      extractor: extractor([{ title: "One idea", content: "One idea.", quote: Q1 }]),
     };
 
-    expect((await runZettelGenerationRequested(event(auth, capture.id), deps)).proposed).toBe(1);
-    expect((await runZettelGenerationRequested(event(auth, capture.id), deps)).proposed).toBe(0);
+    expect((await runZettelGenerationRequested(event(auth, capture.id), deps)).created).toBe(1);
+    expect((await runZettelGenerationRequested(event(auth, capture.id), deps)).created).toBe(0);
 
-    const proposals = await holder
+    const cards = await holder
       .db!.select()
-      .from(zettelProposals)
-      .where(eq(zettelProposals.workspaceId, auth.workspaceId));
-    expect(proposals).toHaveLength(1);
+      .from(artifacts)
+      .where(and(eq(artifacts.workspaceId, auth.workspaceId), eq(artifacts.kind, "zettel")));
+    expect(cards).toHaveLength(1);
   });
 
   it("skips a capture that has no text and one that was archived", async () => {
@@ -237,11 +248,11 @@ suite("zettel generation from the inbox", () => {
     const archived = await addCapture(auth, { text: BODY, state: "discarded" });
     const deps = {
       auth: ownerAuthFor(auth.workspaceId),
-      extractor: extractor([{ title: "One idea", claim: "One idea.", quote: Q1 }]),
+      extractor: extractor([{ title: "One idea", content: "One idea.", quote: Q1 }]),
     };
 
-    expect((await runZettelGenerationRequested(event(auth, file.id), deps)).proposed).toBe(0);
-    expect((await runZettelGenerationRequested(event(auth, archived.id), deps)).proposed).toBe(0);
+    expect((await runZettelGenerationRequested(event(auth, file.id), deps)).created).toBe(0);
+    expect((await runZettelGenerationRequested(event(auth, archived.id), deps)).created).toBe(0);
 
     const sources = await listZettelSourceCaptures(auth, { ids: [file.id, archived.id] });
     expect(sources).toEqual([]);

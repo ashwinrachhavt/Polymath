@@ -35,7 +35,7 @@ import type { EmbeddingProvider } from "@/integrations/embeddings/provider";
 const TEXT = "The tenant pays monthly rent of twelve hundred dollars. The landlord keeps the security deposit until move out. Pets are not allowed without written consent.";
 const zettels = (): ZettelExtractor => ({
   name: "fake@1",
-  extract: async () => [{ title: "Monthly rent", claim: "Rent is $1,200 a month.", quote: "The tenant pays monthly rent of twelve hundred dollars." }],
+  extract: async () => [{ title: "Monthly rent", content: "Rent is $1,200 a month.", quote: "The tenant pays monthly rent of twelve hundred dollars." }],
 });
 const vec = (d: number) => { const v = new Array(1536).fill(0); v[d] = 1; return v; };
 const embedding: EmbeddingProvider = { model: "fake-embed@1", embed: async (values) => values.map(() => vec(7)) };

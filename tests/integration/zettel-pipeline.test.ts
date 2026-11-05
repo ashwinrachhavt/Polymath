@@ -98,7 +98,7 @@ suite("the zettelization pipeline (real Postgres)", () => {
     const extractor = {
       name: "fake",
       extract: async (section: string) =>
-        section.includes("Section 1") ? [{ title: "Reach", claim: "A claim", quote: sectionTwoPassage }] : [],
+        section.includes("Section 1") ? [{ title: "Reach", content: "A claim", quote: sectionTwoPassage }] : [],
     };
     const { proposals } = await proposeZettels(auth, { sourceArtifactId: artifactId, extractor });
     expect(proposals).toEqual([]);
@@ -148,8 +148,8 @@ suite("the zettelization pipeline (real Postgres)", () => {
     const extractor = {
       name: "fake",
       extract: async () => [
-        { title: "Real", claim: "A claim", quote: verbatimPassage },
-        { title: "Invented", claim: "A claim", quote: "this sentence is not in the document anywhere at all" },
+        { title: "Real", content: "A claim", quote: verbatimPassage },
+        { title: "Invented", content: "A claim", quote: "this sentence is not in the document anywhere at all" },
       ],
     };
     const { proposeZettels } = await import("@/domains/knowledge/zettels");

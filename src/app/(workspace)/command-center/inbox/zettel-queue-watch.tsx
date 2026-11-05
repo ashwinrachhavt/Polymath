@@ -7,12 +7,12 @@ import { zettelQueueStatusAction } from "./zettel-actions";
 const GIVE_UP_MS = 2 * 60_000;
 
 /**
- * The live half of a zettelize verb's outcome: "Proposing ideas…" while
- * outbox rows are owed, then the in-review count once they land. It renders
- * nothing until the first read answers, and stops itself when the queue is
- * clear - a status read, never a second queue. The click's own receipt (the
- * queued/skipped summary and the review link) is the surface's static line
- * above it.
+ * The live half of a zettelize verb's outcome: "Creating zettels…" while
+ * outbox rows are owed, then quiet once the cards have landed in the Ideas
+ * page. It renders nothing until the first read answers, and stops itself
+ * when the queue is clear - a status read, never a second queue. The click's
+ * own receipt (the queued/skipped summary and the Ideas link) is the
+ * surface's static line above it.
  */
 export function ZettelQueueWatch() {
   const { states } = useWorkPoll({
@@ -20,16 +20,12 @@ export function ZettelQueueWatch() {
     read: async () => {
       const status = await zettelQueueStatusAction();
       if (!status.ok) throw new Error(status.message);
-      const state: WorkState = {
-        phase: status.phase,
-        label: status.label,
-        ...(status.reviewing > 0 ? { count: { reviewing: status.reviewing } } : {}),
-      };
+      const state: WorkState = { phase: status.phase, label: status.label };
       return { "zettel-queue": state };
     },
     intervalMs: 2_000,
     giveUpMs: GIVE_UP_MS,
-    giveUpLabel: "Still proposing in the background - the Ideas queue will catch up.",
+    giveUpLabel: "Still creating zettels in the background - they will appear in Ideas.",
   });
 
   return <WorkStatus state={states["zettel-queue"] ?? null} />;

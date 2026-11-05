@@ -2,11 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /*
  * The inbox's "Generate zettels" boundary. A click, a malformed click, and a
- * double click all arrive here; the queue and the review count are the domain's
- * job, so these tests pin what the action itself promises: validation before
- * any write, an honest sentence when there is nothing to read, the replay
- * answer, and a failure that surfaces as a message the button can render
- * rather than a thrown stack that blanks the pane.
+ * double click all arrive here; the queue is the domain's job, so these tests
+ * pin what the action itself promises: validation before any write, an honest
+ * sentence when there is nothing to read, the replay answer, and a failure
+ * that surfaces as a message the button can render rather than a thrown stack
+ * that blanks the pane.
  */
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn(), updateTag: vi.fn() }));
@@ -17,8 +17,10 @@ vi.mock("@/lib/auth", () => ({
 const domain = vi.hoisted(() => ({
   MAX_ZETTEL_SOURCE_CAPTURES: 50,
   countZettelSourceCaptures: vi.fn(),
-  countPendingZettelProposals: vi.fn(),
+  countQueuedZettelPasses: vi.fn(),
   requestZettelGeneration: vi.fn(),
+  zettelQueueLabel: vi.fn(() => "Creating zettels…"),
+  zettelQueuePhase: vi.fn(() => "working"),
 }));
 vi.mock("@/domains/capture/zettel-generation", () => domain);
 
@@ -38,7 +40,6 @@ const ok = (queued: number, replayed = false) => ({
 beforeEach(() => {
   vi.clearAllMocks();
   domain.countZettelSourceCaptures.mockResolvedValue(1);
-  domain.countPendingZettelProposals.mockResolvedValue(4);
 });
 
 describe("generateZettelsAction", () => {
@@ -65,10 +66,10 @@ describe("generateZettelsAction", () => {
     expect(domain.requestZettelGeneration).not.toHaveBeenCalled();
   });
 
-  it("queues over the whole open inbox and reports the review depth", async () => {
+  it("queues over the whole open inbox and reports what it queued", async () => {
     domain.requestZettelGeneration.mockResolvedValue(ok(3));
     const result = await generateZettelsAction({ idempotencyKey: KEY });
-    expect(result).toEqual({ ok: true, queued: 3, skipped: 0, awaitingReview: 4, replayed: false });
+    expect(result).toEqual({ ok: true, queued: 3, skipped: 0, replayed: false });
     expect(domain.requestZettelGeneration).toHaveBeenCalledWith(
       expect.objectContaining({ workspaceId: "w1" }),
       { idempotencyKey: KEY },
