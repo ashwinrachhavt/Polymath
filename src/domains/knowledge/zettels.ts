@@ -1,8 +1,6 @@
-import { and, asc, count, desc, eq, ilike, inArray, isNull, ne, or, sql } from "drizzle-orm";
-import { alias } from "drizzle-orm/pg-core";
+import { and, asc, count, desc, eq, ilike, isNull, ne, or, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { recordAudit } from "@/domains/audit/record";
-import { auditEvents } from "@/domains/audit/schema";
 import { db } from "@/lib/db";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { escapeLike } from "@/lib/list-params";
@@ -28,7 +26,6 @@ import {
   documentExtractions,
   documents,
   sources,
-  zettelProposals,
 } from "./schema";
 
 /*
@@ -41,11 +38,6 @@ import {
  * card's content is the extractor's own words, of whatever length the idea
  * needs; the verbatim quote is the evidence block, located in the source
  * before anything is written.
- *
- * The proposal path (`proposeZettels`) remains for the surfaces not yet
- * repointed: it writes `zettel_proposals` rows exactly as before, and its
- * review flow accepts through `acceptZettel`, which now delegates the card
- * write to the same core `createZettelFromSource` uses.
  *
  * The extractor is injected. Whatever it returns is checked here against the
  * source: a quote that is not a verbatim passage of the text is dropped, so a
@@ -115,26 +107,6 @@ async function findDuplicateIdea(
 /** Same shape as obligationDedupeKey: kind, source, then what makes this one distinct (its span). */
 export function zettelDedupeKey(prefix: "doc" | "artifact", sourceId: string, spanStart: number, spanEnd: number) {
   return `zettel:${prefix}:${sourceId}:${spanStart}-${spanEnd}`;
-}
-
-/** This source's own earlier proposals, pending and accepted: the repeat surface of a re-run pass. */
-async function listEarlierProposals(
-  auth: AuthContext,
-  origin: { path: "doc" | "artifact"; id: string },
-  conn: Pick<TxDrizzle, "select">,
-) {
-  return conn
-    .select({ claim: zettelProposals.claim, quote: zettelProposals.quote })
-    .from(zettelProposals)
-    .where(
-      and(
-        eq(zettelProposals.workspaceId, auth.workspaceId),
-        origin.path === "doc"
-          ? eq(zettelProposals.documentId, origin.id)
-          : eq(zettelProposals.sourceArtifactId, origin.id),
-        inArray(zettelProposals.status, ["proposed", "accepted"]),
-      ),
-    );
 }
 
 /**
@@ -304,19 +276,6 @@ function zettelOrigin(source: ResolvedZettelSource): { path: "doc" | "artifact";
   throw new Error("resolved source names neither a document nor an artifact");
 }
 
-/** What one proposal pass produced: the rows, and an honest read report. */
-export type ZettelProposalResult = {
-  proposals: Array<Awaited<ReturnType<typeof insertProposal>>>;
-  readChars: number;
-  unreadChars: number;
-  unreadSections: number;
-};
-
-/** A proposal needs verbatim evidence: the quote plus the span it locates. Quoteless candidates are direct-create only. */
-function hasSpan(z: SectionCandidate): z is SectionCandidate & { quote: string; start: number; end: number } {
-  return typeof z.quote === "string" && z.quote.length > 0 && z.start !== undefined && z.end !== undefined;
-}
-
 /** What the shared extraction head resolved and produced, before any dedupe or write. */
 type ZettelCandidatePass = {
   source: ResolvedZettelSource;
@@ -406,147 +365,11 @@ async function withEmbeddings(rows: { claim: string; quote?: string | null }[]):
   }
 }
 
-export async function proposeZettels(auth: AuthContext, input: ZettelSourceInput): Promise<ZettelProposalResult> {
-  const conn = input.tx ?? db;
-  const pass = await zettelCandidatesForSource(auth, input);
-  const fromDocument = pass.origin.path === "doc";
-
-  // Re-zettelize dedup for the artifact path (a conversation mined twice):
-  // the source's own earlier proposals and the cards it already produced are
-  // judged before anything is inserted. The (source_artifact_id, dedupe_key)
-  // span index only catches an identical span, and a live extractor re-chunks
-  // a region between passes — so the repeat is judged on content/quote text
-  // instead. Rejected rows are deliberately out: a standing "no" is a review
-  // decision, not a dedupe state.
-  const earlier: EarlierIdea[] = [];
-  if (pass.origin.path === "artifact") {
-    earlier.push(
-      ...(await withEmbeddings([
-        ...(await listEarlierProposals(auth, pass.origin, conn)),
-        ...(await listEarlierCards(auth, pass.origin, conn)),
-      ])),
-    );
-  }
-
-  const proposals = [];
-  let dedupDegraded = false;
-  for (const z of pass.merged.slice(0, pass.cap)) {
-    if (!hasSpan(z)) continue; // a proposal carries its verbatim evidence or nothing at all
-    if (await isRepeatProposal(z, earlier)) continue;
-    // Corpus-aware dedup flags twins; it decides nothing. Without an embedding
-    // provider the pass degrades to unflagged proposals rather than failing —
-    // a missing key must not block reading a document.
-    let duplicateOfArtifactId: string | null = null;
-    if (!dedupDegraded) {
-      try {
-        const hit = await findDuplicateIdea(auth, z.content, { conn });
-        duplicateOfArtifactId = hit?.artifactId ?? null;
-      } catch (cause) {
-        if (!(cause instanceof EmbeddingUnconfiguredError)) throw cause;
-        dedupDegraded = true;
-        console.warn("[zettels] corpus dedup skipped: no embedding provider configured");
-      }
-    }
-    const row = await insertProposal(conn, {
-      auth,
-      fromDocument,
-      origin: pass.origin,
-      extractionId: pass.source.extractionId,
-      candidate: z,
-      proposer: pass.extractor.name,
-      duplicateOfArtifactId,
-    });
-    if (row) proposals.push(row);
-  }
-  return { proposals, readChars: pass.readChars, unreadChars: pass.unreadChars, unreadSections: pass.unreadSections };
-}
-
-async function insertProposal(
-  conn: Pick<TxDrizzle, "insert">,
-  params: {
-    auth: AuthContext;
-    fromDocument: boolean;
-    origin: { path: "doc" | "artifact"; id: string };
-    extractionId: string | null;
-    candidate: SectionCandidate & { quote: string; start: number; end: number };
-    proposer: string;
-    duplicateOfArtifactId: string | null;
-  },
-) {
-  const { auth, fromDocument, origin, extractionId, candidate: z, proposer, duplicateOfArtifactId } = params;
-  const [row] = await conn
-    .insert(zettelProposals)
-    .values({
-      workspaceId: auth.workspaceId,
-      ...(fromDocument ? { documentId: origin.id, extractionId } : { sourceArtifactId: origin.id }),
-      title: z.title,
-      claim: z.content,
-      quote: z.quote,
-      spanStart: z.start,
-      spanEnd: z.end,
-      dedupeKey: zettelDedupeKey(origin.path, origin.id, z.start, z.end),
-      proposer,
-      duplicateOfArtifactId,
-      createdBy: auth.userId,
-      updatedBy: auth.userId,
-    })
-    .onConflictDoNothing(
-      fromDocument
-        ? { target: [zettelProposals.documentId, zettelProposals.dedupeKey] }
-        : {
-            target: [zettelProposals.sourceArtifactId, zettelProposals.dedupeKey],
-            where: sql`source_artifact_id is not null`,
-          },
-    )
-    .returning();
-  return row;
-}
-
-/** Proposals for one document with their duplicate flags and the pass's read report. */
-export async function listZettelProposals(auth: AuthContext, documentId: string) {
-  const flagged = alias(artifacts, "flagged_idea");
-  const proposals = await db
-    .select({
-      proposal: zettelProposals,
-      duplicateOf: { id: flagged.id, title: flagged.title },
-    })
-    .from(zettelProposals)
-    .leftJoin(flagged, eq(flagged.id, zettelProposals.duplicateOfArtifactId))
-    .where(and(eq(zettelProposals.documentId, documentId), eq(zettelProposals.workspaceId, auth.workspaceId)))
-    .orderBy(zettelProposals.spanStart);
-  // The read report travels with the audit row the pass wrote, so the review
-  // page can say what was not read even after the proposal rows are settled.
-  const [audit] = await db
-    .select({ metadata: auditEvents.metadata })
-    .from(auditEvents)
-    .where(
-      and(
-        eq(auditEvents.workspaceId, auth.workspaceId),
-        // Direct passes write capture.zettels_created; proposal-era rows in
-        // existing workspaces carry capture.zettels_proposed. Read both.
-        inArray(auditEvents.action, ["capture.zettels_created", "capture.zettels_proposed"]),
-        sql`${auditEvents.metadata}->>'documentId' = ${documentId}`,
-      ),
-    )
-    .orderBy(desc(auditEvents.createdAt))
-    .limit(1);
-  const counts = (audit?.metadata ?? {}) as { readChars?: number; unreadChars?: number; unreadSections?: number };
-  return {
-    proposals: proposals.map((row) => ({ ...row.proposal, duplicateOf: row.duplicateOf?.id ? row.duplicateOf : null })),
-    readChars: counts.readChars ?? 0,
-    unreadChars: counts.unreadChars ?? 0,
-    unreadSections: counts.unreadSections ?? 0,
-  };
-}
-
 /*
  * Direct creation core (the authorship-is-acceptance pattern
  * saveMessageAsIdea established): the triggering action - a Zettelize click,
  * an enrichment stage, a tool call - is the permission, so the card is
- * written now and no proposal row waits for a second click. This is the old
- * acceptZettel creation core with the proposal flip and back-update removed;
- * the review flow still reaches it through that wrapper until its last
- * surface is repointed.
+ * written now and no proposal row waits for a second click.
  */
 
 type ZettelCardSource = { kind: "document"; documentId: string } | { kind: "artifact"; artifactId: string };
@@ -565,7 +388,7 @@ export type ZettelCardCreateInput = {
   extractionId?: string;
   /** The extractor's name - provenance, the same pattern proposals keep. */
   proposer: string;
-  /** Merged into the zettel.created audit row (a proposal id, for instance). */
+  /** Merged into the zettel.created audit row. */
   auditMetadata?: Record<string, unknown>;
 };
 
@@ -584,7 +407,6 @@ export async function createZettelFromSource(
   auth: AuthContext,
   input: ZettelCardCreateInput,
   tx?: TxDrizzle,
-  options: { dedupe?: boolean } = {},
 ): Promise<ZettelCardCreateResult> {
   const create = async (conn: TxDrizzle): Promise<ZettelCardCreateResult> => {
     const origin =
@@ -599,7 +421,7 @@ export async function createZettelFromSource(
     // Two create-time gates stand where the review queue used to. First:
     // the same span of the same source is already a card - a second click
     // lands on it instead of minting a twin.
-    if (options.dedupe !== false && dedupeKey) {
+    if (dedupeKey) {
       const [existing] = await conn
         .select({ id: artifacts.id })
         .from(artifacts)
@@ -619,14 +441,12 @@ export async function createZettelFromSource(
     // duplicate is pure noise. Without an embedding provider the gate
     // degrades to unfiltered creation rather than failing - a missing key
     // must not block reading a document.
-    if (options.dedupe !== false) {
-      try {
-        const hit = await findDuplicateIdea(auth, content, { conn });
-        if (hit) return { skipped: "duplicate" };
-      } catch (cause) {
-        if (!(cause instanceof EmbeddingUnconfiguredError)) throw cause;
-        console.warn("[zettels] create-time dedup skipped: no embedding provider configured");
-      }
+    try {
+      const hit = await findDuplicateIdea(auth, content, { conn });
+      if (hit) return { skipped: "duplicate" };
+    } catch (cause) {
+      if (!(cause instanceof EmbeddingUnconfiguredError)) throw cause;
+      console.warn("[zettels] create-time dedup skipped: no embedding provider configured");
     }
 
     /*
@@ -883,26 +703,19 @@ export type ZettelCardsResult = {
 
 /**
  * The work half of direct zettelization: one resolved source in, cards out -
- * no proposal rows, no review step. Shares the extraction head with
- * proposeZettels (the same sections, cap, locate and merge seams) and ends
- * each surviving candidate in createZettelFromSource, where the span and
- * near-duplicate gates live. Pass `tx` to run the whole pass in one
- * transaction - then the caller owns the commit and with it the post-commit
- * embeds.
+ * no proposal rows, no review step. One extraction head (sections, cap,
+ * locate and merge seams) ends each surviving candidate in
+ * createZettelFromSource, where the span and near-duplicate gates live. Pass
+ * `tx` to run the whole pass in one transaction - then the caller owns the
+ * commit and with it the post-commit embeds.
  */
 export async function createZettelsFromSource(auth: AuthContext, input: ZettelSourceInput): Promise<ZettelCardsResult> {
   const conn = input.tx ?? db;
   const pass = await zettelCandidatesForSource(auth, input);
 
-  // Re-zettelize dedup, both source kinds: this source's own earlier
-  // proposals (an enrichment pass may still propose for the same text) and
-  // the cards it already produced are judged before anything is created.
-  // Rejected rows are deliberately out: a standing "no" is a review
-  // decision, not a dedupe state.
-  const earlier = await withEmbeddings([
-    ...(await listEarlierProposals(auth, pass.origin, conn)),
-    ...(await listEarlierCards(auth, pass.origin, conn)),
-  ]);
+  // Re-zettelize dedup, both source kinds: the cards this source already
+  // produced are judged before anything new is created.
+  const earlier = await withEmbeddings(await listEarlierCards(auth, pass.origin, conn));
 
   const created: Array<{ artifactId: string; title: string }> = [];
   let skippedRepeats = 0;
@@ -945,71 +758,6 @@ export async function createZettelsFromSource(auth: AuthContext, input: ZettelSo
     unreadChars: pass.unreadChars,
     unreadSections: pass.unreadSections,
   };
-}
-
-/**
- * Accept: the review flow's decision on a proposal (the surfaces not yet
- * repointed keep this alive). The version-checked flip is the idempotency
- * guard - a second accept matches nothing - and the card itself is written
- * by createZettelFromSource, the same core a direct click uses, with the
- * create-time dedupe gates off: the flip already decided, and a duplicate
- * flag never does. The proposal back-update (concept/claim/artifact ids)
- * stays so the proposal row keeps its provenance pointers.
- */
-export async function acceptZettel(auth: AuthContext, input: { proposalId: string }) {
-  return withTransaction(async (tx) => {
-    const [proposal] = await tx
-      .update(zettelProposals)
-      .set({
-        status: "accepted",
-        decidedAt: new Date(),
-        decidedBy: auth.userId,
-        updatedAt: new Date(),
-        version: sql`${zettelProposals.version} + 1`,
-      })
-      .where(
-        and(
-          eq(zettelProposals.id, input.proposalId),
-          eq(zettelProposals.workspaceId, auth.workspaceId),
-          eq(zettelProposals.status, "proposed"),
-        ),
-      )
-      .returning();
-    if (!proposal) throw new Error("zettel not found or already decided");
-    if (!proposal.documentId && !proposal.sourceArtifactId) throw new Error("proposal names no source");
-    const created = await createZettelFromSource(
-      auth,
-      {
-        source: proposal.documentId
-          ? { kind: "document", documentId: proposal.documentId }
-          : { kind: "artifact", artifactId: proposal.sourceArtifactId! },
-        title: proposal.title,
-        content: proposal.claim,
-        quote: proposal.quote,
-        span: { start: proposal.spanStart, end: proposal.spanEnd },
-        extractionId: proposal.extractionId ?? undefined,
-        proposer: proposal.proposer ?? "review",
-        auditMetadata: { proposalId: proposal.id },
-      },
-      tx,
-      { dedupe: false },
-    );
-    if (!("artifactId" in created)) throw new Error("an accepted proposal cannot be a duplicate");
-    await tx
-      .update(zettelProposals)
-      .set({ conceptId: created.conceptId, claimId: created.claimId, artifactId: created.artifactId })
-      .where(eq(zettelProposals.id, proposal.id));
-    return { conceptId: created.conceptId, claimId: created.claimId, artifactId: created.artifactId };
-  }).then(async (value) => {
-    // The new card joins the semantic graph best-effort; a failed or
-    // unconfigured embedding pass never blocks an accept.
-    try {
-      await embedArtifact(auth, { artifactId: value.artifactId });
-    } catch (cause) {
-      console.error(`embedArtifact after accept failed: ${cause instanceof Error ? cause.message : String(cause)}`);
-    }
-    return value;
-  });
 }
 
 export type ZettelCardItem = {
@@ -1117,41 +865,3 @@ export async function pageZettelCards(
   });
 }
 
-/** Reject: records the decision and nothing else. No concept, claim or evidence row is written. */
-export async function rejectZettel(auth: AuthContext, input: { proposalId: string }) {
-  // The decision and its audit row commit together, like every other write:
-  // a rejected proposal with no record is a decision that never happened.
-  return withTransaction(async (tx) => {
-    const [row] = await tx
-      .update(zettelProposals)
-      .set({
-        status: "rejected",
-        decidedAt: new Date(),
-        decidedBy: auth.userId,
-        updatedAt: new Date(),
-        version: sql`${zettelProposals.version} + 1`,
-      })
-      .where(
-        and(
-          eq(zettelProposals.id, input.proposalId),
-          eq(zettelProposals.workspaceId, auth.workspaceId),
-          eq(zettelProposals.status, "proposed"),
-        ),
-      )
-      .returning();
-    if (!row) throw new Error("zettel not found or already decided");
-    await recordAudit(
-      auth,
-      {
-        action: "zettel.rejected",
-        subjectType: "zettel_proposal",
-        subjectId: row.id,
-        // No proposal wording here: the rejected title is model output the
-        // owner declined, not workspace-shared content.
-        summary: "Rejected zettel proposal",
-      },
-      tx,
-    );
-    return row;
-  });
-}

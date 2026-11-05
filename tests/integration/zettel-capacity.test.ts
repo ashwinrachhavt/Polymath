@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
- * The size-derived proposal cap (capForSize) at its four seams: the extractor
+ * The size-derived card cap (capForSize) at its four seams: the extractor
  * prompt asks for at most N, the response schema enforces N, the merge keeps
  * at most N, and the final slice cuts at N — one cap per pass, computed once
  * from the resolved source text.
@@ -90,12 +90,12 @@ async function seedTextArtifact(label: string, text: string) {
 
 const sentence = (i: number) => `Claim sentence number ${i} stands here in its own words.`;
 
-suite("the size-derived proposal cap (real Postgres)", () => {
+suite("the size-derived card cap (real Postgres)", () => {
   it("caps a small single-section source at 2 (the final-slice seam), computed once", async () => {
     const text = Array.from({ length: 6 }, (_, i) => sentence(i)).join(" ");
     expect(text.length).toBeLessThanOrEqual(2_000);
     const { auth, artifactId } = await seedTextArtifact("small", text);
-    const { proposeZettels } = await import("@/domains/knowledge/zettels");
+    const { createZettelsFromSource } = await import("@/domains/knowledge/zettels");
 
     const seen: Array<{ chars: number; max: number | undefined }> = [];
     const extractor = {
@@ -105,8 +105,8 @@ suite("the size-derived proposal cap (real Postgres)", () => {
         return Array.from({ length: 6 }, (_, i) => ({ title: `T${i}`, content: `Claim ${i}`, quote: sentence(i) }));
       },
     };
-    const { proposals } = await proposeZettels(auth, { sourceArtifactId: artifactId, extractor });
-    expect(proposals).toHaveLength(2);
+    const { created } = await createZettelsFromSource(auth, { sourceArtifactId: artifactId, extractor });
+    expect(created).toHaveLength(2);
     // One cap for the whole pass: the single section call carried it.
     expect(seen).toEqual([{ chars: text.length, max: 2 }]);
   });
@@ -117,7 +117,7 @@ suite("the size-derived proposal cap (real Postgres)", () => {
     expect(text.length).toBeGreaterThan(2_000);
     expect(text.length).toBeLessThanOrEqual(12_000);
     const { auth, artifactId } = await seedTextArtifact("medium-real", text);
-    const { proposeZettels } = await import("@/domains/knowledge/zettels");
+    const { createZettelsFromSource } = await import("@/domains/knowledge/zettels");
 
     const systems: string[] = [];
     gen.generate = async (input) => {
@@ -131,7 +131,7 @@ suite("the size-derived proposal cap (real Postgres)", () => {
     // The real extractor (no input.extractor): 8 candidates against a cap of 5
     // must fail the parse — the cap is enforced, not asked — and the pass
     // throws so the dispatcher retries.
-    await expect(proposeZettels(auth, { sourceArtifactId: artifactId })).rejects.toThrow("unreadable");
+    await expect(createZettelsFromSource(auth, { sourceArtifactId: artifactId })).rejects.toThrow("unreadable");
     expect(systems[0]).toContain("Return at most 5");
   });
 
@@ -141,7 +141,7 @@ suite("the size-derived proposal cap (real Postgres)", () => {
     expect(text.length).toBeGreaterThan(2_000);
     expect(text.length).toBeLessThanOrEqual(12_000);
     const { auth, artifactId } = await seedTextArtifact("medium-chunked", text);
-    const { proposeZettels } = await import("@/domains/knowledge/zettels");
+    const { createZettelsFromSource } = await import("@/domains/knowledge/zettels");
 
     const seenMax: Array<number | undefined> = [];
     const extractor = {
@@ -164,8 +164,8 @@ suite("the size-derived proposal cap (real Postgres)", () => {
       if (input.system) mergeSystems.push(input.system);
       return { text: JSON.stringify({ keep: [0, 1, 2, 3, 4, 5, 6, 7] }) };
     };
-    const { proposals } = await proposeZettels(auth, { sourceArtifactId: artifactId, extractor });
-    expect(proposals).toHaveLength(5);
+    const { created } = await createZettelsFromSource(auth, { sourceArtifactId: artifactId, extractor });
+    expect(created).toHaveLength(5);
     // The cap was computed once from the resolved source text: both section
     // calls carried the same 5.
     expect(seenMax).toEqual([5, 5]);

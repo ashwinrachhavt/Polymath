@@ -7,17 +7,17 @@ import {
   artifacts,
   artifactVersions,
   claimEvidence,
+  claims,
   documents,
   files,
-  zettelProposals,
 } from "@/domains/knowledge/schema";
 import type { ExtractionResult } from "@/integrations/extraction/provider";
 import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
 
 /*
- * ASH-174 / ASH-184: accepting a zettel proposal creates the zettel card as a
- * first-class artifact (kind "zettel") with a `source` edge back to its
- * document, so a source decomposes into cards that live in the same link
+ * ASH-174 / ASH-184: creating a zettel writes the card as a first-class
+ * artifact (kind "zettel") with a `source` edge back to its document, so a
+ * source decomposes into cards that live in the same link
  * graph as user-written notes.
  */
 
@@ -49,7 +49,7 @@ import {
   listNoteSources,
   autosaveNoteDraft,
 } from "@/domains/knowledge/notes";
-import { acceptZettel, proposeZettels } from "@/domains/knowledge/zettels";
+import { createZettelsFromSource } from "@/domains/knowledge/zettels";
 import type { ZettelExtractor } from "@/integrations/zettels/extractor";
 
 const TEXT =
@@ -118,23 +118,21 @@ async function seed(auth: { workspaceId: string; userId: string }) {
   return doc;
 }
 
-async function acceptOne(auth: { workspaceId: string; userId: string; role: "owner" }, docId: string) {
-  const {
-    proposals: [proposal],
-  } = await proposeZettels(auth, {
+async function createOne(auth: { workspaceId: string; userId: string; role: "owner" }, docId: string) {
+  const { created } = await createZettelsFromSource(auth, {
     documentId: docId,
     extractor: extractor([{ title: "Monthly rent", content: "Rent is $1,200 a month.", quote: Q1 }]),
   });
-  return { proposal, result: await acceptZettel(auth, { proposalId: proposal.id }) };
+  return { artifactId: created[0]!.artifactId };
 }
 
 suite("zettel cards (real Postgres)", () => {
-  it("accept creates a zettel artifact with a versioned card body", async () => {
+  it("creating a zettel writes a versioned card body with claim evidence", async () => {
     const auth = await workspace();
     const doc = await seed(auth);
-    const { proposal, result } = await acceptOne(auth, doc.id);
+    const { artifactId } = await createOne(auth, doc.id);
 
-    const [card] = await holder.db!.select().from(artifacts).where(eq(artifacts.id, result.artifactId));
+    const [card] = await holder.db!.select().from(artifacts).where(eq(artifacts.id, artifactId));
     expect(card.kind).toBe("zettel");
     expect(card.title).toBe("Monthly rent");
     expect(card.workspaceId).toBe(auth.workspaceId);
@@ -146,29 +144,27 @@ suite("zettel cards (real Postgres)", () => {
     expect(version.plainText).toContain("Rent is $1,200 a month.");
     expect(version.plainText).toContain(Q1);
 
-    // The proposal records the card it became, alongside the claim evidence.
-    const [row] = await holder.db!.select().from(zettelProposals).where(eq(zettelProposals.id, proposal.id));
-    expect(row.artifactId).toBe(card.id);
-    expect(row.conceptId).not.toBeNull();
-    expect(row.claimId).not.toBeNull();
-    const ev = await holder.db!.select().from(claimEvidence).where(eq(claimEvidence.claimId, row.claimId!));
+    // Provenance rows land with the card: the claim carries evidence at the
+    // exact verbatim span.
+    const [claim] = await holder.db!.select().from(claims).where(eq(claims.artifactId, card.id));
+    const ev = await holder.db!.select().from(claimEvidence).where(eq(claimEvidence.claimId, claim.id));
     expect(ev).toHaveLength(1);
   });
 
   it("the card points at its source document with a typed, contextual edge", async () => {
     const auth = await workspace();
     const doc = await seed(auth);
-    const { result } = await acceptOne(auth, doc.id);
+    const { artifactId } = await createOne(auth, doc.id);
 
     const [edge] = await holder
       .db!.select()
       .from(artifactLinks)
-      .where(and(eq(artifactLinks.artifactId, result.artifactId), eq(artifactLinks.linkType, "source")));
+      .where(and(eq(artifactLinks.artifactId, artifactId), eq(artifactLinks.linkType, "source")));
     expect(edge.targetType).toBe("document");
     expect(edge.targetId).toBe(doc.id);
     expect(edge.context).toBe(Q1);
 
-    const sourcesList = await listNoteSources(auth, result.artifactId);
+    const sourcesList = await listNoteSources(auth, artifactId);
     expect(sourcesList).toHaveLength(1);
     expect(sourcesList[0].title).toBe("lease");
   });
@@ -176,7 +172,7 @@ suite("zettel cards (real Postgres)", () => {
   it("a note can wiki-link to a zettel and the backlink reads both ways", async () => {
     const auth = await workspace();
     const doc = await seed(auth);
-    const { result } = await acceptOne(auth, doc.id);
+    const { artifactId } = await createOne(auth, doc.id);
 
     const note = await createNote(auth, { title: "Lease thoughts", content: { type: "doc", content: [] } });
     const text = "The [[Monthly rent]] point matters for cash flow.";
@@ -189,12 +185,12 @@ suite("zettel cards (real Postgres)", () => {
 
     const outlinks = await listNoteOutlinks(auth, note.id);
     expect(outlinks).toHaveLength(1);
-    expect(outlinks[0].id).toBe(result.artifactId);
+    expect(outlinks[0].id).toBe(artifactId);
     expect(outlinks[0].kind).toBe("zettel");
     expect(outlinks[0].linkType).toBe("reference");
     expect(outlinks[0].excerpt).toContain("Rent is $1,200");
 
-    const backlinks = await listNoteBacklinks(auth, result.artifactId);
+    const backlinks = await listNoteBacklinks(auth, artifactId);
     expect(backlinks).toHaveLength(1);
     expect(backlinks[0].id).toBe(note.id);
     expect(backlinks[0].kind).toBe("note");
@@ -227,23 +223,5 @@ suite("zettel cards (real Postgres)", () => {
     });
     backlinks = await listNoteBacklinks(auth, note.id);
     expect(backlinks).toHaveLength(0);
-  });
-
-  it("reject writes no card", async () => {
-    const auth = await workspace();
-    const doc = await seed(auth);
-    const {
-      proposals: [p1],
-    } = await proposeZettels(auth, {
-      documentId: doc.id,
-      extractor: extractor([{ title: "Deposit", content: "The landlord holds the deposit.", quote: Q2 }]),
-    });
-    const { rejectZettel } = await import("@/domains/knowledge/zettels");
-    await rejectZettel(auth, { proposalId: p1.id });
-    const cards = await holder
-      .db!.select()
-      .from(artifacts)
-      .where(and(eq(artifacts.workspaceId, auth.workspaceId), eq(artifacts.kind, "zettel")));
-    expect(cards).toHaveLength(0);
   });
 });
