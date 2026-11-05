@@ -7,8 +7,9 @@ import { Check, Copy, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { supportsElementEdit, type DiagramRenderMode } from "@/domains/diagrams/types";
+import { supportsElementEdit } from "@/domains/diagrams/types";
 import { pickDiagramVersion, type DiagramVersionView } from "@/domains/diagrams/view";
+import type { DiagramPreviewOutcome } from "./diagram-preview";
 
 /*
  * DiagramView — the read surface for a `diagram` artifact at
@@ -33,13 +34,6 @@ const DiagramPreview = dynamic(() => import("./diagram-preview"), {
 
 /** The existing canvas surface — the canvas route, not a new one. */
 const CANVAS_HREF = "/apps/polymath/canvas";
-
-/** Mirrors the preview island's settled outcomes (it reports only when a
- * render settles) without importing the client island into the parent module
- * graph — it must stay a dynamic island. */
-type DiagramPreviewOutcome =
-  | { state: "rendered"; renderMode: DiagramRenderMode; fallbackReason?: string; versionNumber: number }
-  | { state: "failed"; parserMessage: string; versionNumber: number };
 
 export function DiagramView({
   title,

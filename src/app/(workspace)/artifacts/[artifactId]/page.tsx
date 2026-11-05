@@ -14,7 +14,7 @@ import { CanvaImportButton } from "../canva-import-button";
 import { BRIEFABLE_KINDS } from "@/domains/knowledge/design-brief";
 import { DeckView, InfographicView } from "@/components/products/polymath/artifact-views";
 import { DiagramView } from "@/components/products/polymath/diagram-view";
-import { getDiagramArtifactView } from "@/domains/diagrams/view";
+import { getDiagramArtifactView } from "@/domains/diagrams/view-queries";
 import type { DeckContent, InfographicContent } from "@/domains/knowledge/artifact-content";
 
 export const metadata = { title: "Artifact · Polymath" };

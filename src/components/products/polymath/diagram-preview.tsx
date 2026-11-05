@@ -32,7 +32,7 @@ type PreviewDisplay =
   | { state: "rendered"; svg: string; renderMode: "excalidraw" | "image-fallback"; fallbackReason?: string }
   | { state: "failed"; parserMessage: string };
 
-export function DiagramPreview({
+function DiagramPreview({
   mermaid,
   diagramType,
   versionNumber,
