@@ -1,0 +1,63 @@
+/* Hallmark · Furrow tokens · redesign: polish · shape: app screen · posture: restrained · hero: none · theme: Furrow (by request) */
+
+.dark {
+  color-scheme: dark;
+  /* Furrow night: the same hue bands re-derived (paper L 14%, ink L 93%,
+     accent chroma -0.03 / L +5). The aliases above point at these roles, so
+     dark mode is one re-derivation, not a second theme. Elevation is
+     lightness, not shadow; hairlines sit a step apart in lightness. */
+  --paper: oklch(14% 0.008 85);
+  --paper-2: oklch(17% 0.008 85);
+  --paper-3: oklch(11% 0.01 85);
+  --ink: oklch(93% 0.006 85);
+  --ink-2: oklch(82% 0.008 80);
+  --ink-muted: oklch(58% 0.012 80);
+  --rule: oklch(24% 0.013 85);
+  --sheet: oklch(19% 0.004 85);
+  --grid: oklch(22% 0.014 85);
+  --grid-strong: oklch(27% 0.018 85);
+
+  --signal: oklch(75% 0.16 40);
+  --signal-ink: oklch(14% 0.008 85);
+  --signal-soft: oklch(26% 0.045 50);
+
+  --focus: oklch(72% 0.19 40);
+  --error: oklch(68% 0.17 27);
+  --success: oklch(72% 0.1 150);
+  --green: oklch(68% 0.1 150);
+  --contour: oklch(66% 0.06 58);
+  --water: oklch(66% 0.045 232);
+  --hedge: oklch(62% 0.09 150);
+
+  /* Dark lifts mirror .dark .pill-teal; pill-working ships one tone for
+     both modes, so --tone-attention does not flip. */
+  --tone-teal: oklch(0.8 0.08 195);
+  --tone-teal-wash: oklch(0.76 0.09 195);
+  --tone-violet: oklch(0.8 0.09 300);
+  --tone-violet-wash: oklch(0.76 0.09 300);
+
+  --avatar-1: oklch(27% 0.02 255);
+  --avatar-1-ink: oklch(75% 0.04 255);
+  --avatar-2: oklch(26% 0.025 148);
+  --avatar-2-ink: oklch(76% 0.05 148);
+  --avatar-3: oklch(27% 0.03 78);
+  --avatar-3-ink: oklch(78% 0.06 78);
+  --avatar-4: oklch(27% 0.025 330);
+  --avatar-4-ink: oklch(76% 0.05 330);
+  --avatar-5: oklch(27% 0.03 292);
+  --avatar-5-ink: oklch(77% 0.05 292);
+  --avatar-6: oklch(26% 0.025 200);
+  --avatar-6-ink: oklch(75% 0.045 200);
+
+  --pill-positive: oklch(26.8% 0.031 143);
+  --pill-positive-ink: oklch(78.2% 0.068 146);
+  --pill-warm: oklch(27.8% 0.034 93);
+  --pill-warm-ink: oklch(81.3% 0.091 91);
+  --success-wash: oklch(26% 0.03 150);
+
+  --edge-light: oklch(1 0 0 / 0%);
+  --edge-shade: oklch(0 0 0 / 0%);
+
+  --shadow: 0 1px 2px oklch(0 0 0 / 35%), 0 12px 32px oklch(0 0 0 / 40%);
+  --shadow-panel: 0 1px 2px oklch(0 0 0 / 40%), 0 4px 12px oklch(0 0 0 / 30%), 0 12px 40px oklch(0 0 0 / 45%);
+}

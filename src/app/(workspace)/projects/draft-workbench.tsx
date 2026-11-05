@@ -170,7 +170,7 @@ export function DraftWorkbench({
         <ul className="flex flex-col gap-1">
           {versions.map((row) => (
             <li key={row.versionNumber} className="flex items-baseline gap-2 text-body-dense">
-              <span className="font-mono text-xs">v{row.versionNumber}</span>
+              <span className="font-mono text-xs">{`v${row.versionNumber}`}</span>
               <Badge variant="outline" className="font-normal">
                 {row.reason}
               </Badge>
@@ -180,7 +180,7 @@ export function DraftWorkbench({
               <span className="text-muted-foreground text-xs">
                 {new Date(row.createdAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
               </span>
-              {row.note ? <span className="text-muted-foreground text-xs">— {row.note}</span> : null}
+              {row.note ? <span className="text-muted-foreground text-xs">{row.note}</span> : null}
             </li>
           ))}
         </ul>
@@ -201,8 +201,8 @@ export function DraftWorkbench({
                   {source.title}
                 </a>
                 {source.pinnedHash ? (
-                  <span className="font-mono text-muted-foreground text-xs">
-                    pinned {source.pinnedHash.slice(0, 8)}
+                  <span className="text-muted-foreground text-xs">
+                    pinned <span className="font-mono">{source.pinnedHash.slice(0, 8)}</span>
                   </span>
                 ) : null}
               </li>

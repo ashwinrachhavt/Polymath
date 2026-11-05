@@ -115,7 +115,7 @@ function DiagramPreview({
         <p className="text-body-dense font-medium">This version did not render.</p>
         <p className="wrap-anywhere text-xs leading-relaxed text-muted-foreground">{display.parserMessage}</p>
         <p className="text-xs text-muted-foreground">
-          The Mermaid source is still in the Mermaid tab — fix it by refining the diagram in chat.
+          The Mermaid source is still in the Mermaid tab. Fix it by refining the diagram in chat.
         </p>
       </div>
     );

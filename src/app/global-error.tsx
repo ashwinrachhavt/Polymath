@@ -11,13 +11,7 @@ import { useEffect } from "react";
  * nothing about whether an earlier write committed, so it tells the person to
  * reload and check instead.
  */
-export default function GlobalError({
-  error,
-  reset,
-}: {
-  error: Error & { digest?: string };
-  reset: () => void;
-}) {
+export default function GlobalError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   // The boundary is where a render crash becomes visible; log the real error
   // here or it is swallowed behind the generic copy (ASH-163).
   useEffect(() => {
@@ -31,6 +25,7 @@ export default function GlobalError({
         <style>{`
           html { color-scheme: light dark; }
           body { background: #ffffff; color: #111111; }
+          button { border: 1px solid #cccccc; }
           @media (prefers-color-scheme: dark) {
             body { background: #111111; color: #f5f5f5; }
             button { background: #1f1f1f; border-color: #444444; color: inherit; }
@@ -45,18 +40,14 @@ export default function GlobalError({
           alignItems: "center",
           justifyContent: "center",
           padding: "24px",
-          fontFamily:
-            "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+          fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
         }}
       >
         <main style={{ maxWidth: "32rem" }}>
-          <h1 style={{ margin: 0, fontSize: "18px", fontWeight: 500 }}>
-            Polymath could not start
-          </h1>
+          <h1 style={{ margin: 0, fontSize: "18px", fontWeight: 500 }}>Polymath could not start</h1>
           <p style={{ margin: "12px 0 0", fontSize: "13px", lineHeight: 1.6 }}>
-            Something failed before the app could render. Any change you already
-            submitted may still have gone through; reload and check before
-            submitting it again.
+            Something failed before the app could render. Any change you already submitted may still have gone through;
+            reload and check before submitting it again.
           </p>
           <div
             style={{
@@ -73,7 +64,6 @@ export default function GlobalError({
                 fontSize: "13px",
                 padding: "6px 12px",
                 borderRadius: "6px",
-                border: "1px solid #cccccc",
                 background: "transparent",
                 color: "inherit",
                 cursor: "pointer",
@@ -88,7 +78,6 @@ export default function GlobalError({
                 fontSize: "13px",
                 padding: "6px 12px",
                 borderRadius: "6px",
-                border: "1px solid #cccccc",
                 background: "transparent",
                 color: "inherit",
                 cursor: "pointer",

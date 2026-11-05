@@ -142,7 +142,7 @@ export async function ProjectSurface({ projectId }: { projectId: string }) {
               <>
                 <p className="mt-2 text-body-dense text-muted-foreground">
                   What Claude Code or Codex did in <span className="font-mono">{project.repoPath}</span>, parsed locally
-                  from your own files — nothing was sent to a model. Set the folder in{" "}
+                  from your own files: nothing was sent to a model. Set the folder in{" "}
                   <Link href={`/projects/${projectId}/settings`} className="underline">
                     project settings
                   </Link>

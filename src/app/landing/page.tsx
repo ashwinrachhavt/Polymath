@@ -84,8 +84,7 @@ export default function LandingPage({ searchParams }: { searchParams: Promise<{ 
           </h1>
 
           <p className="mt-8 max-w-xl text-lg leading-relaxed text-muted-foreground">
-            Polymath turns everything entering your world — mail, files, pages, ideas — into an ordered, trustworthy
-            plan.
+            Polymath turns everything entering your world (mail, files, pages, ideas) into an ordered, trustworthy plan.
           </p>
 
           <div className="mt-10 flex flex-wrap items-center gap-3">

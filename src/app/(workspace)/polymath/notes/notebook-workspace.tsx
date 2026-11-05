@@ -65,7 +65,7 @@ export function NotebookWorkspace({
         {open && (
           <aside
             aria-label="Notes list"
-            className={`sticky top-0 hidden max-h-[100dvh] shrink-0 overflow-y-auto transition-[width] duration-150 lg:block ${narrow ? "w-64" : "w-72"}`}
+            className={`sticky top-0 hidden max-h-[100dvh] shrink-0 overflow-y-auto lg:block ${narrow ? "w-64" : "w-72"}`}
           >
             {/* The rail compacts the shared toolbar: search and the two
                selects share rows instead of stacking full-width. */}

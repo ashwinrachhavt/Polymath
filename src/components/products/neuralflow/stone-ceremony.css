@@ -1,3 +1,6 @@
+/* Hallmark · stone ceremony · redesign: polish · shape: app screen · posture: restrained · hero: none */
+/* Hallmark · dismissed F24 · the ceremony card pairs a hairline with elevation · the house recipe for floating layers, cf. menus and the crucible pill */
+
 /* ASH-311: the stone ceremony. A short, quiet reveal when the canonical
    completion path awards the daily Quartz - never a modal, never blocking:
    the card floats above the list, work continues underneath, and it leaves
@@ -23,17 +26,22 @@
   }
 }
 
+/* The ceremony's one elevation: a floating layer over the list. */
+:root {
+  --stone-ceremony-shadow: 0 12px 32px oklch(0 0 0 / 0.18);
+}
+
 .stone-ceremony-card {
   pointer-events: auto;
   display: flex;
   align-items: flex-start;
-  gap: 14px;
+  gap: var(--space-md);
   max-width: 340px;
   padding: 16px;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--background);
-  box-shadow: 0 12px 32px rgb(0 0 0 / 0.18);
+  box-shadow: var(--stone-ceremony-shadow);
 }
 
 .stone-ceremony-card {
@@ -70,7 +78,7 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-xs);
 }
 
 .stone-ceremony-title {
@@ -101,7 +109,7 @@
 .stone-ceremony-sound {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-xs);
   font-size: 11px;
   color: var(--muted-foreground);
   cursor: pointer;

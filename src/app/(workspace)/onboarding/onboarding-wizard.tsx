@@ -227,7 +227,7 @@ export function OnboardingWizard({ step: initialStep, draft, prefill, notice, pr
               </fieldset>
 
               <label className="flex flex-col gap-1.5">
-                <span className="text-body-dense font-medium">Your role — team or company welcome.</span>
+                <span className="text-body-dense font-medium">Your role (team or company welcome).</span>
                 <Input
                   autoFocus
                   value={roleText}
@@ -373,7 +373,7 @@ export function OnboardingWizard({ step: initialStep, draft, prefill, notice, pr
               <header className="flex flex-col gap-1">
                 <h1 className="screen-title">Is this right?</h1>
                 <p className="screen-description">
-                  This is what your agent starts knowing about you. Edit anything — the fields carry the same weight as
+                  This is what your agent starts knowing about you. Edit anything: the fields carry the same weight as
                   your words.
                 </p>
               </header>

@@ -67,7 +67,13 @@ function MermaidSource({ mermaid }: { mermaid: string }) {
   );
 }
 
-export default function DiagramCard({ card, onRefine }: { card: DiagramCardState; onRefine?: (prefill: string) => void }) {
+export default function DiagramCard({
+  card,
+  onRefine,
+}: {
+  card: DiagramCardState;
+  onRefine?: (prefill: string) => void;
+}) {
   const [tab, setTab] = useState("preview");
   const [outcome, setOutcome] = useState<RenderOutcome>({ kind: "idle" });
 
@@ -148,12 +154,14 @@ export default function DiagramCard({ card, onRefine }: { card: DiagramCardState
         <p className="text-muted-foreground mt-2 text-body-dense leading-5">{card.error}</p>
         {card.superseded ? (
           <p className="text-muted-foreground mt-1 text-body-dense leading-5">
-            A later attempt regenerated this diagram — the card below is current.
+            A later attempt regenerated this diagram. The card below is current.
           </p>
         ) : null}
         {card.mermaid ? (
           <div className="mt-3 space-y-2">
-            <p className="text-muted-foreground text-body-dense">The attempted source, if you want to fix it by hand:</p>
+            <p className="text-muted-foreground text-body-dense">
+              The attempted source, if you want to fix it by hand:
+            </p>
             <MermaidSource mermaid={card.mermaid} />
             <CopyButton text={card.mermaid} label="Copy Mermaid source" />
           </div>
@@ -177,7 +185,10 @@ export default function DiagramCard({ card, onRefine }: { card: DiagramCardState
           aria-label={card.title ?? "Generated diagram"}
           dangerouslySetInnerHTML={{ __html: outcome.svg }}
         />
-        <p className="text-muted-foreground text-body-dense leading-5" data-diagram-editability={outcome.editable ? "excalidraw" : "image-fallback"}>
+        <p
+          className="text-muted-foreground text-body-dense leading-5"
+          data-diagram-editability={outcome.editable ? "excalidraw" : "image-fallback"}
+        >
           {outcome.editable
             ? "This diagram converted to an editable Excalidraw scene."
             : (outcome.note ?? "This diagram opens as an image, not an editable scene.")}
@@ -185,12 +196,14 @@ export default function DiagramCard({ card, onRefine }: { card: DiagramCardState
       </div>
     ) : outcome.kind === "parse-error" ? (
       <div className="space-y-2" data-diagram-card="parse-error">
-        <p className="text-body-dense text-destructive leading-5">The stored Mermaid source failed to parse in the browser:</p>
+        <p className="text-body-dense text-destructive leading-5">
+          The stored Mermaid source failed to parse in the browser:
+        </p>
         <pre className="readout bg-muted/60 overflow-x-auto rounded-md p-2 text-data leading-5">
           <code>{outcome.parserMessage}</code>
         </pre>
         <p className="text-muted-foreground text-body-dense leading-5">
-          The source is on the Mermaid tab — fix it by hand or ask for a corrected version.
+          The source is on the Mermaid tab. Fix it by hand or ask for a corrected version.
         </p>
       </div>
     ) : (
@@ -208,7 +221,7 @@ export default function DiagramCard({ card, onRefine }: { card: DiagramCardState
     <div className="panel rounded-xl p-4" data-diagram-card="rendered" data-diagram-type={output.diagramType}>
       {card.superseded ? (
         <p className="text-muted-foreground mb-2 text-body-dense leading-5" data-diagram-superseded>
-          This version was superseded by a later attempt — the newest card below is current.
+          This version was superseded by a later attempt. The newest card below is current.
         </p>
       ) : null}
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -245,8 +258,8 @@ export default function DiagramCard({ card, onRefine }: { card: DiagramCardState
             </div>
           ) : (
             <p className="text-muted-foreground text-body-dense leading-5">
-              The source is too large for the transcript frame, so it is not shown here — it is stored in full on
-              version v{output.version} of the artifact.
+              The source is too large for the transcript frame, so it is not shown here. It is stored in full on version
+              v{output.version} of the artifact.
             </p>
           )}
         </TabsContent>

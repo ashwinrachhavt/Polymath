@@ -47,14 +47,14 @@ export function SessionBriefPanel({ brief }: { brief: SessionBriefData }) {
           className="text-muted-foreground/80 text-data"
           aria-label={`Evidence: ${tierCounts.grounded} grounded, ${tierCounts.inferred} inferred, ${tierCounts.hypothesis} hypotheses`}
         >
-          {tierCounts.grounded} grounded · {tierCounts.inferred} inferred · {tierCounts.hypothesis} hypotheses
+          {tierCounts.grounded} grounded, {tierCounts.inferred} inferred, {tierCounts.hypothesis} hypotheses
         </p>
       </header>
 
       <p className="text-muted-foreground text-data">
         {SOURCE_LABEL[brief.source]} session{" "}
         <code className="bg-muted rounded px-1 py-0.5">{brief.externalSessionId}</code>
-        {brief.aiTitle ? ` · ${brief.aiTitle}` : ""} · last activity {timeAgo(brief.lastActivityAt)}
+        {brief.aiTitle ? `, ${brief.aiTitle}` : ""}, last activity {timeAgo(brief.lastActivityAt)}
       </p>
 
       <OutcomeSection brief={brief} />
@@ -122,8 +122,10 @@ function ActivitySection({ brief }: { brief: SessionBriefData }) {
               <span className="text-foreground/80">{file.op}</span> {file.path}
             </li>
           ))}
-          {files.length > MAX_PATHS ? <li>… and {files.length - MAX_PATHS} more</li> : null}
         </ul>
+      ) : null}
+      {files.length > MAX_PATHS ? (
+        <p className="text-muted-foreground mt-0.5 text-data leading-5">… and {files.length - MAX_PATHS} more</p>
       ) : null}
       {commands.length > 0 ? (
         <ul className="text-muted-foreground mt-0.5 font-mono text-data leading-5">
@@ -134,8 +136,10 @@ function ActivitySection({ brief }: { brief: SessionBriefData }) {
               {command.cmd}
             </li>
           ))}
-          {commands.length > MAX_COMMANDS ? <li>… and {commands.length - MAX_COMMANDS} more</li> : null}
         </ul>
+      ) : null}
+      {commands.length > MAX_COMMANDS ? (
+        <p className="text-muted-foreground mt-0.5 text-data leading-5">… and {commands.length - MAX_COMMANDS} more</p>
       ) : null}
     </div>
   );

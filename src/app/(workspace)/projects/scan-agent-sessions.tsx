@@ -73,10 +73,9 @@ export function ScanAgentSessions() {
       {result ? (
         <div className="text-xs text-muted-foreground" role="status">
           <p>
-            {result.imported} imported · {result.updated} updated · {result.decode.records.toLocaleString()} records
-            read
+            {result.imported} imported, {result.updated} updated, {result.decode.records.toLocaleString()} records read
             {result.decode.skippedRecords > 0
-              ? ` · ${result.decode.skippedRecords} lines skipped (kept counted, not fatal)`
+              ? `, ${result.decode.skippedRecords} lines skipped (kept counted, not fatal)`
               : ""}
           </p>
           {result.unavailable.length > 0 ? (
@@ -88,7 +87,7 @@ export function ScanAgentSessions() {
               <ul className="mt-1 flex flex-col gap-0.5">
                 {result.skipped.slice(0, 10).map((skip) => (
                   <li key={`${skip.source}:${skip.path}`} className="truncate font-mono">
-                    {skip.path} — {skip.kind}: {skip.reason}
+                    {skip.path} ({skip.kind}): {skip.reason}
                   </li>
                 ))}
               </ul>
