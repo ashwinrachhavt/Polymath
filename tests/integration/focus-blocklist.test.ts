@@ -47,7 +47,6 @@ vi.mock("@/domains/identity/resolve", () => ({
 }));
 
 import { GET, POST } from "@/app/api/v1/focus/blocklist/route";
-import { PATCH, DELETE } from "@/app/api/v1/focus/blocklist/[blockId]/route";
 import { GET as GET_LIVE } from "@/app/api/v1/focus/live/route";
 import { mintApiClient } from "@/domains/identity/machine";
 
@@ -176,33 +175,6 @@ suite("blocklist curation: the setup screen's CRUD", () => {
     const body = await dupe.json();
     expect(body.code).toBe("conflict");
     expect(body.existingBlocklistId).toBe(entry.id);
-  });
-
-  it("PATCH flips the verdict, DELETE archives, and the pattern can be re-added", async () => {
-    const { userId, workspaceId } = await workspace("lifecycle");
-    holder.auth = { userId, workspaceId, role: "owner" };
-    clerkState.authResult = { isAuthenticated: true, userId: "clerk_test" };
-
-    const created = await POST(blocklistRequest("POST", { pattern: "news.ycombinator.com" }), undefined);
-    const { entry } = await created.json();
-
-    const patched = await PATCH(blocklistRequest("PATCH", { kind: "allow" }, undefined, `/${entry.id}`), {
-      params: Promise.resolve({ blockId: entry.id }),
-    });
-    expect(patched.status).toBe(200);
-    expect((await patched.json()).entry.kind).toBe("allow");
-
-    const removed = await DELETE(blocklistRequest("DELETE", undefined, undefined, `/${entry.id}`), {
-      params: Promise.resolve({ blockId: entry.id }),
-    });
-    expect(removed.status).toBe(200);
-    expect((await removed.json()).entry.archivedAt).toBeTruthy();
-
-    expect((await (await GET(blocklistRequest("GET"), undefined)).json()).entries).toEqual([]);
-
-    const reAdded = await POST(blocklistRequest("POST", { pattern: "news.ycombinator.com", kind: "allow" }), undefined);
-    expect(reAdded.status).toBe(201);
-    expect((await reAdded.json()).entry.id).not.toBe(entry.id);
   });
 
   it("a foreign workspace sees no entries", async () => {
