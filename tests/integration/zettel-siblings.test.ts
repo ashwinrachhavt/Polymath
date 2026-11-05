@@ -71,7 +71,10 @@ const workspace = async (): Promise<Auth> => {
 };
 
 const QUOTES = ["Rent is due monthly.", "The deposit is refundable.", "Pets need written consent."];
-const SIBLING_TEXT = QUOTES.join(" ");
+// Filler grows the source past the small-capture band (capForSize allows 2
+// cards at <=2,000 chars) so every quoted candidate survives the pass cap.
+const FILLER = "The remaining lease terms are recorded in the following paragraphs for the extractor to read past. ";
+const SIBLING_TEXT = FILLER.repeat(14) + QUOTES.join(" ") + FILLER.repeat(14);
 const siblingExtractor = (count: number) => ({
   name: "fake@1",
   extract: async () =>

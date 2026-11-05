@@ -396,6 +396,27 @@ type ZettelCardCreated = { artifactId: string; conceptId: string; claimId: strin
 export type ZettelCardCreateResult = ZettelCardCreated | { skipped: "duplicate" | "same-span" };
 
 /**
+ * True when a card for this exact source span already exists in the
+ * workspace - the same-span gate's single question, shared by the batch pass
+ * (which books the skip before the repeat heuristics) and by
+ * createZettelFromSource (which re-asks for direct single-card callers).
+ */
+async function hasCardForSpan(auth: AuthContext, dedupeKey: string, conn: Pick<TxDrizzle, "select">) {
+  const [existing] = await conn
+    .select({ id: artifacts.id })
+    .from(artifacts)
+    .where(
+      and(
+        eq(artifacts.workspaceId, auth.workspaceId),
+        eq(artifacts.kind, "zettel"),
+        sql`${artifacts.metadata}->>'dedupeKey' = ${dedupeKey}`,
+      ),
+    )
+    .limit(1);
+  return Boolean(existing);
+}
+
+/**
  * Writes one zettel card from one candidate. Returns the card's ids, or a
  * skip reason when a gate declined: "same-span" (this exact span of this
  * source is already a card) or "duplicate" (a near-duplicate of an existing
@@ -722,6 +743,15 @@ export async function createZettelsFromSource(auth: AuthContext, input: ZettelSo
   let skippedDuplicates = 0;
   let skippedSpans = 0;
   for (const z of pass.merged.slice(0, pass.cap)) {
+    // Same-span gate first: a re-zettelize re-proposes the same spans, and
+    // those are span skips, not repeat heuristics - the precise, cheap gate
+    // answers before the fuzzy ones run.
+    const span = z.start !== undefined && z.end !== undefined ? { start: z.start, end: z.end } : undefined;
+    const dedupeKey = span ? zettelDedupeKey(pass.origin.path, pass.origin.id, span.start, span.end) : null;
+    if (dedupeKey && (await hasCardForSpan(auth, dedupeKey, conn))) {
+      skippedSpans += 1;
+      continue;
+    }
     if (await isRepeatProposal(z, earlier)) {
       skippedRepeats += 1;
       continue;
@@ -736,7 +766,7 @@ export async function createZettelsFromSource(auth: AuthContext, input: ZettelSo
         title: z.title,
         content: z.content,
         quote: z.quote,
-        span: z.start !== undefined && z.end !== undefined ? { start: z.start, end: z.end } : undefined,
+        span,
         extractionId: pass.source.extractionId ?? undefined,
         proposer: pass.extractor.name,
       },
@@ -864,4 +894,3 @@ export async function pageZettelCards(
     };
   });
 }
-

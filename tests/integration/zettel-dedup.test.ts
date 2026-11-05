@@ -127,7 +127,9 @@ suite("corpus dedupe at create time (real Postgres)", () => {
       .db!.select()
       .from(artifacts)
       .where(and(eq(artifacts.workspaceId, auth.workspaceId), eq(artifacts.kind, "zettel")));
-    expect(cards).toHaveLength(0);
+    // Only the seeded prior idea remains: the near-duplicate candidate was
+    // skipped, not minted.
+    expect(cards.map((c) => c.title)).toEqual(["Prior idea"]);
   });
 
   it("a merely-related candidate still creates its card", async () => {
