@@ -31,7 +31,7 @@ Migrations: 111 files, highest `0284_audit_operation_id`.
 
 ## Tests
 
-555 `.test.ts` and 50 `.spec.ts` files (unit: 323, integration: 229, e2e: 50).
+557 `.test.ts` and 50 `.spec.ts` files (unit: 324, integration: 230, e2e: 50).
 ## Domains
 
 25 folders; 19 own tables.
