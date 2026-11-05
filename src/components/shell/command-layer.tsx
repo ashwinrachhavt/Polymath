@@ -39,9 +39,12 @@ const subscribeToHydration = () => () => {};
 export function CommandLayer({
   initialMode = null,
   withTriggers = true,
+  onOpenChange,
 }: {
   initialMode?: "search" | "capture" | null;
   withTriggers?: boolean;
+  /** Opens/closes relayed to the host — the mount unmounts the layer on close. */
+  onOpenChange?: (open: boolean) => void;
 }) {
   const hydrated = useSyncExternalStore(
     subscribeToHydration,
@@ -357,6 +360,7 @@ export function CommandLayer({
         open={mode !== null}
         onOpenChange={(value) => {
           if (!value) setMode(null);
+          onOpenChange?.(value);
         }}
       >
         <DialogContent
@@ -364,7 +368,10 @@ export function CommandLayer({
           onCloseAutoFocus={(event) => {
             event.preventDefault();
             if (returnTo.current === "capture") {
-              captureTrigger.current?.focus();
+              // withTriggers={false} (the mount hosts the triggers): fall back
+              // to the persistent external trigger's marker.
+              const externalCapture = document.querySelector<HTMLElement>("[data-capture-trigger]");
+              (captureTrigger.current ?? externalCapture)?.focus();
               return;
             }
             const triggers = Array.from(document.querySelectorAll<HTMLElement>("[data-search-trigger]"));

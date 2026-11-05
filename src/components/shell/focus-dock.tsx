@@ -9,17 +9,16 @@ import { useWorkspace } from "@/components/workspace/workspace-provider";
 type LiveSession = { id: string; state: "running" | "paused"; title: string };
 
 // The live-session read is bounded twice (spec W4): a result younger than
-// REVALIDATE_MS is reused across remounts and focus events, and a fetch is
-// never issued more than once per DEBOUNCE_MS, so tab switches and quick
-// page hops stop costing a round trip each. The cache is module-level on
-// purpose: the session is workspace-global, not per page.
+// REVALIDATE_MS is reused across navigation mounts, and concurrent read
+// intents (a focus event landing on a visibility event, a remount landing on
+// an in-flight fetch) join one round trip instead of starting another. The
+// cache is module-level on purpose: the session is workspace-global, not per
+// page.
 const REVALIDATE_MS = 30_000;
-const DEBOUNCE_MS = 2_000;
 // `stale` rides on the cache, not the component: once a read fails, the last
 // known session is unverified until a read succeeds, and a cache hit must not
 // re-present it as verified.
 let liveCache: { at: number; session: LiveSession | null; stale: boolean } | null = null;
-let lastFetchStartedAt = 0;
 // The in-flight fetch itself. StrictMode runs every effect twice in dev: the
 // first run's result is discarded (its cleanup cancelled it), so the second
 // run must be able to JOIN the fetch instead of being debounced out of one —
@@ -62,16 +61,14 @@ function LiveDock({ pathname }: { pathname: string }) {
     async function load(options?: { force?: boolean }) {
       const now = Date.now();
       // The revalidate window serves navigation mounts from the cache; a
-      // focus/visibility event is an explicit re-check and always reads the
-      // network (still debounced, still joined) - that re-check is what a
-      // failed read depends on to surface staleness.
+      // focus/visibility event is an explicit re-check and always attempts
+      // the network — that attempt is what a failed read depends on to
+      // surface staleness, so it may never be silently dropped.
       if (!options?.force && liveCache && now - liveCache.at < REVALIDATE_MS) {
         setRead({ path: pathname, session: liveCache.session, stale: liveCache.stale });
         return;
       }
       if (!inflight) {
-        if (now - lastFetchStartedAt < DEBOUNCE_MS) return;
-        lastFetchStartedAt = now;
         inflight = fetchLiveSession()
           .then((session) => {
             liveCache = { at: Date.now(), session, stale: false };

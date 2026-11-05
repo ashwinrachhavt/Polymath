@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import type { ActivityItem, Destination } from "@/domains/audit/present";
-import { timeAgoShort } from "@/lib/time";
 import { loadActivityPage, type ActivityFeedFilters } from "./actions";
 import { ACTIVITY_MAX_PAGES, ACTIVITY_PAGE_SIZE, mergeDayGroups, type ActivityDayGroup } from "./day-groups";
 
@@ -58,7 +57,7 @@ export function ActivityEntry({
           dateTime={item.occurredAt.toISOString()}
           title={item.occurredAt.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short", timeZone })}
         >
-          {timeAgoShort(item.occurredAt)}
+          {item.timeAgo}
         </time>
       </div>
       {item.title ? (

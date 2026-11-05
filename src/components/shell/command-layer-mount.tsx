@@ -6,14 +6,15 @@ import { Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 /*
- * The command layer's mount, in TopBar. The two triggers are cheap and always
- * visible; the palette behind them (dialog, search state, recorder, the
+ * The command layer's mount, in TopBar. The two triggers are cheap, persistent
+ * chrome; the palette behind them (dialog, search state, recorder, the
  * shortcuts list and the shell-action clients) loads on first open instead of
  * riding in every page's bundle. Keyboard open intents are answered here —
- * Cmd+K and Cmd+Shift+C must work before the palette module exists — and
- * stand down once it is mounted, because CommandLayer then owns its own
- * listener and toggling. An idle warm-up fetches the chunk after load, so the
- * first open still pays no visible network.
+ * Cmd+K and Cmd+Shift+C must work before the palette module exists — and stand
+ * down while the layer is open, because CommandLayer then owns its own
+ * listener and toggling; closing the layer hands the chrome back. An idle
+ * warm-up fetches the chunk after load, so the first open still pays no
+ * visible network.
  */
 
 const CommandLayer = dynamic(() => import("./command-layer").then((m) => m.CommandLayer), { ssr: false });
@@ -58,14 +59,13 @@ export function CommandLayerMount() {
     return () => window.removeEventListener("keydown", listener);
   }, [mountedWith]);
 
-  if (mountedWith) {
-    return <CommandLayer initialMode={mountedWith} withTriggers={false} />;
-  }
-
-  // The same two triggers CommandLayer renders for itself — the markup is
-  // duplicated here so the palette bundle can stay out of the shell. Keep the
-  // data-search-trigger attribute: the dialog's focus restore finds it.
-  return (
+  // The two triggers are persistent chrome: cheap, always visible, and the
+  // focus-restore targets for both dialog exits. The palette itself mounts
+  // beside them only while open (below), so a save or an escape never removes
+  // the buttons — before this fix, first open swapped the triggers out and
+  // they never came back (the e2e suite caught the Capture button missing).
+  // data-search-trigger / data-capture-trigger are the layer's focus anchors.
+  const triggers = (
     <>
       <span className="contents md:hidden">
         <button
@@ -86,6 +86,7 @@ export function CommandLayerMount() {
         disabled={!hydrated}
         onClick={() => setMountedWith("capture")}
         aria-keyshortcuts="Meta+Shift+C Control+Shift+C"
+        data-capture-trigger
       >
         <Plus aria-hidden />
         <span className="hidden sm:inline">Capture</span>
@@ -93,4 +94,24 @@ export function CommandLayerMount() {
       </Button>
     </>
   );
+
+  if (mountedWith) {
+    return (
+      <>
+        {triggers}
+        <CommandLayer
+          initialMode={mountedWith}
+          withTriggers={false}
+          onOpenChange={(open) => {
+            // The layer closed itself (save, escape, action picked): back to
+            // the standalone triggers, focus restore targets them, and the
+            // next open re-mounts the (already cached) palette module.
+            if (!open) setMountedWith(null);
+          }}
+        />
+      </>
+    );
+  }
+
+  return triggers;
 }
