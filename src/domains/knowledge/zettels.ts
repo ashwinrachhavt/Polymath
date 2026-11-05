@@ -602,11 +602,11 @@ export async function listPendingZettelProposals(auth: AuthContext): Promise<Pen
  * surface is repointed.
  */
 
-export type ZettelCardSource =
+type ZettelCardSource =
   | { kind: "document"; documentId: string }
   | { kind: "artifact"; artifactId: string };
 
-export type ZettelCardCreateInput = {
+type ZettelCardCreateInput = {
   source: ZettelCardSource;
   /** Noun phrase, at most eight words - the extractor's title rule. */
   title: string;
@@ -624,7 +624,7 @@ export type ZettelCardCreateInput = {
   auditMetadata?: Record<string, unknown>;
 };
 
-export type ZettelCardCreated = { artifactId: string; conceptId: string; claimId: string };
+type ZettelCardCreated = { artifactId: string; conceptId: string; claimId: string };
 export type ZettelCardCreateResult = ZettelCardCreated | { skipped: "duplicate" | "same-span" };
 
 /**
@@ -635,7 +635,7 @@ export type ZettelCardCreateResult = ZettelCardCreated | { skipped: "duplicate" 
  * the commit and with it the post-commit embed; without one the card gets
  * its own transaction and best-effort embedding.
  */
-export async function createZettelFromSource(
+async function createZettelFromSource(
   auth: AuthContext,
   input: ZettelCardCreateInput,
   tx?: TxDrizzle,
