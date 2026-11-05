@@ -38,8 +38,9 @@ afterAll(async () => {
 suite("test database is at the migration head", () => {
   it("has no table that a later migration dropped", async () => {
     if (!handle) throw new Error("unreachable");
-    // Dropped by 0235 / 0257 / 0263 / 0268. A database carrying any of them is
-    // reading a schema the app has retired, and the suites over it prove nothing.
+    // Dropped by 0235 / 0257 / 0263 / 0268 / 0287. A database carrying any of
+    // them is reading a schema the app has retired, and the suites over it
+    // prove nothing.
     const retired = [
       "cards",
       "card_reviews",
@@ -54,6 +55,7 @@ suite("test database is at the migration head", () => {
       "dossier_sources",
       "dossier_questions",
       "daily_outcomes",
+      "zettel_proposals",
     ];
     const rows = await handle.client`
       select table_name::text as name from information_schema.tables

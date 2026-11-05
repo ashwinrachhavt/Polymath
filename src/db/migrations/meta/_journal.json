@@ -789,6 +789,13 @@
       "when": 1793873527751,
       "tag": "0286_drop_zero_use_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 287,
+      "version": "7",
+      "when": 1793878833314,
+      "tag": "0287_drop_zettel_proposals",
+      "breakpoints": true
     }
   ]
 }

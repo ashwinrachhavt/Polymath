@@ -69,7 +69,6 @@ export const fileStatus = pgEnum("file_status", ["uploaded", "imported", "quaran
 export const extractionStatus = pgEnum("extraction_status", ["pending", "succeeded", "failed", "skipped"]);
 export const documentDecision = pgEnum("document_decision", ["keep", "rename", "classify", "link", "discard"]);
 export const claimStatus = pgEnum("claim_status", ["proposed", "accepted", "rejected", "retracted"]);
-export const zettelProposalStatus = pgEnum("zettel_proposal_status", ["proposed", "accepted", "rejected"]);
 // The applied database types are `dossier_*` — no migration ever created the
 // `project_*` spellings (2026-10-30 alignment; `notebook_memories.source` is
 // plain text with a 'manual' default in the applied history, so it has no
@@ -744,7 +743,6 @@ export const notebookSources = pgTable(
   ],
 );
 
-
 /*
  * Automations: a prompt on a schedule. The cron dispatcher finds due rows and
  * starts an ordinary agent run bound to the notebook, so an automation's output
@@ -1055,59 +1053,6 @@ export const documentObligations = pgTable(
   (t) => [
     uniqueIndex("document_obligations_dedupe_key").on(t.documentId, t.dedupeKey),
     index("document_obligations_workspace_status_idx").on(t.workspaceId, t.status),
-  ],
-);
-
-/*
- * A proposed zettel: one claim drawn from one succeeded document (the
- * enrichment pipeline) or from one artifact — a conversation mined for ideas
- * (PR C's zettelization). With the artifact path, the verbatim passage still
- * binds: span offsets index into the source the proposal names. Nothing here
- * is knowledge until a human accepts it; accepting writes the concept and the
- * evidence link, rejecting writes nothing else. The dedupe key follows
- * obligationDedupeKey: a re-run lands on the existing row. The 0012
- * (document_id, dedupe_key) index governs the document path; the partial
- * index on (source_artifact_id, dedupe_key) governs the artifact path, which
- * NULL-distinctness in the 0012 index would otherwise leave unconstrained.
- */
-export const zettelProposals = pgTable(
-  "zettel_proposals",
-  {
-    id: primaryId(),
-    workspaceId: tenantId(),
-    documentId: uuid("document_id").references(() => documents.id, { onDelete: "cascade" }),
-    extractionId: uuid("extraction_id").references(() => documentExtractions.id, { onDelete: "cascade" }),
-    title: text("title").notNull(),
-    claim: text("claim").notNull(),
-    /** The verbatim passage; span offsets index into the extraction text. */
-    quote: text("quote").notNull(),
-    spanStart: integer("span_start").notNull(),
-    spanEnd: integer("span_end").notNull(),
-    dedupeKey: text("dedupe_key").notNull(),
-    status: zettelProposalStatus("status").notNull().default("proposed"),
-    conceptId: uuid("concept_id"),
-    claimId: uuid("claim_id"),
-    /** The zettel artifact an accept created — the card in the graph. */
-    artifactId: uuid("artifact_id").references((): AnyPgColumn => artifacts.id, { onDelete: "set null" }),
-    /** The artifact a conversation-sourced proposal was drawn from (PR C). */
-    sourceArtifactId: uuid("source_artifact_id").references((): AnyPgColumn => artifacts.id, { onDelete: "cascade" }),
-    /** The existing idea this candidate duplicates; the flag the owner decides on. */
-    duplicateOfArtifactId: uuid("duplicate_of_artifact_id").references((): AnyPgColumn => artifacts.id, {
-      onDelete: "set null",
-    }),
-    proposer: text("proposer"),
-    decidedAt: timestamp("decided_at", { withTimezone: true }),
-    decidedBy: uuid("decided_by"),
-    ...mutable,
-  },
-  (t) => [
-    uniqueIndex("zettel_proposals_dedupe_key").on(t.documentId, t.dedupeKey),
-    uniqueIndex("zettel_proposals_artifact_dedupe_key")
-      .on(t.sourceArtifactId, t.dedupeKey)
-      .where(sql`source_artifact_id is not null`),
-    index("zettel_proposals_workspace_status_idx").on(t.workspaceId, t.status),
-    check("zettel_proposals_span_check", sql`span_start >= 0 AND span_end > span_start`),
-    check("zettel_proposals_one_source_check", sql`num_nonnulls(document_id, source_artifact_id) = 1`),
   ],
 );
 
