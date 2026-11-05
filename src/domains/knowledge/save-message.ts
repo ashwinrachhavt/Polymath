@@ -11,8 +11,7 @@ import { saveAnswerAsNote } from "./save-answer";
  * Save a chat message as a note or an idea (plan Task 10).
  *
  * Authorship is acceptance: saving a message as an idea is the owner's own
- * act, so it writes the artifact directly and never creates a
- * `zettel_proposals` row — no model surface does anymore either. Both saves
+ * act, so it writes the artifact directly. Both saves
  * are idempotent under one key per save; a replayed key returns the first
  * save rather than minting a second.
  */
@@ -77,8 +76,7 @@ export async function saveMessageAsIdea(
       return { id: idea.id };
     }),
   );
-  // Best-effort embed after commit: a failed embed never blocks the save
-  // (the same pattern acceptZettel uses).
+  // Best-effort embed after commit: a failed embed never blocks the save.
   try {
     await embedArtifact(auth, { artifactId: value.id });
   } catch (cause) {

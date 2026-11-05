@@ -57,21 +57,21 @@ Values read inside a party's block carry `party_role`, and only those reach
 that party's assertion ledger. In development with no Blob token or provider,
 uploads go to `AXIOM_LOCAL_BLOB_DIR` and PDFs are read from their text layer.
 
-## Zettel proposals
+## Zettels
 
-`proposeZettels(auth, { documentId })` reads a document's newest succeeded
-extraction and asks an extractor (default: OpenRouter, `ZETTEL_MODEL`, needs
-`OPENROUTER_API_KEY`) for candidate notes. Each candidate is a title, one claim
-and a quote. The domain re-locates the quote in the extraction text and drops
-anything that is not verbatim, so every proposal row carries a real span
-(`span_start`/`span_end`). Rows are `zettel_proposals`, deduped by
-`zettel:<documentId>:<start>-<end>`. Accept writes a concept, a claim, a
-`claim_evidence` row pointing at the span, and the zettel card itself: an
-artifact of kind `zettel` (ASH-174/ASH-184), so a note and a zettel are the
-same kind of thing — versioned, linkable, listed together in the notebook. The
-card carries a `source`-typed `artifact_links` edge back to its document with
-the quote as context. Reject writes only the decision. Controls live on the
-Knowledge screen (/polymath/knowledge).
+`createZettelsFromSource(auth, { documentId })` reads a document's newest
+succeeded extraction and asks an extractor (default: OpenRouter, `ZETTEL_MODEL`,
+needs `OPENROUTER_API_KEY`) for candidate notes. Each candidate is a title, a
+claim in the extractor's own words of whatever length the idea needs, and an
+optional verbatim quote. The domain re-locates the quote in the extraction text
+and drops anything that is not verbatim, so a card's evidence is real. The
+triggering action — a Zettelize click, an enrichment stage, a tool call — is
+the permission: the card is written now, no proposal row and no review step.
+The card is an artifact of kind `zettel` (ASH-174/ASH-184), so a note and a
+zettel are the same kind of thing — versioned, linkable, listed together in
+the notebook. It carries a `source`-typed `artifact_links` edge back to its
+document with the quote as context. A near-duplicate of an existing card is
+skipped, not minted. Cards live on the Ideas screen (/polymath/ideas).
 
 ## The note link graph
 

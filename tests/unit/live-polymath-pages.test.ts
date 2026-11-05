@@ -26,9 +26,6 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
   redirect: vi.fn(),
 }));
-vi.mock("@/domains/knowledge/zettels", () => ({
-  listZettelProposals: vi.fn(async () => ({ proposals: [], readChars: 0, unreadChars: 0, unreadSections: 0 })),
-}));
 vi.mock("@/domains/conversations/queries", () => ({ listConversations: vi.fn(async () => []) }));
 vi.mock("@/domains/knowledge/projects", () => ({
   listProjects: vi.fn(async () => []),
