@@ -121,7 +121,7 @@ export async function ArtifactSurface({ artifactId }: { artifactId: string }) {
           )}
           {artifact.sources.length > 0 ? (
             <section aria-label="Sources" className="mt-12 border-t border-border pt-6">
-              <h2 className="text-body-dense font-medium uppercase tracking-wide text-muted-foreground">Sources</h2>
+              <h2 className="text-body-dense font-medium text-muted-foreground">Sources</h2>
               <ul className="mt-3 flex flex-col gap-2">
                 {artifact.sources.map((source) => (
                   <li key={source.documentId} className="text-body-dense">
