@@ -76,3 +76,6 @@ mockups/
 # the old one.
 src/db/migrations/meta/*_snapshot.json
 !src/db/migrations/meta/0284_snapshot.json
+
+# graphify knowledge graph (local build artifacts)
+graphify-out/
