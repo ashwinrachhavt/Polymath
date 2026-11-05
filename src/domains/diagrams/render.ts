@@ -44,12 +44,14 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-async function loadMermaid() {
+async function loadMermaid(theme?: "default" | "dark") {
   const mermaid = (await import("mermaid")).default;
   // startOnLoad: false — the pipeline drives parse/render explicitly; the
   // converter's own defaults (linear flowchart curves, 20px labels) match
-  // what it renders inside Excalidraw.
-  mermaid.initialize({ startOnLoad: false });
+  // what it renders inside Excalidraw. Theme follows the surface when the
+  // caller supplies one (DiagramView dark mode), and securityLevel stays at
+  // its strict default — stored LLM-authored source is never trusted markup.
+  mermaid.initialize(theme ? { startOnLoad: false, theme } : { startOnLoad: false });
   return mermaid;
 }
 
@@ -58,8 +60,12 @@ async function loadMermaid() {
  * problem degrades to the image-fallback result with the SVG intact, so a
  * person always sees a rendered preview when mermaid could draw one.
  */
-export async function renderDiagram(mermaidSrc: string, diagramType: DiagramType): Promise<DiagramRenderResult> {
-  const mermaid = await loadMermaid();
+export async function renderDiagram(
+  mermaidSrc: string,
+  diagramType: DiagramType,
+  options?: { theme?: "default" | "dark" },
+): Promise<DiagramRenderResult> {
+  const mermaid = await loadMermaid(options?.theme);
 
   // Rung 1 — parse guard. mermaid.parse throws with the parser's message on
   // invalid source; surface it as DiagramParseError for the one-shot
