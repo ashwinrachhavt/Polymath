@@ -100,9 +100,9 @@ export const DEFAULT_ALLOWED_TOOLS = [
   // AI changes to a saved artifact arrive as reviewable revision proposals,
   // never silent edits. Same prepare-risk class as tasks.create.
   "artifacts.revise",
-  // Ideas proposed from run material arrive as reviewable zettel proposals,
-  // never silent idea writes. Same prepare-risk class as tasks.create: the
-  // owner's accept is the only path that creates an idea artifact.
+  // Ideas extracted from run material become zettel cards immediately - the
+  // tool call is the acceptance, and near-duplicates are skipped at create
+  // time. Same prepare-risk class as tasks.create.
   "zettels.propose",
   // Diagram agent (spec art_Yi8Fwsqn): generates or refines a diagram from
   // LLM-authored Mermaid and persists it immediately as a versioned canvas +

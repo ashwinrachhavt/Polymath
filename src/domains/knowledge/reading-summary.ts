@@ -4,10 +4,11 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { defaultReadingSummarizer, type ReadingSummarizer } from "@/integrations/reading/summarizer";
+import { embedArtifact } from "./embedding";
 import { createNote } from "./notes";
-import { artifactLinks, documentExtractions, documents, zettelProposals } from "./schema";
+import { artifactLinks, documentExtractions, documents } from "./schema";
 import { currentExtractionIdSubquery } from "./versions";
-import { zettelDedupeKey } from "./zettels";
+import { createZettelFromSource } from "./zettels";
 
 /*
  * The reading summarizer's domain half (ASH-292). Producing a summary is
@@ -15,16 +16,15 @@ import { zettelDedupeKey } from "./zettels";
  * keep only what verifies - claims whose quote is not a verbatim passage of
  * the text are dropped, exactly the zettel pipeline's rule. Accepting a
  * summary is the only write: one note artifact ("Summary of <title>")
- * linked back to its source document, and one zettel proposal per verified
- * claim so every summarization flow feeds the zettel queue the issue asks
- * for. Both writes are idempotent (note idempotency key; the proposals'
- * dedupe key), so a retried accept folds instead of duplicating.
+ * linked back to its source document, and one zettel card per verified
+ * claim — the accept click is the permission, so the claim is a card, not a
+ * proposal. Both writes are idempotent (note idempotency key; the cards'
+ * span dedupe), so a retried accept folds instead of duplicating.
  */
 
 export const MAX_SUMMARY_CHARS = 1_500;
 export const MAX_SUMMARY_CLAIMS = 7;
 export const MAX_SUMMARY_QUESTIONS = 5;
-const MAX_CLAIM_CHARS = 400;
 const MAX_QUESTION_CHARS = 200;
 
 /** Re-locate a quote in the source text; returns the span or null. */
@@ -62,7 +62,7 @@ export function verifyReadingSummary(
       droppedClaims++;
       continue;
     }
-    keyClaims.push({ claim: claim.slice(0, MAX_CLAIM_CHARS), quote: c.quote.trim(), ...span });
+    keyClaims.push({ claim: claim, quote: c.quote.trim(), ...span });
     if (keyClaims.length >= MAX_SUMMARY_CLAIMS) break;
   }
   const openQuestions = raw.openQuestions
@@ -128,9 +128,9 @@ export function summaryToMarkdown(input: { summary: string; openQuestions: strin
 
 /**
  * Accept a summary: save it as a note linked to the source document, and
- * open one zettel proposal per verified claim (status proposed - the owner
- * still approves each card in the usual queue). Returns the note and the
- * number of proposals created.
+ * create one zettel card per verified claim (the accept click is the
+ * permission — no proposal row waits behind it). Returns the note and the
+ * number of cards created.
  */
 export async function acceptReadingSummary(
   auth: AuthContext,
@@ -159,10 +159,10 @@ export async function acceptReadingSummary(
     idempotencyKey: input.idempotencyKey,
   });
 
-  // The extraction the summary was verified against, for proposal lineage.
+  // The extraction the summary was verified against, for claim_evidence lineage.
   const extraction = await loadCurrentExtraction(auth, input.documentId);
 
-  let proposals = 0;
+  const createdIds: string[] = [];
   await withTransaction(async (tx) => {
     await tx
       .insert(artifactLinks)
@@ -177,26 +177,25 @@ export async function acceptReadingSummary(
       })
       .onConflictDoNothing({ target: [artifactLinks.artifactId, artifactLinks.targetType, artifactLinks.targetId] });
 
+    // One card per verified claim, written by the same creation core every
+    // zettelize surface uses. Its span gate is the retried accept's fold: the
+    // same claim quote of the same document is already a card.
     for (const c of input.summary.keyClaims) {
-      const [row] = await tx
-        .insert(zettelProposals)
-        .values({
-          workspaceId: auth.workspaceId,
-          documentId: document.id,
-          extractionId: extraction.id,
-          title: c.claim.slice(0, 120),
-          claim: c.claim,
+      const result = await createZettelFromSource(
+        auth,
+        {
+          source: { kind: "document", documentId: document.id },
+          title: c.claim,
+          content: c.claim,
           quote: c.quote,
-          spanStart: c.start,
-          spanEnd: c.end,
-          dedupeKey: zettelDedupeKey("doc", document.id, c.start, c.end),
+          span: { start: c.start, end: c.end },
+          extractionId: extraction.id,
           proposer: input.proposer,
-          createdBy: auth.userId,
-          updatedBy: auth.userId,
-        })
-        .onConflictDoNothing({ target: [zettelProposals.documentId, zettelProposals.dedupeKey] })
-        .returning({ id: zettelProposals.id });
-      if (row) proposals++;
+          auditMetadata: { readingSummaryNoteId: note.id },
+        },
+        tx,
+      );
+      if ("artifactId" in result) createdIds.push(result.artifactId);
     }
 
     await recordAudit(
@@ -206,11 +205,23 @@ export async function acceptReadingSummary(
         subjectType: "document",
         subjectId: document.id,
         summary: `Accepted a reading summary of "${document.title}"`,
-        metadata: { noteId: note.id, claims: input.summary.keyClaims.length, proposals },
+        metadata: { noteId: note.id, claims: input.summary.keyClaims.length, created: createdIds.length },
       },
       tx,
     );
   });
 
-  return { note, proposals };
+  // The cards were written on our transaction, so the embeds are ours too:
+  // best-effort, exactly as a bare creation embeds itself.
+  for (const artifactId of createdIds) {
+    try {
+      await embedArtifact(auth, { artifactId });
+    } catch (cause) {
+      console.error(
+        `embedArtifact after reading-summary claim card failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+      );
+    }
+  }
+
+  return { note, created: createdIds.length };
 }

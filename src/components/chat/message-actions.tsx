@@ -89,11 +89,11 @@ export function MessageActions({
     }
     const unread = result.unreadChars > 0 ? ` ${result.unreadChars.toLocaleString()} characters were not read.` : "";
     setNotice(
-      result.proposed === 0
-        ? `No new ideas proposed.${unread}`
-        : `${result.proposed} idea${result.proposed === 1 ? "" : "s"} proposed for review.${unread}`,
+      result.created === 0
+        ? `No new ideas.${unread}`
+        : `${result.created} idea${result.created === 1 ? "" : "s"} created.${unread}`,
     );
-    setReviewHref(result.proposed > 0 ? "/polymath/ideas#in-review" : null);
+    setReviewHref(result.created > 0 ? "/polymath/ideas" : null);
   }
 
   return (
@@ -182,7 +182,7 @@ export function MessageActions({
           {notice}{" "}
           {reviewHref ? (
             <Link href={reviewHref} className="text-foreground font-medium underline underline-offset-4">
-              Review in Ideas
+              See in Ideas
             </Link>
           ) : null}
         </p>

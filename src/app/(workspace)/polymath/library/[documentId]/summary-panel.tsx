@@ -8,8 +8,8 @@ import { acceptReadingSummaryAction, summarizeReadingAction } from "./summary-ac
 
 /*
  * The summarize flow on the reader (ASH-292): one click runs the
- * summarizer, the result stays a proposal - the owner reads it, then
- * accepts (a linked note plus zettel proposals for the verified claims)
+ * summarizer, the result stays a preview - the owner reads it, then
+ * accepts (a linked note plus one zettel card per verified claim)
  * or discards it. Nothing is written before Accept; the accept key is
  * minted once per produced summary so a double-click folds.
  */
@@ -17,7 +17,7 @@ export function SummaryPanel({ documentId, canSummarize }: { documentId: string;
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [summary, setSummary] = useState<VerifiedReadingSummary | null>(null);
-  const [saved, setSaved] = useState<{ noteId: string; proposals: number } | null>(null);
+  const [saved, setSaved] = useState<{ noteId: string; created: number } | null>(null);
 
   if (!canSummarize) return null;
 
@@ -39,7 +39,7 @@ export function SummaryPanel({ documentId, canSummarize }: { documentId: string;
       summary,
       idempotencyKey: `reading-summary:${documentId}:${summary.keyClaims.map((c) => `${c.start}-${c.end}`).join(",")}`,
     })
-      .then((r) => (r.ok ? setSaved({ noteId: r.noteId, proposals: r.proposals }) : setError(r.error)))
+      .then((r) => (r.ok ? setSaved({ noteId: r.noteId, created: r.created }) : setError(r.error)))
       .catch(() => setError("Could not save this summary."))
       .finally(() => setPending(false));
   }
@@ -48,8 +48,8 @@ export function SummaryPanel({ documentId, canSummarize }: { documentId: string;
     return (
       <Panel title="Summary saved">
         <p className="text-body-dense">
-          Saved as a note linked to this document, with {saved.proposals} zettel{" "}
-          {saved.proposals === 1 ? "proposal" : "proposals"} waiting in the usual queue.
+          Saved as a note linked to this document, with {saved.created} zettel{" "}
+          {saved.created === 1 ? "card" : "cards"} in your ideas.
         </p>
       </Panel>
     );
