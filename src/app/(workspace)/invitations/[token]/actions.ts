@@ -1,9 +1,10 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { acceptInvitation } from "@/domains/identity/invitations";
 import { actionError } from "@/lib/action-error";
 import { getAuthContext } from "@/lib/auth";
+import { workspacesTag } from "@/lib/cache-tags";
 import { sessionVerifiedEmail } from "./session-email";
 
 // Same copy for every dead end - unknown, expired, revoked, expended, or a
@@ -37,6 +38,9 @@ export async function acceptInvitationAction(
   try {
     const verifiedEmail = await sessionVerifiedEmail(auth);
     const result = await acceptInvitation({ token: String(token || ""), userId: auth.userId, verifiedEmail });
+    // The acceptor's switcher is cached per user; the new membership must be
+    // on their next render, which is exactly when they navigate back to the app.
+    updateTag(workspacesTag(auth.userId));
     revalidatePath("/settings/access");
     return { ok: true, workspaceId: result.workspaceId, role: result.role, replayed: result.replayed };
   } catch (error) {

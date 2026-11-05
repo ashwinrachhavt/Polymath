@@ -1,8 +1,10 @@
 import { eq } from "drizzle-orm";
-import { currentUser } from "@clerk/nextjs/server";
+import { clerkClient, currentUser } from "@clerk/nextjs/server";
+import { cacheLife, cacheTag } from "next/cache";
 import { users } from "@/domains/identity/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { clerkConfigured, devAuthBypass } from "@/lib/clerk";
+import { sessionEmailTag } from "@/lib/cache-tags";
 import { db } from "@/lib/db";
 
 /*
@@ -25,5 +27,45 @@ export async function sessionVerifiedEmail(auth: AuthContext): Promise<string | 
     }
   }
   const [row] = await db.select({ email: users.email }).from(users).where(eq(users.id, auth.userId)).limit(1);
+  return row?.email ?? null;
+}
+
+/*
+ * The cached twin the workspace layout's switcher reads. `currentUser()` opens
+ * a Clerk Backend API request and reads request-time auth state, so it cannot
+ * run in a cached scope; the Backend API client can, because it takes the
+ * user id as an explicit argument and the verified email changes at most once
+ * per sign-in. Acceptance keeps calling the uncached sessionVerifiedEmail
+ * above - the invitation match is a trust surface, not chrome. A machine
+ * session has no Clerk user and reads null here, the same value
+ * sessionVerifiedEmail returns for it today.
+ */
+export async function cachedSessionVerifiedEmail(auth: AuthContext): Promise<string | null> {
+  if (clerkConfigured && !devAuthBypass) return cachedClerkVerifiedEmail(auth.clerkUserId);
+  return cachedDevVerifiedEmail(auth.userId);
+}
+
+async function cachedClerkVerifiedEmail(clerkUserId: string | undefined): Promise<string | null> {
+  "use cache";
+  cacheTag(sessionEmailTag(clerkUserId ?? "no-clerk-user"));
+  cacheLife("minutes"); // the email is fixed at sign-in; the profile bounds a change until its next request
+  if (!clerkUserId) return null;
+  try {
+    const client = await clerkClient();
+    const user = await client.users.getUser(clerkUserId);
+    const primary = user.emailAddresses.find((e) => e.id === user.primaryEmailAddressId) ?? user.emailAddresses[0];
+    return primary?.verification?.status === "verified" ? primary.emailAddress : null;
+  } catch {
+    // Same honesty rule as sessionVerifiedEmail: an unreachable identity
+    // provider reads as "no email to trust", not as a failed render.
+    return null;
+  }
+}
+
+async function cachedDevVerifiedEmail(userId: string): Promise<string | null> {
+  "use cache";
+  cacheTag(sessionEmailTag(`dev:${userId}`));
+  cacheLife("minutes");
+  const [row] = await db.select({ email: users.email }).from(users).where(eq(users.id, userId)).limit(1);
   return row?.email ?? null;
 }

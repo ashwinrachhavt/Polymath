@@ -1,9 +1,10 @@
 "use server";
 
 import { and, eq } from "drizzle-orm";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
 import { getAuthContext } from "@/lib/auth";
+import { feedTag } from "@/lib/cache-tags";
 import { requireRole } from "@/lib/auth/guards";
 import { db } from "@/lib/db";
 import { agentQuestions } from "@/domains/agents/schema";
@@ -65,6 +66,8 @@ export async function answerRunQuestion(input: {
     return { ok: false, message: sent.message };
   }
 
+  // The shell's cached feed counts open questions; this one just closed.
+  updateTag(feedTag(auth));
   revalidatePath(`/polymath/${parsed.data.runId}`);
   return { ok: true };
 }
@@ -95,6 +98,7 @@ export async function dismissQuestionAction(input: { questionId: string }): Prom
     .returning({ id: agentQuestions.id, runId: agentQuestions.runId });
   if (!closed) return { ok: false, message: "That question is no longer open." };
 
+  updateTag(feedTag(auth));
   revalidatePath(`/polymath/${closed.runId}`);
   return { ok: true };
 }

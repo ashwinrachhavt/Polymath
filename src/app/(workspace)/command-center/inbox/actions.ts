@@ -20,7 +20,7 @@ import {
 } from "@/domains/capture/commands";
 import { unparkCapture } from "@/domains/capture/parking";
 import { getAuthContext } from "@/lib/auth";
-import { capturesTag, tasksTag } from "@/lib/cache-tags";
+import { capturesTag, feedTag, tasksTag } from "@/lib/cache-tags";
 import { requireRole } from "@/lib/auth/guards";
 import type { Result } from "@/lib/result";
 
@@ -28,6 +28,9 @@ import type { Result } from "@/lib/result";
 
 const revalidate = (auth: Awaited<ReturnType<typeof authorize>>) => {
   updateTag(capturesTag(auth));
+  // Conversions and proposal decisions change capture_proposals, which the
+  // shell's cached triage feed reads — expire it alongside the inbox lists.
+  updateTag(feedTag(auth));
   revalidatePath("/command-center/inbox");
 };
 

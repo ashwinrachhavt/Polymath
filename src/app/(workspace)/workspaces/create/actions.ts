@@ -1,10 +1,11 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { createWorkspace } from "@/domains/identity/workspaces";
 import { writeActiveWorkspaceCookie } from "@/lib/active-workspace";
 import { actionError } from "@/lib/action-error";
 import { getAuthContext } from "@/lib/auth";
+import { workspacesTag } from "@/lib/cache-tags";
 import { requireRole } from "@/lib/auth/guards";
 import type { Result } from "@/lib/result";
 
@@ -39,6 +40,9 @@ export async function createWorkspaceAction(input: { name: string; slug?: string
     // of the very next request, and the client island follows with a full
     // navigation (a context change, not a partial refresh).
     await writeActiveWorkspaceCookie(workspace.workspaceId);
+    // The creator's switcher is cached per user; the new membership must be
+    // on the next render — the action itself triggers a full navigation.
+    updateTag(workspacesTag(auth.userId));
     revalidatePath("/", "layout");
     return { ok: true, slug: workspace.slug };
   } catch (error) {
