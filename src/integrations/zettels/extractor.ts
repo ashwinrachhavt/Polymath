@@ -12,8 +12,9 @@ import { providerEntry } from "@/integrations/providers/registry";
 import { drizzleQuotaStore, withQuota, type QuotaStore } from "@/integrations/providers/quota";
 
 /*
- * Turns a document's text into candidate zettels: a title, one claim, and the
- * verbatim passage the claim rests on. The domain never trusts the result: it
+ * Turns a document's text into candidate zettels: a title, the idea in the
+ * model's own words - as long as that idea needs, never padded - and the
+ * verbatim passage it rests on. The domain never trusts the result: it
  * re-locates the quote in the text and drops any candidate whose quote is not
  * really there. Model access goes through the generation seam (ASH-187): the
  * default is the workspace's existing OpenRouter route; GENERATION_PROVIDER=
@@ -21,10 +22,10 @@ import { drizzleQuotaStore, withQuota, type QuotaStore } from "@/integrations/pr
  * request from the shared quota ledger when a workspace is known.
  */
 
-export type ZettelCandidate = { title: string; claim: string; quote: string };
+export type ZettelCandidate = { title: string; content: string; quote?: string };
 
 export interface ZettelExtractor {
-  /** Stored on the proposal, e.g. "openrouter:openai/gpt-4o-mini". */
+  /** The proposer recorded on the card, e.g. "openrouter:openai/gpt-4o-mini". */
   readonly name: string;
   /**
    * `options.max` is the size-derived proposal cap (capForSize) for the whole
@@ -40,18 +41,22 @@ const DEFAULT_MODEL = "openai/gpt-4o-mini";
 
 const DEFAULT_CAP = 8;
 
-const responseItem = z.object({ title: z.string(), claim: z.string(), quote: z.string() });
+const responseItem = z.object({
+  title: z.string(),
+  content: z.string(),
+  quote: z.string().optional(),
+});
 
 /** The response contract at one call's cap: `.max` makes the cap enforced rather than asked. */
 const responseSchema = (max: number) => z.object({ zettels: z.array(responseItem).max(max) });
 
 const systemPrompt = (max: number) =>
-  `You extract atomic notes from a document. Return JSON with exactly this shape: {"zettels":[{"title","claim","quote"}]}.
-Each zettel is ONE claim the document actually makes - one idea per note, no compound claims.
-"title": a short noun phrase (max 8 words) naming the claim.
-"claim": the document's assertion in your own words, stated as a standalone sentence.
-"quote": copied VERBATIM from the document - the exact passage that supports the claim, never paraphrased, never reconstructed from memory. If you cannot find a supporting passage, drop the claim.
-Return at most ${max}, strongest claims first. Return {"zettels":[]} when the document makes no clear claims - never invent a claim to fill the shape. ${untrustedDataClauseJsonSafe("document")}`;
+  `You extract atomic notes from a document. Return JSON with exactly this shape: {"zettels":[{"title","content","quote"}]}.
+Each zettel is ONE idea the document actually makes - one idea per note, no compound ideas.
+"title": a short noun phrase (max 8 words) naming the idea.
+"content": the idea, in your own words. As long as the idea needs - one sentence to a few paragraphs. Never pad, never truncate. Short ideas get short cards.
+"quote": copied VERBATIM from the document - the exact passage that supports the idea, never paraphrased, never reconstructed from memory. Omit "quote" when no passage in the document supports the idea.
+Return at most ${max}, strongest ideas first. Return {"zettels":[]} when the document makes no clear ideas - never invent an idea to fill the shape. ${untrustedDataClauseJsonSafe("document")}`;
 
 function fromGeneration(
   provider: GenerationProvider,

@@ -1,6 +1,6 @@
 /*
  * The bounded merge pass (plan Task 17). The model sees only titles and
- * claims — never quotes — and answers with indices to keep, strongest first.
+ * content — never quotes — and answers with indices to keep, strongest first.
  * It returns members of the input array by reference, so it cannot invent a
  * candidate or rewrite a quote; the only thing it controls is which survive
  * and in what order.
@@ -10,7 +10,12 @@ import { z } from "zod";
 import type { ZettelCandidate } from "@/integrations/zettels/extractor";
 import { ZETTEL_MERGE_MAX_PER_SOURCE } from "./zettel-chunking";
 
-export type SectionCandidate = ZettelCandidate & { start: number; end: number; sectionIndex: number };
+export type SectionCandidate = ZettelCandidate & {
+  /** Where the quote sits in the source text; absent for a quoteless candidate. */
+  start?: number;
+  end?: number;
+  sectionIndex: number;
+};
 
 const keepReply = z.object({ keep: z.array(z.number()) });
 
@@ -27,8 +32,8 @@ export async function mergeCandidates(
   const max = options.max ?? ZETTEL_MERGE_MAX_PER_SOURCE;
   if (candidates.length <= 1) return candidates.slice(0, max);
 
-  // Titles and claims only: the quote text never leaves this process.
-  const list = candidates.map((c, index) => `${index}. ${c.title} — ${c.claim}`).join("\n");
+  // Titles and content only: the quote text never leaves this process.
+  const list = candidates.map((c, index) => `${index}. ${c.title} — ${c.content}`).join("\n");
   const reply = await options.provider.generate({
     system:
       "You are merging extracted note candidates from one document. " +

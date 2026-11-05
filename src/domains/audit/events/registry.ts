@@ -231,12 +231,35 @@ const TIER_1: Tier1Spec[] = [
     operation: "step",
   },
   { action: "capture.zettels_requested", category: "knowledge", verbPhrase: "requested ideas from a capture" },
-  { action: "capture.zettels_proposed", category: "knowledge", verbPhrase: "proposed ideas from a capture" },
+  {
+    action: "capture.zettels_created",
+    category: "knowledge",
+    verbPhrase: "created ideas from a capture",
+    operation: "step",
+  },
   { action: "capture.transcribed", category: "knowledge", verbPhrase: "transcribed a voice capture" },
-  // Ideas (the accept/reject decisions on proposed zettels; the proposal's
-  // model-authored wording is reviewed before it becomes a card).
-  { action: "zettel.accepted", category: "knowledge", verbPhrase: "added an idea to the library" },
-  { action: "zettel.rejected", category: "knowledge", verbPhrase: "rejected a proposed idea" },
+  // Ideas (direct creation: the triggering click is the permission, so the
+  // pass writes the card and the audit row together. Accepting is now just
+  // card creation, so zettel.accepted is gone; zettel.rejected survives only
+  // as the legacy review flow's reject record until that flow is removed).
+  {
+    action: "zettel.created",
+    category: "knowledge",
+    verbPhrase: "added an idea to the library",
+    operation: "step",
+  },
+  {
+    action: "zettel.rejected",
+    category: "knowledge",
+    verbPhrase: "rejected a proposed idea",
+    operation: "step",
+  },
+  {
+    action: "zettel.duplicate_skipped",
+    category: "knowledge",
+    verbPhrase: "skipped a duplicate idea",
+    operation: "step",
+  },
   // Run feedback (dynamic family: the owner's like/dislike on a run's reply).
   { action: "run.feedback.up", category: "agents", verbPhrase: "gave a run positive feedback" },
   { action: "run.feedback.down", category: "agents", verbPhrase: "gave a run negative feedback" },
