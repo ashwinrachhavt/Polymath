@@ -168,7 +168,19 @@ function normaliseLimit(raw: Record<string, unknown>): Record<string, unknown> {
   return { ...raw, limit: Math.min(Math.max(Math.trunc(value), 1), LIMITS.maxResults) };
 }
 
-function parseCall(tool: string, input: unknown): ParsedCall {
+/*
+ * Built once at module load: parseCall runs on every eve tool call, and this
+ * shape is identical for every generic read, so building it per call was a
+ * pure construction tax. Exported so the unit test can pin schema reuse.
+ */
+export const GENERIC_READ_ARGS = z.object({
+  query: z.string().min(1).max(200).optional(),
+  limit: z.number().int().min(1).max(LIMITS.maxResults).optional(),
+  accountAlias: z.string().optional(),
+});
+
+/** The pure validation half of dispatch; exported for the schema-reuse unit test. */
+export function parseCall(tool: string, input: unknown): ParsedCall {
   const raw = input !== null && typeof input === "object" ? normaliseLimit({ ...(input as Record<string, unknown>) }) : {};
   const firstIssue = (error: z.ZodError) => error.issues[0]?.message ?? "Invalid arguments.";
 
@@ -215,13 +227,7 @@ function parseCall(tool: string, input: unknown): ParsedCall {
       : { ok: false, message: firstIssue(parsed.error) };
   }
   if (tool in GENERIC_READS) {
-    const parsed = z
-      .object({
-        query: z.string().min(1).max(200).optional(),
-        limit: z.number().int().min(1).max(LIMITS.maxResults).optional(),
-        accountAlias: z.string().optional(),
-      })
-      .safeParse(raw);
+    const parsed = GENERIC_READ_ARGS.safeParse(raw);
     if (!parsed.success) return { ok: false, message: firstIssue(parsed.error) };
     return { ok: true, generic: true as const, tool, args: parsed.data, accountAlias: parsed.data.accountAlias };
   }
