@@ -13,6 +13,8 @@ import { DesignBriefButton } from "../design-brief-button";
 import { CanvaImportButton } from "../canva-import-button";
 import { BRIEFABLE_KINDS } from "@/domains/knowledge/design-brief";
 import { DeckView, InfographicView } from "@/components/products/polymath/artifact-views";
+import { DiagramView } from "@/components/products/polymath/diagram-view";
+import { getDiagramArtifactView } from "@/domains/diagrams/view-queries";
 import type { DeckContent, InfographicContent } from "@/domains/knowledge/artifact-content";
 
 export const metadata = { title: "Artifact · Polymath" };
@@ -38,6 +40,11 @@ export async function ArtifactSurface({ artifactId }: { artifactId: string }) {
       : (artifact.structured as { kind?: string } | null)?.kind === "infographic"
         ? (artifact.structured as InfographicContent)
         : null;
+
+  // A diagram artifact carries no markdown body — its Mermaid version chain
+  // is the content, read through the diagrams view model (spec art_Yi8Fwsqn
+  // §6). No TOC: the Preview/Mermaid tabs are the structure.
+  const diagram = artifact.kind === "diagram" ? await getDiagramArtifactView(auth, artifactId) : null;
 
   // A deck's TOC is its slides; an infographic's is its sections. Markdown
   // artifacts get theirs from the headings.
@@ -103,7 +110,9 @@ export async function ArtifactSurface({ artifactId }: { artifactId: string }) {
           </nav>
         ) : null}
         <article className="min-w-0 flex-1">
-          {structured?.kind === "deck" ? (
+          {diagram ? (
+            <DiagramView title={diagram.title} versions={diagram.versions} />
+          ) : structured?.kind === "deck" ? (
             <DeckView
               content={structured}
               sources={artifact.sources.map((s) => ({ documentId: s.documentId, title: s.title }))}
