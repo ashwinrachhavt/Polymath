@@ -15,7 +15,7 @@ import { agentProfileRevisions } from "./runtime-schema";
  * conversations.ts.
  */
 
-export class RuntimeConflictError extends Error {
+class RuntimeConflictError extends Error {
   constructor(
     readonly code: "not_found",
     message: string,
