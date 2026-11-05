@@ -17,7 +17,7 @@ import {
   type NodeProps,
 } from "@xyflow/react";
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { GraphEdge, GraphNode } from "@/domains/knowledge/relations";
 import { combineCardsAction, linkCardsAction } from "./actions";
@@ -25,20 +25,46 @@ import { combineCardsAction, linkCardsAction } from "./actions";
 type CardData = { title: string; kind: string; excerpt: string | null; [key: string]: unknown };
 type CardNode = Node<CardData, "card">;
 
+/* The crucible: cards picked for connect/mix. Ephemeral client state (spec:
+ * no persistence — the selection dies with the page, like Alfred's did). */
+type CrucibleState = { ids: string[]; title: string; open: boolean };
+
+const noCrucible = { ids: new Set<string>(), toggle: () => {} };
+const CrucibleContext = createContext<{ ids: ReadonlySet<string>; toggle: (id: string) => void }>(noCrucible);
+
 function CardNodeView({ id, data, selected }: NodeProps<CardNode>) {
+  const crucible = useContext(CrucibleContext);
+  const inCrucible = crucible.ids.has(id);
   return (
     <div
-      className={`w-52 rounded-lg border bg-card px-3 py-2 text-left shadow-none transition-colors ${selected ? "border-foreground" : "border-border hover:border-muted-foreground"}`}
+      className={`w-52 rounded-lg border bg-card px-3 py-2 text-left shadow-none transition-colors ${
+        inCrucible ? "border-signal" : selected ? "border-foreground" : "border-border hover:border-muted-foreground"
+      }`}
     >
       <Handle type="target" position={Position.Left} className="!size-2 !border-border !bg-muted-foreground" />
       <div className="flex items-center justify-between gap-2">
         <span className="text-data text-muted-foreground">{data.kind}</span>
-        <a
-          href={`/polymath/notes?id=${id}`}
-          className="nodrag text-data text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-        >
-          Open
-        </a>
+        <span className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => crucible.toggle(id)}
+            aria-pressed={inCrucible}
+            aria-label={`${inCrucible ? "Remove" : "Add"} ${data.title} ${inCrucible ? "from" : "to"} the crucible`}
+            className={`nodrag size-5 rounded-sm border text-xs leading-none ${
+              inCrucible
+                ? "border-transparent bg-signal text-signal-ink"
+                : "border-border bg-background text-muted-foreground hover:border-foreground hover:text-foreground"
+            }`}
+          >
+            {inCrucible ? "✓" : "+"}
+          </button>
+          <a
+            href={`/polymath/notes?id=${id}`}
+            className="nodrag text-data text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+          >
+            Open
+          </a>
+        </span>
       </div>
       <p className="mt-0.5 line-clamp-2 text-body-dense font-medium leading-snug">{data.title}</p>
       {data.excerpt && <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{data.excerpt}</p>}
@@ -123,6 +149,21 @@ export function GraphCanvas({ nodes: initialNodes, edges: initialEdges }: { node
   const [title, setTitle] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [crucible, setCrucible] = useState<CrucibleState>({ ids: [], title: "", open: false });
+  const crucibleIds = useMemo(() => new Set(crucible.ids), [crucible.ids]);
+  // Open the panel on the first add so the user sees where the card went;
+  // later adds and removals keep whatever openness the user chose.
+  const toggleCrucible = useCallback((id: string) => {
+    setCrucible((c) => {
+      const adding = !c.ids.includes(id);
+      return {
+        ...c,
+        ids: adding ? [...c.ids, id] : c.ids.filter((x) => x !== id),
+        open: adding && c.ids.length === 0 ? true : c.open,
+      };
+    });
+  }, []);
+  const crucibleValue = useMemo(() => ({ ids: crucibleIds, toggle: toggleCrucible }), [crucibleIds, toggleCrucible]);
   const selected = nodes.filter((n) => n.selected);
 
   const onConnect = useCallback(
@@ -194,24 +235,26 @@ export function GraphCanvas({ nodes: initialNodes, edges: initialEdges }: { node
         )}
       </div>
       <div className="h-[70vh] min-h-96 overflow-hidden rounded-xl border border-border">
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          nodeTypes={nodeTypes}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
-          fitView
-          fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
-          minZoom={0.2}
-          selectionOnDrag
-          panOnDrag={[1, 2]}
-          multiSelectionKeyCode="Shift"
-          proOptions={{ hideAttribution: true }}
-        >
-          <Background gap={24} />
-          <Controls showInteractive={false} />
-        </ReactFlow>
+        <CrucibleContext.Provider value={crucibleValue}>
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            nodeTypes={nodeTypes}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            fitView
+            fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
+            minZoom={0.2}
+            selectionOnDrag
+            panOnDrag={[1, 2]}
+            multiSelectionKeyCode="Shift"
+            proOptions={{ hideAttribution: true }}
+          >
+            <Background gap={24} />
+            <Controls showInteractive={false} />
+          </ReactFlow>
+        </CrucibleContext.Provider>
       </div>
     </div>
   );
