@@ -231,8 +231,10 @@ test("Load more walks the keyset cursor to the end of a 55-row feed", async ({ p
     // The keyset peek cannot know the exact remaining count, so the control
     // is plainly "Load more" — a button in the feed island since the
     // incremental append rework (it calls the loadActivityPage server action
-    // and appends the presented rows client-side).
-    await page.getByRole("button", { name: "Load more" }).click();
+    // and appends the presented rows client-side). "exact" because the
+    // toolbar's remove-filter chip contains the query text, which itself
+    // starts with "Load more" in this seeded scenario.
+    await page.getByRole("button", { name: "Load more", exact: true }).click();
     await expect(entries).toHaveCount(55);
   } finally {
     if (client) {
