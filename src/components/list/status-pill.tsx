@@ -12,9 +12,8 @@ import { RELATIONSHIP_STATUS_LABELS } from "@/domains/crm/status";
 
 const TONES = {
   neutral: "border-border bg-muted text-muted-foreground",
-  positive:
-    "border-[color-mix(in_oklab,#346538_25%,transparent)] bg-[#EDF3EC] text-[#346538] dark:bg-[#1d2a1c] dark:text-[#9dc49e] dark:border-[#2c3f2b]",
-  warm: "border-[color-mix(in_oklab,#956400_25%,transparent)] bg-[#FBF3DB] text-[#956400] dark:bg-[#2e2814] dark:text-[#d8c07c] dark:border-[#453b1c]",
+  positive: "border-pill-positive/25 bg-pill-positive text-pill-positive-ink",
+  warm: "border-pill-warm/25 bg-pill-warm text-pill-warm-ink",
 } as const;
 
 type PillTone = keyof typeof TONES;

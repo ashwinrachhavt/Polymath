@@ -56,7 +56,10 @@ modes. Status wheel: `--tone-attention` (sienna-amber), `--tone-teal`,
 `--tone-violet`, each with a `-wash`, quiet at every chroma. Identity tints
 `--avatar-1…6` with `-ink` foregrounds: six quiet hue-anchored pairs
 (slate-blue, grass, sienna, plum, violet, teal) for deterministic per-person
-avatars; every ink clears AA on its own wash in both modes (>= 4.5:1).
+avatars; every ink clears AA on its own wash in both modes (>= 4.5:1). Status
+pill tones `--pill-positive`/`--pill-warm` with `-ink` foregrounds (4.62-8.22:1
+in both modes) carry the green and amber pills; `--success-wash` is the grass
+wash behind hero marks, ink from the foreground token.
 
 ## Type
 

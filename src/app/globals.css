@@ -142,6 +142,14 @@
   --avatar-6: oklch(94.5% 0.025 200);
   --avatar-6-ink: oklch(45% 0.04 200);
 
+  /* Status-pill tones (positive/warm) with AA-verified ink on their own
+     wash in both modes (4.62-8.22:1), plus the success wash for hero marks. */
+  --pill-positive: oklch(95.8% 0.011 141);
+  --pill-positive-ink: oklch(46% 0.089 146);
+  --pill-warm: oklch(96.4% 0.033 92);
+  --pill-warm-ink: oklch(54.2% 0.114 75);
+  --success-wash: oklch(93% 0.05 150);
+
   --border: var(--rule);
   --input: var(--rule);
   --ring: var(--focus);
@@ -304,6 +312,11 @@
   --color-avatar-5-ink: var(--avatar-5-ink);
   --color-avatar-6: var(--avatar-6);
   --color-avatar-6-ink: var(--avatar-6-ink);
+  --color-pill-positive: var(--pill-positive);
+  --color-pill-positive-ink: var(--pill-positive-ink);
+  --color-pill-warm: var(--pill-warm);
+  --color-pill-warm-ink: var(--pill-warm-ink);
+  --color-success-wash: var(--success-wash);
 
   /* Red Hat is the Furrow register: Display 600 for heads, Text for body
      and UI, Mono for figures (readouts, ids, dates, counts). */
@@ -392,6 +405,12 @@
   --avatar-5-ink: oklch(77% 0.05 292);
   --avatar-6: oklch(26% 0.025 200);
   --avatar-6-ink: oklch(75% 0.045 200);
+
+  --pill-positive: oklch(26.8% 0.031 143);
+  --pill-positive-ink: oklch(78.2% 0.068 146);
+  --pill-warm: oklch(27.8% 0.034 93);
+  --pill-warm-ink: oklch(81.3% 0.091 91);
+  --success-wash: oklch(26% 0.03 150);
 
   --edge-light: oklch(1 0 0 / 0%);
   --edge-shade: oklch(0 0 0 / 0%);
