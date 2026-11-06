@@ -96,14 +96,17 @@ export type ScoredHit = ChunkHit & {
 export const AGENT_SEARCH_PER_DOCUMENT_LIMIT = 3;
 
 /**
- * Provisional admission rule, pending the Phase-1 evaluation set's measured
- * threshold (issue #533 finding 3): both legs agreeing is evidence; a hit a
- * single leg saw must sit at or under this rank in that leg. Rank ordering
- * and relevance admission are separate decisions on purpose.
+ * EXPERIMENTAL - unmeasured admission rule, pending the Phase-1 evaluation
+ * set's measured threshold (issue #533 finding 3). Both legs agreeing is
+ * treated as evidence, but dual-leg agreement alone does not PROVE relevance;
+ * a hit a single leg saw must sit at or under this rank in that leg. Rank
+ * ordering and relevance admission are separate decisions on purpose. Do not
+ * treat this policy as calibrated until the retrieval evaluation reports
+ * recall/precision for it against alternatives.
  */
 export const AGENT_SEARCH_SINGLE_LEG_MAX_RANK = 2;
 
-/** Is this hit evidence the model may see? Rank provenance, never the fused score, answers. */
+/** Is this hit evidence the model may see? Rank provenance, never the fused score, answers. EXPERIMENTAL until measured - see above. */
 export function isEvidence(hit: ScoredHit): boolean {
   if (hit.legs.length > 1) return true;
   const rank = hit.bestRank.fts ?? hit.bestRank.vector ?? Number.POSITIVE_INFINITY;
