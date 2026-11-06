@@ -1,8 +1,8 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { blobObjects } from "@/domains/audit/schema";
-import { documents, embeddings, files } from "@/domains/knowledge/schema";
+import { documentExtractions, documents, embeddings, files } from "@/domains/knowledge/schema";
 import { EMBEDDING_DIMENSIONS, type EmbeddingProvider } from "@/integrations/embeddings/provider";
 import type { ExtractionResult } from "@/integrations/extraction/provider";
 import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
@@ -35,28 +35,25 @@ vi.mock("@/integrations/object-store/object-store", () => ({
   readBlob: vi.fn(async () => new Uint8Array([37, 80, 68, 70])),
 }));
 
-import { embedExtraction } from "@/domains/knowledge/embedding";
+import { EMBEDDING_OWNER_TYPE, embedExtraction } from "@/domains/knowledge/embedding";
 import { searchDocumentsForAgent } from "@/domains/knowledge/agent-search";
 import { extractDocument } from "@/domains/knowledge/extraction";
 
-/** Deterministic embedder: words hash into buckets, so shared words mean closeness. */
+/** Deterministic embedding: words hash into buckets, so shared words mean closeness. */
+function fakeVector(value: string): number[] {
+  const v = new Array<number>(EMBEDDING_DIMENSIONS).fill(0);
+  for (const word of value.toLowerCase().match(/[a-z]+/g) ?? []) {
+    let h = 0;
+    for (const ch of word) h = (h * 31 + ch.charCodeAt(0)) % EMBEDDING_DIMENSIONS;
+    v[h] += 1;
+  }
+  const norm = Math.sqrt(v.reduce((s, x) => s + x * x, 0)) || 1;
+  return v.map((x) => x / norm);
+}
+
+/** Deterministic embedder over fakeVector. */
 function fakeProvider(model = "fake:hash-1536"): EmbeddingProvider {
-  const provider = {
-    model,
-    async embed(values: string[]) {
-      return values.map((value) => {
-        const v = new Array<number>(EMBEDDING_DIMENSIONS).fill(0);
-        for (const word of value.toLowerCase().match(/[a-z]+/g) ?? []) {
-          let h = 0;
-          for (const ch of word) h = (h * 31 + ch.charCodeAt(0)) % EMBEDDING_DIMENSIONS;
-          v[h] += 1;
-        }
-        const norm = Math.sqrt(v.reduce((s, x) => s + x * x, 0)) || 1;
-        return v.map((x) => x / norm);
-      });
-    },
-  };
-  return provider;
+  return { model, embed: async (values: string[]) => values.map(fakeVector) };
 }
 
 beforeAll(() => {
@@ -218,6 +215,64 @@ suite("hybrid agent search (real Postgres + pgvector)", () => {
     if (!res.ok) return;
     expect(res.results[0]?.extractionId).toBeTruthy();
     expect(typeof res.results[0]?.chunkIndex).toBe("number");
+  });
+
+  it("finding 5: citations carry derived coverage - proven complete, proven partial, or unknown", async () => {
+    const provider = fakeProvider();
+    const a = await workspace();
+    // Small doc: the seeded pass covers the whole text -> "complete".
+    await seed(a, EXACT, "lease-exact", provider);
+    // Capped doc: 400 stored chunks (the cap) with text continuing past the
+    // last chunk's end -> provably "partial". Seeded directly: a real
+    // 500 KB embed pass is wasted runtime for a wiring assertion.
+    const capped = await seed(a, "Cap intro. " + "padding ".repeat(6000), "capped-lease");
+    const [capEx] = await holder.db!
+      .select()
+      .from(documentExtractions)
+      .where(eq(documentExtractions.documentId, capped.id));
+    // Replace the seeded chunks so the 400-at-cap shape is exact: the seeded
+    // pass spans the full text and would read "complete".
+    await holder.db!
+      .delete(embeddings)
+      .where(and(eq(embeddings.ownerType, EMBEDDING_OWNER_TYPE), eq(embeddings.ownerId, capEx.id)));
+    const fakeRows = Array.from({ length: 400 }, (_, i) => ({
+      workspaceId: a.workspaceId,
+      ownerType: EMBEDDING_OWNER_TYPE,
+      ownerId: capEx.id,
+      sourceVersionId: capEx.id,
+      chunkIndex: i,
+      // One matching chunk keeps the doc in both legs without crowding out
+      // the other documents; the rest is filler away from the query's words.
+      content: i === 0 ? "monthly rent terms" : `filler lorem ipsum chunk ${i}`,
+      spanStart: i * 100,
+      spanEnd: i * 100 + 100, // last end 40_000 << trimmed text length (~48k)
+      page: 1,
+      embedding: fakeVector(i === 0 ? "monthly rent terms" : `filler lorem ipsum chunk ${i}`),
+      model: "fake:hash-1536",
+    }));
+    await holder.db!.insert(embeddings).values(fakeRows);
+    await holder.db!
+      .update(documentExtractions)
+      .set({ embeddedAt: new Date(), embedModel: "fake:hash-1536", embedError: null })
+      .where(eq(documentExtractions.id, capEx.id));
+    // Broken doc: a recorded failure on the last pass -> "unknown".
+    const brokenDoc = await seed(a, EXACT, "lease-broken", provider);
+    const [brokenEx] = await holder.db!
+      .select()
+      .from(documentExtractions)
+      .where(eq(documentExtractions.documentId, brokenDoc.id));
+    await holder.db!
+      .update(documentExtractions)
+      .set({ embedError: "embedding failed, retry queued" })
+      .where(eq(documentExtractions.id, brokenEx.id));
+
+    const res = await searchDocumentsForAgent(a, { query: "monthly rent", limit: 10, provider });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    const byTitle = new Map(res.results.map((r) => [r.title, r.coverage]));
+    expect(byTitle.get("lease-exact")).toBe("complete");
+    expect(byTitle.get("capped-lease")).toBe("partial");
+    expect(byTitle.get("lease-broken")).toBe("unknown");
   });
 
   it("finding 1: one document contributes several distinct passages when the evidence is distant", async () => {

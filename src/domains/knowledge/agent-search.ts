@@ -51,6 +51,12 @@ export type DocumentCitation = {
    * answers predate the lineage. */
   extractionId?: string;
   chunkIndex?: number;
+  /** Derived embedding coverage of the cited extraction (issue #533 finding
+   * 5): "partial" means a long document's tail is PROVABLY not
+   * vector-searchable, so an empty or thin result for it must not be read as
+   * "the document says nothing". "unknown" means the evidence cannot
+   * establish coverage - treat it like partial, never like complete. */
+  coverage?: "complete" | "partial" | "unknown";
 };
 
 export type AgentSearchResult =
@@ -150,6 +156,14 @@ export function rrfMerge(
         // Coverage backfills the same way: either leg may carry it.
         if (entry.hit.span.page == null && hit.span.page != null) {
           entry.hit = { ...entry.hit, span: { ...entry.hit.span, page: hit.span.page } };
+        }
+        // Coverage backfills the same way, but never upgrades caution:
+        // "unknown" beats "complete" when the legs disagree.
+        if (entry.hit.coverage !== hit.coverage && hit.coverage != null) {
+          const cautious = [entry.hit.coverage, hit.coverage].includes("unknown")
+            ? "unknown"
+            : ([entry.hit.coverage, hit.coverage].includes("partial") ? "partial" : "complete");
+          entry.hit = { ...entry.hit, coverage: cautious };
         }
       } else {
         scores.set(key, { hit, score: rrf(i), legs: new Set([leg]), bestRank: { [leg]: i } });
@@ -256,6 +270,7 @@ export async function searchDocumentsForAgent(
         span: h.span,
         extractionId: h.extractionId,
         chunkIndex: h.chunkIndex,
+        coverage: h.coverage,
       })),
     };
   } catch (cause) {

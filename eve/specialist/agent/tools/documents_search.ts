@@ -19,7 +19,7 @@ import {
  */
 export default defineTool({
   description:
-    "Search the extracted text of the workspace's documents by meaning and keywords. Returns the best matching passages with document id, title, character span, and passage lineage, so answers can cite them. The result's mode field says which retrieval ran and a degraded field names a failed leg - report partial searches as partial. Empty results mean no indexed extraction matched (a retrieval miss or unindexed document as much as genuine absence); never claim the library holds nothing relevant unless the result is not degraded and indexing is known complete. Read-only; the run's frozen policy must allow documents.search.",
+    "Search the extracted text of the workspace's documents by meaning and keywords. Returns the best matching passages with document id, title, character span, and passage lineage, so answers can cite them. The result's mode field says which retrieval ran and a degraded field names a failed leg - report partial searches as partial. A coverage field says 'partial' only when a document tail is provably unindexed and 'unknown' when coverage cannot be established - treat both as 'may hold more', never as proof of absence. Empty results mean no indexed extraction matched (a retrieval miss or unindexed document as much as genuine absence); never claim the library holds nothing relevant unless the result is not degraded and indexing is known complete. Read-only; the run's frozen policy must allow documents.search.",
   inputSchema: z.object({
     query: z.string().min(1).max(500),
     limit: z.number().int().min(1).max(AGENT_SEARCH_MAX_RESULTS).optional(),

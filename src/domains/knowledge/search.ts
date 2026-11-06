@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { embeddingProvider, type EmbeddingProvider } from "@/integrations/embeddings/provider";
 import { EMBEDDING_OWNER_TYPE, vectorLiteral } from "./embedding";
 import { chunkText } from "./chunking";
+import { deriveCoverage, type EmbeddingCoverage } from "./coverage";
 import { currentExtractionSql } from "./versions";
 import { documents, documentExtractions, embeddings, files, reviewedAssertions } from "./schema";
 
@@ -168,7 +169,60 @@ export type ChunkHit = {
   span: { start: number; end: number; page: number | null };
   /** Cosine distance: 0 is identical, 2 is opposite. Lower is closer. */
   distance: number;
+  /** Derived embedding coverage of the cited extraction (issue #533 finding
+   * 5): "partial" is PROVEN cap truncation, "complete" is PROVEN full
+   * coverage, and everything the evidence cannot establish is "unknown" -
+   * never a falsely reassuring "complete". See coverage.ts. */
+  coverage?: EmbeddingCoverage;
 };
+
+/*
+ * One bounded aggregate query derives coverage for a candidate set: chunk
+ * count + furthest span end per (extraction, model), joined in code against
+ * each extraction's recorded embedModel/embedError/text length. No N+1, no
+ * text transfer (lengths come from the queries that already fetch the rows).
+ */
+async function coverageFor(
+  extractions: { id: string; embedModel: string | null; embedError: string | null; textLength: number }[],
+  workspaceId: string,
+): Promise<Map<string, EmbeddingCoverage>> {
+  const out = new Map<string, EmbeddingCoverage>();
+  const unique = [...new Map(extractions.map((e) => [e.id, e])).values()];
+  if (unique.length === 0) return out;
+  const rows = await db
+    .select({
+      ownerId: embeddings.ownerId,
+      model: embeddings.model,
+      count: sql<number>`count(*)::int`,
+      maxEnd: sql<number | null>`max(${embeddings.spanEnd})`,
+    })
+    .from(embeddings)
+    .where(
+      and(
+        eq(embeddings.workspaceId, workspaceId),
+        eq(embeddings.ownerType, EMBEDDING_OWNER_TYPE),
+        inArray(embeddings.ownerId, unique.map((e) => e.id)),
+      ),
+    )
+    .groupBy(embeddings.ownerId, embeddings.model);
+  const byKey = new Map(rows.map((r) => [`${r.ownerId}${r.model}`, r]));
+  for (const e of unique) {
+    const agg = e.embedModel ? byKey.get(`${e.id}${e.embedModel}`) : undefined;
+    out.set(
+      e.id,
+      deriveCoverage({
+        embedModel: e.embedModel,
+        embedError: e.embedError,
+        textLength: e.textLength,
+        chunks: { count: Number(agg?.count ?? 0), maxSpanEnd: agg?.maxEnd == null ? null : Number(agg.maxEnd) },
+      }),
+    );
+  }
+  return out;
+}
+
+/** Trimmed length server-side: chunk spans index the untrimmed text, and trailing whitespace must not flip coverage to "partial". */
+const trimmedTextLength = sql<number>`char_length(regexp_replace(coalesce(${documentExtractions.text}, ''), '\\s+$', ''))`;
 
 /*
  * Nearest chunks to a question, inside one workspace. Three scopes apply to
@@ -202,6 +256,9 @@ export async function searchChunks(
       start: embeddings.spanStart,
       end: embeddings.spanEnd,
       page: embeddings.page,
+      embedModel: documentExtractions.embedModel,
+      embedError: documentExtractions.embedError,
+      textLength: trimmedTextLength,
       distance,
     })
     .from(embeddings)
@@ -225,6 +282,10 @@ export async function searchChunks(
     .orderBy(distance)
     .limit(limit);
 
+  const coverage = await coverageFor(
+    rows.map((r) => ({ id: r.extractionId, embedModel: r.embedModel, embedError: r.embedError, textLength: Number(r.textLength) })),
+    auth.workspaceId,
+  );
   return rows.map((r) => ({
     documentId: r.documentId,
     title: r.title,
@@ -233,6 +294,7 @@ export async function searchChunks(
     text: r.text,
     span: { start: r.start ?? 0, end: r.end ?? r.text.length, page: r.page },
     distance: Number(r.distance),
+    coverage: coverage.get(r.extractionId),
   }));
 }
 
@@ -267,6 +329,7 @@ export async function searchChunksFts(
       text: documentExtractions.text,
       spans: documentExtractions.spans,
       embedModel: documentExtractions.embedModel,
+      embedError: documentExtractions.embedError,
       rank,
     })
     .from(documentExtractions)
@@ -333,9 +396,19 @@ export async function searchChunksFts(
     storedByExtraction.set(row.ownerId, list);
   }
 
+  const coverage = await coverageFor(
+    rows.map((r) => ({
+      id: r.extractionId,
+      embedModel: r.embedModel,
+      embedError: r.embedError,
+      textLength: (r.text ?? "").trimEnd().length,
+    })),
+    auth.workspaceId,
+  );
   return rows.flatMap((r) => {
     const text = r.text ?? "";
     if (!text) return [];
+    const cov = coverage.get(r.extractionId);
     const window = passageWindow(text, query);
     // ts_rank is higher-is-better; ChunkHit.distance is lower-is-closer.
     const distance = 1 / (1 + Number(r.rank));
@@ -355,6 +428,7 @@ export async function searchChunksFts(
           text: c.content,
           span: { start: c.spanStart ?? 0, end: c.spanEnd ?? c.content.length, page: c.page },
           distance,
+          coverage: cov,
         }));
     }
     const spans = (r.spans ?? []) as { page: number; start: number; end: number }[];
@@ -368,6 +442,7 @@ export async function searchChunksFts(
         text: chunk.text,
         span: { start: chunk.start, end: chunk.end, page: chunk.page },
         distance,
+        coverage: cov,
       }));
   });
 }
