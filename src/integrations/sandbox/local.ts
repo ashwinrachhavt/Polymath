@@ -32,11 +32,13 @@ function capped(acc: string, chunk: Buffer): string {
 }
 
 export function runInLocalSandbox(spec: SandboxSpec): Promise<SandboxResult> {
-  // This adapter is not a security boundary (same user, kernel and network;
-  // the env scrub only stops credential inheritance), so it must never become
-  // the production default by accident: production requires an explicit
-  // operator opt-in, and untrusted model/user code belongs on a real
-  // provider (issue #534 candidates 3-4), never here.
+  // TRUSTED OPERATOR COMMANDS ONLY. This adapter is not a security boundary:
+  // the command runs as the host user with the host's filesystem, process
+  // table and network; the env scrub only stops credential inheritance. It
+  // must never run untrusted model- or user-supplied code (issue #534
+  // candidates 3-4 belong on a real provider), never sit behind a request
+  // path, and never become the production default by accident: production
+  // requires an explicit operator opt-in below.
   if (process.env.NODE_ENV === "production" && process.env.SANDBOX_LOCAL_PRODUCTION_OPT_IN !== "true") {
     return Promise.resolve({
       ok: false,
