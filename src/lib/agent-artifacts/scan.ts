@@ -7,7 +7,7 @@
  * ASH-200) with one deliberate flip: there the allowed root is a ceiling and
  * the user path is the suspect; here the root IS the target, so the guard's
  * job is realpath on the roots, an lstat walk that never follows symlinks,
- * and per-scan caps. The skills' 200-file / 5 MiB budgets are one-package
+ * and per-scan caps. The skills' 2000-file / 50 MiB budgets are one-package
  * budgets; a heavy user has hundreds of transcripts inside a 30-day default
  * retention window, so these caps are the stated defaults:
  *   - maxSessionFiles: 500 session files per scan
