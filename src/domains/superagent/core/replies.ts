@@ -97,7 +97,10 @@ export class RepliesPart extends EnginePart {
         : undefined;
     if (request.purpose === "result") {
       const outcome = ticket && ticketOutcome(ticket);
-      const reported = !!ticket && liveTicket(ticket) && latestRun(ticket)?.report?.state === "ready";
+      const state = !!ticket && liveTicket(ticket) ? latestRun(ticket)?.report?.state : undefined;
+      // A failed report is an outcome too: the attempt is over and the person
+      // needs to hear why, whether the ticket later retries or not.
+      const reported = state === "ready" || state === "failed";
       const ready = outcome === "merged" || outcome === "completed" || outcome === "dropped" || reported;
       if (!ticket || !ready) throw new UserError("notReady");
     }
