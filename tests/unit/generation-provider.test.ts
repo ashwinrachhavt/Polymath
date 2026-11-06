@@ -22,15 +22,25 @@ describe("generationProvider selection", () => {
   it("throws unconfigured without keys", () => {
     expect(() => generationProvider({})).toThrow(GenerationUnconfiguredError);
   });
-  it("prefers the Mercury trial grant, then free Gemini, then OpenRouter", () => {
-    // Free-first (owner decision 2026-10-29): the one-time 100M-token Mercury
-    // grant outranks the recurring Gemini free tier; the paid OpenRouter key
-    // stays last. This used to assert OpenRouter, which billed every debrief
-    // and draft while free tiers sat configured and unused.
+  it("prefers the Mercury trial grant, then Groq, then free Gemini, then OpenRouter", () => {
+    // Free-first (owner decision 2026-11-05): the one-time 100M-token Mercury
+    // grant wins, then Groq (the owner holds Groq credit), then the recurring
+    // Gemini free tier; the paid OpenRouter key stays last. This used to
+    // assert OpenRouter, which billed every debrief and draft while free
+    // tiers sat configured and unused.
     const p = generationProvider({ OPENROUTER_API_KEY: "k", GEMINI_API_KEY: "g", MERCURY_API_KEY: "m" });
     expect(p.registryId).toBe("mercury");
+    expect(generationProvider({ OPENROUTER_API_KEY: "k", GEMINI_API_KEY: "g", GROQ_API_KEY: "q" }).registryId).toBe(
+      "groq",
+    );
+    // No Groq key set: the chain skips Groq and lands on the free Gemini tier.
     expect(generationProvider({ OPENROUTER_API_KEY: "k", GEMINI_API_KEY: "g" }).registryId).toBe("gemini");
     expect(generationProvider({ INCEPTION_API_KEY: "m" }).registryId).toBe("mercury");
+  });
+  it("serves GENERATION_PROVIDER=groq through the OpenAI-compatible catalog", () => {
+    const p = generationProvider({ GENERATION_PROVIDER: "groq", GROQ_API_KEY: "q" });
+    expect(p.registryId).toBe("groq");
+    expect(p.name).toBe("groq:openai/gpt-oss-120b");
   });
   it("still generates on OpenRouter when that is the only key", () => {
     expect(generationProvider({ OPENROUTER_API_KEY: "k" }).registryId).toBe("openrouter");
@@ -42,11 +52,15 @@ describe("generationProvider selection", () => {
   it("fails closed if fixture is set in production", () => {
     // An env leak must surface as the skippable unconfigured error, never as
     // fixture content in front of a real caller.
-    expect(() => generationProvider({ GENERATION_PROVIDER: "fixture", NODE_ENV: "production" })).toThrow(GenerationUnconfiguredError);
+    expect(() => generationProvider({ GENERATION_PROVIDER: "fixture", NODE_ENV: "production" })).toThrow(
+      GenerationUnconfiguredError,
+    );
   });
   it("takes the free Gemini route only when it is the configured one", () => {
     expect(generationProvider({ GEMINI_API_KEY: "g" }).registryId).toBe("gemini");
-    expect(generationProvider({ GENERATION_PROVIDER: "gemini", OPENROUTER_API_KEY: "k", GEMINI_API_KEY: "g" }).registryId).toBe("gemini");
+    expect(
+      generationProvider({ GENERATION_PROVIDER: "gemini", OPENROUTER_API_KEY: "k", GEMINI_API_KEY: "g" }).registryId,
+    ).toBe("gemini");
   });
 });
 
@@ -61,7 +75,9 @@ describe("geminiProvider", () => {
     const out = await p.generate({ system: "sys", prompt: "doc", json: true });
     expect(out.text).toBe("hello world");
     expect(p.name).toBe("gemini:gemini-3.5-flash-lite");
-    expect(calls[0][0]).toBe("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent");
+    expect(calls[0][0]).toBe(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent",
+    );
     expect((calls[0][1].headers as Record<string, string>)["x-goog-api-key"]).toBe("g");
     const body = JSON.parse(String(calls[0][1].body));
     expect(body.systemInstruction.parts[0].text).toBe("sys");
@@ -78,7 +94,10 @@ describe("geminiProvider", () => {
 
 describe("openAICompatibleProvider (mercury + openrouter share the wire)", () => {
   const mercuryOk = () =>
-    Response.json({ choices: [{ message: { content: "diffused" } }], usage: { prompt_tokens: 9, completion_tokens: 2 } });
+    Response.json({
+      choices: [{ message: { content: "diffused" } }],
+      usage: { prompt_tokens: 9, completion_tokens: 2 },
+    });
 
   it("mercury generate: OpenAI wire shape, bearer auth, usage mapped", async () => {
     const calls: Array<[string, RequestInit]> = [];
@@ -110,13 +129,16 @@ describe("openAICompatibleProvider (mercury + openrouter share the wire)", () =>
   });
 
   it("streams OpenAI deltas, maps reasoning to thinking, terminal usage frame", async () => {
-    const fetchMock = vi.fn(async () =>
-      new Response(sseStream([
-        { choices: [{ delta: { reasoning: "hmm" } }] },
-        { choices: [{ delta: { content: "Hel" } }] },
-        { choices: [{ delta: { content: "lo" } }] },
-        { usage: { prompt_tokens: 5, completion_tokens: 2 } },
-      ])),
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          sseStream([
+            { choices: [{ delta: { reasoning: "hmm" } }] },
+            { choices: [{ delta: { content: "Hel" } }] },
+            { choices: [{ delta: { content: "lo" } }] },
+            { usage: { prompt_tokens: 5, completion_tokens: 2 } },
+          ]),
+        ),
     );
     const p = mercuryProvider({ MERCURY_API_KEY: "m" }, fetchMock as unknown as typeof fetch);
     const chunks = await collect(p.stream!({ prompt: "hi" }));
@@ -179,9 +201,11 @@ async function collect(stream: AsyncGenerator<StreamChunk>): Promise<StreamChunk
 
 describe("cloudflare provider", () => {
   it("selects cloudflare on explicit opt-in (§8) and generates with usage", async () => {
-    const fetchMock = vi.fn(async () => Response.json({
-      result: { response: "cf answer", usage: { prompt_tokens: 7, completion_tokens: 3 } },
-    }));
+    const fetchMock = vi.fn(async () =>
+      Response.json({
+        result: { response: "cf answer", usage: { prompt_tokens: 7, completion_tokens: 3 } },
+      }),
+    );
     const provider = generationProvider(
       {
         GENERATION_PROVIDER: "cloudflare",
@@ -238,7 +262,9 @@ describe("cloudflare provider", () => {
       { type: "token", content: "Hel" },
       { type: "token", content: "lo" },
     ]);
-    expect(JSON.parse((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body as string).stream).toBe(true);
+    expect(JSON.parse((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body as string).stream).toBe(
+      true,
+    );
   });
 });
 
@@ -247,10 +273,12 @@ describe("adapter streams", () => {
     const fetchMock = vi.fn(async (url: string | URL) => {
       const u = String(url);
       if (u.includes("streamGenerateContent")) {
-        return new Response(sseStream([
-          { candidates: [{ content: { parts: [{ text: "wor" }, { text: "ds" }] } }] },
-          { candidates: [{ content: { parts: [{ text: "!" }] } }] },
-        ]));
+        return new Response(
+          sseStream([
+            { candidates: [{ content: { parts: [{ text: "wor" }, { text: "ds" }] } }] },
+            { candidates: [{ content: { parts: [{ text: "!" }] } }] },
+          ]),
+        );
       }
       return Response.json({
         candidates: [{ content: { parts: [{ text: "full" }] } }],
@@ -270,10 +298,9 @@ describe("adapter streams", () => {
   it("openrouter streams reasoning as thinking and content as tokens, usage on generate", async () => {
     const fetchMock = vi.fn(async (_url: string | URL, init?: RequestInit) => {
       if (JSON.parse(init!.body as string).stream) {
-        return new Response(sseStream([
-          { choices: [{ delta: { reasoning: "hmm" } }] },
-          { choices: [{ delta: { content: "answer" } }] },
-        ]));
+        return new Response(
+          sseStream([{ choices: [{ delta: { reasoning: "hmm" } }] }, { choices: [{ delta: { content: "answer" } }] }]),
+        );
       }
       return Response.json({
         choices: [{ message: { content: "full" } }],
@@ -296,7 +323,10 @@ describe("adapter streams", () => {
     const { text } = await provider.generate(input);
     const chunks = await collect(provider.stream!(input));
     expect(chunks[0].type).toBe("thinking");
-    const tokens = chunks.filter((c) => c.type === "token").map((c) => (c as { content: string }).content).join("");
+    const tokens = chunks
+      .filter((c) => c.type === "token")
+      .map((c) => (c as { content: string }).content)
+      .join("");
     expect(tokens.trimEnd()).toBe(text);
     expect(chunks.length).toBeGreaterThan(3);
     // The fixture ends its stream with a provider-reported usage frame (review G).
@@ -306,8 +336,12 @@ describe("adapter streams", () => {
 
   it("metered() records provider-reported stream usage; unknown stays absent (review G)", async () => {
     const records: GenerationCallRecord[] = [];
-    const provider = metered(fixtureProvider(), (r) => { records.push(r); });
-    const chunks = await collect(provider.stream!({ system: "You draft long-form writing from research", prompt: "hi" }));
+    const provider = metered(fixtureProvider(), (r) => {
+      records.push(r);
+    });
+    const chunks = await collect(
+      provider.stream!({ system: "You draft long-form writing from research", prompt: "hi" }),
+    );
     // Usage frames are consumed by metering, never forwarded downstream.
     expect(chunks.every((c) => c.type === "thinking" || c.type === "token")).toBe(true);
     expect(records).toHaveLength(1);

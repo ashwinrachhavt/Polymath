@@ -11,11 +11,11 @@ import { failureResult, InspectError, type InspectResult, type SourceRequest } f
  * because the tarball is attacker-controlled input even when GitHub served it.
  */
 
-const MAX_ARCHIVE_BYTES = 5 * 1024 * 1024;
+const MAX_ARCHIVE_BYTES = 50 * 1024 * 1024;
 // A gzip stream can expand far past the bytes it arrived in. The cap keeps a
-// compression bomb from turning a 5 MB download into an unbounded buffer.
-const MAX_EXPANDED_BYTES = 20 * 1024 * 1024;
-const MAX_ENTRIES = 200;
+// compression bomb from turning a 50 MB download into an unbounded buffer.
+const MAX_EXPANDED_BYTES = 200 * 1024 * 1024;
+const MAX_ENTRIES = 2000;
 // With `Accept: application/vnd.github.sha` the commit call answers with the
 // 40-byte sha and nothing else. Without it GitHub serialises the whole commit,
 // every changed file and its patch, which a large merge can push past any
@@ -59,10 +59,7 @@ function archivePath(raw: string): string | null {
     throw new InspectError("unsafe_path", "The repository contains a file with an empty name.");
   }
   if (raw.includes("\0")) {
-    throw new InspectError(
-      "unsafe_path",
-      `The path ${JSON.stringify(raw)} contains a NUL byte, so it cannot be read.`,
-    );
+    throw new InspectError("unsafe_path", `The path ${JSON.stringify(raw)} contains a NUL byte, so it cannot be read.`);
   }
   if (raw.startsWith("/") || /^[A-Za-z]:[\\/]/.test(raw)) {
     throw new InspectError(
@@ -79,10 +76,7 @@ function archivePath(raw: string): string | null {
 
   const segments = raw.split("/");
   if (segments.includes("..")) {
-    throw new InspectError(
-      "unsafe_path",
-      `"${raw}" climbs out of the repository with "..", so it was not read.`,
-    );
+    throw new InspectError("unsafe_path", `"${raw}" climbs out of the repository with "..", so it was not read.`);
   }
 
   // GitHub wraps the whole tree in one directory named `{repo}-{sha}/`; it is
@@ -148,10 +142,13 @@ export async function archiveToFiles(gzip: Uint8Array): Promise<Map<string, Pack
   try {
     entries = await unpackTar(tar);
   } catch {
-    throw new InspectError("unsupported_input", "GitHub returned an archive that is not a readable tar file. Try again.");
+    throw new InspectError(
+      "unsupported_input",
+      "GitHub returned an archive that is not a readable tar file. Try again.",
+    );
   }
 
-  // The expansion cap above bounds this: 200 entries can only be exceeded by an
+  // The expansion cap above bounds this: 2000 entries can only be exceeded by an
   // archive that unpacked under MAX_EXPANDED_BYTES, so the cap is a count on a
   // buffer already in memory, not a second download bound.
   if (entries.length > MAX_ENTRIES) {
@@ -296,9 +293,6 @@ export async function inspectGithub(request: GithubRequest): Promise<InspectResu
 
     return { ok: true, sourceKind: "github", sourceRef: `${owner}/${repo}`, revision: sha, skills, warnings };
   } catch (error) {
-    return failureResult(
-      error,
-      `Polymath could not finish reading ${owner}/${repo}. Try again.`,
-    );
+    return failureResult(error, `Polymath could not finish reading ${owner}/${repo}. Try again.`);
   }
 }

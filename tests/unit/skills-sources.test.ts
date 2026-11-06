@@ -26,7 +26,7 @@ async function gzipped(tar: Uint8Array): Promise<Uint8Array> {
       controller.enqueue(tar);
       controller.close();
     },
-    }).pipeThrough(new CompressionStream("gzip") as unknown as ReadableWritablePair<Uint8Array, Uint8Array>);
+  }).pipeThrough(new CompressionStream("gzip") as unknown as ReadableWritablePair<Uint8Array, Uint8Array>);
   const reader = stream.getReader();
   const chunks: Uint8Array[] = [];
   for (;;) {
@@ -108,8 +108,8 @@ describe("github archive", () => {
     });
   });
 
-  it("rejects more than 200 entries", async () => {
-    const entries = Array.from({ length: 201 }, (_, index) => ({
+  it("rejects more than 2000 entries", async () => {
+    const entries = Array.from({ length: 2001 }, (_, index) => ({
       header: { name: `repo/file-${index}.md`, size: 1 },
       body: "x",
     }));
@@ -123,10 +123,13 @@ describe("github archive", () => {
   });
 
   it("refuses an archive that expands past the decompression cap", async () => {
-    // 30 MB of zeros compress to a few KB. The cap is what stops that ratio
-    // from becoming a 30 MB buffer; the entry count never gets a say.
-    const bomb = gzipOf(new Uint8Array(30 * 1024 * 1024));
-    await expect(archiveToFiles(bomb)).rejects.toMatchObject({ code: "too_large", message: expect.stringContaining("20 MB") });
+    // 210 MB of zeros compress to a few KB. The cap is what stops that ratio
+    // from becoming a 210 MB buffer; the entry count never gets a say.
+    const bomb = gzipOf(new Uint8Array(210 * 1024 * 1024));
+    await expect(archiveToFiles(bomb)).rejects.toMatchObject({
+      code: "too_large",
+      message: expect.stringContaining("200 MB"),
+    });
   });
 });
 
@@ -286,33 +289,33 @@ describe("local folder", () => {
     expect(result).toMatchObject({ ok: false, code: "not_found" });
   });
 
-  it("stops at the 200-file cap", async () => {
+  it("stops at the 2000-file cap", async () => {
     const directory = path.join(root, "many");
     await mkdir(directory, { recursive: true });
     await writeFile(path.join(directory, "SKILL.md"), "---\ndescription: Many files.\n---\n\nBody.\n");
-    for (let index = 0; index < 201; index += 1) {
+    for (let index = 0; index < 2001; index += 1) {
       await writeFile(path.join(directory, `note-${index}.md`), "x");
     }
     expect(await inspectLocal({ kind: "local", root: directory })).toMatchObject({
       ok: false,
       code: "too_large",
-      message: expect.stringContaining("200"),
+      message: expect.stringContaining("2000"),
     });
   });
 
-  it("stops at the 5 MB budget across the tree, not per folder", async () => {
+  it("stops at the 50 MB budget across the tree, not per folder", async () => {
     const directory = path.join(root, "heavy");
     await mkdir(path.join(directory, "part-a"), { recursive: true });
     await mkdir(path.join(directory, "part-b"), { recursive: true });
     await writeFile(path.join(directory, "SKILL.md"), "---\ndescription: Heavy.\n---\n\nBody.\n");
-    // Each folder is under 5 MB; together they are over it. A per-folder
+    // Each folder is under 50 MB; together they are over it. A per-folder
     // counter would let this through.
-    await writeFile(path.join(directory, "part-a", "blob.bin"), Buffer.alloc(3 * 1024 * 1024));
-    await writeFile(path.join(directory, "part-b", "blob.bin"), Buffer.alloc(3 * 1024 * 1024));
+    await writeFile(path.join(directory, "part-a", "blob.bin"), Buffer.alloc(30 * 1024 * 1024));
+    await writeFile(path.join(directory, "part-b", "blob.bin"), Buffer.alloc(30 * 1024 * 1024));
     expect(await inspectLocal({ kind: "local", root: directory })).toMatchObject({
       ok: false,
       code: "too_large",
-      message: expect.stringContaining("5 MB"),
+      message: expect.stringContaining("50 MB"),
     });
   });
 

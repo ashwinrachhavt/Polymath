@@ -108,9 +108,10 @@ export function approvalForCapability(capability: string): PolymathApproval {
 
 /** Keys must be real `MODEL_CATALOG` ids so a routed answer is always a runnable model. */
 export const MODEL_ROUTING_OPTIONS: Readonly<Record<string, string>> = {
-  "gemini-3.5-flash-lite": "Routine conversation, drafting, tool loops, and summaries — free tier",
-  "gpt-6.1-terra": "Difficult reasoning: multi-step research, planning, synthesis, and ambiguous policy questions — paid strong model",
+  "openai/gpt-oss-120b": "Routine conversation, drafting, tool loops, and summaries — Groq free tier",
+  "gpt-6.1-terra":
+    "Difficult reasoning: multi-step research, planning, synthesis, and ambiguous policy questions — paid strong model",
 };
 
 /** The model used when the decider is unavailable, so routing fails safe rather than stalling. */
-export const ROUTING_FALLBACK = "gemini-3.5-flash-lite";
+export const ROUTING_FALLBACK = "openai/gpt-oss-120b";

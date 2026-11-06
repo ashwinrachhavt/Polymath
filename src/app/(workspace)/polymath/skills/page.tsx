@@ -15,6 +15,7 @@ import { NoResults } from "@/components/list/no-results";
 import { Pagination } from "@/components/list/pagination";
 import { listHref, matchesQuery, paginate, parseListParams, type RawSearchParams } from "@/lib/list-params";
 import { AddSkillForm } from "./add-skill-form";
+import { activeSuggestions } from "@/domains/facts/queries";
 import { NewSkill } from "./create-skill";
 import { InstallExample, RemoveSkillButton, SkillToggle, UseSkill } from "./skill-controls";
 import { READINESS_FILTERS, skillReadiness } from "./readiness";
@@ -78,6 +79,9 @@ export async function SkillsSurface({
   }
 
   const auth = await getAuthContext();
+  // The job-drafted facts ride along for the install wait; an empty or
+  // unconfigured table changes nothing - the curated deck is the base.
+  const extraFacts = process.env.DATABASE_URL?.trim() ? await activeSuggestions() : [];
   const raw = await searchParams;
   const list = parseListParams(raw, { filters: { readiness: READINESS_FILTERS }, defaultPageSize: 24 });
   const installed = await listSkills(auth);
@@ -214,7 +218,7 @@ export async function SkillsSurface({
                 Import from GitHub or a folder
               </summary>
               <div className="border-t border-border px-4 py-3">
-                <AddSkillForm />
+                <AddSkillForm extraFacts={extraFacts} />
               </div>
             </details>
           </>

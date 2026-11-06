@@ -6,11 +6,11 @@
  * configuration, and quota admission wraps the seam once rather than per call
  * site.
  *
- * Selection: GENERATION_PROVIDER=gemini|openrouter wins outright. Without it
- * the workspace's status quo holds — OpenRouter when its key is set — and the
- * free Gemini route is taken only when its key is the one configured. There
- * is no automatic rescue: an exhausted or failing provider is an error the
- * caller surfaces, never a silent hop to a metered route.
+ * Selection: GENERATION_PROVIDER names one provider outright. Without it the
+ * free-first chain runs (Mercury → Groq → Gemini → OpenRouter, owner decision
+ * 2026-11-05; Groq first over Gemini because the owner holds Groq credit).
+ * There is no automatic rescue: an exhausted or failing provider is an error
+ * the caller surfaces, never a silent hop to a metered route.
  */
 
 export type GenerateInput = {
@@ -47,7 +47,7 @@ export interface GenerationProvider {
 
 export class GenerationUnconfiguredError extends Error {
   constructor() {
-    super("No generation provider configured. Set OPENROUTER_API_KEY or GEMINI_API_KEY.");
+    super("No generation provider configured. Set GROQ_API_KEY, GEMINI_API_KEY, or OPENROUTER_API_KEY.");
     this.name = "GenerationUnconfiguredError";
   }
 }
@@ -81,6 +81,11 @@ export class GenerationRequestError extends Error {
 /** One call never hangs a run. */
 export const GENERATION_TIMEOUT_MS = 30_000;
 
+/** Fail closed for an explicit provider selection whose key env is unset. */
+function throwUnconfigured(variable: string): never {
+  throw new GenerationConfigError(variable, "a key from the provider's dashboard");
+}
+
 /** The chat-shaped messages array every REST adapter builds from GenerateInput. */
 export function chatMessages(input: GenerateInput): { role: "system" | "user"; content: string }[] {
   return [
@@ -95,6 +100,7 @@ import { geminiProvider } from "./gemini";
 import { headroomFetch } from "../headroom/client";
 import { mercuryProvider } from "./mercury";
 import { openRouterProvider } from "./openrouter";
+import { providerFromCatalog } from "./openai-compatible-providers";
 
 export function generationProvider(
   env: Record<string, string | undefined> = process.env,
@@ -118,6 +124,10 @@ export function generationProvider(
       return geminiProvider(env, wiredFetch);
     case "mercury":
       return mercuryProvider(env, wiredFetch);
+    case "groq":
+      // The catalog entry returns null with no key; an explicit selection must
+      // fail closed naming the variable, like the other named cases.
+      return providerFromCatalog("groq", env, wiredFetch) ?? throwUnconfigured("GROQ_API_KEY");
     case "openrouter":
       return openRouterProvider(env, wiredFetch);
     // Opt-in only (plan §8): the free-first default chain above is untouched.
@@ -126,12 +136,16 @@ export function generationProvider(
     case undefined:
     case "":
       // Free-first (ASH-187, owner decision 2026-10-27; Mercury added first on
-      // the owner's 2026-10-29 decision): the one-time 100M-token Mercury grant
-      // wins, then the free Gemini allowance, then the paid OpenRouter key.
+      // the owner's 2026-10-29 decision; Groq placed before Gemini on the
+      // owner's 2026-11-05 decision to stop leaning on the GEMINI key — Gemini
+      // is reserved for transcription/embeddings until the owner re-purposes
+      // it). The one-time 100M-token Mercury grant wins, then Groq's free
+      // tier, then the free Gemini allowance, then the paid OpenRouter key.
       // OpenRouter remains last so a workspace that has only that key still
       // generates. No route rescues another mid-run: an exhausted allowance is
       // an error the caller surfaces.
       if (env.MERCURY_API_KEY || env.INCEPTION_API_KEY) return mercuryProvider(env, wiredFetch);
+      if (env.GROQ_API_KEY) return providerFromCatalog("groq", env, wiredFetch) ?? throwUnconfigured("GROQ_API_KEY");
       if (env.GEMINI_API_KEY || env.GOOGLE_GENERATIVE_AI_API_KEY) return geminiProvider(env, wiredFetch);
       if (env.OPENROUTER_API_KEY) return openRouterProvider(env, wiredFetch);
       throw new GenerationUnconfiguredError();

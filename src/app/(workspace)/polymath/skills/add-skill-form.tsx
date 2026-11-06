@@ -2,6 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import { FactPoll } from "@/components/fact-poll";
+import type { PollFact } from "@/lib/poll-facts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { inspectSkillAction, installSkillAction } from "./actions";
@@ -20,7 +22,7 @@ type Found = Extract<InspectAction, { ok: true }>;
 /** The input the discovery was read from, kept so an edit after Inspect cannot install something else. */
 type Inspected = Found & { source: string };
 
-export function AddSkillForm() {
+export function AddSkillForm({ extraFacts }: { extraFacts?: PollFact[] }) {
   const router = useRouter();
   const [source, setSource] = useState("");
   const [found, setFound] = useState<Inspected | null>(null);
@@ -100,6 +102,11 @@ export function AddSkillForm() {
           ) : null}
         </div>
       </form>
+
+      {inspecting ? (
+        <FactPoll label="Inspecting…" compact topics={["github", "install", "code"]} extraFacts={extraFacts} />
+      ) : null}
+      {installing ? <FactPoll label="Installing…" compact topics={["install"]} extraFacts={extraFacts} /> : null}
 
       {error ? (
         <p role="alert" className="text-destructive text-body-dense">

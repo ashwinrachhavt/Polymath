@@ -803,6 +803,13 @@
       "when": 1793938648600,
       "tag": "0288_drop_capture_proposals",
       "breakpoints": true
+    },
+    {
+      "idx": 289,
+      "version": "7",
+      "when": 1793945326042,
+      "tag": "0289_poll_fact_suggestions",
+      "breakpoints": true
     }
   ]
 }

@@ -163,6 +163,19 @@
     return now - lastOkAt > STALE_AFTER_MS ? "clear" : "keep";
   }
 
+  /**
+   * What a failed poll should do, given the failure's HTTP status when the
+   * server answered at all. Forbidden is not an outage: the paired key
+   * permanently lacks focus:read, so no amount of retrying recovers it.
+   * Clearing immediately and reporting "forbidden" (instead of riding the
+   * stale window or the outage fail-safe) is what lets the surfaces say WHY
+   * nothing is enforced — a silently absent blocklist was the defect.
+   */
+  function pollFailureDecision(status, state, now) {
+    if (status === 403) return "forbidden";
+    return failSafeDecision(state, now);
+  }
+
   /** Whole minutes to show, rounded up so "1 minute" never reads as zero. */
   function remainingMinutes(remainingSeconds) {
     if (typeof remainingSeconds !== "number" || !(remainingSeconds > 0)) return null;
@@ -185,6 +198,7 @@
     toDnrRules: toDnrRules,
     ownsRuleId: ownsRuleId,
     failSafeDecision: failSafeDecision,
+    pollFailureDecision: pollFailureDecision,
     remainingMinutes: remainingMinutes,
   };
 });
