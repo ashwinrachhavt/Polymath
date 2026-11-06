@@ -4,7 +4,8 @@ import { z } from "zod";
 import { and, eq, inArray } from "drizzle-orm";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
-import { getCompanyDetail, getContactDetail } from "@/domains/crm/queries";
+import { getCompanyDetail, getContactDetail, listContactStatusesByEmail } from "@/domains/crm/queries";
+import { getPersonMentionContext, getOrganizationMentionContext } from "@/domains/identity/party-queries";
 import { db } from "@/lib/db";
 import { artifactLinks, artifactVersions, artifacts } from "@/domains/knowledge/schema";
 import { RELATION_LABELS, RELATION_TYPES } from "@/domains/knowledge/relations";
@@ -63,6 +64,16 @@ export async function fetchMentionContext(raw: unknown): Promise<Record<string, 
   }
 
   if (parsed.data.kind === "person") {
+    // The picker hands an identity-domain id (what the LinkedIn CSV import
+    // writes); the CRM contact stays as the fallback for ids already stored
+    // in old messages. The identity row carries name/email/employer; the
+    // relationship pill comes from the CRM match on the primary email, the
+    // same seam the People table uses.
+    const person = await getPersonMentionContext(auth, { personId: parsed.data.id });
+    if (person) {
+      const [matched] = person.email ? [...(await listContactStatusesByEmail(auth, [person.email])).values()] : [];
+      return { ...person, relationshipStatus: matched?.relationshipStatus ?? "unknown" };
+    }
     const detail = await getContactDetail(auth, { contactId: parsed.data.id });
     if (!detail) return null;
     return {
@@ -81,6 +92,10 @@ export async function fetchMentionContext(raw: unknown): Promise<Record<string, 
         .map((followUp) => ({ note: followUp.note, dueAt: followUp.dueAt })),
     };
   }
+
+  // Company: identity first (the picker's ids), CRM fallback for legacy picks.
+  const organization = await getOrganizationMentionContext(auth, { organizationId: parsed.data.id });
+  if (organization) return organization;
 
   const detail = await getCompanyDetail(auth, { companyId: parsed.data.id });
   if (!detail) return null;
