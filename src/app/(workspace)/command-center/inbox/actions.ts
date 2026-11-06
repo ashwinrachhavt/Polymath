@@ -7,13 +7,11 @@ import {
   ConflictError,
   NotFoundError,
   StaleWriteError,
-  acceptCaptureProposal,
   convertCaptureToDocument,
   convertCaptureToDraft,
   convertCaptureToNote,
   convertCaptureToTask,
   createCapture,
-  rejectCaptureProposal,
   retryCaptureUrl,
   setCaptureState,
   updateCaptureText,
@@ -203,33 +201,4 @@ export async function retryCaptureUrlAction(input: { captureId: string }): Promi
   }
   revalidate(auth);
   return { ok: true };
-}
-
-/* --- Classification proposal decisions (ASH-314) --- */
-
-export async function acceptProposalAction(input: {
-  proposalId: string;
-}): Promise<
-  { ok: true; resultType: "task" | "note" | "discard"; resultId: string | null } | { ok: false; error: string }
-> {
-  const auth = await authorize();
-  try {
-    const accepted = await acceptCaptureProposal(auth, input);
-    if (accepted.resultType === "task") updateTag(tasksTag(auth));
-    revalidate(auth);
-    return { ok: true, resultType: accepted.resultType, resultId: accepted.resultId };
-  } catch (error) {
-    return fail(error);
-  }
-}
-
-export async function rejectProposalAction(input: { proposalId: string }): Promise<Result> {
-  const auth = await authorize();
-  try {
-    await rejectCaptureProposal(auth, input);
-    revalidate(auth);
-    return { ok: true };
-  } catch (error) {
-    return fail(error);
-  }
 }

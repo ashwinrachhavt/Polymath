@@ -48,8 +48,8 @@ export function SummaryPanel({ documentId, canSummarize }: { documentId: string;
     return (
       <Panel title="Summary saved">
         <p className="text-body-dense">
-          Saved as a note linked to this document, with {saved.created} zettel{" "}
-          {saved.created === 1 ? "card" : "cards"} in your ideas.
+          Saved as a note linked to this document, with {saved.created} zettel {saved.created === 1 ? "card" : "cards"}{" "}
+          in your ideas.
         </p>
       </Panel>
     );

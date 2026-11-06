@@ -18,7 +18,7 @@ import {
 import { JevRequestError, JevUnconfiguredError, type JevAnswer } from "@/integrations/jev/client";
 import { JevDisabledError, jevClassifier, type ClassifyJudger } from "@/integrations/jev/provider";
 import { providerEntry } from "@/integrations/providers/registry";
-import { JEV_QUESTIONS_VERSION, captureQuestions } from "@/integrations/jev/questions";
+import { captureQuestions } from "@/integrations/jev/questions";
 import { taxonomyNodes } from "@/domains/knowledge/schema";
 import { resolveTaxonomyPath } from "@/domains/knowledge/taxonomy";
 import { db } from "@/lib/db";
@@ -35,8 +35,7 @@ import {
 } from "@/integrations/transcription/provider";
 import type { ExtractionProvider } from "@/integrations/extraction/provider";
 import { OCR_IMAGE_MIMES, openRouterVisionProviderFromEnv } from "@/integrations/extraction/openrouter-vision";
-import { captureProposals, captures } from "./schema";
-import { triageCapture } from "./jev-classify";
+import { captures } from "./schema";
 import { workingText } from "./mode";
 import { LLM_MAX_INPUT_CHARS, LLM_THRESHOLD_CHARS, MAX_TAGS, classifyCapture } from "./classification";
 /*
@@ -51,7 +50,7 @@ import { LLM_MAX_INPUT_CHARS, LLM_THRESHOLD_CHARS, MAX_TAGS, classifyCapture } f
  *           -> the capture's text, then the same ladder classifies the words
  *   Tier 1  classifyStructure      ($0, regex)   -> structure + signals
  *   Tier 2  Jev classifier (when the registry enables it): typed judgments
- *           -> pending capture_proposals rows + validated taxonomy domain
+ *           -> validated taxonomy domain
  *   Tier 3  generation prompt (the pre-ASH-272 behavior; also the fallback
  *           whenever Jev is disabled, unconfigured, or over its allowance)
  *           -> title, domain, tags
@@ -318,8 +317,6 @@ async function enrichLeased(
   });
 }
 
-const noul = (answer: JevAnswer | undefined): number => (answer && answer.type === "noul" ? answer.noul : Number.NaN);
-
 type JevTriage = { outcome: "handled"; skipped: null } | { outcome: "fallback"; skipped: string | null };
 
 /**
@@ -378,14 +375,12 @@ async function tryJevTriage(
   });
 
   let answers: Record<string, JevAnswer>;
-  let model: string;
   try {
     const result = await judger.judge({
       state,
       questions: captureQuestions(domains),
     });
     answers = result.answers;
-    model = result.model;
   } catch (cause) {
     if (cause instanceof QuotaExhaustedError) return { outcome: "fallback", skipped: ALLOWANCE_SKIPPED };
     if (cause instanceof JevDisabledError || cause instanceof JevUnconfiguredError) {
@@ -403,43 +398,22 @@ async function tryJevTriage(
           topProbability: domainAnswer.probabilities[domainAnswer.choice] ?? 0,
         }
       : null;
-  const numbers = {
-    commitment: noul(answers.commitment),
-    contact: noul(answers.contact),
-    reference: noul(answers.reference),
-    worthless: noul(answers.worthless),
-    project: noul(answers.project),
-  };
-  const unreadable = Object.values(numbers).some((n) => Number.isNaN(n));
-
-  const triage = unreadable
-    ? {
-        proposals: [
-          {
-            kind: "note" as const,
-            payload: { review: true },
-            rationale: "jev returned an unreadable answer; filed for review",
-            confidence: "low",
-          },
-        ],
-        domainSlug: null,
-      }
-    : triageCapture({ ...numbers, domain });
-
+  // A domain below this probability is noise, not a classification.
+  const DOMAIN_MIN_TOP_PROBABILITY = 0.5;
   // The domain label is written only when it resolves in the workspace's
   // taxonomy - a hallucinated slug is a rejected write, never stored.
   let domainSlug: string | null = null;
-  if (triage.domainSlug) {
-    const path = await resolveTaxonomyPath({ workspaceId }, { slugs: [triage.domainSlug] });
+  if (domain && domain.topProbability >= DOMAIN_MIN_TOP_PROBABILITY) {
+    const path = await resolveTaxonomyPath({ workspaceId }, { slugs: [domain.choice] });
     domainSlug = path ? path[0].slug : null;
   }
 
-  // ASH-305: the write is a compare-and-set, so a duplicate run (a redelivered
-  // event after a crash, or the unpark re-queue racing the original) can never
-  // double the proposals: only the run that moves the capture out of
-  // unprocessed/classifying inserts them, in the same transaction. classifying
+  // The write is a compare-and-set, so a duplicate run (a redelivered event
+  // after a crash, or the unpark re-queue racing the original) can never
+  // double the enrichment: only the run that moves the capture out of
+  // unprocessed/classifying writes it, in the same transaction. classifying
   // stays eligible so crash recovery is unchanged. A capture parked mid-flight
-  // still finishes; its proposals stay hidden until unpark.
+  // still finishes.
   await withTransaction(async (tx) => {
     const [claimed] = await tx
       .update(captures)
@@ -447,25 +421,13 @@ async function tryJevTriage(
         ...base,
         domain: domainSlug,
         processingState: "enriched",
-        failureReason: unreadable ? "Jev returned an unreadable answer." : settledFailureReason(capture, cleanText),
+        failureReason: settledFailureReason(capture, cleanText),
         ...RELEASE,
       })
       .where(and(eq(captures.id, captureId), eq(captures.enrichmentLeaseToken, token)))
       .returning({ id: captures.id });
-    // Lease lost: a newer holder owns this capture; this run files nothing.
+    // Lease lost: a newer holder owns this capture; this run writes nothing.
     if (!claimed) throw new EnrichmentLeaseLostError();
-    for (const proposal of triage.proposals) {
-      await tx.insert(captureProposals).values({
-        workspaceId,
-        captureId,
-        kind: proposal.kind,
-        payload: proposal.payload,
-        rationale: proposal.rationale,
-        model,
-        promptVersion: JEV_QUESTIONS_VERSION,
-        confidence: proposal.confidence,
-      });
-    }
   });
   return { outcome: "handled", skipped: null };
 }

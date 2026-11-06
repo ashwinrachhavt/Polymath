@@ -17,7 +17,7 @@ function card(partial: Partial<HomeQueueCard>): HomeQueueCard {
     expiresAt: null,
     createdAt: new Date("2026-10-25T12:00:00Z"),
     href: "#",
-    decision: { kind: "capture" },
+    decision: { kind: "agent", revisionId: "r1", version: 1, expired: false },
     ...partial,
   };
 }

@@ -8,7 +8,6 @@ import postgres from "postgres";
  */
 
 const seededProposals: string[] = [];
-const seededCaptures: string[] = [];
 
 function connection(): string | null {
   if (!process.env.DATABASE_URL) {
@@ -32,7 +31,11 @@ async function workspaceIdOf(client: postgres.Sql): Promise<string | null> {
   return owner?.workspace_id ?? null;
 }
 
-export async function seedAgentProposal(input: { title: string; effect: string; riskClass: "prepare" | "external_write" | "sensitive_write" }): Promise<{ id: string } | null> {
+export async function seedAgentProposal(input: {
+  title: string;
+  effect: string;
+  riskClass: "prepare" | "external_write" | "sensitive_write";
+}): Promise<{ id: string } | null> {
   const url = connection();
   if (!url) return null;
   const client = postgres(url, { max: 1 });
@@ -55,38 +58,17 @@ export async function seedAgentProposal(input: { title: string; effect: string; 
   }
 }
 
-export async function seedCaptureProposal(input: { text: string; kind: "task" | "note" | "contact" }): Promise<{ id: string } | null> {
-  const url = connection();
-  if (!url) return null;
-  const client = postgres(url, { max: 1 });
-  try {
-    const workspaceId = await workspaceIdOf(client);
-    if (!workspaceId) return null;
-    const [capture] = await client<{ id: string }[]>`
-      insert into captures (workspace_id, kind, text, raw_payload, capture_mode)
-      values (${workspaceId}, 'text', ${input.text}, ${JSON.stringify({ text: input.text })}::jsonb, 'authored')
-      returning id
-    `;
-    const [proposal] = await client<{ id: string }[]>`
-      insert into capture_proposals (workspace_id, capture_id, kind, payload, rationale, confidence)
-      values (${workspaceId}, ${capture.id}, ${input.kind}, '{}'::jsonb, ${`${input.kind} 0.91`}, '0.91')
-      returning id
-    `;
-    seededCaptures.push(capture.id);
-    return { id: proposal.id };
-  } finally {
-    await client.end();
-  }
-}
-
-
 /*
  * A Notion append proposal with the exact revision preview the production
  * proposer writes (kind "diff": 3 context lines, a gap, then + additions -
  * see appendPreview in notion-proposals.ts), so the review card renders the
  * real diff surface, not a stand-in.
  */
-export async function seedNotionAppendProposal(input: { title: string; before: string[]; addition: string[] }): Promise<{ id: string } | null> {
+export async function seedNotionAppendProposal(input: {
+  title: string;
+  before: string[];
+  addition: string[];
+}): Promise<{ id: string } | null> {
   const url = connection();
   if (!url) return null;
   const client = postgres(url, { max: 1 });
@@ -97,7 +79,11 @@ export async function seedNotionAppendProposal(input: { title: string; before: s
     const markdown = input.addition.join("\n");
     const hash = createHash("sha256").update(markdown, "utf8").digest("hex");
     const tail = input.before.slice(-3);
-    const diff = [...tail.map((line) => ` ${line}`), ...(tail.length > 0 ? ["  …"] : []), ...input.addition.map((line) => `+${line}`)].join("\n");
+    const diff = [
+      ...tail.map((line) => ` ${line}`),
+      ...(tail.length > 0 ? ["  …"] : []),
+      ...input.addition.map((line) => `+${line}`),
+    ].join("\n");
     const effect = `Append ${input.addition.length} lines to \u201c${input.title}\u201d in Notion`;
     const [proposal] = await client<{ id: string }[]>`
       insert into action_proposals (workspace_id, capability, risk_class, target_type, title, expected_effect, dedupe_key)
@@ -124,10 +110,8 @@ export async function removeSeededProposals(): Promise<void> {
   const client = postgres(url, { max: 1 });
   try {
     if (seededProposals.length) await client`delete from action_proposals where id = any(${seededProposals}::uuid[])`;
-    if (seededCaptures.length) await client`delete from captures where id = any(${seededCaptures}::uuid[])`;
   } finally {
     await client.end();
     seededProposals.length = 0;
-    seededCaptures.length = 0;
   }
 }

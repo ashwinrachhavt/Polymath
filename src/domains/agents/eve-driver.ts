@@ -39,21 +39,32 @@ type EveTarget =
  * proof of reachability. The probe must be side-effect free: in development
  * the eve channel authenticates any loopback caller, so a POST here would
  * create a real session — and the probe runs on every stream open.
+ *
+ * One attempt can miss an idle server: a dev server that has served nothing
+ * since boot compiles its health handler on the first request, and that first
+ * answer can blow the probe budget (2026-11-05: a ticket run died on exactly
+ * this — "Eve is not reachable" while the server was healthy 60ms later). So a
+ * failed attempt is retried once before declaring death. Death stays final
+ * after that: a stale file pointing nowhere must still read as dead.
  */
-export function isEveAlive(base: string): boolean {
-  try {
-    // ponytail: bounded sync probe; run-start frequency only.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { execFileSync } = require("child_process") as typeof import("child_process");
-    const code = execFileSync(
-      "curl",
-      ["-s", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "2", `${base}/eve/v1/health`],
-      { stdio: "pipe", timeout: 3000 },
-    ).toString();
-    return code.trim().startsWith("2");
-  } catch {
-    return false;
+const EVE_PROBE_TIMEOUT_MS = 2_000;
+const EVE_PROBE_RETRIES = 2;
+
+export async function isEveAlive(base: string): Promise<boolean> {
+  for (let attempt = 0; attempt < EVE_PROBE_RETRIES; attempt += 1) {
+    try {
+      const response = await fetch(`${base}/eve/v1/health`, { signal: AbortSignal.timeout(EVE_PROBE_TIMEOUT_MS) });
+      if (response.ok) return true;
+      // A 4xx/5xx means the server is up but broken; a retry would only replay
+      // the same broken handler. Dead now.
+      return false;
+    } catch {
+      // Timeout or connection refused: one retry covers the cold-handler case.
+      if (attempt === EVE_PROBE_RETRIES - 1) return false;
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    }
   }
+  return false;
 }
 
 /**
@@ -85,7 +96,7 @@ function eveStateFile(agentName: string, file: string): string {
   return `${process.cwd()}/eve/${agentName}/.eve/${file}`;
 }
 
-function eveTarget(agentName: string): EveTarget | null {
+async function eveTarget(agentName: string): Promise<EveTarget | null> {
   const explicit = process.env.EVE_BASE_URL;
   if (explicit && explicit.trim().length > 0) return { kind: "standalone", base: explicit.replace(/\/+$/, "") };
   // A deployed environment routes to its own origin. The dev-server state file
@@ -116,7 +127,7 @@ function eveTarget(agentName: string): EveTarget | null {
           origin?: string;
         };
         const base = (parsed.url ?? parsed.origin)?.replace(/\/+$/, "");
-        if (base && isEveAlive(base)) return { kind: "standalone", base };
+        if (base && (await isEveAlive(base))) return { kind: "standalone", base };
       } catch {
         // This file missing is not an error; try the next.
       }
@@ -131,8 +142,8 @@ function eveTarget(agentName: string): EveTarget | null {
   return null;
 }
 
-function eveMount(agentName: string): string {
-  const target = eveTarget(agentName);
+async function eveMount(agentName: string): Promise<string> {
+  const target = await eveTarget(agentName);
   if (!target) {
     throw new Error(
       "Eve is not reachable from this environment: set EVE_BASE_URL, start the eve dev server, or deploy where VERCEL_URL is set.",
@@ -149,7 +160,7 @@ function eveMount(agentName: string): string {
  * agent drift apart. Keeping one resolver means a change to where Eve lives
  * cannot fix the driver and miss the stream.
  */
-export function eveSessionEndpoint(input: {
+export async function eveSessionEndpoint(input: {
   agentName?: string;
   sessionRef: string;
   auth: AuthContext;
@@ -157,8 +168,8 @@ export function eveSessionEndpoint(input: {
   startIndex?: number;
   /** When true the response stops at the durable tail instead of following. */
   follow?: boolean;
-}): { url: string; headers: Record<string, string> } {
-  const mount = eveMount(input.agentName ?? "polymath");
+}): Promise<{ url: string; headers: Record<string, string> }> {
+  const mount = await eveMount(input.agentName ?? "polymath");
   const params = new URLSearchParams();
   if (input.startIndex !== undefined) params.set("startIndex", String(input.startIndex));
   if (input.follow === false) params.set("follow", "false");
@@ -249,7 +260,7 @@ export function createEveDriver(agentName = "polymath"): SessionDriver {
         ...(skillId ? { skillId } : {}),
         ...(model ? { model } : {}),
       });
-      const response = await fetch(`${eveMount(agentName)}/session`, {
+      const response = await fetch(`${await eveMount(agentName)}/session`, {
         method: "POST",
         signal: AbortSignal.timeout(EVE_CONTROL_TIMEOUT_MS),
         headers: { "content-type": "application/json", ...headers },
@@ -295,7 +306,7 @@ export function createEveDriver(agentName = "polymath"): SessionDriver {
       // the rest of the session back on the agent's default.
       const skillId = skillIdOfSnapshot(run.policySnapshot);
       const model = modelOfSnapshot(run.policySnapshot);
-      const response = await fetch(`${eveMount(agentName)}/session/${ref}`, {
+      const response = await fetch(`${await eveMount(agentName)}/session/${ref}`, {
         method: "POST",
         signal: AbortSignal.timeout(EVE_CONTROL_TIMEOUT_MS),
         headers: {
@@ -334,7 +345,7 @@ export function createEveDriver(agentName = "polymath"): SessionDriver {
       if (!ref) return;
       let mount: string;
       try {
-        mount = eveMount(agentName);
+        mount = await eveMount(agentName);
       } catch {
         return; // Nothing reachable to cancel against; the run row already records the stop.
       }

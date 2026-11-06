@@ -255,40 +255,42 @@ export async function runZettelGenerationRequested(
    * The pass and its audit are one transaction, so the audit row commits with
    * the cards it describes and two racing passes cannot both see zero.
    */
-  const outcome = await withTransaction(async (tx): Promise<{ created: number; unreadChars: number; cards: ZettelCardsResult["created"] }> => {
-    let pass: ZettelCardsResult;
-    try {
-      pass = await createZettelsFromSource(auth, { documentId, extractor: deps.extractor, tx });
-    } catch (cause) {
-      // No model configured is a skip, not a failure: retrying five times cannot
-      // conjure a key, and the inbox disables the control in that state anyway.
-      if (cause instanceof EmbeddingUnconfiguredError) return { created: 0, unreadChars: 0, cards: [] };
-      throw cause;
-    }
+  const outcome = await withTransaction(
+    async (tx): Promise<{ created: number; unreadChars: number; cards: ZettelCardsResult["created"] }> => {
+      let pass: ZettelCardsResult;
+      try {
+        pass = await createZettelsFromSource(auth, { documentId, extractor: deps.extractor, tx });
+      } catch (cause) {
+        // No model configured is a skip, not a failure: retrying five times cannot
+        // conjure a key, and the inbox disables the control in that state anyway.
+        if (cause instanceof EmbeddingUnconfiguredError) return { created: 0, unreadChars: 0, cards: [] };
+        throw cause;
+      }
 
-    if (pass.created.length > 0) {
-      await recordAudit(
-        auth,
-        {
-          action: "capture.zettels_created",
-          subjectType: "capture",
-          subjectId: capture.id,
-          summary: `Created ${pass.created.length} zettel${pass.created.length === 1 ? "" : "s"}`,
-          metadata: {
-            documentId,
-            readChars: pass.readChars,
-            unreadChars: pass.unreadChars,
-            unreadSections: pass.unreadSections,
-            skippedRepeats: pass.skippedRepeats,
-            skippedDuplicates: pass.skippedDuplicates,
-            skippedSpans: pass.skippedSpans,
+      if (pass.created.length > 0) {
+        await recordAudit(
+          auth,
+          {
+            action: "capture.zettels_created",
+            subjectType: "capture",
+            subjectId: capture.id,
+            summary: `Created ${pass.created.length} zettel${pass.created.length === 1 ? "" : "s"}`,
+            metadata: {
+              documentId,
+              readChars: pass.readChars,
+              unreadChars: pass.unreadChars,
+              unreadSections: pass.unreadSections,
+              skippedRepeats: pass.skippedRepeats,
+              skippedDuplicates: pass.skippedDuplicates,
+              skippedSpans: pass.skippedSpans,
+            },
           },
-        },
-        tx,
-      );
-    }
-    return { created: pass.created.length, unreadChars: pass.unreadChars, cards: pass.created };
-  });
+          tx,
+        );
+      }
+      return { created: pass.created.length, unreadChars: pass.unreadChars, cards: pass.created };
+    },
+  );
   // Whoever owns the commit owns the embeds: the new cards join the semantic
   // graph best-effort after the transaction lands, and a failed or
   // unconfigured embedding pass never blocks the cards themselves.

@@ -52,7 +52,7 @@ function textCapture(overrides: Partial<NonNullable<CaptureProps>> = {}): NonNul
 }
 
 function renderDetail(capture: CaptureProps, provider = PROVIDER) {
-  return renderToStaticMarkup(createElement(InboxDetail, { capture, priorWriting: null, proposals: [], ...provider }));
+  return renderToStaticMarkup(createElement(InboxDetail, { capture, priorWriting: null, ...provider }));
 }
 
 describe("InboxDetail zettelize verb", () => {

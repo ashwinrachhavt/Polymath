@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { outboxEvents } from "@/domains/audit/schema";
 import { workspaces } from "@/domains/identity/schema";
-import { captureProposals, captures } from "@/domains/capture/schema";
+import { captures } from "@/domains/capture/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 import type { AuthContext } from "@/domains/identity/resolve";
 
@@ -289,7 +289,6 @@ suite("capture enrichment ladder", () => {
     expect(row.enrichmentLeaseToken).toBeNull();
     expect(row.cleanText).toBe(LONG_PROSE);
     expect(row.failureReason).toContain("paid classification tier");
-    expect(await db.select().from(captureProposals).where(eq(captureProposals.captureId, capture.id))).toHaveLength(0);
   });
 
   it("still runs the generation tier after a skipped paid tier", async () => {

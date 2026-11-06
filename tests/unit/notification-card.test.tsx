@@ -179,12 +179,6 @@ describe("NotificationCard decision path", () => {
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
 
-  it("labels a capture decision as Capture", () => {
-    render(<NotificationCard {...decisionProps({ decisionType: "capture" })} />);
-
-    expect(screen.getByText("Capture")).toBeDefined();
-  });
-
   it("disables Approve and Reject on an expired decision but keeps context open", () => {
     render(<NotificationCard {...decisionProps({ expired: true })} />);
     const approve = screen.getByRole("button", { name: "Approve" });

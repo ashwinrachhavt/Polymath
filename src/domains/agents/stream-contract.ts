@@ -398,14 +398,25 @@ export function frameOf(
       }
       return frames;
     }
-    case "message.received": {
+    // The person-turn event has two dialects: the bridge's `message.received`
+    // carries `message`, and the thread writer's stored rows carry the bare
+    // `message` type with a `content` field. Folding only one left a reload's
+    // transcript without the stored questions — the surface then showed the
+    // optimistic echoes (appended at the bottom) as the only user turns, so
+    // the answer read above the question that asked it (2026-11-05).
+    case "message.received":
+    case "message": {
+      // A stored assistant-authored row (the reply lane's echo) is not the
+      // person's turn; only the bridge's assistant text rides `block` frames.
+      const role = asString(data.role);
+      if (event.type === "message" && role !== "user") return [];
       // The durable stream replays the person's turn, so a reload shows the
       // question as well as the answer instead of an orphaned reply. A run
       // whose objective is machinery (its seeded event is an `objective`,
       // written by the engine) echoes that objective back through this event
       // as well — the surface must never render it as something the person
       // said, so the echo is dropped and the empty state shows instead.
-      const text = asString(data.message);
+      const text = asString(data.message ?? data.content);
       if (text === null || text.length === 0) return [];
       if (options.suppressObjectiveText != null && text === options.suppressObjectiveText) return [];
       return [{ type: "message", runId, role: "user", text, cursor }];

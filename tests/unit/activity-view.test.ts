@@ -75,7 +75,7 @@ const row = (over: Partial<ActivityEventRow> = {}): ActivityEventRow => ({
 describe("foldedStepTargets", () => {
   it("routes each step row to its operation's outcome row", () => {
     const outcome = row({ action: "capture.converted", operationId: "op-1" });
-    const step = row({ action: "capture.proposal_accepted", operationId: "op-1" });
+    const step = row({ action: "capture.zettels_created", operationId: "op-1" });
     const targets = foldedStepTargets([outcome, step]);
     expect(targets.get(step.id)).toBe(outcome.id);
     expect(targets.has(outcome.id)).toBe(false);
@@ -83,7 +83,7 @@ describe("foldedStepTargets", () => {
 
   it("ignores rows without an operation and groups without an outcome on the page", () => {
     const standalone = row({ operationId: null });
-    const stepOnly = row({ action: "capture.proposal_accepted", operationId: "op-missing-outcome" });
+    const stepOnly = row({ action: "capture.zettels_created", operationId: "op-missing-outcome" });
     const targets = foldedStepTargets([standalone, stepOnly]);
     expect(targets.size).toBe(0);
   });

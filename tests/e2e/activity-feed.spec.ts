@@ -174,7 +174,7 @@ test("a grouped conversion renders one outcome row with a steps disclosure", asy
     outcomeId = outcome!.id;
     const [step] = await client!<{ id: string }[]>`
       insert into audit_events (workspace_id, actor_id, actor_kind, action, subject_type, subject_id, operation_id, summary, created_at)
-      values (${workspaceId}, ${owner!.user_id}, 'user', 'capture.proposal_accepted', 'capture', ${capture!.id}, ${operationId}, ${`Capture proposal accepted ${tag}`}, now() - interval '1 minute')
+      values (${workspaceId}, ${owner!.user_id}, 'user', 'capture.zettels_created', 'capture', ${capture!.id}, ${operationId}, ${`Capture ideas created ${tag}`}, now() - interval '1 minute')
       returning id`;
     stepId = step!.id;
 
@@ -192,14 +192,14 @@ test("a grouped conversion renders one outcome row with a steps disclosure", asy
     await expect(outcomeRow).toContainText("You converted a capture");
     await expect(outcomeRow).toContainText(noteTitle);
     await expect(outcomeRow).toContainText("Show 1 recorded step");
-    await expect(page.getByText(`Capture proposal accepted ${tag}`)).toBeHidden();
+    await expect(page.getByText(`Capture ideas created ${tag}`)).toBeHidden();
     // The note chip carries the verified destination.
     await expect(page.locator(`a[href$="/polymath/notes?id=${noteId}"]`).first()).toBeVisible();
 
     // Deep-linking the step row highlights the outcome and opens its steps.
     await page.goto(`/activity?q=${encodeURIComponent(tag)}&event=${stepId}`);
     await expect(page.locator(`li[data-deep-linked="true"]`)).toContainText("You converted a capture");
-    await expect(page.getByText(`Capture proposal accepted ${tag}`)).toBeVisible();
+    await expect(page.getByText(`Capture ideas created ${tag}`)).toBeVisible();
   } finally {
     const ids = [outcomeId, stepId].filter(Boolean);
     if (client) {

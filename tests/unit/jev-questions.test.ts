@@ -14,9 +14,9 @@ describe("jev questions", () => {
     expect(JEV_QUESTIONS_VERSION).toBe("jev-q2");
   });
 
-  it("bundles exactly the six capture judgments", () => {
+  it("bundles exactly the domain capture judgment", () => {
     const q = captureQuestions([]);
-    expect(Object.keys(q).sort()).toEqual(["commitment", "contact", "domain", "project", "reference", "worthless"]);
+    expect(Object.keys(q).sort()).toEqual(["domain"]);
   });
 
   it("the domain Choice options are the seeded L1 taxonomy slugs", () => {

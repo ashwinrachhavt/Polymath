@@ -205,7 +205,7 @@ export const GET = authedHandler<Ctx>(async (auth, request, ctx) => {
   }
 
   const profileName = await getProfileNameForRun(auth.workspaceId, run.id);
-  const endpoint = eveSessionEndpoint({
+  const endpoint = await eveSessionEndpoint({
     agentName: eveAgentForProfile(profileName ?? "polymath"),
     sessionRef: run.sessionRef,
     auth,

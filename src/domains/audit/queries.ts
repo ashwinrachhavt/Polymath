@@ -86,8 +86,6 @@ export const SAFE_SUMMARY_ACTIONS = new Set([
   "capture.archived",
   "capture.restored",
   "capture.converted",
-  "capture.proposal_accepted",
-  "capture.proposal_rejected",
   "capture.zettels_created",
   "capture.transcribed",
   // Workspace-level lifecycle and proposals.

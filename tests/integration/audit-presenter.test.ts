@@ -233,7 +233,7 @@ suite("presentActivityEvents (real Postgres)", () => {
 
     await seedEvents(auth.workspaceId, auth.userId, [
       {
-        action: "capture.proposal_created",
+        action: "capture.parked",
         subjectType: "capture",
         subjectId: capture.id,
         actorId: principal.id,
@@ -244,7 +244,7 @@ suite("presentActivityEvents (real Postgres)", () => {
         minutesAgo: 12,
       },
       {
-        action: "capture.proposal_accepted",
+        action: "capture.zettels_created",
         subjectType: "capture",
         subjectId: capture.id,
         actorId: named.id,
@@ -274,17 +274,16 @@ suite("presentActivityEvents (real Postgres)", () => {
 
     // Three rows fold into one outcome item: the registry-designated outcome
     // leads, and both steps ride the disclosure oldest-first with their own
-    // actors (the technical proposal-creation step renders its technical
-    // sentence).
+    // actors (the capture-parked step renders its registry sentence).
     expect(items).toHaveLength(1);
     const outcome = items[0];
     expect(outcome.sentence).toBe("You converted a capture");
     expect(outcome.primary).toEqual({ label: "Open note", href: `/polymath/notes?id=${note.id}` });
     expect(outcome.related).toEqual([{ label: "Open capture", href: `/command-center/inbox?id=${capture.id}` }]);
     expect(outcome.title).toBe("Converted note");
-    expect(outcome.steps).toEqual(["Workspace activity recorded", "Alex Rivera accepted a capture proposal"]);
+    expect(outcome.steps).toEqual(["Nightly Briefing parked a capture", "Alex Rivera created ideas from a capture"]);
     const serialized = JSON.stringify(items);
-    expect(serialized).not.toContain("proposal_created");
+    expect(serialized).not.toContain("raw");
   });
 
   it("keeps a step row standalone when its outcome is off the page", async () => {
@@ -293,7 +292,7 @@ suite("presentActivityEvents (real Postgres)", () => {
 
     await seedEvents(auth.workspaceId, auth.userId, [
       {
-        action: "capture.proposal_accepted",
+        action: "capture.zettels_created",
         subjectType: "capture",
         subjectId: capture.id,
         summary: "raw",
@@ -306,7 +305,7 @@ suite("presentActivityEvents (real Postgres)", () => {
     const items = await presentActivityEvents(auth, page.rows);
 
     expect(items).toHaveLength(1);
-    expect(items[0].sentence).toBe("You accepted a capture proposal");
+    expect(items[0].sentence).toBe("You created ideas from a capture");
     expect(items[0].steps).toEqual([]);
   });
 
