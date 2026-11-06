@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useTheme } from "next-themes";
+import { FactPoll } from "@/components/fact-poll";
 import { renderDiagram } from "@/domains/diagrams/render";
 import type { DiagramRenderResult, DiagramType } from "@/domains/diagrams/types";
 
@@ -103,9 +104,11 @@ function DiagramPreview({
 
   if (display.state === "rendering") {
     return (
-      <div role="status" className="panel flex min-h-64 items-center justify-center rounded-xl p-6">
-        <p className="text-body-dense text-muted-foreground">Rendering diagram…</p>
-      </div>
+      <FactPoll
+        label="Rendering diagram…"
+        topics={["diagram", "rendering", "motion", "light"]}
+        className="flex min-h-64 flex-col justify-center"
+      />
     );
   }
 
