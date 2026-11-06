@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { clerkClient, currentUser } from "@clerk/nextjs/server";
+import { createClerkClient, currentUser } from "@clerk/nextjs/server";
 import { cacheLife, cacheTag } from "next/cache";
 import { users } from "@/domains/identity/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
@@ -51,7 +51,11 @@ async function cachedClerkVerifiedEmail(clerkUserId: string | undefined): Promis
   cacheLife("minutes"); // the email is fixed at sign-in; the profile bounds a change until its next request
   if (!clerkUserId) return null;
   try {
-    const client = await clerkClient();
+    // createClerkClient (the backend client) takes env-configured options and
+    // never touches `headers()`, unlike `clerkClient()`, so it is safe inside
+    // a `"use cache"` scope. The user id is passed explicitly, so the cached
+    // result is keyed per Clerk user.
+    const client = createClerkClient({});
     const user = await client.users.getUser(clerkUserId);
     const primary = user.emailAddresses.find((e) => e.id === user.primaryEmailAddressId) ?? user.emailAddresses[0];
     return primary?.verification?.status === "verified" ? primary.emailAddress : null;
