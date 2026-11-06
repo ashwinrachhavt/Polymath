@@ -12,6 +12,7 @@ import {
   pageNotes,
   type NoteContent,
 } from "@/domains/knowledge/notes";
+import { noteContentToMarkdown } from "@/domains/knowledge/note-content";
 import { listNoteComments } from "@/domains/knowledge/note-comments";
 import { relatedNotes } from "@/domains/knowledge/relations";
 import { getAuthContext } from "@/lib/auth";
@@ -41,9 +42,7 @@ export const metadata = { title: "Notes · Polymath" };
  */
 
 export function noteMarkdown(content: NoteContent | null): string {
-  if (!content) return "";
-  if (typeof content.text === "string") return content.text;
-  return "";
+  return noteContentToMarkdown(content);
 }
 
 // Per-request data; streams inside the Suspense boundary in the default export.

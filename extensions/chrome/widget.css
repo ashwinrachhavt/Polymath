@@ -6,19 +6,22 @@
  */
 
 :root {
-  --alfred-bg: #0f172a;
-  --alfred-surface: #1e293b;
-  --alfred-surface-hover: #273548;
-  --alfred-accent: #6366f1;
-  --alfred-accent-hover: #818cf8;
-  --alfred-text: #e2e8f0;
-  --alfred-text-muted: #94a3b8;
-  --alfred-border: #334155;
-  --alfred-success: #22c55e;
-  --alfred-error: #ef4444;
-  --alfred-warning: #f59e0b;
+  /* Notion-like light register (owner direction 2026-11-05): the dock was a
+     forced dark slate box on every page, which read as a black highlight
+     while typing. White surface, hairline borders, near-black ink. */
+  --alfred-bg: #ffffff;
+  --alfred-surface: #ffffff;
+  --alfred-surface-hover: #f1f1ef;
+  --alfred-accent: #2f2f2b;
+  --alfred-accent-hover: #454540;
+  --alfred-text: #37352f;
+  --alfred-text-muted: #787774;
+  --alfred-border: #e9e9e7;
+  --alfred-success: #0f7b6c;
+  --alfred-error: #d44c47;
+  --alfred-warning: #cb912f;
   --alfred-radius: 8px;
-  --alfred-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  --alfred-shadow: 0 8px 32px rgba(15, 15, 15, 0.18), 0 1px 3px rgba(15, 15, 15, 0.08);
   --alfred-font: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     Roboto, sans-serif;
 }
@@ -161,17 +164,20 @@
 
 #alfred-note-textarea {
   width: 100%;
-  min-height: 120px;
-  max-height: 300px;
-  resize: vertical;
+  /* The note box grows with what the person types instead of holding a
+     fixed 120px frame (owner: the small box felt confined while writing). */
+  min-height: 3.5em;
+  max-height: 50vh;
+  resize: none;
+  overflow-y: auto;
   background: var(--alfred-bg);
   color: var(--alfred-text);
   border: 1px solid var(--alfred-border);
   border-radius: var(--alfred-radius);
   padding: 10px 12px;
   font-family: var(--alfred-font);
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: 14px;
+  line-height: 1.6;
   outline: none;
   transition: border-color 0.2s;
   box-sizing: border-box;

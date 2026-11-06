@@ -112,7 +112,10 @@
   --muted: var(--paper-3);
   --muted-foreground: var(--ink-muted);
 
-  --accent: var(--signal-soft);
+  /* Hover and highlight fills stay paper-quiet; tangerine is reserved for
+     the primary action and state (design.md Controls/Surfaces). A hover that
+     glows the signal color read as orange everywhere. */
+  --accent: var(--paper-3);
   --accent-foreground: var(--ink);
 
   --destructive: var(--error);
@@ -159,12 +162,12 @@
   --chart-1: var(--contour);
   --chart-2: var(--water);
   --chart-3: var(--hedge);
-  --chart-4: var(--signal);
+  --chart-4: var(--contour);
   --chart-5: var(--ink-2);
 
   --sidebar: var(--paper);
   --sidebar-foreground: var(--ink);
-  --sidebar-primary: var(--signal);
+  --sidebar-primary: var(--ink-2);
   --sidebar-primary-foreground: var(--signal-ink);
   --sidebar-accent: var(--paper-3);
   --sidebar-accent-foreground: var(--ink);
@@ -769,7 +772,9 @@ textarea {
   accent-color: var(--primary);
 }
 ::selection {
-  background: color-mix(in oklab, var(--primary) 22%, transparent);
+  /* Notion-quiet: a neutral ink wash, not the signal color. Selected prose
+     glowed tangerine across every surface. */
+  background: color-mix(in oklab, var(--ink-muted) 22%, transparent);
   color: var(--foreground);
 }
 @media (max-width: 1023px) {
@@ -971,7 +976,7 @@ textarea {
   --xy-connectionline-stroke: var(--ink-muted);
   --xy-handle-background-color: var(--muted-foreground);
   --xy-handle-border-color: var(--border);
-  --xy-selection-border: 1px dashed var(--signal);
+  --xy-selection-border: 1px dashed var(--ink-muted);
 }
 
 /* The deep-linked activity row (/activity?event=<id>): a quiet ring that

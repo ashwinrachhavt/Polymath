@@ -1,10 +1,11 @@
 "use client";
 
-import { CornerDownLeft, FileText, Plus, X } from "lucide-react";
+import { CornerDownLeft, FileText, Paperclip, Plus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { eventFile, uploadCaptureFile } from "@/lib/capture-upload";
 import { captureTextAction } from "./actions";
 
 /*
@@ -17,6 +18,12 @@ import { captureTextAction } from "./actions";
  * A large paste stops being prose on screen: past the threshold it renders as
  * a file-style chip in the bar (like a smart omnibox upload) so the composer
  * stays one bar tall and the submit button never leaves the viewport.
+ *
+ * The collapsed bar's plus is a real button, not a glyph: clicking it (or the
+ * paperclip once expanded) opens the file picker, and a pasted or dropped
+ * image uploads through the same multipart route every other capture path
+ * uses. Server actions cap below the 4.5 MB function ceiling, so files cross
+ * the API route, then the router refresh brings the new row into view.
  */
 
 const FILE_CHIP_THRESHOLD = 600;
@@ -27,10 +34,12 @@ export function CaptureForm() {
   const [expanded, setExpanded] = useState(false);
   const [error, setError] = useState<{ message: string; existingId?: string } | null>(null);
   const [pending, startTransition] = useTransition();
+  const [filePending, setFilePending] = useState(false);
   const collapsed = !expanded && !text;
   const asChip = text.length > FILE_CHIP_THRESHOLD;
   const lines = text ? text.trim().split(/\n/).length : 0;
   const chipRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     // Keep keyboard focus inside the form when a large paste swaps the input
     // for the chip, so Cmd+Enter keeps working.
@@ -52,6 +61,47 @@ export function CaptureForm() {
     });
   }
 
+  function attachFile(file: File) {
+    if (filePending || pending) return;
+    setError(null);
+    setFilePending(true);
+    void uploadCaptureFile(file)
+      .then((result) => {
+        if (!result.ok) {
+          setError({ message: result.message });
+          return;
+        }
+        setExpanded(false);
+        router.push(`/command-center/inbox?id=${result.captureId}`);
+        router.refresh();
+      })
+      .finally(() => setFilePending(false));
+  }
+
+  function pasteOrDrop(data: React.ClipboardEvent | React.DragEvent) {
+    const transfer = "clipboardData" in data ? data.clipboardData : data.dataTransfer;
+    const file = eventFile(transfer);
+    if (!file) return;
+    data.preventDefault();
+    attachFile(file);
+  }
+
+  const fileInput = (
+    <input
+      ref={fileInputRef}
+      type="file"
+      className="hidden"
+      aria-hidden
+      tabIndex={-1}
+      onChange={(event) => {
+        const chosen = event.target.files?.[0];
+        event.target.value = "";
+        if (chosen) attachFile(chosen);
+      }}
+    />
+  );
+  const pickFile = () => fileInputRef.current?.click();
+
   return (
     <form
       onSubmit={(event) => {
@@ -69,12 +119,22 @@ export function CaptureForm() {
     >
       {collapsed ? (
         <div className="flex h-9 items-center gap-2 rounded-md border border-input bg-card px-2.5 transition-colors focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/40">
-          <Plus aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+          {fileInput}
+          <button
+            type="button"
+            aria-label="Attach a file or image"
+            title="Attach a file or image"
+            onClick={pickFile}
+            className="shrink-0 rounded text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <Plus aria-hidden className="size-3.5" />
+          </button>
           <input
             type="text"
             value={text}
             onChange={(event) => setText(event.target.value)}
             onFocus={() => setExpanded(true)}
+            onPaste={pasteOrDrop}
             placeholder="Capture a thought, excerpt, or URL"
             aria-label="Capture a thought, excerpt, or URL"
             className="min-w-0 flex-1 bg-transparent text-body-dense outline-none placeholder:text-muted-foreground"
@@ -134,6 +194,8 @@ export function CaptureForm() {
             rows={3}
             value={text}
             onChange={(event) => setText(event.target.value)}
+            onPaste={pasteOrDrop}
+            onDrop={pasteOrDrop}
             onBlur={(event) => {
               if (!event.target.value.trim()) setExpanded(false);
             }}
@@ -142,6 +204,11 @@ export function CaptureForm() {
             className="min-h-16 resize-none border-0 bg-transparent p-1 text-body-dense shadow-none focus-visible:ring-0"
           />
           <div className="flex flex-wrap items-center gap-2 border-border border-t px-1 pt-2">
+            {fileInput}
+            <Button type="button" variant="outline" size="sm" disabled={filePending || pending} onClick={pickFile}>
+              <Paperclip aria-hidden />
+              {filePending ? "Capturing…" : "Attach"}
+            </Button>
             <Button type="submit" size="sm" disabled={pending || !text.trim()}>
               {pending ? "Capturing…" : "Capture to inbox"}
             </Button>

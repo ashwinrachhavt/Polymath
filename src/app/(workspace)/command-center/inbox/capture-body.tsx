@@ -7,6 +7,7 @@ import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import { Markdown } from "@tiptap/markdown";
 import { Button } from "@/components/ui/button";
+import { uploadCaptureFile } from "@/lib/capture-upload";
 import { updateCaptureTextAction } from "./actions";
 
 /*
@@ -73,6 +74,29 @@ export function CaptureBody({
           return true;
         }
         return false;
+      },
+      // An image pasted into the working body is its own capture: it uploads
+      // through the one multipart route and the body gains a link to the
+      // stored bytes. The original in rawPayload is never touched by this.
+      handlePaste: (_view, event) => {
+        if (!editable) return false;
+        const image = Array.from(event.clipboardData?.files ?? []).find((f) => f.type.startsWith("image/"));
+        if (!image) return false;
+        event.preventDefault();
+        void uploadCaptureFile(image).then((result) => {
+          if (!result.ok) {
+            setError(result.message);
+            return;
+          }
+          editor
+            ?.chain()
+            .focus()
+            .insertContent(`[${image.name || "captured image"}](/api/v1/captures/${result.captureId}/file)`, {
+              contentType: "markdown",
+            })
+            .run();
+        });
+        return true;
       },
     },
     onUpdate: ({ editor }) => {
