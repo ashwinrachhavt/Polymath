@@ -21,9 +21,10 @@ import type { Logger } from "drizzle-orm";
  * records `params.length` — never an argument value.
  *
  * The three raw `postgres()` clients (superagent wiring, cron, outbox) bypass
- * drizzle and are invisible to this logger — a known coverage gap, out of
- * scope for this module. Drizzle's own `drizzle.driver.execute` OTel spans
- * stay untouched; the line complements tracing, it does not duplicate it.
+ * drizzle, so they feed the same context through `rawQueryDebugger` — the
+ * postgres-js `debug` hook — instead. Drizzle's own `drizzle.driver.execute`
+ * OTel spans stay untouched; the line complements tracing, it does not
+ * duplicate it.
  *
  * Flag semantics for POLYMATH_DB_QUERY_LOG: an explicit value always wins
  * ("1"/"true" on, "0"/"false" off); unset, the log is on in development and
@@ -64,6 +65,21 @@ export const dbQueryLogger: Logger = {
     ctx.paramCount = params.length;
   },
 };
+
+/**
+ * The postgres-js `debug` hook for the raw clients (cron, outbox, superagent
+ * wiring): the driver's pre-execution hook, fed into the same ambient context
+ * as drizzle's logger, so one `withQueryLog` unit covers both drivers.
+ * postgres-js hands the hook the placeholder-form query ($1, $2, …) with the
+ * real values only in `parameters` — the same structural redaction as
+ * drizzle's logger, so the line still records only the parameter COUNT.
+ */
+export function rawQueryDebugger(_connection: number, query: string, parameters: unknown[]): void {
+  const ctx = store.getStore();
+  if (!ctx || !isQueryLogEnabled()) return;
+  ctx.sql = query;
+  ctx.paramCount = parameters.length;
+}
 
 /** Collapses whitespace so the canonical line stays one line; truncates. */
 function sanitizeSql(query: string): string {

@@ -3,6 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import { dispatchPendingOutbox, recoverStrandedOutbox } from "@/domains/audit/outbox";
 import { outboxHandlers } from "@/domains/audit/outbox-handlers";
 import { problemResponse } from "@/lib/problems";
+import { rawQueryDebugger, withQueryLog } from "@/lib/db-query-log";
 import { superagentEffectHandlers, sweepSuperagentWorkspaces } from "@/domains/superagent/wiring";
 import { runSuperagentDispatch } from "@/domains/superagent/effects";
 
@@ -24,10 +25,12 @@ export async function POST(request: Request) {
   if (!secret) return problemResponse(404, "not_found", "Not found.");
   if (!authorized(request, secret)) return problemResponse(401, "unauthorized", "Unauthorized.");
 
-  const client = postgres(process.env.DATABASE_URL ?? "", { max: 1 });
+  const client = postgres(process.env.DATABASE_URL ?? "", { max: 1, debug: rawQueryDebugger });
   try {
-    const recovered = await recoverStrandedOutbox(client);
-    const result = await dispatchPendingOutbox(client, outboxHandlers(), { workerId: `route:${crypto.randomUUID()}` });
+    const recovered = await withQueryLog("outbox.recover_stranded", () => recoverStrandedOutbox(client));
+    const result = await withQueryLog("outbox.dispatch", () =>
+      dispatchPendingOutbox(client, outboxHandlers(), { workerId: `route:${crypto.randomUUID()}` }),
+    );
     // The superagent domain's effects and reply lane drain in the same pass.
     // The sweep first: the engine's serverless tick (start due evals — the
     // step that enqueues the assessment effects this pass then claims) plus
@@ -35,10 +38,12 @@ export async function POST(request: Request) {
     // and executor's consumers (and the chat sink for the reply lane); kinds
     // without a consumer park without failure, so a wave that lands before
     // its consumer never turns intent into errors.
-    await sweepSuperagentWorkspaces();
-    const superagent = await runSuperagentDispatch(client, await superagentEffectHandlers(), {
-      workerId: `route:${crypto.randomUUID()}`,
-    });
+    await withQueryLog("outbox.superagent_sweep", () => sweepSuperagentWorkspaces());
+    const superagent = await withQueryLog("outbox.superagent_dispatch", async () =>
+      runSuperagentDispatch(client, await superagentEffectHandlers(), {
+        workerId: `route:${crypto.randomUUID()}`,
+      }),
+    );
     return Response.json({ recovered: recovered.length, ...result, superagent });
   } finally {
     await client.end({ timeout: 5 });

@@ -39,6 +39,7 @@ vi.mock("@excalidraw/mermaid-to-excalidraw/dist/graphToExcalidraw.js", () => ({
 
 import { DiagramParseError, renderDiagram } from "@/domains/diagrams/render";
 import {
+  DIAGRAM_TYPE_LABELS,
   DIAGRAM_TYPES,
   EDITABLE_DIAGRAM_TYPES,
   supportsElementEdit,
@@ -89,7 +90,7 @@ describe("rung 2 — non-editable diagram types", () => {
       if (result.renderMode === "image-fallback") {
         expect(result.svg).toContain("<svg");
         expect(result.fallbackReason).toContain("image");
-        expect(result.fallbackReason).toContain(diagramType);
+        expect(result.fallbackReason).toContain(DIAGRAM_TYPE_LABELS[diagramType]);
       }
       expect(mocks.parseMermaid).not.toHaveBeenCalled();
       expect(mocks.graphToExcalidraw).not.toHaveBeenCalled();

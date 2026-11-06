@@ -1,4 +1,5 @@
 import { and, eq, sql } from "drizzle-orm";
+import type { ExcalidrawScenePayload } from "./types";
 import { MAX_TOOL_PAYLOAD } from "@/domains/agents/stream-contract";
 import { artifacts, artifactVersions, canvases, canvasVersions } from "@/domains/knowledge/schema";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
@@ -447,6 +448,43 @@ async function nextCanvasVersionNumber(tx: TxDrizzle, canvasId: string): Promise
     .from(canvasVersions)
     .where(eq(canvasVersions.canvasId, canvasId));
   return row?.next ?? 1;
+}
+
+/**
+ * A save from the canvas editor: one more row on the canvas's append-only
+ * version chain holding the serialized Excalidraw drawing, and the canvas
+ * title when the editor renamed it. Same invariants as refineDiagram — the
+ * next version number is computed inside the transaction, the
+ * (canvasId, versionNumber) unique index turns a concurrent double-save
+ * into a clean rollback, and the workspace lookup makes a foreign canvasId
+ * the same "not found" as a bogus one. The Mermaid envelope versions stay
+ * fetchable: a save never rewrites the generated history.
+ */
+export async function appendCanvasScene(
+  auth: DiagramAuth,
+  input: { canvasId: string; scene: ExcalidrawScenePayload; title?: string },
+): Promise<{ versionNumber: number }> {
+  return withTransaction(async (tx) => {
+    const [canvas] = await tx
+      .select({ id: canvases.id })
+      .from(canvases)
+      .where(and(eq(canvases.id, input.canvasId), eq(canvases.workspaceId, auth.workspaceId)))
+      .limit(1);
+    if (!canvas) throw new DiagramError("no canvas with this id in this workspace");
+
+    const nextVersion = await nextCanvasVersionNumber(tx, canvas.id);
+    await tx.insert(canvasVersions).values({
+      workspaceId: auth.workspaceId,
+      canvasId: canvas.id,
+      versionNumber: nextVersion,
+      scene: { format: "excalidraw", scene: input.scene },
+      createdBy: auth.userId,
+    });
+    if (input.title) {
+      await tx.update(canvases).set({ title: input.title, updatedBy: auth.userId }).where(eq(canvases.id, canvas.id));
+    }
+    return { versionNumber: nextVersion };
+  });
 }
 
 /*
