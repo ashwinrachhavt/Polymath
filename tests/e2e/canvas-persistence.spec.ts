@@ -76,6 +76,15 @@ test("a persisted mermaid canvas loads into the editor and saves as an appended 
   await expect(page.getByText("Unsaved canvas changes")).toHaveCount(0);
   await shot(page, "canvas-editable-loaded", attach);
 
+  // A real canvas edit through the pointer+keyboard: double-click empty
+  // canvas opens Excalidraw's text editor; the typed note becomes a text
+  // element. The gesture arms dirty tracking and the element diff trips it -
+  // this is the regression leg for mount onChange vs real edits.
+  await page.locator(".excalidraw").dblclick({ position: { x: 120, y: 480 } });
+  await page.keyboard.type("E2E mark");
+  await page.keyboard.press("Escape");
+  await expect(page.getByText("Unsaved canvas changes", { exact: true })).toBeVisible({ timeout: 15_000 });
+
   // An edit (the title field) dirties the canvas; saving appends v2.
   await page.getByLabel("Canvas title").fill("E2E flowchart canvas (edited)");
   const save = page.getByRole("button", { name: "Save canvas checkpoint" });
@@ -93,6 +102,14 @@ test("a persisted mermaid canvas loads into the editor and saves as an appended 
     [1, "mermaid"],
     [2, "excalidraw"],
   ]);
+  // The pointer-drawn edit itself persisted inside v2's Excalidraw payload,
+  // not just the version row: the text element rides the stored scene.
+  const marks = await client!<{ n: number }[]>`
+    select count(*)::int as n from (
+      select jsonb_array_elements(scene->'scene'->'elements') el
+      from canvas_versions where canvas_id = ${canvasId} and version_number = 2
+    ) t where el->>'originalText' = 'E2E mark'`;
+  expect(marks[0]?.n, "the drawn text element persisted in v2's stored scene").toBe(1);
   await page.reload();
   await expect(page.getByText(/Canonical canvas v2/)).toBeVisible({ timeout: 120_000 });
   await expect(page.locator(".excalidraw")).toBeVisible({ timeout: 60_000 });
