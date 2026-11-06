@@ -16,6 +16,7 @@ import { SurfaceCardView } from "@/components/chat/surface-card";
 import { fetchMentionContext } from "./mention-actions";
 import { serializeChips, type ContextChip } from "@/components/chat/mention-context";
 import { ContextChips } from "@/components/chat/context-chips";
+import { eventFile, uploadCaptureFile } from "@/lib/capture-upload";
 import { navigateInConversation } from "./navigation-actions";
 import type { NavigationReply } from "@/domains/supervisor/respond";
 import { SlashSkillMenu, type PickableSkill } from "./skills/slash-skill-menu";
@@ -182,31 +183,19 @@ export function NewConversation({
    * file landing in the inbox never reads as it joining this run.
    */
   function attachFile(file: File) {
-    if (file.size > 4 * 1024 * 1024) {
-      setAttachNote("Captures are limited to 4 MB - the file was not attached.");
-      return;
-    }
     setAttachNote(`Capturing ${file.name}…`);
-    const form = new FormData();
-    form.set("file", file);
-    void fetch("/api/v1/captures/file", {
-      method: "POST",
-      headers: { "idempotency-key": crypto.randomUUID() },
-      body: form,
-    })
-      .then(async (res) => {
-        if (!res.ok) {
-          if (res.status === 413) {
-            setAttachNote("That file is over the 4 MB limit.");
-            return;
-          }
-          const problem = (await res.json().catch(() => null)) as { title?: string } | null;
-          setAttachNote(problem?.title ?? "Could not capture the file. Try again.");
-          return;
-        }
-        setAttachNote(`Captured ${file.name} to your inbox.`);
-      })
-      .catch(() => setAttachNote("Could not capture the file. Try again."));
+    void uploadCaptureFile(file).then((result) => {
+      setAttachNote(result.ok ? `Captured ${file.name} to your inbox.` : result.message);
+    });
+  }
+
+  // A pasted screenshot is a capture too: it uploads through the same sniffed
+  // file route instead of landing in the draft as nothing.
+  function pasteCapture(event: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const file = eventFile(event.clipboardData);
+    if (!file) return;
+    event.preventDefault();
+    attachFile(file);
   }
 
   async function send() {
@@ -309,6 +298,7 @@ export function NewConversation({
               void send();
             }
           }}
+          onPaste={pasteCapture}
         />
         <div className="px-3.5 pb-10">
           <ContextChips

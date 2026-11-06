@@ -23,6 +23,7 @@ import {
   type MentionEntity,
 } from "./mention-context";
 import { ContextChips } from "./context-chips";
+import { eventFile, uploadCaptureFile } from "@/lib/capture-upload";
 import { citedIndices } from "@/domains/knowledge/inline-citations";
 
 /*
@@ -386,31 +387,19 @@ export function ChatSurface({
    * outcome so a capture never reads as it joining this conversation.
    */
   function attachFile(file: File) {
-    if (file.size > 4 * 1024 * 1024) {
-      setAttachNote("Captures are limited to 4 MB - the file was not attached.");
-      return;
-    }
     setAttachNote(`Capturing ${file.name}…`);
-    const form = new FormData();
-    form.set("file", file);
-    void fetch("/api/v1/captures/file", {
-      method: "POST",
-      headers: { "idempotency-key": crypto.randomUUID() },
-      body: form,
-    })
-      .then(async (res) => {
-        if (!res.ok) {
-          if (res.status === 413) {
-            setAttachNote("That file is over the 4 MB limit.");
-            return;
-          }
-          const problem = (await res.json().catch(() => null)) as { title?: string } | null;
-          setAttachNote(problem?.title ?? "Could not capture the file. Try again.");
-          return;
-        }
-        setAttachNote(`Captured ${file.name} to your inbox.`);
-      })
-      .catch(() => setAttachNote("Could not capture the file. Try again."));
+    void uploadCaptureFile(file).then((result) => {
+      setAttachNote(result.ok ? `Captured ${file.name} to your inbox.` : result.message);
+    });
+  }
+
+  // A pasted screenshot is a capture too: the paste never becomes text or an
+  // alt-text blob in the draft, it uploads through the same sniffed file route.
+  function pasteCapture(event: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const file = eventFile(event.clipboardData);
+    if (!file) return;
+    event.preventDefault();
+    attachFile(file);
   }
 
   return (
@@ -540,6 +529,7 @@ export function ChatSurface({
                 void send();
               }
             }}
+            onPaste={pasteCapture}
           />
           {/*
            * The plus sits inside the input's frame, bottom-left, like the send
