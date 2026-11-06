@@ -72,13 +72,19 @@ test("the dock follows a real session across pages, marks a failed read stale, a
     // The request-storm regression (2026-11-06): every refocus of an open
     // tab fired a forced /api/v1/focus/live read that bypassed the revalidate
     // window. A verified fresh cache serves focus events exactly like
-    // navigation mounts - no request at all. The transitions here are REAL:
-    // a second tab cycling foreground/background fires the browser's own
-    // visibilitychange and focus events, not synthetic dispatches.
-    const otherTab = await page.context().newPage();
+    // navigation mounts - no request at all. The re-checks below drive the
+    // dock's real listeners on the real event targets (window focus,
+    // document visibilitychange): OS-level generation of those events does
+    // not exist in headless Chromium - bringToFront, CDP lifecycle states,
+    // focus emulation and window minimize were all probed and fire nothing -
+    // so dispatching the events is the only way to reach the handlers, and
+    // the stale journey below proves the dispatch reaches them (a no-op
+    // dispatch would leave the dock "verified" and fail the assertion).
     const refocus = async () => {
-      await otherTab.bringToFront();
-      await page.bringToFront();
+      await page.evaluate(() => {
+        document.dispatchEvent(new Event("visibilitychange"));
+        window.dispatchEvent(new Event("focus"));
+      });
     };
     let liveReads = 0;
     const countLive = (request: import("@playwright/test").Request) => {
@@ -116,7 +122,6 @@ test("the dock follows a real session across pages, marks a failed read stale, a
     await expect(dock).not.toContainText("last known");
     expect(liveReads - readsBeforeRecovery).toBe(1);
     page.removeListener("request", countLive);
-    await otherTab.close();
 
     // Return to the session, finish it, and the dock is gone everywhere.
     await dock.getByRole("link").click();
