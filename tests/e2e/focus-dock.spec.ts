@@ -80,6 +80,14 @@ test("the dock follows a real session across pages, marks a failed read stale, a
     // so dispatching the events is the only way to reach the handlers, and
     // the stale journey below proves the dispatch reaches them (a no-op
     // dispatch would leave the dock "verified" and fail the assertion).
+    // A probe on the same targets proves each re-check really delivered its
+    // events: without it, a future refactor that drops the dispatches would
+    // pass the 0-request pin vacuously.
+    await page.evaluate(() => {
+      (window as unknown as { __reChecks: number }).__reChecks = 0;
+      document.addEventListener("visibilitychange", () => (window as unknown as { __reChecks: number }).__reChecks++);
+      window.addEventListener("focus", () => (window as unknown as { __reChecks: number }).__reChecks++);
+    });
     const refocus = async () => {
       await page.evaluate(() => {
         document.dispatchEvent(new Event("visibilitychange"));
@@ -93,6 +101,7 @@ test("the dock follows a real session across pages, marks a failed read stale, a
     page.on("request", countLive);
     for (let i = 0; i < 5; i++) await refocus();
     await page.waitForTimeout(250);
+    expect(await page.evaluate(() => (window as unknown as { __reChecks: number }).__reChecks)).toBe(10);
     expect(liveReads).toBe(0);
     await expect(dock).toContainText("Focus running");
     await expect(dock).not.toContainText("last known");
