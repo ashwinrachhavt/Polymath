@@ -17,6 +17,18 @@ export const DIAGRAM_TYPES = ["flowchart", "sequence", "class", "state", "er", "
 
 export type DiagramType = (typeof DIAGRAM_TYPES)[number];
 
+/** Human-facing label per type; the stored code stays lowercase ("er"). */
+export const DIAGRAM_TYPE_LABELS: Record<DiagramType, string> = {
+  flowchart: "Flowchart",
+  sequence: "Sequence",
+  class: "Class",
+  state: "State",
+  er: "ER",
+  journey: "Journey",
+  gantt: "Gantt",
+  mindmap: "Mindmap",
+};
+
 /**
  * Editability honesty (locked decision 5): the mermaid-to-excalidraw
  * converter element-edits only flowcharts and sequences. Every other type
@@ -73,3 +85,86 @@ export type DiagramToolOutput = {
   /** Set client-side after the conversion attempt. */
   renderMode: DiagramRenderMode;
 };
+
+/* ------------------------------------------------------------------ */
+/* Canvas scene envelopes — what canvas_versions.scene can hold.       */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The scene column is append-only and holds one of two envelopes:
+ *
+ *  - "mermaid": written by the eve diagram tool at generation/refinement
+ *    time (persistDiagram). The browser converts to Excalidraw lazily
+ *    (locked decision 4), so the stored payload is the source, not a scene.
+ *  - "excalidraw": written by a save from the canvas editor — the serialized
+ *    drawing (elements + appState + files) from that checkpoint on.
+ *
+ * Pure parse/validation only: this module stays free of runtime imports so
+ * both the server read model and the client editor can share it.
+ */
+
+/** Largest serialized scene a save accepts — the same 2 MB honesty limit the
+ * canvas preview editor already applies to its local checkpoints. */
+export const MAX_CANVAS_SCENE_CHARS = 2_000_000;
+
+/** The generation-time envelope: Mermaid source awaiting client conversion. */
+type MermaidSceneEnvelope = { format: "mermaid"; mermaid: string; diagramType: DiagramType };
+
+/** The serialized Excalidraw drawing a save from the canvas editor stores. */
+export type ExcalidrawScenePayload = {
+  elements: unknown[];
+  appState?: Record<string, unknown>;
+  files?: Record<string, unknown>;
+};
+
+type ExcalidrawSceneEnvelope = { format: "excalidraw"; scene: ExcalidrawScenePayload };
+
+export type CanvasSceneEnvelope = MermaidSceneEnvelope | ExcalidrawSceneEnvelope;
+
+/**
+ * Parse one stored canvas_versions.scene. Null for anything else — the
+ * canvas surface renders an honest "unreadable version" state, never a
+ * guess (the same contract as parseDiagramVersionContent for the artifact
+ * chain).
+ */
+export function parseCanvasScene(content: unknown): CanvasSceneEnvelope | null {
+  if (typeof content !== "object" || content === null) return null;
+  const candidate = content as { format?: unknown };
+  if (candidate.format === "mermaid") {
+    const m = content as { mermaid?: unknown; diagramType?: unknown };
+    if (typeof m.mermaid !== "string" || m.mermaid.length === 0) return null;
+    if (typeof m.diagramType !== "string" || !(DIAGRAM_TYPES as readonly string[]).includes(m.diagramType)) {
+      return null;
+    }
+    return { format: "mermaid", mermaid: m.mermaid, diagramType: m.diagramType as DiagramType };
+  }
+  if (candidate.format === "excalidraw") {
+    const sc = (content as { scene?: unknown }).scene;
+    if (typeof sc !== "object" || sc === null) return null;
+    const elements = (sc as { elements?: unknown }).elements;
+    if (!Array.isArray(elements)) return null;
+    const payload: ExcalidrawScenePayload = { elements };
+    const appState = (sc as { appState?: unknown }).appState;
+    if (typeof appState === "object" && appState !== null) {
+      payload.appState = appState as Record<string, unknown>;
+    }
+    const files = (sc as { files?: unknown }).files;
+    if (typeof files === "object" && files !== null) {
+      payload.files = files as Record<string, unknown>;
+    }
+    return { format: "excalidraw", scene: payload };
+  }
+  return null;
+}
+
+/**
+ * The save-side size guard, run before the row is written: a scene that
+ * would cross the cap is refused with its real size, so the person exports
+ * instead of silently losing the checkpoint.
+ */
+export function canvasSceneSizeError(scene: ExcalidrawScenePayload): string | null {
+  const size = JSON.stringify(scene).length;
+  return size > MAX_CANVAS_SCENE_CHARS
+    ? `the scene is ${size} characters; the cap is ${MAX_CANVAS_SCENE_CHARS}. Export the drawing instead of saving a checkpoint.`
+    : null;
+}

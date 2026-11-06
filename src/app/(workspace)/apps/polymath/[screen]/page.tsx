@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import PolymathScreen from "@/components/products/polymath/polymath-screen";
 import { products } from "@/lib/products";
 
-type SearchParams = Promise<{ id?: string | string[] }>;
+type SearchParams = Promise<{ id?: string | string[]; canvasId?: string | string[] }>;
 
 /*
  * Both params and searchParams are awaited inside the boundary: Next 16 warns
@@ -33,6 +33,12 @@ async function SelectedScreen({
   if (screen === "library") redirect("/polymath/library");
   // Files: the document engine as a file manager, a canonical route like the library.
   if (screen === "files") redirect("/polymath/files");
+  // The canvas handshake: a canvasId names a canonical Postgres canvas, which
+  // the preview screen cannot load (its drawings are browser-local). Hand off
+  // to the canonical canvas route, the same way notebook/library hand off to
+  // their canonical surfaces.
+  const canvasId = Array.isArray(query.canvasId) ? query.canvasId[0] : query.canvasId;
+  if (screen === "canvas" && canvasId) redirect(`/polymath/canvas/${encodeURIComponent(canvasId)}`);
   return <PolymathScreen key={`${screen}-${initialId || ""}`} screen={screen} initialId={initialId} />;
 }
 

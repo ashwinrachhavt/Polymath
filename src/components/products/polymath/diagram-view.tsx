@@ -7,7 +7,7 @@ import { Check, Copy, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { supportsElementEdit } from "@/domains/diagrams/types";
+import { DIAGRAM_TYPE_LABELS, supportsElementEdit } from "@/domains/diagrams/types";
 import { pickDiagramVersion, type DiagramVersionView } from "@/domains/diagrams/view";
 import type { DiagramPreviewOutcome } from "./diagram-preview";
 
@@ -32,10 +32,18 @@ const DiagramPreview = dynamic(() => import("./diagram-preview"), {
   ),
 });
 
-/** The existing canvas surface — the canvas route, not a new one. */
-const CANVAS_HREF = "/apps/polymath/canvas";
-
-export function DiagramView({ title, versions }: { title: string; versions: DiagramVersionView[] }) {
+export function DiagramView({
+  title,
+  versions,
+  canvasId,
+}: {
+  title: string;
+  versions: DiagramVersionView[];
+  /** The canvas row backing this artifact — the canonical canvas route's
+   * target. Null (a diagram persisted before the chains linked, or a missing
+   * row) drops the "Open in canvas" affordance rather than dead-ending it. */
+  canvasId?: string | null;
+}) {
   const [selected, setSelected] = useState<number | undefined>(undefined);
   const [copied, setCopied] = useState(false);
   /** Editability of the version the preview last rendered — versioned so a
@@ -109,7 +117,7 @@ export function DiagramView({ title, versions }: { title: string; versions: Diag
 
       {!declaredEditable && (
         <p className="wrap-anywhere rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-          {active.diagramType} diagrams open as an image, not an editable scene.
+          {DIAGRAM_TYPE_LABELS[active.diagramType]} diagrams open as an image, not an editable scene.
         </p>
       )}
 
@@ -148,15 +156,22 @@ export function DiagramView({ title, versions }: { title: string; versions: Diag
         </TabsContent>
       </Tabs>
 
-      {sceneEditable && (
+      {canvasId && (
         <p className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+          {/* The canonical canvas route loads this diagram's persisted scene
+              chain from Postgres; the /apps/polymath/canvas preview screen
+              cannot (its drawings live in browser-local storage). */}
           <Link
-            href={CANVAS_HREF}
+            href={`/polymath/canvas/${canvasId}`}
             className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-body-dense text-foreground hover:bg-muted"
           >
             <ExternalLink aria-hidden className="size-3.5" /> Open in canvas
           </Link>
-          <span>This version converted to an editable Excalidraw scene.</span>
+          <span>
+            {sceneEditable
+              ? "This version converted to an editable Excalidraw scene."
+              : "Opens as a read-only image preview; the editor stays disabled for this version."}
+          </span>
         </p>
       )}
     </article>
