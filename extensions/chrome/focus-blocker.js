@@ -57,7 +57,14 @@
       headers: { Authorization: "Bearer " + token },
       signal: AbortSignal.timeout(POLL_TIMEOUT_MS),
     });
-    if (!response.ok) throw new Error(url.split("?")[0] + " answered " + response.status);
+    if (!response.ok) {
+      var error = new Error(url.split("?")[0] + " answered " + response.status);
+      // A 403 is not an outage: the paired key permanently lacks focus:read,
+      // so the fail-safe's keep-then-clear guess never applies. The caller
+      // needs the status to say WHY nothing can be enforced.
+      error.status = response.status;
+      throw error;
+    }
     return response.json();
   }
 
@@ -97,11 +104,21 @@
       await writeState(state);
       return { ok: true, enforcing: enforcing, ruleCount: conversion.rules.length };
     } catch (error) {
+      // The pure decision lives in focus-core; 403 clears now and reports
+      // "forbidden" so the surfaces can say the key lacks focus scope.
+      var cached = await readState();
+      var verdict = Core.pollFailureDecision(error && error.status, cached, Date.now());
+      if (verdict === "forbidden") {
+        await applyRules([]);
+        // Not null: the interstitial reads this marker to say the paired key
+        // cannot enforce focus, instead of the outage copy.
+        await writeState({ forbidden: true, error: String((error && error.message) || error) });
+        return { ok: false, error: String((error && error.message) || error), reason: verdict };
+      }
       // Keep the last-known rules while the streak is young (the blocklist
       // changing server-side can wait); past the stale window, clear — an
       // outage must never lock a user out.
-      var cached = await readState();
-      if (Core.failSafeDecision(cached, Date.now()) === "clear") {
+      if (verdict === "clear") {
         await applyRules([]);
         await writeState(null);
         return { ok: false, error: String((error && error.message) || error), failSafe: "cleared" };

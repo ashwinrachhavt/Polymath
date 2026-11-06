@@ -37,6 +37,18 @@
       // session probably just ended. Say so instead of showing stale data.
       els.subject.hidden = true;
       els.remaining.hidden = true;
+      // The poller's 403 marker: the paired key cannot read focus state, so
+      // blocking can never engage and this page is the only place that can
+      // say why. Checked before the outage copy, which would misdiagnose it.
+      if (state && state.forbidden) {
+        els.explain.textContent =
+          "This device's companion key cannot read Focus Mode (the server refused it), so no sites can be blocked. " +
+          "Re-pair the extension: open the Polymath side panel and save a key that includes the \"Read focus sessions and blocklist\" scope.";
+        els.link.href = base + "/neuralflow/focus";
+        els.link.hidden = false;
+        els.status.textContent = "Waiting for the next check…";
+        return;
+      }
       els.explain.textContent =
         "Focus Mode held this page, and this device has not heard from your Polymath server since. " +
         "It re-checks every 30 seconds — if a session is running, this page will say so; otherwise the site will load normally on your next visit.";
