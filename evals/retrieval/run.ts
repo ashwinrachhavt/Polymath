@@ -26,7 +26,7 @@ async function main() {
   const { db, client } = makeTestDb({ max: 3 });
   const { blobObjects } = await import("../../src/domains/audit/schema");
   const { documents, documentExtractions, embeddings, files } = await import("../../src/domains/knowledge/schema");
-  const { chunkText, isCapped } = await import("../../src/domains/knowledge/chunking");
+  const { chunkText } = await import("../../src/domains/knowledge/chunking");
   const { EMBEDDING_OWNER_TYPE } = await import("../../src/domains/knowledge/embedding");
   const { EMBEDDING_DIMENSIONS } = await import("../../src/integrations/embeddings/provider");
   type EmbeddingProvider = import("../../src/integrations/embeddings/provider").EmbeddingProvider;
@@ -83,7 +83,7 @@ async function main() {
     indexedChunks += chunks.length;
     const { eq } = await import("drizzle-orm");
     await db.update(documentExtractions).set({
-      embeddedAt: new Date(), embedModel: MODEL, embedCoverage: isCapped(chunks, doc.text) ? "partial" : "complete",
+      embeddedAt: new Date(), embedModel: MODEL,
     }).where(eq(documentExtractions.id, ex.id));
     return d;
   };
@@ -114,7 +114,13 @@ async function main() {
   };
 
   for (const [name, admit] of Object.entries(policies)) {
-    const per: Array<Row & { ms: number }> = [];
+    type PerRow = {
+      id: string; split: string; category: string; ms: number;
+      expected: number; found: number;
+      recall: number | null; abstainedCorrectly: boolean | null;
+      violations: number; precision: number; evidenceChars: number;
+    };
+    const per: PerRow[] = [];
     for (const q of QUESTIONS) {
       const t0 = performance.now();
       const [vectorHits, ftsHits] = await Promise.all([
@@ -139,7 +145,7 @@ async function main() {
         evidenceChars: results.reduce((s, r) => s + String(r.text).length, 0),
       });
     }
-    const nums = (f: (r: (typeof per)[number]) => number | null) => per.map(f).filter((x): x is number => x !== null);
+    const nums = (f: (r: PerRow) => number | null) => per.map(f).filter((x): x is number => x !== null);
     const avg = (xs: number[]) => (xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : 0);
     const lat = nums((r) => r.ms).sort((x, y) => x - y);
     (report.policies as Row)[name] = {

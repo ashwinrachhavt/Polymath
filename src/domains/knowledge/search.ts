@@ -168,10 +168,6 @@ export type ChunkHit = {
   span: { start: number; end: number; page: number | null };
   /** Cosine distance: 0 is identical, 2 is opposite. Lower is closer. */
   distance: number;
-  /** Embedding coverage of the extraction ("complete" | "partial" | null when
-   * no successful pass recorded it) - the model must know a hit's document
-   * may be only partly indexed (issue #533 finding 5). */
-  coverage?: string | null;
 };
 
 /*
@@ -206,7 +202,6 @@ export async function searchChunks(
       start: embeddings.spanStart,
       end: embeddings.spanEnd,
       page: embeddings.page,
-      coverage: documentExtractions.embedCoverage,
       distance,
     })
     .from(embeddings)
@@ -238,7 +233,6 @@ export async function searchChunks(
     text: r.text,
     span: { start: r.start ?? 0, end: r.end ?? r.text.length, page: r.page },
     distance: Number(r.distance),
-    coverage: r.coverage,
   }));
 }
 
@@ -273,7 +267,6 @@ export async function searchChunksFts(
       text: documentExtractions.text,
       spans: documentExtractions.spans,
       embedModel: documentExtractions.embedModel,
-      coverage: documentExtractions.embedCoverage,
       rank,
     })
     .from(documentExtractions)
@@ -362,7 +355,6 @@ export async function searchChunksFts(
           text: c.content,
           span: { start: c.spanStart ?? 0, end: c.spanEnd ?? c.content.length, page: c.page },
           distance,
-          coverage: r.coverage,
         }));
     }
     const spans = (r.spans ?? []) as { page: number; start: number; end: number }[];
@@ -376,7 +368,6 @@ export async function searchChunksFts(
         text: chunk.text,
         span: { start: chunk.start, end: chunk.end, page: chunk.page },
         distance,
-        coverage: r.coverage,
       }));
   });
 }

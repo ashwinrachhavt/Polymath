@@ -133,65 +133,6 @@ suite("embedding pass and chunk search (real Postgres + pgvector)", () => {
     expect(await chunkRows(extractionId)).toHaveLength(0);
   });
 
-  describe("embedding coverage states (issue #533 finding 5)", () => {
-    const coverageOf = async (extractionId: string) => {
-      const [ex] = await holder.db!.select().from(documentExtractions).where(eq(documentExtractions.id, extractionId));
-      return ex.embedCoverage;
-    };
-
-    it("records complete coverage for an uncapped extraction", async () => {
-      const auth = await workspace();
-      const { extractionId } = await seedDocument(auth, LEASE, "lease");
-      await embedExtraction(auth, { extractionId, provider: fakeProvider() });
-      expect(await coverageOf(extractionId)).toBe("complete");
-    });
-
-    it("records partial coverage when the chunk cap cuts a long extraction", async () => {
-      const auth = await workspace();
-      // ~590 KB of prose: well past the 400-chunk cap at the 1200-char target.
-      const long = "The covenant survives every transfer of the reversion and binds assignees. ".repeat(7800);
-      const { extractionId } = await seedDocument(auth, long, "long-lease");
-      expect(await embedExtraction(auth, { extractionId, provider: fakeProvider() })).toMatchObject({ status: "succeeded" });
-      expect(await coverageOf(extractionId)).toBe("partial");
-      expect((await chunkRows(extractionId)).length).toBe(400);
-    });
-
-    it("a failed pass records the error and leaves coverage unrecorded", async () => {
-      const auth = await workspace();
-      const { extractionId } = await seedDocument(auth, LEASE, "lease");
-      const broken: EmbeddingProvider = { model: "broken", embed: async () => { throw new Error("boom"); } };
-      expect(await embedExtraction(auth, { extractionId, provider: broken })).toMatchObject({ status: "failed" });
-      const [ex] = await holder.db!.select().from(documentExtractions).where(eq(documentExtractions.id, extractionId));
-      expect(ex.embedError).toBeTruthy();
-      expect(ex.embedCoverage).toBeNull();
-    });
-
-    it("a successful retry after a failure records coverage", async () => {
-      const auth = await workspace();
-      const { extractionId } = await seedDocument(auth, LEASE, "lease");
-      const broken: EmbeddingProvider = { model: "broken", embed: async () => { throw new Error("boom"); } };
-      await embedExtraction(auth, { extractionId, provider: broken });
-      await embedExtraction(auth, { extractionId, provider: fakeProvider() });
-      expect(await coverageOf(extractionId)).toBe("complete");
-    });
-
-    it("a historical row (embedded before coverage existed) reads as unknown, never falsely complete", async () => {
-      const auth = await workspace();
-      const { doc, extractionId } = await seedDocument(auth, LEASE, "lease");
-      await embedExtraction(auth, { extractionId, provider: fakeProvider() });
-      // Rows embedded before 0289 have no recorded coverage: simulate one.
-      await holder.db!.update(documentExtractions).set({ embedCoverage: null }).where(eq(documentExtractions.id, extractionId));
-      const { searchDocumentsForAgent } = await import("@/domains/knowledge/agent-search");
-      const res = await searchDocumentsForAgent(auth, { query: "security deposit", provider: fakeProvider() });
-      expect(res.ok).toBe(true);
-      if (!res.ok) return;
-      const hit = res.results.find((r) => r.documentId === doc.id);
-      expect(hit).toBeTruthy();
-      // Unknown stays unknown: the citation must not invent "complete".
-      expect(hit!.coverage == null).toBe(true);
-    });
-  });
-
   it("only runs after text succeeded", async () => {
     const auth = await workspace();
     const { extractionId } = await seedDocument(auth, LEASE, "lease");

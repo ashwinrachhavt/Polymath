@@ -147,15 +147,13 @@ describe("finding 4: legs fail independently", () => {
   it("citations carry passage lineage (finding 6)", async () => {
     const { searchChunks, searchChunksFts } = await import("@/domains/knowledge/search");
     const { searchDocumentsForAgent } = await import("@/domains/knowledge/agent-search");
-    vi.mocked(searchChunks).mockResolvedValueOnce([{ ...hit("doc", { extractionId: "ex-9", chunkIndex: 4 }), coverage: "partial" }]);
+    vi.mocked(searchChunks).mockResolvedValueOnce([hit("doc", { extractionId: "ex-9", chunkIndex: 4 })]);
     vi.mocked(searchChunksFts).mockResolvedValueOnce([hit("doc", { extractionId: "ex-9", chunkIndex: 4 })]);
     const result = await searchDocumentsForAgent(auth, { query: "roadmap" });
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.results[0]?.extractionId).toBe("ex-9");
       expect(result.results[0]?.chunkIndex).toBe(4);
-      // Coverage rides the citation (finding 5): a partial index must be visible.
-      expect(result.results[0]?.coverage).toBe("partial");
     }
   });
 });

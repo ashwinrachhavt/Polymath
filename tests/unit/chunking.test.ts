@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chunkText, isCapped } from "@/domains/knowledge/chunking";
+import { chunkText } from "@/domains/knowledge/chunking";
 
 const sentence = "The tenant pays rent on the first of every month. ";
 
@@ -70,10 +70,5 @@ describe("chunkText", () => {
     ]);
   });
 
-  it("isCapped: true only when the cap cut text off (issue #533 finding 5)", () => {
-    const text = sentence.repeat(40);
-    expect(isCapped(chunkText(text, [], { target: 500, overlap: 100, max: 2 }), text, 2)).toBe(true);
-    expect(isCapped(chunkText(text, [], { target: 500, overlap: 100 }), text)).toBe(false);
-    expect(isCapped([], "")).toBe(false);
-  });
+
 });

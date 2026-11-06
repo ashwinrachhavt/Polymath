@@ -51,11 +51,6 @@ export type DocumentCitation = {
    * answers predate the lineage. */
   extractionId?: string;
   chunkIndex?: number;
-  /** Embedding coverage of the cited extraction: "partial" means a long
-   * document's tail is not vector-searchable, so an empty or thin result for
-   * it must not be read as "the document says nothing about this" (issue
-   * #533 finding 5). */
-  coverage?: string | null;
 };
 
 export type AgentSearchResult =
@@ -154,9 +149,6 @@ export function rrfMerge(
         if (entry.hit.span.page == null && hit.span.page != null) {
           entry.hit = { ...entry.hit, span: { ...entry.hit.span, page: hit.span.page } };
         }
-        if (entry.hit.coverage == null && hit.coverage != null) {
-          entry.hit = { ...entry.hit, coverage: hit.coverage };
-        }
       } else {
         scores.set(key, { hit, score: rrf(i), legs: new Set([leg]), bestRank: { [leg]: i } });
       }
@@ -215,10 +207,11 @@ export async function searchDocumentsForAgent(
     const ftsHits = ftsLeg.status === "fulfilled" ? ftsLeg.value : null;
     if (vectorHits === null && ftsHits === null) {
       // Both legs failed: an unconfigured embedding key alone degrades to
-      // text, but text search failing too is a real failure.
+      // text, but text search failing too is a real failure. (TS narrows
+      // PromiseSettledResult via .status, not through the derived nulls.)
       if (
-        vectorLeg.reason instanceof EmbeddingUnconfiguredError ||
-        ftsLeg.reason instanceof EmbeddingUnconfiguredError
+        (vectorLeg.status === "rejected" && vectorLeg.reason instanceof EmbeddingUnconfiguredError) ||
+        (ftsLeg.status === "rejected" && ftsLeg.reason instanceof EmbeddingUnconfiguredError)
       ) {
         return { ok: false, error: "document search is not configured (no embedding key)" };
       }
@@ -261,7 +254,6 @@ export async function searchDocumentsForAgent(
         span: h.span,
         extractionId: h.extractionId,
         chunkIndex: h.chunkIndex,
-        coverage: h.coverage,
       })),
     };
   } catch (cause) {
