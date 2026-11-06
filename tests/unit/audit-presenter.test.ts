@@ -157,12 +157,12 @@ describe("planOperationGroups", () => {
       createdAt: new Date("2026-11-03T12:02:00.000Z"),
     });
     const stepNewer = row({
-      action: "capture.proposal_accepted",
+      action: "capture.zettels_created",
       operationId: "op-1",
       createdAt: new Date("2026-11-03T12:03:00.000Z"),
     });
     const stepOlder = row({
-      action: "capture.proposal_accepted",
+      action: "capture.zettels_created",
       operationId: "op-1",
       createdAt: new Date("2026-11-03T12:01:00.000Z"),
     });
@@ -173,7 +173,7 @@ describe("planOperationGroups", () => {
   });
 
   it("collapses to nothing when the page holds no outcome row", () => {
-    const step = row({ action: "capture.proposal_accepted", operationId: "op-2" });
+    const step = row({ action: "capture.zettels_created", operationId: "op-2" });
     expect(planOperationGroups([step]).size).toBe(0);
   });
 });
@@ -301,7 +301,7 @@ describe("buildActivityItem conversions", () => {
 describe("buildActivityItem assembly", () => {
   it("renders folded steps as sentences with their own actors", () => {
     const outcome = row({ action: "capture.converted", operationId: "op-1" });
-    const step = row({ action: "capture.proposal_accepted", operationId: "op-1", actorId: "u2" });
+    const step = row({ action: "capture.zettels_created", operationId: "op-1", actorId: "u2" });
     const item = buildActivityItem(
       outcome,
       itemInput({
@@ -313,7 +313,7 @@ describe("buildActivityItem assembly", () => {
         stepRows: [step],
       }),
     );
-    expect(item.steps).toEqual(["Alex Rivera accepted a capture proposal"]);
+    expect(item.steps).toEqual(["Alex Rivera created ideas from a capture"]);
   });
 
   it("carries the registry attention class and the technical mirror of the row", () => {

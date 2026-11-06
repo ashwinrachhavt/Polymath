@@ -43,7 +43,7 @@ export type TriageItem =
     }
   | {
       kind: "decision";
-      /** The proposal id, action or capture alike. */
+      /** The proposal id. */
       id: string;
       title: string;
       /** The exact effect approving has. */
@@ -51,8 +51,7 @@ export type TriageItem =
       href: string;
       at: Date;
       /** What one tap binds: an action approval binds the exact revision (CAS). */
-      decision:
-        { decisionType: "action"; revisionId: string; version: number; expired: boolean } | { decisionType: "capture" };
+      decision: { decisionType: "action"; revisionId: string; version: number; expired: boolean };
     }
   | {
       kind: "run";

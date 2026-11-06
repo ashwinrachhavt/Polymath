@@ -3,7 +3,7 @@ import type { drizzle } from "drizzle-orm/postgres-js";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { OutboxParkError } from "@/domains/audit/outbox";
 import { outboxEvents } from "@/domains/audit/schema";
-import { captureProposals, captures } from "@/domains/capture/schema";
+import { captures } from "@/domains/capture/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
@@ -100,7 +100,6 @@ suite("url capture chain", () => {
     const [row] = await db.select().from(captures).where(eq(captures.id, capture.id));
     expect(row.processingState).toBe("enriched");
     expect(row.text).toContain("fewer, larger bets");
-    expect(await db.select().from(captureProposals).where(eq(captureProposals.captureId, capture.id))).toHaveLength(1);
   });
 
   it("enrichment first: it waits for the outstanding fetch, drops nothing, and runs once the page is in", async () => {

@@ -6,7 +6,7 @@ import { Pagination } from "@/components/list/pagination";
 import { ListToolbar } from "@/components/list/list-toolbar";
 import { redirectPastEnd } from "@/components/list/clamp";
 import { CAPTURE_KINDS, type InboxFilter } from "@/domains/capture/queries";
-import { countInboxTabsForPage, getCaptureForPage, listSuggestionMarksForPage, searchCapturesForPage } from "./data";
+import { countInboxTabsForPage, getCaptureForPage, searchCapturesForPage } from "./data";
 import { listHref, offsetFor, parseListParams } from "@/lib/list-params";
 import { getAuthContext } from "@/lib/auth";
 import { capabilityStatus } from "@/lib/capability-config";
@@ -63,15 +63,11 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
   // No ?id= reads as "show the newest": the detail pane is the working half of
   // the screen, and an empty void beside the list is wasted on a hint sentence.
   const effectiveSelectedId = selectedId ?? rows[0]?.id ?? null;
-  const [tabs, selected, suggestionMarks] = await Promise.all([
+  const [tabs, selected] = await Promise.all([
     countInboxTabsForPage(auth),
     // The detail pane is a view of the record, not of the current filter: a
     // capture outside the view still renders, the list just shows no highlight.
     effectiveSelectedId ? getCaptureForPage(auth, effectiveSelectedId) : Promise.resolve(null),
-    listSuggestionMarksForPage(
-      auth,
-      rows.map((row) => row.id),
-    ),
   ]);
   const generation = capabilityStatus().find((c) => c.id === "generation");
   const pageSize = list.pageSize;
@@ -167,7 +163,6 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
                 preview: capture.preview,
                 url: capture.url,
                 version: capture.version,
-                hasSuggestion: suggestionMarks.has(capture.id),
                 convertedType: capture.convertedType,
                 convertedId: capture.convertedId,
               }))}
@@ -231,12 +226,6 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
             zettelProviderReason={
               generation?.reason ?? "Zettelize needs a model. Set OPENROUTER_API_KEY or GEMINI_API_KEY."
             }
-            proposals={(selected?.proposals ?? []).map((proposal) => ({
-              id: proposal.id,
-              kind: proposal.kind,
-              rationale: proposal.rationale,
-              confidence: proposal.confidence,
-            }))}
           />
         </section>
       </div>

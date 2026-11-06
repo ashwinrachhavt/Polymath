@@ -1,8 +1,8 @@
-import { and, count, desc, eq, gte, ilike, inArray, lt, or, sql, type SQL, isNull } from "drizzle-orm";
+import { and, count, desc, eq, gte, ilike, lt, or, sql, type SQL, isNull } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { escapeLike } from "@/lib/list-params";
-import { captureProposals, captures } from "./schema";
+import { captures } from "./schema";
 import { auditEvents } from "../audit/schema";
 
 /*
@@ -247,47 +247,4 @@ export async function listCapturesArrivedBetween(auth: AuthContext, input: { fro
     )
     .orderBy(desc(captures.createdAt))
     .limit(limit);
-}
-
-/* --- Classification proposals (ASH-314) --- */
-
-/*
- * The system's read of a capture, written by enrichment and decided by the
- * owner. Pending only: decided proposals are history, surfaced through the
- * capture's lineage edge instead.
- */
-export async function listPendingCaptureProposals(auth: AuthContext, captureId: string) {
-  return db
-    .select()
-    .from(captureProposals)
-    .where(
-      and(
-        eq(captureProposals.workspaceId, auth.workspaceId),
-        eq(captureProposals.captureId, captureId),
-        eq(captureProposals.status, "pending"),
-        // A parked capture's suggestions stay hidden until it is unparked (ASH-305).
-        sql`not exists (select 1 from captures c where c.id = ${captureProposals.captureId} and c.parked_at is not null)`,
-      ),
-    )
-    .orderBy(captureProposals.createdAt);
-}
-
-/**
- * Pending-proposal presence for a page of inbox rows, so the list can mark
- * which captures carry a suggestion without a join per row.
- */
-export async function listCapturesWithPendingProposals(auth: AuthContext, captureIds: string[]): Promise<Set<string>> {
-  if (!captureIds.length) return new Set();
-  const rows = await db
-    .selectDistinct({ captureId: captureProposals.captureId })
-    .from(captureProposals)
-    .where(
-      and(
-        eq(captureProposals.workspaceId, auth.workspaceId),
-        inArray(captureProposals.captureId, captureIds),
-        eq(captureProposals.status, "pending"),
-        sql`not exists (select 1 from captures c where c.id = ${captureProposals.captureId} and c.parked_at is not null)`,
-      ),
-    );
-  return new Set(rows.map((row) => row.captureId));
 }

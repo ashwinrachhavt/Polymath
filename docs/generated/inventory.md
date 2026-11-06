@@ -27,11 +27,11 @@ dependent, so `inventory:check` behaves the same on a laptop and in CI.
 | `vitest` | 5.0.5 |
 | `@playwright/test` | ^1.64.1 |
 
-Migrations: 114 files, highest `0287_drop_zettel_proposals`.
+Migrations: 115 files, highest `0288_drop_capture_proposals`.
 
 ## Tests
 
-563 `.test.ts` and 51 `.spec.ts` files (unit: 330, integration: 230, e2e: 51).
+560 `.test.ts` and 51 `.spec.ts` files (unit: 329, integration: 228, e2e: 51).
 ## Domains
 
 24 folders; 18 own tables.
@@ -42,7 +42,7 @@ Migrations: 114 files, highest `0287_drop_zettel_proposals`.
 | `agents` | 20 |
 | `audit` | 6 |
 | `calendar` | 5 |
-| `capture` | 2 |
+| `capture` | 1 |
 | `crm` | 6 |
 | `daybook` | 1 |
 | `focus` | 2 |
@@ -102,7 +102,6 @@ No tables: `conversations`, `diagrams`, `home`, `import`, `notifications`, `supe
 | `calendar` | `event_links` | append-only |
 | `calendar` | `scheduler_preferences` | versioned |
 | `capture` | `captures` | versioned |
-| `capture` | `capture_proposals` | versioned |
 | `crm` | `companies` | versioned |
 | `crm` | `contacts` | versioned |
 | `crm` | `contact_companies` | append-only |
@@ -214,7 +213,7 @@ No tables: `conversations`, `diagrams`, `home`, `import`, `notifications`, `supe
 | `work` | `boards` | versioned |
 | `work` | `briefing_seeds` | versioned |
 
-Totals: 89 versioned, 55 append-only, 6 versionless but guarded (each declared with its guard and its file in `scripts/lib/row-state.ts`).
+Totals: 88 versioned, 55 append-only, 6 versionless but guarded (each declared with its guard and its file in `scripts/lib/row-state.ts`).
 
 ## Route handlers
 

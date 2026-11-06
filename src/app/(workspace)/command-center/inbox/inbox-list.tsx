@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "cn";
-import { AlignLeft, FileText, Forward, Link2, Mic, Sparkles, type LucideIcon } from "lucide-react";
+import { AlignLeft, FileText, Forward, Link2, Mic, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { useOptimistic, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
@@ -20,8 +20,6 @@ import { ZettelQueueWatch } from "./zettel-queue-watch";
  */
 
 export type InboxRow = {
-  /** A pending classification proposal waits on this row (ASH-314). */
-  hasSuggestion?: boolean;
   id: string;
   processingState: string;
   /** ISO time the capture was parked at end of day (ASH-305); null when not parked. */
@@ -295,15 +293,6 @@ export function InboxList({
                         <>
                           <span aria-hidden>·</span>
                           <span className="truncate">{captureStateLabel(capture.processingState)}</span>
-                        </>
-                      ) : null}
-                      {capture.hasSuggestion ? (
-                        <>
-                          <span aria-hidden>·</span>
-                          <span className="flex shrink-0 items-center gap-1 text-foreground/70">
-                            <Sparkles aria-hidden className="size-3.5" />
-                            Suggestion
-                          </span>
                         </>
                       ) : null}
                     </span>

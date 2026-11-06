@@ -1,15 +1,5 @@
 import { sql } from "drizzle-orm";
-import {
-  check,
-  index,
-  jsonb,
-  pgEnum,
-  pgTable,
-  text,
-  timestamp,
-  uniqueIndex,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { check, index, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { mutable, primaryId, tenantId } from "../../db/columns";
 import { blobObjects } from "../audit/schema";
 
@@ -49,23 +39,6 @@ export const captureProcessingState = pgEnum("capture_processing_state", [
   "converted",
   "discarded",
   "failed",
-]);
-export const captureProposalKind = pgEnum("capture_proposal_kind", [
-  "task",
-  "note",
-  "project",
-  "contact",
-  "company",
-  "opportunity",
-  "reference",
-  "event",
-  "discard",
-]);
-export const captureProposalStatus = pgEnum("capture_proposal_status", [
-  "pending",
-  "accepted",
-  "edited",
-  "rejected",
 ]);
 
 export const captures = pgTable(
@@ -129,7 +102,9 @@ export const captures = pgTable(
   },
   (t) => [
     // Partial index: the Inbox queue is the unprocessed rows.
-    index("captures_inbox_idx").on(t.workspaceId, t.createdAt).where(sql`processing_state in ('unprocessed', 'classifying')`),
+    index("captures_inbox_idx")
+      .on(t.workspaceId, t.createdAt)
+      .where(sql`processing_state in ('unprocessed', 'classifying')`),
     // Identity on what actually arrived: one article yields many selections and
     // one page grab, but the identical text twice is the same capture. A bare
     // url-reference is the URL itself and gets its own rule below.
@@ -147,38 +122,4 @@ export const captures = pgTable(
       sql`url is null or capture_mode in ('url-reference', 'blob') or content_hash is not null`,
     ),
   ],
-);
-
-/*
- * What a model thought the capture was. Never applied silently: a proposal is
- * pending until the owner accepts, edits, or rejects it, and each one carries
- * the model and prompt that produced it plus its own uncertainty.
- */
-export const captureProposals = pgTable(
-  "capture_proposals",
-  {
-    id: primaryId(),
-    workspaceId: tenantId(),
-    captureId: uuid("capture_id")
-      .notNull()
-      .references(() => captures.id, { onDelete: "cascade" }),
-    kind: captureProposalKind("kind").notNull(),
-    /** Field values to apply, e.g. { title, dueDate, projectId }. */
-    payload: jsonb("payload").notNull(),
-    rationale: text("rationale"),
-    /** Source offsets into the capture this proposal was derived from. */
-    sourceSpans: jsonb("source_spans"),
-    model: text("model"),
-    promptVersion: text("prompt_version"),
-    /** 0–1, as reported by the model. Null when the extraction is rule-based. */
-    confidence: text("confidence"),
-    status: captureProposalStatus("status").notNull().default("pending"),
-    decidedAt: timestamp("decided_at", { withTimezone: true }),
-    decidedBy: uuid("decided_by"),
-    /** The record this proposal produced, once accepted. */
-    resultType: text("result_type"),
-    resultId: uuid("result_id"),
-    ...mutable,
-  },
-  (t) => [index("capture_proposals_pending_idx").on(t.workspaceId, t.captureId, t.status)],
 );

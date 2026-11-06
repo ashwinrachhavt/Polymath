@@ -50,7 +50,7 @@ export type NotificationCardProps = NotificationCardBase &
       }
     | {
         kind: "decision";
-        decisionType: "action" | "capture";
+        decisionType: "action";
         title: string;
         detail: string | null;
         expired: boolean;
@@ -108,7 +108,7 @@ function sourceLabel(props: NotificationCardProps): string {
     case "question":
       return "Agent";
     case "decision":
-      return props.decisionType === "capture" ? "Capture" : "Agent";
+      return "Agent";
     case "run":
       return "Run";
     default: {

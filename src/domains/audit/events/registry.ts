@@ -219,18 +219,6 @@ const TIER_1: Tier1Spec[] = [
   { action: "capture.restored", category: "knowledge", verbPhrase: "restored a capture" },
   { action: "capture.converted", category: "knowledge", verbPhrase: "converted a capture", operation: "outcome" },
   {
-    action: "capture.proposal_accepted",
-    category: "knowledge",
-    verbPhrase: "accepted a capture proposal",
-    operation: "step",
-  },
-  {
-    action: "capture.proposal_rejected",
-    category: "knowledge",
-    verbPhrase: "rejected a capture proposal",
-    operation: "step",
-  },
-  {
     action: "capture.zettels_created",
     category: "knowledge",
     verbPhrase: "created ideas from a capture",

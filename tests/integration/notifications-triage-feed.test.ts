@@ -4,7 +4,6 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { actionProposals, actionRevisions } from "@/domains/actions/schema";
 import { auditEvents } from "@/domains/audit/schema";
 import { agentProfiles, agentQuestions, agentRuns, runEvents } from "@/domains/agents/schema";
-import { captureProposals, captures } from "@/domains/capture/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
@@ -156,24 +155,6 @@ describe("listTriageFeed classification", () => {
       .values({ workspaceId: ws.workspaceId, proposalId: expiredProposal.id, revisionNumber: 1, payload: {} })
       .returning();
 
-    const [capture] = await holder
-      .db!.insert(captures)
-      .values({
-        workspaceId: ws.workspaceId,
-        kind: "text",
-        captureMode: "authored",
-        rawPayload: {},
-        text: "Call the dentist",
-      })
-      .returning();
-    const [captureProposal] = await holder
-      .db!.insert(captureProposals)
-      .values({ workspaceId: ws.workspaceId, captureId: capture.id, kind: "task", payload: {} })
-      .returning();
-    await holder
-      .db!.insert(captureProposals)
-      .values({ workspaceId: ws.workspaceId, captureId: capture.id, kind: "note", payload: {}, status: "rejected" });
-
     await holder.db!.insert(auditEvents).values({
       workspaceId: ws.workspaceId,
       action: "run.feedback.up recorded",
@@ -199,9 +180,7 @@ describe("listTriageFeed classification", () => {
     const decisions = feed.items.filter(
       (item): item is Extract<TriageItem, { kind: "decision" }> => item.kind === "decision",
     );
-    expect(decisions.map((item) => item.id).sort()).toEqual(
-      [pendingProposal.id, captureProposal.id, expiredProposal.id].sort(),
-    );
+    expect(decisions.map((item) => item.id).sort()).toEqual([pendingProposal.id, expiredProposal.id].sort());
     const actionDecision = decisions.find((item) => item.id === pendingProposal.id);
     if (!actionDecision || actionDecision.decision.decisionType !== "action") {
       return expect.unreachable("the pending action proposal must map to an action decision");
@@ -210,11 +189,6 @@ describe("listTriageFeed classification", () => {
     expect(actionDecision.decision.version).toBe(1);
     expect(actionDecision.decision.expired).toBe(false);
     expect(actionDecision.href).toBe(`/reviews?proposal=${pendingProposal.id}`);
-
-    const captureDecision = decisions.find((item) => item.id === captureProposal.id);
-    if (!captureDecision) return expect.unreachable("the pending capture proposal must map to a decision");
-    expect(captureDecision.decision).toEqual({ decisionType: "capture" });
-    expect(captureDecision.href).toBe(`/command-center/inbox?id=${capture.id}`);
 
     const expiredDecision = decisions.find((item) => item.id === expiredProposal.id);
     if (!expiredDecision || expiredDecision.decision.decisionType !== "action") {
@@ -261,14 +235,14 @@ describe("listTriageFeed classification", () => {
     // rank survives among decisions (external_write above prepare).
     expect(feed.items[0]?.kind).toBe("question");
     expect(feed.items.findIndex((item) => item.id === pendingProposal.id)).toBeLessThan(
-      feed.items.findIndex((item) => item.id === captureProposal.id),
+      feed.items.findIndex((item) => item.id === expiredProposal.id),
     );
 
-    // Counts: the Inbox owns what needs the owner (the question, three
+    // Counts: the Inbox owns what needs the owner (the question, two
     // decisions including the expired one, the failed run); In-Flight is the
     // database's count of non-terminal runs, not the page's slice; Activity
     // is the finished runs.
-    expect(feed.counts.inbox).toBe(5);
+    expect(feed.counts.inbox).toBe(4);
     expect(feed.counts.inFlight).toBe(4); // parked + queued + running + waiting_approval — the question run belongs to its card
     expect(feed.counts.inFlight).toBe(await countRunsInFlight(ws.workspaceId));
     expect(feed.counts.activity).toBe(2);

@@ -14,25 +14,17 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
  * fail loudly if any test reached for the real network.
  */
 
-const {
-  answerRunQuestion,
-  dismissQuestionAction,
-  decideHomeAgentAction,
-  decideHomeCaptureAction,
-  push,
-  refresh,
-  notify,
-  path,
-} = vi.hoisted(() => ({
-  answerRunQuestion: vi.fn(),
-  dismissQuestionAction: vi.fn(),
-  decideHomeAgentAction: vi.fn(),
-  decideHomeCaptureAction: vi.fn(),
-  push: vi.fn(),
-  refresh: vi.fn(),
-  notify: vi.fn(),
-  path: { current: "/" },
-}));
+const { answerRunQuestion, dismissQuestionAction, decideHomeAgentAction, push, refresh, notify, path } = vi.hoisted(
+  () => ({
+    answerRunQuestion: vi.fn(),
+    dismissQuestionAction: vi.fn(),
+    decideHomeAgentAction: vi.fn(),
+    push: vi.fn(),
+    refresh: vi.fn(),
+    notify: vi.fn(),
+    path: { current: "/" },
+  }),
+);
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push, refresh, replace: vi.fn(), back: vi.fn() }),
@@ -46,7 +38,6 @@ vi.mock("@/app/(workspace)/polymath/[runId]/question-actions", () => ({
 
 vi.mock("@/domains/home/actions", () => ({
   decideHomeAgentAction,
-  decideHomeCaptureAction,
 }));
 
 vi.mock("@/components/workspace/workspace-provider", () => ({
@@ -81,16 +72,6 @@ const actionDecision: TriageItem = {
   decision: { decisionType: "action", revisionId: "rev-1", version: 3, expired: false },
 };
 
-const captureDecision: TriageItem = {
-  kind: "decision",
-  id: "44444444-4444-4444-8444-444444444444",
-  title: "Save the pricing note",
-  detail: null,
-  href: "/command-center/inbox?id=44444444-4444-4444-8444-444444444444",
-  at: new Date("2026-01-15T11:50:00Z"),
-  decision: { decisionType: "capture" },
-};
-
 const runningRun: TriageItem = {
   kind: "run",
   id: "55555555-5555-4555-8555-555555555555",
@@ -116,8 +97,8 @@ const doneRun: TriageItem = {
 };
 
 const FEED: TriageFeed = {
-  items: [question, actionDecision, captureDecision, runningRun, doneRun],
-  counts: { inbox: 3, inFlight: 1, activity: 1 },
+  items: [question, actionDecision, runningRun, doneRun],
+  counts: { inbox: 2, inFlight: 1, activity: 1 },
 };
 
 const optionId = (item: TriageItem) => `triage-${item.kind}-${item.id}`;
@@ -140,7 +121,6 @@ beforeEach(() => {
   answerRunQuestion.mockResolvedValue({ ok: true });
   dismissQuestionAction.mockResolvedValue({ ok: true });
   decideHomeAgentAction.mockResolvedValue({ ok: true });
-  decideHomeCaptureAction.mockResolvedValue({ ok: true });
 });
 
 describe("NotificationsPanel tabs", () => {
@@ -149,14 +129,13 @@ describe("NotificationsPanel tabs", () => {
 
     // Asserted before opening: a modal sheet aria-hides everything outside
     // it, including the bell that opened it.
-    expect(screen.getByRole("button", { name: "Notifications, 3 items need you" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Notifications, 2 items need you" })).toBeDefined();
     fireEvent.click(screen.getByRole("button", { name: /Notifications/ }));
-    expect(screen.getByRole("tab", { name: /Inbox/ }).textContent).toContain("3");
+    expect(screen.getByRole("tab", { name: /Inbox/ }).textContent).toContain("2");
     expect(screen.getByRole("tab", { name: /In-Flight/ }).textContent).toContain("1");
 
     expect(screen.getByText("Who is this person?")).toBeDefined();
     expect(screen.getByText("Send the deck to Priya")).toBeDefined();
-    expect(screen.getByText("Save the pricing note")).toBeDefined();
     expect(screen.queryByText("Summarize the week")).toBeNull();
 
     fireEvent.click(screen.getByRole("tab", { name: /In-Flight/ }));
@@ -188,11 +167,8 @@ describe("NotificationsPanel keyboard", () => {
     fireEvent.keyDown(document.body, { key: "j" });
     expect(listbox.getAttribute("aria-activedescendant")).toBe(optionId(actionDecision));
 
-    fireEvent.keyDown(document.body, { key: "ArrowDown" });
-    expect(listbox.getAttribute("aria-activedescendant")).toBe(optionId(captureDecision));
-
     fireEvent.keyDown(document.body, { key: "k" });
-    expect(listbox.getAttribute("aria-activedescendant")).toBe(optionId(actionDecision));
+    expect(listbox.getAttribute("aria-activedescendant")).toBe(optionId(question));
 
     fireEvent.keyDown(document.body, { key: "ArrowUp" });
     expect(listbox.getAttribute("aria-activedescendant")).toBe(optionId(question));
@@ -298,15 +274,6 @@ describe("NotificationsPanel in-place actions", () => {
     await waitFor(() => expect(notify).toHaveBeenCalledWith("Approved."));
   });
 
-  it("maps approve to accepted and reject to rejected for a capture decision", async () => {
-    openPanel();
-
-    fireEvent.click(screen.getAllByRole("button", { name: "Approve" })[1]);
-    await waitFor(() =>
-      expect(decideHomeCaptureAction).toHaveBeenCalledWith({ proposalId: captureDecision.id, decision: "accepted" }),
-    );
-  });
-
   it("replays the idempotency key when a failed decision is retried on the same rendered version", async () => {
     decideHomeAgentAction.mockResolvedValueOnce({ ok: false, error: "Version conflict" });
     openPanel();
@@ -315,7 +282,7 @@ describe("NotificationsPanel in-place actions", () => {
     await waitFor(() => expect(notify).toHaveBeenCalledWith("Version conflict"));
     // The optimistic removal reverts when the transition ends without a
     // successful server word, so the card is clickable again.
-    await waitFor(() => expect(screen.getAllByRole("button", { name: "Approve" }).length).toBe(2));
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "Approve" }).length).toBe(1));
     fireEvent.click(screen.getAllByRole("button", { name: "Approve" })[0]);
 
     await waitFor(() => expect(decideHomeAgentAction).toHaveBeenCalledTimes(2));
