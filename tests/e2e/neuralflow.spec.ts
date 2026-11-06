@@ -119,6 +119,11 @@ test("a focus session starts from the task's Focus action on Work, and no stone 
   // Focus Mode is its own screen: the task detail's Focus action starts a
   // task-linked session and lands on Focus, where the live session's
   // controls render and the summary records what the session produced.
+  // The closing assertion reads this session's own ledger rows in Neon, so
+  // the test needs the same database the server runs on. Skipped loudly when
+  // there is none (learn-loop.spec.ts's pattern) - never a silent pass.
+  const client = db();
+  test.skip(!client, "DATABASE_URL not configured (server and test).");
   const title = `Focus leg task ${Date.now().toString(36)}`;
   await page.goto("/neuralflow/work?view=saved");
   await waitSettled(page);
@@ -175,19 +180,22 @@ test("a focus session starts from the task's Focus action on Work, and no stone 
   // moved the global number without this flow doing anything - the flake a
   // whole-balance equality baked in. Read this flow's own subjects instead:
   // the session it ran and the task it ran against must hold no ledger rows.
-  const client = db();
-  if (client) {
-    try {
-      const [session] = await client<{ id: string }[]>`
-        select id from focus_sessions where task_id = ${taskId} order by started_at desc limit 1`;
-      expect(session, "the finished focus session is recorded against the task").toBeTruthy();
-      const awarded = await client<{ id: string }[]>`
-        select id from reward_ledger
-        where subject_id in (${taskId}, ${session.id})`;
-      expect(awarded, "a focus session with an open task earns no ledger rows").toHaveLength(0);
-    } finally {
-      await client.end();
-    }
+  try {
+    // Both ids are proven present before the zero-row read, so an empty
+    // result is the rule holding, not a lookup that found nothing to check:
+    // the task came from the detail URL, and the session row must exist.
+    // The subjects match the award writes exactly (gamification/commands.ts:
+    // quartz rows carry subjectType "task" + the task id, focus rows carry
+    // subjectType "focus_session" + the session id).
+    const [session] = await client!<{ id: string }[]>`
+      select id from focus_sessions where task_id = ${taskId} order by started_at desc limit 1`;
+    expect(session, "the finished focus session is recorded against the task").toBeTruthy();
+    const awarded = await client!<{ id: string }[]>`
+      select id from reward_ledger
+      where subject_id in (${taskId}, ${session.id})`;
+    expect(awarded, "a focus session with an open task earns no ledger rows").toHaveLength(0);
+  } finally {
+    await client!.end();
   }
   // The rewards surface still renders the readout this flow left untouched.
   await page.goto("/apps/neuralflow/rewards");
