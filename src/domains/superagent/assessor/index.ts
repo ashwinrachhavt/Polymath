@@ -20,6 +20,7 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import type { Engine } from "../core/engine";
 import { said, type Reason } from "../core/reasons";
 import type { AcceptMode } from "../core/model";
+import type { ChannelRef } from "../core/model";
 import type { AssessmentOutcome, Candidate, Repositories } from "../core/ports";
 import type { PolicyRule } from "../core/policy/gate";
 import { Later } from "../effects/later";
@@ -32,7 +33,7 @@ import type { DecideClient } from "../decide/client";
 import type { AssessorConfig } from "./config";
 
 /** The Engine slice the assessor drives: the sole writer, behind it. */
-export type EngineForAssessor = Pick<Engine, "candidate" | "candidateDelivered" | "decide">;
+export type EngineForAssessor = Pick<Engine, "candidate" | "candidateDelivered" | "decide" | "reply">;
 
 export { ASSESSOR_DEFAULTS, parseAssessorConfig, type AssessorConfig } from "./config";
 
@@ -78,6 +79,13 @@ export interface AssessorHost {
    * decision that stops at enqueue strands its ticket's launch until cron.
    */
   afterDecision?(): Promise<void>;
+  /**
+   * Answer a person whose message was judged and then not admitted. Without
+   * this the conversation receives nothing at all — only a ticket's result
+   * writes back — and the chat surface sits on "Working" over work that ended
+   * in the gate. Keyed by the trigger so a replay renders in place.
+   */
+  notice?(input: { triggerId: string; channel: ChannelRef; text: string }): Promise<void>;
   auth(): Promise<AuthContext>;
   policyView(): PolicyView;
   config: AssessorConfig;
@@ -371,6 +379,26 @@ export function createSuperagentAssessor(host: AssessorHost): SuperagentAssessor
           };
         }
         await host.flush();
+        // A candidate the gate declined gets no ticket, and only a ticket's
+        // result writes back: left alone, the person's message would receive no
+        // words at all and the chat surface would wait on "Working" forever.
+        // Say why in the conversation the message came from. A `stop` is a
+        // person's own decision and an `unavailable` is a broken assessor, so
+        // neither is a verdict on this request and neither speaks.
+        if (outcome.kind === "ignore") {
+          const trigger = candidate.triggers[0];
+          const channel = trigger?.channel;
+          if (trigger && channel && host.notice) {
+            await host.notice({
+              triggerId: trigger.id,
+              channel,
+              text:
+                "I read this but did not take it on as work: it did not clear the bar for starting a task " +
+                "(the admission gate judged it unlikely to need real work behind it). " +
+                "If you did want me to act on it, say so directly and tell me the outcome you want.",
+            });
+          }
+        }
         // The launch effect is durable now; drain it in this process (the
         // specialist's), where no send-path drain will ever tick.
         await host.afterDecision?.();

@@ -45,7 +45,7 @@ import {
 import { createEvalSeam } from "./assessor/eve";
 import { runningTicketRun } from "./core";
 import { createEngine, type Engine, type EngineForExecutor, type WorkerReport } from "./core/engine";
-import type { AcceptMode, OutboundMessage, ReceiveResult, Trigger } from "./core";
+import type { AcceptMode, ChannelRef, OutboundMessage, ReceiveResult, Trigger } from "./core";
 import type { PolicyConfig } from "./core/policy/gate";
 import { createPolicy, type SourcePolicy } from "./core/policy/gate";
 import { decideClientFromEnv } from "./decide";
@@ -207,6 +207,18 @@ async function buildHost(workspaceId: string): Promise<SuperagentHost> {
     afterCommit,
     flush: () => flushHost(),
     afterDecision: () => drainSuperagentInline(workspaceId).then(() => undefined),
+    notice: async ({ triggerId, channel, text }: { triggerId: string; channel: ChannelRef; text: string }) => {
+      // The declined message's own conversation is the channel's address. No
+      // run means no surface to write into, and a retry would not change it.
+      const runId = channel.address?.runId;
+      if (typeof runId !== "string" || runId.length === 0) return;
+      await sendChatReply(workspaceId, {
+        id: `declined:${triggerId}`,
+        channel,
+        text,
+        kind: "notice",
+      });
+    },
     auth: () => backgroundAuth(workspaceId),
     policyView: () => ({ rules: config.rules, mode: config.mode }),
     config: assessorConfig,
@@ -722,11 +734,20 @@ async function observeWorkspace(workspaceId: string): Promise<void> {
       changed = true;
       continue;
     }
-    const turn = await lastCompletedTurn(agentRun.id);
+    const turn = await lastTurnOutcome(agentRun.id);
     if (!turn || alreadyObserved.has(observerKey(agentRun.id, turn.eventId))) continue;
-    const turnReport: WorkerReport = turn.summary
-      ? { state: "ready", summary: turn.summary }
-      : { state: "waiting", summary: "The run's turn ended without an answer." };
+    // A turn that failed at the provider is not an answer and not a silence:
+    // the run stays `waiting_input` by design (the bridge parks it), so the
+    // row alone never settles the ticket and the conversation would wait on a
+    // "Working" chip forever. Report the failure with its reason, and tell the
+    // person in the conversation the ticket started in, or the failure is only
+    // visible to whoever opens the ticket run.
+    const turnReport: WorkerReport =
+      turn.kind === "failed"
+        ? { state: "failed", summary: turn.error ?? "The run's turn failed without a reason." }
+        : turn.summary
+          ? { state: "ready", summary: turn.summary }
+          : { state: "waiting", summary: "The run's turn ended without an answer." };
     try {
       host.engine.turnEnded(ticket.id, run.id);
       host.engine.report(ticket.id, turnReport);
@@ -737,10 +758,13 @@ async function observeWorkspace(workspaceId: string): Promise<void> {
       if (turnReport.state === "ready" && turn.summary) {
         host.engine.reply({ purpose: "result", ticketId: ticket.id, text: turn.summary });
       }
+      if (turnReport.state === "failed") {
+        host.engine.reply({ purpose: "result", ticketId: ticket.id, text: turnReport.summary });
+      }
     } catch (error) {
       console.error(`[superagent] observer report failed for ticket ${ticket.id}:`, error);
     }
-    await writeStateValue(db, workspaceId, observerKey(agentRun.id, turn.eventId), "turn.completed");
+    await writeStateValue(db, workspaceId, observerKey(agentRun.id, turn.eventId), `turn.${turn.kind}`);
     changed = true;
   }
   if (changed) await host.flush();
@@ -753,11 +777,17 @@ const observerKey = (agentRunId: string, turnEventId?: string): string =>
     : `superagent:observed:${agentRunId}:turn:${turnEventId}`;
 
 /**
- * The run's newest completed turn and its newest assistant answer, or
- * undefined while the run's newest event is not a turn end — mid-turn
- * events (usage, streaming) must not report.
+ * The run's newest turn end — completed or failed — with the answer that
+ * completed it or the reason that failed it, or undefined while the run's
+ * newest event is not a turn end (mid-turn usage and streaming must not
+ * report). A failed turn is reported because the bridge parks such a run at
+ * `waiting_input` rather than closing it, so nothing else would ever settle
+ * the ticket: eve protocol treats a failed turn as the session surviving for
+ * a follow-up, which is true for the session and false for the ticket's work.
  */
-async function lastCompletedTurn(agentRunId: string): Promise<{ eventId: string; summary?: string } | undefined> {
+async function lastTurnOutcome(
+  agentRunId: string,
+): Promise<{ eventId: string; kind: "completed" | "failed"; summary?: string; error?: string } | undefined> {
   const events = await db
     .select({ id: runEvents.id, type: runEvents.type, data: runEvents.data })
     .from(runEvents)
@@ -765,15 +795,46 @@ async function lastCompletedTurn(agentRunId: string): Promise<{ eventId: string;
     .orderBy(desc(runEvents.sequence))
     .limit(6);
   const newest = events[0];
-  if (!newest || newest.type !== "turn.completed") return undefined;
-  const answer = events.find(
+  if (!newest) return undefined;
+  const classified = classifyTurnEnd(
+    newest.type,
+    newest.data,
+    events.slice(1).map((e) => ({ type: e.type, data: e.data })),
+  );
+  if (!classified) return undefined;
+  return { eventId: newest.id, ...classified };
+}
+
+/**
+ * The turn-end classification itself, free of the database: the newest event
+ * decides whether there is anything to report, and the assistant message
+ * behind it supplies the answer a completed turn produced.
+ */
+export function classifyTurnEnd(
+  newestType: string,
+  newestData: unknown,
+  earlier: { type: string; data: unknown }[],
+): { kind: "completed" | "failed"; summary?: string; error?: string } | undefined {
+  if (newestType === "turn.failed") {
+    // Eve reports why on the step that failed, which precedes the turn end;
+    // the turn event itself carries only its id. Reading just the newest event
+    // dropped the provider's reason and told the person nothing at all.
+    const own = (newestData as { detail?: unknown } | null)?.detail;
+    const fromStep = earlier.find((event) => event.type === "step.failed");
+    const detail =
+      typeof own === "string" && own.trim() ? own : (fromStep?.data as { detail?: unknown } | null)?.detail;
+    const error = typeof detail === "string" && detail.trim() ? detail.trim() : undefined;
+    return { kind: "failed", ...(error ? { error } : {}) };
+  }
+  if (newestType !== "turn.completed") return undefined;
+  const answer = earlier.find(
     (event) =>
       event.type === "message" &&
       (event.data as { role?: string } | null)?.role === "assistant" &&
       typeof (event.data as { content?: string } | null)?.content === "string",
   );
   const text = ((answer?.data as { content?: string } | null)?.content ?? "").trim();
-  return { eventId: newest.id, ...(text ? { summary: text.slice(0, 400) } : {}) };
+  return { kind: "completed", ...(text ? { summary: text.slice(0, 400) } : {}) };
 }
 
 /** Map an agent run's terminal state to the worker report the domain records. */
