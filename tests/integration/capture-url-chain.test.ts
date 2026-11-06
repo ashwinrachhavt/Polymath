@@ -240,6 +240,30 @@ suite("url capture chain", () => {
     expect(scrape.calls).toBe(0);
   });
 
+  it("a page capture that arrived with the companion's markdown uses it; Firecrawl is never called", async () => {
+    scrape.calls = 0;
+    const { workspaceId, capture } = await seed("companion");
+    await db
+      .update(captures)
+      .set({
+        rawPayload: { url: capture.url, text: "flattened innerText", raw_markdown: PAGE, quality: "rich" },
+      })
+      .where(eq(captures.id, capture.id));
+    const [urlEvent] = await eventsOf(workspaceId, "capture.url_content_requested");
+    const [enrichEvent] = await eventsOf(workspaceId, "capture.enrichment_requested");
+    await urlHandler.urlContentRequestedHandler(urlEvent as never);
+    await dispatch(urlEvent.id);
+    expect(scrape.calls).toBe(0);
+    const j = judger();
+    await enrichment.runCaptureEnrichment(enrichEvent as never, { judger: j as never });
+    expect(j.calls).toBe(1);
+    expect(j.states[0]).toContain("fewer, larger bets");
+    const [row] = await db.select().from(captures).where(eq(captures.id, capture.id));
+    expect(row.processingState).toBe("enriched");
+    expect(row.fetchedText).toContain("fewer, larger bets");
+    expect(row.fetchOutcome).toBe("acquired");
+  });
+
   it("there is no retry after a terminal failure: re-pasting the URL is refused and enqueues nothing", async () => {
     scrape.markdown = "";
     const { workspaceId, capture } = await seed("repaste");

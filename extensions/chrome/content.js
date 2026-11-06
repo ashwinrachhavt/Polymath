@@ -235,13 +235,21 @@
     document.body.appendChild(dock);
 
     // Restore draft
+    const noteArea = qs("#alfred-note-textarea");
     try {
       const saved = localStorage.getItem(DOMAIN_KEY);
-      if (saved) qs("#alfred-note-textarea").value = saved;
+      if (saved) noteArea.value = saved;
     } catch {}
 
-    // Auto-save draft on input
-    qs("#alfred-note-textarea").addEventListener("input", (e) => {
+    const growNoteArea = () => {
+      noteArea.style.height = "auto";
+      noteArea.style.height = `${noteArea.scrollHeight}px`;
+    };
+    growNoteArea();
+
+    // Auto-save draft on input, and grow the box with the writing
+    noteArea.addEventListener("input", (e) => {
+      growNoteArea();
       try {
         localStorage.setItem(DOMAIN_KEY, e.target.value);
       } catch {}

@@ -31,7 +31,7 @@ Migrations: 115 files, highest `0288_drop_capture_proposals`.
 
 ## Tests
 
-560 `.test.ts` and 51 `.spec.ts` files (unit: 329, integration: 228, e2e: 51).
+561 `.test.ts` and 51 `.spec.ts` files (unit: 330, integration: 228, e2e: 51).
 ## Domains
 
 24 folders; 18 own tables.

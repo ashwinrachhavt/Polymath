@@ -166,18 +166,6 @@ export async function KnowledgeSurface({ searchParams }: { searchParams: Promise
     <>
       <PageHeader title="Knowledge" purpose="Write, retrieve, and connect." />
 
-      <nav aria-label="Knowledge views" className="flex gap-1 border-b border-border">
-        <span aria-current="page" className="border-b-2 border-foreground px-3 py-1.5 text-body-dense font-medium">
-          Documents
-        </span>
-        <Link
-          href="/polymath/ideas"
-          className="px-3 py-1.5 text-body-dense text-muted-foreground underline-offset-2 hover:underline"
-        >
-          Ideas
-        </Link>
-      </nav>
-
       <div className="page-content">
         <DocumentVault
           key={params.folder ?? "root"}

@@ -6,7 +6,13 @@ import { outboxEvents } from "@/domains/audit/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { escapeLike } from "@/lib/list-params";
-import { ARTIFACT_EMBEDDING_OWNER_TYPE, embedArtifact, safeArtifactEmbedError, type ArtifactEmbedOutcome } from "./embedding";
+import {
+  ARTIFACT_EMBEDDING_OWNER_TYPE,
+  embedArtifact,
+  safeArtifactEmbedError,
+  type ArtifactEmbedOutcome,
+} from "./embedding";
+import { noteContentToMarkdown } from "./note-content";
 import { materializeSemanticEdges } from "./relations";
 import { artifactLinks, artifactVersions, artifacts, embeddings, recoveryCopies, workingDrafts } from "./schema";
 import type { EmbeddingProvider } from "@/integrations/embeddings/provider";
@@ -80,7 +86,7 @@ export function extractWikiLinkTitles(markdown: string): string[] {
 
 function markdownOf(content: NoteContent, plainText?: string): string {
   if (typeof plainText === "string") return plainText;
-  return typeof content.text === "string" ? content.text : "";
+  return noteContentToMarkdown(content);
 }
 
 /** Reconcile this note's outgoing wiki edges with the body just saved. */
@@ -889,48 +895,60 @@ export async function synthesizeZettel(
   const ids = [...new Set(input.sourceIds)];
   if (ids.length < 2) throw new SynthesisError("Pick at least two cards to combine.");
   return withTransaction(async (tx) => {
-    const { value } = await withReceipt(tx, auth, input.idempotencyKey, { op: "synthesizeZettel", ...input }, async () => {
-      const parents = await tx
-        .select({ id: artifacts.id, title: artifacts.title, kind: artifacts.kind, tags: artifacts.tags })
-        .from(artifacts)
-        .where(and(
-          eq(artifacts.workspaceId, auth.workspaceId),
-          inArray(artifacts.id, ids),
-          inArray(artifacts.kind, [...LINKABLE_KINDS]),
-          isNull(artifacts.archivedAt),
-        ));
-      if (parents.length !== ids.length) throw new SynthesisError("Those cards are not all available.");
-      const ordered = ids.map((id) => parents.find((p) => p.id === id)!);
-      const title = (input.title?.trim() || ordered.map((p) => p.title).join(" + ")).slice(0, 300);
-      const text = input.body?.trim() || `Combines: ${ordered.map((p) => p.title).join("; ")}.\n\nWrite the idea that only exists because these two meet.`;
-      const created = await createNoteInTx(tx, auth, {
-        title,
-        kind: "zettel",
-        content: { format: "markdown", text },
-        plainText: text,
-      });
-      // The synthesis card inherits its parents' tags: the union, normalized
-      // (lowercase-deduped, capped at 12), so the mix starts life describing
-      // everything it came from. A direct write is safe where setNoteTags'
-      // compare-and-set would not be — the row was created in this same
-      // transaction and no other writer can hold it yet.
-      const tags = normalizeNoteTags(
-        ordered.flatMap((p) => (Array.isArray(p.tags) ? p.tags.filter((t): t is string => typeof t === "string") : [])),
-      );
-      await tx.update(artifacts).set({ tags }).where(eq(artifacts.id, created.id));
-      await tx.insert(artifactLinks).values(
-        ordered.map((p) => ({
-          workspaceId: auth.workspaceId,
-          artifactId: created.id,
-          targetType: p.kind,
-          targetId: p.id,
-          label: p.title,
-          linkType: "source" as const,
-          context: "Synthesized from this card.",
-        })),
-      );
-      return { id: created.id, version: created.version };
-    });
+    const { value } = await withReceipt(
+      tx,
+      auth,
+      input.idempotencyKey,
+      { op: "synthesizeZettel", ...input },
+      async () => {
+        const parents = await tx
+          .select({ id: artifacts.id, title: artifacts.title, kind: artifacts.kind, tags: artifacts.tags })
+          .from(artifacts)
+          .where(
+            and(
+              eq(artifacts.workspaceId, auth.workspaceId),
+              inArray(artifacts.id, ids),
+              inArray(artifacts.kind, [...LINKABLE_KINDS]),
+              isNull(artifacts.archivedAt),
+            ),
+          );
+        if (parents.length !== ids.length) throw new SynthesisError("Those cards are not all available.");
+        const ordered = ids.map((id) => parents.find((p) => p.id === id)!);
+        const title = (input.title?.trim() || ordered.map((p) => p.title).join(" + ")).slice(0, 300);
+        const text =
+          input.body?.trim() ||
+          `Combines: ${ordered.map((p) => p.title).join("; ")}.\n\nWrite the idea that only exists because these two meet.`;
+        const created = await createNoteInTx(tx, auth, {
+          title,
+          kind: "zettel",
+          content: { format: "markdown", text },
+          plainText: text,
+        });
+        // The synthesis card inherits its parents' tags: the union, normalized
+        // (lowercase-deduped, capped at 12), so the mix starts life describing
+        // everything it came from. A direct write is safe where setNoteTags'
+        // compare-and-set would not be — the row was created in this same
+        // transaction and no other writer can hold it yet.
+        const tags = normalizeNoteTags(
+          ordered.flatMap((p) =>
+            Array.isArray(p.tags) ? p.tags.filter((t): t is string => typeof t === "string") : [],
+          ),
+        );
+        await tx.update(artifacts).set({ tags }).where(eq(artifacts.id, created.id));
+        await tx.insert(artifactLinks).values(
+          ordered.map((p) => ({
+            workspaceId: auth.workspaceId,
+            artifactId: created.id,
+            targetType: p.kind,
+            targetId: p.id,
+            label: p.title,
+            linkType: "source" as const,
+            context: "Synthesized from this card.",
+          })),
+        );
+        return { id: created.id, version: created.version };
+      },
+    );
     return value;
   }).then(async (value) => {
     // The mix has committed; the new card joins the semantic graph best-effort,

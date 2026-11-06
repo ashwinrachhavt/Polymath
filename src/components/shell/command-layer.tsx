@@ -22,7 +22,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { additionalDestinationsIn, destinations, type AppSlug } from "@/lib/navigation";
 import { useWorkspace } from "@/components/workspace/workspace-provider";
 import { ImportDrop } from "@/components/workspace/import-drop";
-import { MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL } from "@/lib/file-validation";
+import { MAX_UPLOAD_LABEL } from "@/lib/file-validation";
+import { uploadCaptureFile } from "@/lib/capture-upload";
 import { ShortcutsDialog } from "./shortcuts-dialog";
 import { mergePaletteResults } from "./palette-merge";
 import {
@@ -210,41 +211,21 @@ export function CommandLayer({
     if (filePending || pending) return;
     setSaveError("");
     setSaveErrorId(null);
-    // Matches the API route's deploy-supported cap; the message shows BEFORE submit.
-    if (file.size > MAX_UPLOAD_BYTES) {
-      setSaveError(`Captures are limited to ${MAX_UPLOAD_LABEL} - the largest upload this app accepts.`);
-      return;
-    }
     setFilePending(true);
-    const form = new FormData();
-    form.set("file", file);
-    void fetch("/api/v1/captures/file", {
-      method: "POST",
-      headers: { "idempotency-key": crypto.randomUUID() },
-      body: form,
-    })
-      .then(async (res) => {
-        if (!res.ok) {
-          // A platform-level 413 answers with an HTML error page, not a
-          // problem body - name the limit either way, and never auto-retry.
-          if (res.status === 413) {
-            setSaveError(`That file is over the ${MAX_UPLOAD_LABEL} limit.`);
-            return;
-          }
-          const problem = (await res.json().catch(() => null)) as { title?: string } | null;
-          setSaveError(problem?.title ?? "Could not capture the file. Try again.");
+    void uploadCaptureFile(file)
+      .then(async (result) => {
+        if (!result.ok) {
+          setSaveError(result.message);
           return;
         }
-        const created = (await res.json()) as { captureId: string; quarantined: boolean };
         await refreshInbox();
         notify(
-          created.quarantined ? `Captured ${file.name} - type not recognized, stored as-is.` : `Captured ${file.name}.`,
+          result.quarantined ? `Captured ${file.name} - type not recognized, stored as-is.` : `Captured ${file.name}.`,
         );
         setText("");
         setMode(null);
-        navigate(`/command-center/inbox?id=${created.captureId}`);
+        navigate(`/command-center/inbox?id=${result.captureId}`);
       })
-      .catch(() => setSaveError("Could not capture the file. Try again."))
       .finally(() => setFilePending(false));
   }
   function saveCapture(event: React.FormEvent<HTMLFormElement>) {

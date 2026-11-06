@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogTrigger } 
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { markdownEditorMode, markdownSourceReason, type MarkdownEditorMode } from "./markdown-preservation";
+import { uploadCaptureFile } from "@/lib/capture-upload";
 import { SearchField } from "@/components/workspace/ui";
 import { artifactHref } from "./artifact-controls";
 import { NoteAIMenu, type NoteAIRequest } from "./note-ai-menu";
@@ -28,6 +29,33 @@ export type RichEditorAI = {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 };
+
+/*
+ * A pasted or dropped image uploads as an inbox capture through the one
+ * multipart route, then the note gets a markdown link to the stored bytes at
+ * the caret. The insertion happens after the response because the blob's URL
+ * does not exist until then; a failure reports through the workspace notice
+ * instead of dropping the image silently.
+ */
+async function insertImageCapture(
+  image: File,
+  editor: Editor | null,
+  notify: (message: string) => void,
+): Promise<void> {
+  notify(`Capturing ${image.name || "image"}…`);
+  const result = await uploadCaptureFile(image);
+  if (!result.ok) {
+    notify(result.message);
+    return;
+  }
+  const name = image.name || "captured image";
+  editor
+    ?.chain()
+    .focus()
+    .insertContent(`[${name}](/api/v1/captures/${result.captureId}/file)`, { contentType: "markdown" })
+    .run();
+  notify(`Captured ${name} to your inbox and linked it here.`);
+}
 
 /*
  * Two chromes for the same editor. "full" (the dossier surfaces) keeps the
@@ -62,6 +90,7 @@ export default function RichEditor({
   /** A paste arrived with structure rich text cannot keep; it was inserted literally. */
   onStructuredPasteDropped?: () => void;
 }) {
+  const { notify } = useWorkspace();
   const [internalPreferred, setInternalPreferred] = useState<MarkdownEditorMode>(() => markdownEditorMode(content));
   const preferred = controlledMode ?? internalPreferred;
   const setPreferred = (next: MarkdownEditorMode) => {
@@ -147,6 +176,12 @@ export default function RichEditor({
           onChange={(event) => onChange(event.target.value)}
           onSelect={(event) => readTextareaSelection(event.currentTarget)}
           onKeyUp={(event) => readTextareaSelection(event.currentTarget)}
+          onPaste={(event) => {
+            const image = Array.from(event.clipboardData?.files ?? []).find((f) => f.type.startsWith("image/"));
+            if (!image) return;
+            event.preventDefault();
+            void insertImageCapture(image, null, notify);
+          }}
         />
       ) : (
         <RichMarkdownEditor
@@ -373,6 +408,15 @@ function RichMarkdownEditor({
         return false;
       },
       handlePaste: (_view, event) => {
+        // An image on the clipboard is a capture, not text: it uploads through
+        // the same multipart route every intake path uses and lands as a
+        // markdown link to the stored bytes once the blob exists.
+        const image = Array.from(event.clipboardData?.files ?? []).find((f) => f.type.startsWith("image/"));
+        if (image) {
+          event.preventDefault();
+          void insertImageCapture(image, editor, notify);
+          return true;
+        }
         const pasted = event.clipboardData?.getData("text/plain") || "";
         const reason = markdownSourceReason(pasted);
         if (!reason) return false;
@@ -385,9 +429,15 @@ function RichMarkdownEditor({
         return true;
       },
       handleDrop: (_view, event) => {
-        if (!event.dataTransfer?.files.length) return false;
+        const image = Array.from(event.dataTransfer?.files ?? []).find((f) => f.type.startsWith("image/"));
+        if (!image) {
+          if (!event.dataTransfer?.files.length) return false;
+          event.preventDefault();
+          notify("Only images drop in as captures. Other files go through the library or the inbox attach button.");
+          return true;
+        }
         event.preventDefault();
-        notify("File and image insertion is unavailable. Preserve image references through Markdown source instead.");
+        void insertImageCapture(image, editor, notify);
         return true;
       },
       attributes: {

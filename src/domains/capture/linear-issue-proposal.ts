@@ -48,8 +48,18 @@ const MAX_SOURCE_CHARS = 8000;
 export function buildLinearIssuePrompt(input: { title: string; text: string }): string {
   const trimmed = input.text.trim();
   if (!trimmed) throw new LinearIssueProposalError("empty_source", "There is no source material to draft from.");
-  const quoted = trimmed.length <= MAX_SOURCE_CHARS ? trimmed : `${trimmed.slice(0, MAX_SOURCE_CHARS)}\n\n[...the source continues; this is the first ${MAX_SOURCE_CHARS} characters]`;
-  return [`SOURCE TITLE: ${input.title}`, "", "SOURCE MATERIAL:", quoted, "", "Write the Linear issue proposal for this source."].join("\n");
+  const quoted =
+    trimmed.length <= MAX_SOURCE_CHARS
+      ? trimmed
+      : `${trimmed.slice(0, MAX_SOURCE_CHARS)}\n\n[...the source continues; this is the first ${MAX_SOURCE_CHARS} characters]`;
+  return [
+    `SOURCE TITLE: ${input.title}`,
+    "",
+    "SOURCE MATERIAL:",
+    quoted,
+    "",
+    "Write the Linear issue proposal for this source.",
+  ].join("\n");
 }
 
 /** Pure parse, so the output contract is unit-tested instead of drifting inside an async body. */
@@ -66,7 +76,10 @@ export function parseLinearIssueProposal(text: string): LinearIssueProposal {
   const proposal = typeof obj.proposal === "string" ? obj.proposal.trim() : "";
   const outOfScope = typeof obj.outOfScope === "string" ? obj.outOfScope.trim() : "";
   const acceptanceCriteria = Array.isArray(obj.acceptanceCriteria)
-    ? obj.acceptanceCriteria.filter((c): c is string => typeof c === "string").map((c) => c.trim()).filter(Boolean)
+    ? obj.acceptanceCriteria
+        .filter((c): c is string => typeof c === "string")
+        .map((c) => c.trim())
+        .filter(Boolean)
     : [];
   if (!title || !problem || !proposal || acceptanceCriteria.length === 0) {
     throw new LinearIssueProposalError("unparseable", "The issue proposal is missing required sections.");
@@ -75,8 +88,15 @@ export function parseLinearIssueProposal(text: string): LinearIssueProposal {
 }
 
 /** Render a proposal into the same issue shape the deterministic scaffold uses, so downstream readers see one format. */
-export function renderLinearIssueDraft(proposal: LinearIssueProposal, opts: { sourceMaterial: string; proposer: string }): string {
-  const quoted = opts.sourceMaterial.trim().split("\n").map((line) => `> ${line}`).join("\n");
+export function renderLinearIssueDraft(
+  proposal: LinearIssueProposal,
+  opts: { sourceMaterial: string; proposer: string },
+): string {
+  const quoted = opts.sourceMaterial
+    .trim()
+    .split("\n")
+    .map((line) => `> ${line}`)
+    .join("\n");
   return [
     `# ${proposal.title}`,
     ``,
@@ -139,6 +159,7 @@ import { recordAudit } from "@/domains/audit/record";
 import { withReceipt } from "@/domains/audit/receipt";
 import { outboxEvents } from "@/domains/audit/schema";
 import { createNoteInTx, syncNoteLinks } from "@/domains/knowledge/notes";
+import { noteContentToMarkdown } from "@/domains/knowledge/note-content";
 import { artifactVersions, artifacts, workingDrafts } from "@/domains/knowledge/schema";
 import { draftBody } from "@/domains/capture/draft-templates";
 import type { GenerationProvider } from "@/integrations/generation/provider";
@@ -184,8 +205,12 @@ export function sourceMarkerOf(sourceId: string, sourceHash: string, bodyHash: s
   return `<!-- ${LINEAR_ISSUE_SOURCE_MARKER}: ${sourceId}@${sourceHash}:b${bodyHash} -->`;
 }
 
-export function parseSourceMarker(plainText: string): { sourceId: string; sourceHash: string; bodyHash: string } | null {
-  const m = plainText.match(new RegExp(`<!-- ${LINEAR_ISSUE_SOURCE_MARKER}: ([0-9a-f-]{36})@([0-9a-f]{16}):b([0-9a-f]{16}) -->`));
+export function parseSourceMarker(
+  plainText: string,
+): { sourceId: string; sourceHash: string; bodyHash: string } | null {
+  const m = plainText.match(
+    new RegExp(`<!-- ${LINEAR_ISSUE_SOURCE_MARKER}: ([0-9a-f-]{36})@([0-9a-f]{16}):b([0-9a-f]{16}) -->`),
+  );
   return m ? { sourceId: m[1], sourceHash: m[2], bodyHash: m[3] } : null;
 }
 
@@ -221,7 +246,9 @@ function withMarker(body: string, source: SourceNote, sourceHash: string): { fin
   // A note source links back by title; conversation text has no note to link
   // to, so its provenance line names where the material came from instead of
   // dangling a [[link]] to a page that does not exist.
-  const provenance = source.noteId ? `Drafted from [[${source.title}]].` : `Drafted from the conversation (${source.title}).`;
+  const provenance = source.noteId
+    ? `Drafted from [[${source.title}]].`
+    : `Drafted from the conversation (${source.title}).`;
   const contentPart = `${body}\n\n${provenance}`;
   const bodyHash = sourceHashOf(contentPart);
   return { finalBody: `${contentPart}\n\n${sourceMarkerOf(source.id, sourceHash, bodyHash)}`, bodyHash };
@@ -241,7 +268,11 @@ async function renderForSource(
     body = renderLinearIssueDraft(proposal, { sourceMaterial: source.markdown, proposer });
     generated = true;
   } catch {
-    const firstLine = source.markdown.split("\n").map((line) => line.trim()).find(Boolean) ?? source.title;
+    const firstLine =
+      source.markdown
+        .split("\n")
+        .map((line) => line.trim())
+        .find(Boolean) ?? source.title;
     title = `Linear issue: ${firstLine}`;
     body = draftBody("linear-issue", { firstLine, material: source.markdown });
   }
@@ -253,20 +284,39 @@ async function loadSourceNote(auth: AuthContext, artifactId: string, tx?: TxDriz
     .select({ id: artifacts.id, title: artifacts.title, content: artifactVersions.content })
     .from(artifacts)
     .leftJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
-    .where(and(eq(artifacts.id, artifactId), eq(artifacts.workspaceId, auth.workspaceId), eq(artifacts.kind, "note"), isNull(artifacts.archivedAt)))
+    .where(
+      and(
+        eq(artifacts.id, artifactId),
+        eq(artifacts.workspaceId, auth.workspaceId),
+        eq(artifacts.kind, "note"),
+        isNull(artifacts.archivedAt),
+      ),
+    )
     .limit(1);
   const [note] = await q;
   if (!note) return null;
-  const markdown = note.content && typeof (note.content as { text?: unknown }).text === "string" ? ((note.content as { text: string }).text as string) : "";
+  const markdown = noteContentToMarkdown(note.content as Record<string, unknown> | null);
   return { id: note.id, noteId: note.id, title: note.title, markdown };
 }
 
 async function findExistingDraft(auth: AuthContext, sourceId: string, tx?: TxDrizzle) {
   const [existing] = await (tx ?? db)
-    .select({ id: artifacts.id, title: artifacts.title, version: artifacts.version, plainText: artifactVersions.plainText })
+    .select({
+      id: artifacts.id,
+      title: artifacts.title,
+      version: artifacts.version,
+      plainText: artifactVersions.plainText,
+    })
     .from(artifacts)
     .innerJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
-    .where(and(eq(artifacts.workspaceId, auth.workspaceId), eq(artifacts.kind, "note"), isNull(artifacts.archivedAt), ilike(artifactVersions.plainText, `%${LINEAR_ISSUE_SOURCE_MARKER}: ${sourceId}@%`)))
+    .where(
+      and(
+        eq(artifacts.workspaceId, auth.workspaceId),
+        eq(artifacts.kind, "note"),
+        isNull(artifacts.archivedAt),
+        ilike(artifactVersions.plainText, `%${LINEAR_ISSUE_SOURCE_MARKER}: ${sourceId}@%`),
+      ),
+    )
     .orderBy(desc(artifacts.updatedAt))
     .limit(1);
   return existing ?? null;
@@ -303,7 +353,10 @@ async function commitLinearIssueDraft(
         return { artifactId: existing.id, title: existing.title, generated: true, outcome: "replayed" };
       }
       if (freshHash !== sourceHash) {
-        throw new LinearIssueNoteError("source_changed", "The note changed while the proposal was being drafted. Try again.");
+        throw new LinearIssueNoteError(
+          "source_changed",
+          "The note changed while the proposal was being drafted. Try again.",
+        );
       }
       if (sourceHashOf(bodyWithoutMarker(existing.plainText)) !== recorded?.bodyHash) {
         throw new LinearIssueNoteError(
@@ -317,55 +370,120 @@ async function commitLinearIssueDraft(
         .where(and(eq(workingDrafts.artifactId, existing.id), eq(workingDrafts.workspaceId, auth.workspaceId)))
         .limit(1);
       if (open) {
-        throw new LinearIssueNoteError("unsaved_edits", "You have unsaved changes to the proposal. Save or discard them, then draft again.");
+        throw new LinearIssueNoteError(
+          "unsaved_edits",
+          "You have unsaved changes to the proposal. Save or discard them, then draft again.",
+        );
       }
-      const result = await withReceipt(tx, auth, derivedKey("linear-issue-refresh", auth.workspaceId, source.id, freshHash), { op: "linearIssueRefresh", sourceId: source.id, sourceHash: freshHash }, async () => {
-        const [claimed] = await tx
-          .update(artifacts)
-          .set({ updatedAt: new Date(), updatedBy: auth.userId, version: sql`${artifacts.version} + 1` })
-          .where(and(eq(artifacts.id, existing.id), eq(artifacts.workspaceId, auth.workspaceId), eq(artifacts.version, existing.version)))
-          .returning({ id: artifacts.id });
-        if (!claimed) throw new LinearIssueNoteError("source_changed", "The proposal changed while refreshing. Reload and try again.");
-        const [max] = await tx
-          .select({ n: sql<number>`coalesce(max(${artifactVersions.versionNumber}), 0)` })
-          .from(artifactVersions)
-          .where(eq(artifactVersions.artifactId, existing.id));
-        const [snapshot] = await tx
-          .insert(artifactVersions)
-          .values({
-            workspaceId: auth.workspaceId,
-            artifactId: existing.id,
-            versionNumber: max.n + 1,
-            content: { format: "markdown", text: marked.finalBody },
-            plainText: marked.finalBody,
-            reason: "edited",
-            note: "Source note changed; the issue proposal was regenerated.",
-            createdBy: auth.userId,
-          })
-          .returning({ id: artifactVersions.id, versionNumber: artifactVersions.versionNumber });
-        await tx.update(artifacts).set({ currentVersionId: snapshot.id, embedError: null }).where(eq(artifacts.id, existing.id));
-        await syncNoteLinks(tx, auth, existing.id, marked.finalBody);
-        await recordAudit(auth, { action: "note.snapshot", subjectType: "artifact", subjectId: existing.id, summary: `Refreshed Linear-issue proposal (version ${snapshot.versionNumber}) from the changed source note`, metadata: { versionId: snapshot.id, sourceId: source.id } }, tx);
-        await tx.insert(outboxEvents).values({ workspaceId: auth.workspaceId, topic: "note.snapshot", payload: { artifactId: existing.id, versionId: snapshot.id, versionNumber: snapshot.versionNumber } });
-        return { artifactId: existing.id };
-      });
-      return { artifactId: result.value.artifactId, title: existing.title, generated: rendered.generated, outcome: "refreshed" };
+      const result = await withReceipt(
+        tx,
+        auth,
+        derivedKey("linear-issue-refresh", auth.workspaceId, source.id, freshHash),
+        { op: "linearIssueRefresh", sourceId: source.id, sourceHash: freshHash },
+        async () => {
+          const [claimed] = await tx
+            .update(artifacts)
+            .set({ updatedAt: new Date(), updatedBy: auth.userId, version: sql`${artifacts.version} + 1` })
+            .where(
+              and(
+                eq(artifacts.id, existing.id),
+                eq(artifacts.workspaceId, auth.workspaceId),
+                eq(artifacts.version, existing.version),
+              ),
+            )
+            .returning({ id: artifacts.id });
+          if (!claimed)
+            throw new LinearIssueNoteError(
+              "source_changed",
+              "The proposal changed while refreshing. Reload and try again.",
+            );
+          const [max] = await tx
+            .select({ n: sql<number>`coalesce(max(${artifactVersions.versionNumber}), 0)` })
+            .from(artifactVersions)
+            .where(eq(artifactVersions.artifactId, existing.id));
+          const [snapshot] = await tx
+            .insert(artifactVersions)
+            .values({
+              workspaceId: auth.workspaceId,
+              artifactId: existing.id,
+              versionNumber: max.n + 1,
+              content: { format: "markdown", text: marked.finalBody },
+              plainText: marked.finalBody,
+              reason: "edited",
+              note: "Source note changed; the issue proposal was regenerated.",
+              createdBy: auth.userId,
+            })
+            .returning({ id: artifactVersions.id, versionNumber: artifactVersions.versionNumber });
+          await tx
+            .update(artifacts)
+            .set({ currentVersionId: snapshot.id, embedError: null })
+            .where(eq(artifacts.id, existing.id));
+          await syncNoteLinks(tx, auth, existing.id, marked.finalBody);
+          await recordAudit(
+            auth,
+            {
+              action: "note.snapshot",
+              subjectType: "artifact",
+              subjectId: existing.id,
+              summary: `Refreshed Linear-issue proposal (version ${snapshot.versionNumber}) from the changed source note`,
+              metadata: { versionId: snapshot.id, sourceId: source.id },
+            },
+            tx,
+          );
+          await tx
+            .insert(outboxEvents)
+            .values({
+              workspaceId: auth.workspaceId,
+              topic: "note.snapshot",
+              payload: { artifactId: existing.id, versionId: snapshot.id, versionNumber: snapshot.versionNumber },
+            });
+          return { artifactId: existing.id };
+        },
+      );
+      return {
+        artifactId: result.value.artifactId,
+        title: existing.title,
+        generated: rendered.generated,
+        outcome: "refreshed",
+      };
     }
 
     if (existing && !existing.plainText) {
       // A marker-less draft cannot prove ownership; never write over it.
-      throw new LinearIssueNoteError("owner_edits", "An existing draft for this source has no provenance marker. Review it before drafting again.");
+      throw new LinearIssueNoteError(
+        "owner_edits",
+        "An existing draft for this source has no provenance marker. Review it before drafting again.",
+      );
     }
     if (freshHash !== sourceHash) {
-      throw new LinearIssueNoteError("source_changed", "The note changed while the proposal was being drafted. Try again.");
+      throw new LinearIssueNoteError(
+        "source_changed",
+        "The note changed while the proposal was being drafted. Try again.",
+      );
     }
 
-    const result = await withReceipt(tx, auth, derivedKey("linear-issue-create", auth.workspaceId, source.id, freshHash), { op: "linearIssueCreate", sourceId: source.id, sourceHash: freshHash }, async () => {
-      const draft = await createNoteInTx(tx, auth, { title: rendered.title, content: { format: "markdown", text: marked.finalBody }, plainText: marked.finalBody, kind: "note" });
-      await syncNoteLinks(tx, auth, draft.id, marked.finalBody);
-      return { artifactId: draft.id };
-    });
-    return { artifactId: result.value.artifactId, title: rendered.title, generated: rendered.generated, outcome: result.replayed ? "replayed" : "created" };
+    const result = await withReceipt(
+      tx,
+      auth,
+      derivedKey("linear-issue-create", auth.workspaceId, source.id, freshHash),
+      { op: "linearIssueCreate", sourceId: source.id, sourceHash: freshHash },
+      async () => {
+        const draft = await createNoteInTx(tx, auth, {
+          title: rendered.title,
+          content: { format: "markdown", text: marked.finalBody },
+          plainText: marked.finalBody,
+          kind: "note",
+        });
+        await syncNoteLinks(tx, auth, draft.id, marked.finalBody);
+        return { artifactId: draft.id };
+      },
+    );
+    return {
+      artifactId: result.value.artifactId,
+      title: rendered.title,
+      generated: rendered.generated,
+      outcome: result.replayed ? "replayed" : "created",
+    };
   });
 }
 
@@ -426,7 +544,11 @@ export async function draftLinearIssueFromText(
 ): Promise<LinearIssueDraftResult> {
   const text = input.text.trim();
   if (!text) throw new LinearIssueNoteError("empty_source", "There is no source material to draft from.");
-  const source: SourceNote = { id: conversationSourceId(auth.workspaceId, input.sourceKey), title: input.title, markdown: text };
+  const source: SourceNote = {
+    id: conversationSourceId(auth.workspaceId, input.sourceKey),
+    title: input.title,
+    markdown: text,
+  };
   const sourceHash = sourceHashOf(source.markdown);
   const prior = await findExistingDraft(auth, source.id);
   if (prior?.plainText) {
