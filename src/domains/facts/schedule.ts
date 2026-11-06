@@ -18,7 +18,7 @@ import { FACT_SUGGESTION_TOPIC } from "./generate";
  * and N workspaces would mean N identical model calls into the same table.
  */
 
-export function monthKey(now: Date = new Date()): string {
+function monthKey(now: Date = new Date()): string {
   return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 

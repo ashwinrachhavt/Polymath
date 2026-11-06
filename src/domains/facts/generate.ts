@@ -1,12 +1,10 @@
-import { count, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { generateText } from "ai";
 import type { ClaimedOutboxEvent, OutboxHandler } from "@/domains/audit/outbox";
 import { chatModel, DEFAULT_MODEL_ID, modelById } from "@/domains/agents/models";
 import { pollFacts } from "@/lib/poll-facts";
 import { db } from "@/lib/db";
 import { pollFactSuggestions } from "./schema";
-
-export { pollFactSuggestions };
 
 /*
  * The monthly refresh of the polling fact deck. A cron tick enqueues
@@ -26,8 +24,6 @@ export const FACT_SUGGESTION_TOPIC = "facts.suggestions_requested";
 const MIN_CHARS = 80;
 const MAX_CHARS = 260;
 const MAX_INSERTS_PER_RUN = 8;
-/** 4 science + 4 philosophy, per the prompt's contract. */
-const CANDIDATES_PER_RUN = 8;
 
 const FEWSHOT_FACTS = ["sunlight-two-journeys", "glass-never-settled", "nagel-bat", "mary-red-room"];
 
@@ -66,7 +62,7 @@ export function normalizeFactKey(text: string): string {
 }
 
 /** Named rather than inline so the topic-coverage test's literal scan sees no fake emission. */
-export type FactTopic = "science" | "philosophy";
+type FactTopic = "science" | "philosophy";
 
 export type FactCandidate = { topic: FactTopic; text: string; tags: string[] };
 
@@ -155,21 +151,12 @@ function cleanTags(tags: string[]): string[] {
   return result;
 }
 
-/** Fresh suggestion count in the table - how far the monthly pass has grown the deck. */
-export async function countSuggestions(): Promise<number> {
-  const [row] = await db
-    .select({ n: count() })
-    .from(pollFactSuggestions)
-    .where(eq(pollFactSuggestions.status, "active"));
-  return row?.n ?? 0;
-}
-
 /**
  * The work half. Returns what it landed; never throws for a bad candidate.
  * Throws only for infrastructure problems (no model configured, a provider
  * error), so the dispatcher's backoff owns those.
  */
-export async function runFactSuggestionRequested(
+async function runFactSuggestionRequested(
   event: ClaimedOutboxEvent,
   deps: { model?: ReturnType<typeof chatModel> } = {},
 ): Promise<{ landed: number }> {
@@ -223,11 +210,4 @@ export async function runFactSuggestionRequested(
 /** Registry shape for outbox-handlers.ts. */
 export const factSuggestionRequestedHandler: OutboxHandler = async (event) => {
   await runFactSuggestionRequested(event);
-};
-
-export const FACT_SUGGESTION_LIMITS = {
-  minChars: MIN_CHARS,
-  maxChars: MAX_CHARS,
-  maxInsertsPerRun: MAX_INSERTS_PER_RUN,
-  candidatesPerRun: CANDIDATES_PER_RUN,
 };
