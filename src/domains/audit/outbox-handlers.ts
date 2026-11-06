@@ -4,6 +4,7 @@ import { MAX_UPLOAD_BYTES } from "@/lib/file-validation";
 import { sha256Hex } from "@/lib/hash";
 import { runExtractionPass } from "@/domains/knowledge/extraction";
 import { EMBEDDING_RETRY_TOPIC, embeddingRetryRequestedHandler } from "@/domains/knowledge/embedding-retry";
+import { FACT_SUGGESTION_TOPIC, factSuggestionRequestedHandler } from "@/domains/facts/generate";
 import { intakeFile } from "@/domains/knowledge/intake";
 import { documents } from "@/domains/knowledge/schema";
 import { recordSource } from "@/domains/knowledge/sources";
@@ -293,6 +294,7 @@ export function outboxHandlers(): Record<string, OutboxHandler> {
     },
     [RUN_CRITIQUE_TOPIC]: runCritiqueRequestedHandler(workspaceOwnerAuth),
     [EMBEDDING_RETRY_TOPIC]: embeddingRetryRequestedHandler(workspaceOwnerAuth),
+    [FACT_SUGGESTION_TOPIC]: factSuggestionRequestedHandler,
   };
   return handlers;
 }

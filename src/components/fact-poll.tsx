@@ -17,11 +17,27 @@ const FACT_INTERVAL_MS = 7_000;
  * ambient rotation delays nothing.
  */
 
-function useFactRotation(topics: string[]): PollFact | null {
+function useFactRotation(topics: string[], extra?: PollFact[]): PollFact | null {
   // Callers pass inline literal arrays; the joined key keeps the pool (and so
-  // the rotation) stable across their re-renders.
+  // the rotation) stable across their re-renders. The extras enter the memo
+  // through a map keyed on their ids: same ids, same array object, so a
+  // re-render holding the same facts never restarts the walk, while a
+  // refetch with new facts replaces the pool.
   const topicKey = topics.join(",");
-  const pool = useMemo(() => selectFactPool(topicKey.split(",").filter(Boolean)), [topicKey]);
+  const extraKey = extra?.map((fact) => fact.id).join(",") ?? "";
+  const pool = useMemo(() => {
+    const byId = new Map(extra?.map((fact) => [fact.id, fact]));
+    return selectFactPool(
+      topicKey.split(",").filter(Boolean),
+      extraKey
+        ? extraKey
+            .split(",")
+            .map((id) => byId.get(id))
+            .filter((fact): fact is PollFact => Boolean(fact))
+        : undefined,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- extraKey is the identity; extra only supplies the rows
+  }, [topicKey, extraKey]);
 
   const remainingRef = useRef<PollFact[]>([]);
   const [fact, setFact] = useState<PollFact | null>(null);
@@ -62,16 +78,19 @@ function BreathingDots() {
 export function FactPoll({
   label,
   topics = [],
+  extraFacts,
   compact = false,
   className,
 }: {
   label: string;
   /** Lowercase keywords biasing the fact deck toward the wait's subject. */
   topics?: string[];
+  /** Job-drafted suggestions merged into the pool; the deck stays the base. */
+  extraFacts?: PollFact[];
   compact?: boolean;
   className?: string;
 }) {
-  const fact = useFactRotation(topics);
+  const fact = useFactRotation(topics, extraFacts);
   const reduced = useReducedMotion();
 
   if (!fact) return null;
