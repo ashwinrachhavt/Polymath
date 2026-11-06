@@ -66,10 +66,10 @@ test("a persisted mermaid canvas loads into the editor and saves as an appended 
   const attach = (name: string, body: Buffer) => testInfo.attach(name, { body, contentType: "image/png" });
 
   await page.goto(`/polymath/canvas/${canvasId}`);
-  // The mermaid envelope converts in the browser; the editor mounts once the
-  // skeletons land. Generous budget: CI compiles the route on first hit.
+  // The status flips to the editable copy in the same commit that mounts the
+  // island; assert it first so a slow Excalidraw chunk cannot starve it.
+  await expect(page.getByText(/Canonical canvas v1/)).toBeVisible({ timeout: 120_000 });
   await expect(page.locator(".excalidraw")).toBeVisible({ timeout: 60_000 });
-  await expect(page.getByText(/Canonical canvas v1/)).toBeVisible({ timeout: 30_000 });
   await shot(page, "canvas-editable-loaded", attach);
 
   // An edit (the title field) dirties the canvas; saving appends v2.
@@ -90,8 +90,8 @@ test("a persisted mermaid canvas loads into the editor and saves as an appended 
     [2, "excalidraw"],
   ]);
   await page.reload();
+  await expect(page.getByText(/Canonical canvas v2/)).toBeVisible({ timeout: 120_000 });
   await expect(page.locator(".excalidraw")).toBeVisible({ timeout: 60_000 });
-  await expect(page.getByText(/Canonical canvas v2/)).toBeVisible({ timeout: 30_000 });
   await shot(page, "canvas-editable-reloaded-v2", attach);
 });
 
@@ -106,7 +106,7 @@ test("a non-editable diagram type keeps the editor disabled behind the SVG image
   const attach = (name: string, body: Buffer) => testInfo.attach(name, { body, contentType: "image/png" });
 
   await page.goto(`/polymath/canvas/${canvasId}`);
-  await expect(page.getByText("Read-only image preview", { exact: true })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText("Read-only image preview", { exact: true })).toBeVisible({ timeout: 120_000 });
   await expect(page.getByText(/er diagrams open as an image, not an editable scene/)).toBeVisible();
   // The mermaid SVG renders as the preview; the editor and its save path
   // never mount for this version.

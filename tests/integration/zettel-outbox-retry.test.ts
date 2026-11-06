@@ -128,7 +128,6 @@ suite("capture.zettels_requested retry and replay resilience", () => {
       {
         [ZETTEL_GENERATION_TOPIC]: async () => {
           earlyCalls += 1;
-          return { created: 0, unreadChars: 0 };
         },
       },
       { workerId: "test-early" },
@@ -151,9 +150,9 @@ suite("capture.zettels_requested retry and replay resilience", () => {
     const recovered = await outbox.dispatchPendingOutbox(
       handle.client,
       {
-        [ZETTEL_GENERATION_TOPIC]: (event) => {
+        [ZETTEL_GENERATION_TOPIC]: async (event) => {
           recoveredCalls += 1;
-          return runZettelGenerationRequested(event, deps);
+          await runZettelGenerationRequested(event, deps);
         },
       },
       { workerId: "test-recovered" },
