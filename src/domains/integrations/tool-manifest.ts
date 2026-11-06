@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CONNECTOR_TOOL_SCHEMAS, CONNECTOR_TOOL_DESCRIPTIONS } from "./connector-actions";
 import { PROVIDER_TOOLS } from "./capabilities";
 import { ghName } from "./reads/github";
 import { notionPageId } from "./reads/notion";
@@ -100,6 +101,7 @@ const linearReadIssueArguments = z.object({
  * catalog fails to compile here instead of disappearing from the manifest.
  */
 export const TOOL_SCHEMAS = {
+  ...CONNECTOR_TOOL_SCHEMAS,
   gmail_search: searchArguments,
   gmail_read_thread: readThreadArguments,
   gmail_send: sendArguments,
@@ -181,6 +183,7 @@ export const TOOL_SCHEMAS = {
 } satisfies Record<keyof typeof PROVIDER_TOOLS, z.ZodType>;
 
 const TOOL_DESCRIPTIONS: Record<keyof typeof PROVIDER_TOOLS, string> = {
+  ...CONNECTOR_TOOL_DESCRIPTIONS,
   gmail_search: "Search the owner's connected Gmail and return message summaries. Read-only.",
   gmail_read_thread:
     "Read one Gmail thread, including plain-text bodies, from the owner's connected account. Read-only.",

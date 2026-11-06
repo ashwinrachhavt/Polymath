@@ -1,3 +1,4 @@
+import { CONNECTOR_ACCOUNT_PROVIDERS } from "@/domains/integrations/connector-action-catalog";
 import { and, desc, eq, sql } from "drizzle-orm";
 import type { TxDrizzle } from "@/lib/db-transaction";
 import { actionProposals } from "./schema";
@@ -26,6 +27,7 @@ import { actionReviews, actionRevisions } from "./schema";
  * would otherwise let a reviewed write land in a different account.
  */
 const ACCOUNT_PIN_PROVIDERS: Record<string, string> = {
+  ...CONNECTOR_ACCOUNT_PROVIDERS,
   "gmail.send": "gmail",
   "notion.page.append": "notion",
   "notion.page.create": "notion",
@@ -77,7 +79,6 @@ export function withSenderAccountPin(
   return { payload: { ...payload, accountPin: pin }, preview: { ...(preview ?? {}), accountPin: pin } };
 }
 
-
 /*
  * The only write path that turns model intent into an external effect. A tool
  * never calls a provider: it proposes, and the proposal carries the preview, the
@@ -127,19 +128,13 @@ export async function createProposal(
   const [existing] = await tx
     .select({ id: actionProposals.id })
     .from(actionProposals)
-    .where(
-      and(
-        eq(actionProposals.workspaceId, ctx.workspaceId),
-        eq(actionProposals.dedupeKey, input.dedupeKey),
-      ),
-    )
+    .where(and(eq(actionProposals.workspaceId, ctx.workspaceId), eq(actionProposals.dedupeKey, input.dedupeKey)))
     .limit(1);
   // ponytail: racy caller deleted the row between insert and select; treat as
   // retryable failure, not a TypeError, when the contract next changes.
   if (!existing) throw new Error("proposal vanished during dedupe resolve");
   return { proposalId: existing.id, deduplicated: true };
 }
-
 
 /*
  * Human decisions on proposals (Reviews v2). A decision is one transaction:

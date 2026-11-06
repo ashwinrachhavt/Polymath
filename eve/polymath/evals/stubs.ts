@@ -112,6 +112,7 @@ function isSet(value: string | undefined): boolean {
  * and the real tool would run — the failure this file exists to prevent.
  */
 export const STUBBED_TOOLS = {
+  connector_actions: { response: { ok: true, actions: [] } },
   /*
    * The built-in subagent tool (agent/tools/agent.ts). A stub cannot simulate
    * a child session — the tool's result is the child's reply, which arrives as

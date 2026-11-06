@@ -16,15 +16,11 @@ export type ToggleState = {
   write: { available: boolean; on: boolean; label: string } | null;
 };
 
-/** The provider's single proposal-kind capability, or null. */
-function writeCapability(provider: Provider): Capability | null {
-  const found = Object.entries(CAPABILITIES).find(([, spec]) => spec.provider === provider && spec.kind === "proposal");
-  return found ? (found[0] as Capability) : null;
-}
-
-/** The tier that grants the write capability, or null when none does. */
-function writeTierId(provider: Provider, capability: Capability): string | null {
-  return PROVIDER_TIERS[provider]?.find((tier) => tier.capabilities.includes(capability))?.id ?? null;
+/** All provider writes share the owner's Write switch. */
+function writeCapabilities(provider: Provider): Capability[] {
+  return Object.entries(CAPABILITIES)
+    .filter(([, spec]) => spec.provider === provider && spec.kind === "proposal")
+    .map(([id]) => id as Capability);
 }
 
 export function accessToggleState(provider: Provider, currentTier: string | null, disabled: string[]): ToggleState {
@@ -51,21 +47,16 @@ export function accessToggleState(provider: Provider, currentTier: string | null
   // is what the person toggling expects to see.
   const readOn = grantedReads.length > 0 && grantedReads.every((capability) => !off.has(capability));
 
-  const write = writeCapability(provider);
-  if (!write) {
-    return { read: { available: readAvailable, on: readOn }, write: null };
-  }
-
-  const tierId = writeTierId(provider, write);
-  const writeOn = currentTier === tierId && !off.has(write);
+  const writes = writeCapabilities(provider);
+  if (writes.length === 0) return { read: { available: readAvailable, on: readOn }, write: null };
+  const granted = tiers.find((candidate) => candidate.id === currentTier)?.capabilities ?? [];
 
   return {
     read: { available: readAvailable, on: readOn },
     write: {
-      available: tierId !== null,
-      on: writeOn,
-      // gmail's proposal is a send, so the switch says what it does.
-      label: write === "gmail.send" ? "Send" : "Write",
+      available: true,
+      on: writes.every((capability) => granted.includes(capability) && !off.has(capability)),
+      label: "Write",
     },
   };
 }
@@ -98,18 +89,24 @@ export function planToggleSteps(input: {
   let version = 0;
 
   if (toggle === "write") {
-    const write = writeCapability(provider);
-    if (!write) return [];
-    const writeTier = tiers.find((t) => t.capabilities.includes(write));
-    if (!writeTier) return [];
-    // Not already on the write tier — including a tier-less account, which the
-    // server resolves to read_only and would reject the capability enable —
-    // so raise first. A same-tier set would only burn a version bump.
-    if (!tier || tier.id !== writeTier.id) {
-      steps.push({ kind: "tier", tierId: writeTier.id, expectedVersion: version++ });
+    const writes = writeCapabilities(provider);
+    if (!writes.length) return [];
+    if (!on) {
+      for (const capability of writes) {
+        if (tier?.capabilities.includes(capability) && !off.has(capability))
+          steps.push({ kind: "capability", capability, expectedVersion: version++, enabled: false });
+      }
+      return steps;
     }
-    if (off.has(write)) {
-      steps.push({ kind: "capability", capability: write, expectedVersion: version++, enabled: true });
+    const writeTier = tiers.find((candidate) =>
+      writes.every((capability) => candidate.capabilities.includes(capability)),
+    );
+    if (!writeTier) return [];
+    if (!tier || tier.id !== writeTier.id)
+      steps.push({ kind: "tier", tierId: writeTier.id, expectedVersion: version++ });
+    for (const capability of writes) {
+      if (off.has(capability))
+        steps.push({ kind: "capability", capability, expectedVersion: version++, enabled: true });
     }
     return steps;
   }

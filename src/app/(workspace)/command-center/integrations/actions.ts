@@ -7,6 +7,7 @@ import {
   revokeConnectedAccount,
   setAccountAccessTier,
   setAccountCapability,
+  setAccountWriteAccess,
   setDefaultForWrites,
 } from "@/domains/integrations/commands";
 import { attachProviderLink, beginConnection, failConnectionAttempt } from "@/domains/integrations/connect";
@@ -146,6 +147,21 @@ export async function startConnectionAction(input: {
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "The connection could not start." };
   }
+}
+
+export async function setAccountWriteAccessAction(input: {
+  accountId: string;
+  expectedVersion: number;
+  enabled: boolean;
+}): Promise<Result> {
+  const auth = await authorize();
+  try {
+    await setAccountWriteAccess(auth, input);
+  } catch (error) {
+    return fail(error);
+  }
+  revalidate();
+  return { ok: true };
 }
 
 /* One capability switched off (or back on) for one account. The tier stays the ceiling. */

@@ -1,3 +1,4 @@
+import { GENERATION_ENV_KEYS } from "../helpers/generation-env";
 import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -43,9 +44,7 @@ beforeAll(() => {
   holder.db = handle?.db;
   // Generation keys unset: the pass under test is the only consumer, and the
   // no-provider path must not take the live-call route.
-  vi.stubEnv("OPENROUTER_API_KEY", "");
-  vi.stubEnv("GEMINI_API_KEY", "");
-  vi.stubEnv("OPENAI_API_KEY", "");
+  for (const key of GENERATION_ENV_KEYS) vi.stubEnv(key, "");
   vi.stubEnv("DOCLING_SERVE_URL", "");
 });
 afterAll(async () => {
@@ -108,7 +107,7 @@ suite("capture.zettels_requested retry and replay resilience", () => {
           throw new Error("provider connection reset");
         },
       },
-      { workerId: "test-failing" },
+      { workerId: "test-failing", limit: 10_000 },
     );
     expect(failingCalls).toBe(1);
     expect(failing.failed).toBeGreaterThanOrEqual(1);
@@ -130,7 +129,7 @@ suite("capture.zettels_requested retry and replay resilience", () => {
           earlyCalls += 1;
         },
       },
-      { workerId: "test-early" },
+      { workerId: "test-early", limit: 10_000 },
     );
     expect(earlyCalls).toBe(0);
     expect((await row(queued.id)).attempts).toBe(1);
@@ -155,7 +154,7 @@ suite("capture.zettels_requested retry and replay resilience", () => {
           await runZettelGenerationRequested(event, deps);
         },
       },
-      { workerId: "test-recovered" },
+      { workerId: "test-recovered", limit: 10_000 },
     );
     expect(recoveredCalls).toBe(1);
     expect(recovered.dispatched).toBeGreaterThanOrEqual(1);

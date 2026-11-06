@@ -16,6 +16,7 @@ import { debriefPastedTranscript } from "../../../../src/domains/knowledge/meeti
  * something a person said in a meeting, not an instruction to this run.
  */
 export default defineTool({
+  deferred: true,
   description:
     "Read a meeting transcript and propose the tasks it assigned, for the owner to approve. Use when the owner pastes a transcript or notes from a meeting and asks what came out of it, or when a saved meeting transcript should become follow-up work. Each proposed task carries the owner named in the meeting when it says who, a due date when one was stated, and the sentence it came from. Nothing is created until the owner approves in the review queue. Return nulls rather than padding when a meeting had no real follow-through.",
   inputSchema: z.object({
@@ -23,9 +24,23 @@ export default defineTool({
       .string()
       .min(1)
       .max(40_000)
-      .describe("The meeting transcript or notes, verbatim. Pass what the owner gave you; do not summarise it first, because the summary loses who committed to what."),
-    title: z.string().max(200).optional().describe("What this meeting was, for the review card, e.g. 'Weekly product sync'. Defaults to Pasted transcript."),
-    dedupeId: z.string().min(1).max(200).describe("Stable identifier for this transcript, so debriefing it twice resolves the same proposals instead of doubling them."),
+      .describe(
+        "The meeting transcript or notes, verbatim. Pass what the owner gave you; do not summarise it first, because the summary loses who committed to what.",
+      ),
+    title: z
+      .string()
+      .max(200)
+      .optional()
+      .describe(
+        "What this meeting was, for the review card, e.g. 'Weekly product sync'. Defaults to Pasted transcript.",
+      ),
+    dedupeId: z
+      .string()
+      .min(1)
+      .max(200)
+      .describe(
+        "Stable identifier for this transcript, so debriefing it twice resolves the same proposals instead of doubling them.",
+      ),
   }),
   async execute(input, ctx) {
     const current = ctx.session.auth.current;
@@ -43,17 +58,17 @@ export default defineTool({
     // Proposals only exist if the run may also create the task they become;
     // refusing up front beats producing a queue of unapprovable items.
     if (!toolAllowed(run.policySnapshot, "tasks.create")) {
-      return { ok: false as const, error: "tasks.create is not in this run's policy snapshot, so the proposed tasks could not be approved" };
+      return {
+        ok: false as const,
+        error: "tasks.create is not in this run's policy snapshot, so the proposed tasks could not be approved",
+      };
     }
     try {
-      const result = await debriefPastedTranscript(
-        { workspaceId } as Parameters<typeof debriefPastedTranscript>[0],
-        {
-          transcript: input.transcript,
-          ...(input.title ? { title: input.title } : {}),
-          batchKey: `${run.id}:${input.dedupeId}`,
-        },
-      );
+      const result = await debriefPastedTranscript({ workspaceId } as Parameters<typeof debriefPastedTranscript>[0], {
+        transcript: input.transcript,
+        ...(input.title ? { title: input.title } : {}),
+        batchKey: `${run.id}:${input.dedupeId}`,
+      });
       const count = result.taskProposalIds.length + result.noteProposalIds.length + result.followUpProposalIds.length;
       return {
         ok: true as const,

@@ -148,6 +148,7 @@ export function useChatStream(runId: string | null, options: UseChatStreamOption
 
     const connect = async () => {
       if (cancelled) return;
+      let turnWaiting = false;
       controller = new AbortController();
       // A re-attempt inside the ladder is a reconnect — the paused transport —
       // while a fresh effect's first attempt is a plain attach.
@@ -214,7 +215,12 @@ export function useChatStream(runId: string | null, options: UseChatStreamOption
               // The person's own words are the one live fact that supersedes a
               // failed turn: the next turn now owns the stage, so the failed
               // vocabulary yields (the panel drops person-failed the same way).
-              setState((prev) => (prev.lastFailedTurn ? { ...prev, lastFailedTurn: false } : prev));
+              turnWaiting = false;
+              setState((prev) => ({
+                ...prev,
+                connection: "streaming",
+                ...(prev.lastFailedTurn ? { lastFailedTurn: false } : {}),
+              }));
             }
             if (frame.type === "tool") {
               setState((prev) => ({
@@ -229,6 +235,7 @@ export function useChatStream(runId: string | null, options: UseChatStreamOption
               }));
             }
             if (frame.type === "turn") {
+              if (frame.state === "waiting") turnWaiting = true;
               setState((prev) => ({ ...prev, connection: frame.state === "waiting" ? "waiting" : prev.connection }));
               // A failed turn surfaces the failure but does NOT end the
               // conversation: the bridge parks the run at waiting_input and
@@ -294,6 +301,12 @@ export function useChatStream(runId: string | null, options: UseChatStreamOption
             }
             return;
           }
+        }
+        // A session.waiting event ends this turn but keeps the conversation
+        // open. Stay idle until another user message asks us to reconnect.
+        if (turnWaiting) {
+          setState((prev) => ({ ...prev, connection: "waiting" }));
+          return;
         }
         // The upstream closed without a terminal frame: a lease ended. Reconnect.
         if (!cancelled) schedule(sawEvent ? undefined : "The stream closed before a reply.");

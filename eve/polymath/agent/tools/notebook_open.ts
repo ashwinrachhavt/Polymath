@@ -15,6 +15,7 @@ import { NOTEBOOK_OPEN_CAPABILITY, openNotebook } from "../../../../src/domains/
  * yet. Nothing here writes.
  */
 export default defineTool({
+  deferred: true,
   description:
     "Open a notebook (a bounded set of sources) and list its sources with their readiness, plus the reports, decks and infographics it has already generated. Use this before answering any question about a notebook's contents so you know what is actually searchable, and before generating anything, so you do not duplicate an existing artifact. It will not search the notebook's sources or read their full text — it shows what exists and how ready each source is. Read-only; the run's frozen policy must allow notebook.open.",
   inputSchema: z.object({

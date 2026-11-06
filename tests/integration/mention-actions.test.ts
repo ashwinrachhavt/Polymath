@@ -2,6 +2,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { companies, contactCompanies, contactObservations, contacts, followUps } from "@/domains/crm/schema";
+import { captures } from "@/domains/capture/schema";
 import { contactPoints, organizations, people, partyEmployment } from "@/domains/identity/schema";
 import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
 
@@ -59,6 +60,50 @@ suite("fetchMentionContext", () => {
       .returning({ id: contacts.id });
     authHolder.ctx = { userId: viewerWs.userId, workspaceId: viewerWs.workspaceId, role: "viewer" };
     await expect(fetchMentionContext({ kind: "person", id: viewerContact.id })).rejects.toThrow(/Requires member/);
+  });
+
+  it("adds a bounded Inbox snapshot and a selected capture, scoped to the member workspace", async () => {
+    const seed = await seedWorkspace(holder.db!, `mention-inbox-${Date.now()}`);
+    const foreign = await seedWorkspace(holder.db!, `mention-inbox-foreign-${Date.now()}`);
+    authHolder.ctx = { userId: seed.userId, workspaceId: seed.workspaceId, role: "member" };
+    const [capture] = await holder
+      .db!.insert(captures)
+      .values({
+        workspaceId: seed.workspaceId,
+        kind: "text",
+        captureMode: "authored",
+        rawPayload: { text: "The latest Inbox capture should reach chat." },
+        text: "The latest Inbox capture should reach chat.",
+        createdBy: seed.userId,
+        updatedBy: seed.userId,
+      })
+      .returning({ id: captures.id });
+
+    await expect(fetchMentionContext({ kind: "capture", id: capture.id })).resolves.toMatchObject({
+      capture: {
+        id: capture.id,
+        title: "The latest Inbox capture should reach chat.",
+        text: "The latest Inbox capture should reach chat.",
+      },
+    });
+    await expect(fetchMentionContext({ kind: "inbox", id: seed.workspaceId })).resolves.toMatchObject({
+      total: 1,
+      items: [{ id: capture.id, text: "The latest Inbox capture should reach chat." }],
+    });
+    await expect(fetchMentionContext({ kind: "inbox", id: foreign.workspaceId })).resolves.toBeNull();
+    const [foreignCapture] = await holder
+      .db!.insert(captures)
+      .values({
+        workspaceId: foreign.workspaceId,
+        kind: "text",
+        captureMode: "authored",
+        rawPayload: { text: "Private capture" },
+        text: "Private capture",
+        createdBy: foreign.userId,
+        updatedBy: foreign.userId,
+      })
+      .returning({ id: captures.id });
+    await expect(fetchMentionContext({ kind: "capture", id: foreignCapture.id })).resolves.toBeNull();
   });
 
   it("maps a person to its context: open follow-ups only, observations capped at five", async () => {

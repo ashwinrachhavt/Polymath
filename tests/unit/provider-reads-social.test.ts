@@ -16,7 +16,14 @@ describe("linkedin reads", () => {
           method: "GET",
           endpointPrefix: "https://api.linkedin.com/v2/userinfo",
           status: 200,
-          body: { sub: "abc123", name: "Ashwin Rachha", given_name: "Ashwin", family_name: "Rachha", picture: "https://pic", email: "a@b.c" },
+          body: {
+            sub: "abc123",
+            name: "Ashwin Rachha",
+            given_name: "Ashwin",
+            family_name: "Rachha",
+            picture: "https://pic",
+            email: "a@b.c",
+          },
         },
       ],
       captured,
@@ -33,7 +40,14 @@ describe("linkedin reads", () => {
   });
 
   it("fails closed on a malformed profile body", async () => {
-    const transport = fixtureTransport([{ method: "GET", endpointPrefix: "https://api.linkedin.com/v2/userinfo", status: 200, body: { unexpected: true } }]);
+    const transport = fixtureTransport([
+      {
+        method: "GET",
+        endpointPrefix: "https://api.linkedin.com/v2/userinfo",
+        status: 200,
+        body: { unexpected: true },
+      },
+    ]);
     const result = await getLinkedInProfile(transport, { connectedAccountId: ACCOUNT });
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -41,7 +55,9 @@ describe("linkedin reads", () => {
   });
 
   it("surfaces a provider failure", async () => {
-    const transport = fixtureTransport([{ method: "GET", endpointPrefix: "https://api.linkedin.com/v2/userinfo", status: 401, body: {} }]);
+    const transport = fixtureTransport([
+      { method: "GET", endpointPrefix: "https://api.linkedin.com/v2/userinfo", status: 401, body: {} },
+    ]);
     const result = await getLinkedInProfile(transport, { connectedAccountId: ACCOUNT });
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -82,7 +98,13 @@ describe("instagram reads", () => {
         status: 200,
         body: {
           data: [
-            { id: "m1", caption: longCaption, media_type: "IMAGE", permalink: "https://ig/p/m1", timestamp: "2026-10-22T00:00:00Z" },
+            {
+              id: "m1",
+              caption: longCaption,
+              media_type: "IMAGE",
+              permalink: "https://ig/p/m1",
+              timestamp: "2026-10-22T00:00:00Z",
+            },
             { id: "m2", media_type: "VIDEO", permalink: "https://ig/p/m2", timestamp: "2026-10-21T00:00:00Z" },
           ],
         },
@@ -97,7 +119,9 @@ describe("instagram reads", () => {
   });
 
   it("fails closed on a malformed media body", async () => {
-    const transport = fixtureTransport([{ method: "GET", endpointPrefix: "https://graph.instagram.com/me/media", status: 200, body: 42 }]);
+    const transport = fixtureTransport([
+      { method: "GET", endpointPrefix: "https://graph.instagram.com/me/media", status: 200, body: 42 },
+    ]);
     const result = await listInstagramMedia(transport, { connectedAccountId: ACCOUNT, limit: 25 });
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -105,7 +129,9 @@ describe("instagram reads", () => {
   });
 
   it("surfaces a provider failure (personal account, expired token)", async () => {
-    const transport = fixtureTransport([{ method: "GET", endpointPrefix: "https://graph.instagram.com/me/media", status: 400, body: {} }]);
+    const transport = fixtureTransport([
+      { method: "GET", endpointPrefix: "https://graph.instagram.com/me/media", status: 400, body: {} },
+    ]);
     const result = await listInstagramMedia(transport, { connectedAccountId: ACCOUNT, limit: 25 });
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -124,10 +150,10 @@ describe("social capability wiring", () => {
     }
   });
 
-  it("no social capability carries a write or effect risk", () => {
+  it("social reads stay read-only and social writes remain reviewable proposals", () => {
     for (const [id, spec] of Object.entries(CAPABILITIES)) {
       if (spec.provider === "linkedin" || spec.provider === "instagram") {
-        expect(spec.riskClass, id).toBe("read");
+        expect(spec.riskClass, id).toBe(spec.kind === "read" ? "read" : "external_write");
       }
     }
   });

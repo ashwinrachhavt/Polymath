@@ -1,3 +1,4 @@
+import { CONNECTOR_WRITES, connectorWrite } from "@/domains/integrations/connector-action-catalog";
 import type { Capability } from "@/domains/identity/capabilities";
 import type { TxDrizzle } from "@/lib/db-transaction";
 import { NEVER_DELEGABLE } from "./delegation";
@@ -50,6 +51,12 @@ export type ToolOperationSpec = {
  * operation is a code review, never runtime data an owner edits.
  */
 export const TOOL_OPERATION_REGISTRY: Record<string, ToolOperationSpec> = {
+  ...Object.fromEntries(
+    Object.keys(CONNECTOR_WRITES).map((capability) => [
+      capability,
+      { capability: "action.execute" as const, effectClass: "external_effect" as const, requiresApproval: true },
+    ]),
+  ),
   "tasks.read": {
     capability: "task.read",
     effectClass: "read",
@@ -249,6 +256,10 @@ export function authorizeToolInvocation(
   const reasons: string[] = [];
 
   const spec = TOOL_OPERATION_REGISTRY[request.operation];
+  // Generic arguments cannot prove a recipient/resource bound. A narrow grant
+  // must use an action-specific tool rather than silently dropping its bounds.
+  if (connectorWrite(request.operation) && (grant.allowedResources !== null || grant.allowedDestinations !== null))
+    reasons.push("connector_scope_unverifiable");
   if (!spec) reasons.push("unknown_operation");
   if (spec && spec.capability === null) reasons.push("no_capability_mapping");
   if (spec?.capability && NEVER_DELEGABLE.includes(spec.capability)) reasons.push("never_delegable");

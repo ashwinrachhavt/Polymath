@@ -18,7 +18,7 @@ import type { RecordReference } from "./composer-plus";
  */
 
 export type MentionEntity = RecordReference & {
-  kind: "person" | "company" | "zettel";
+  kind: "person" | "company" | "zettel" | "capture" | "inbox";
 };
 
 /**

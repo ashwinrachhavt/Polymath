@@ -72,7 +72,7 @@ async function Connectors({ searchParams }: { searchParams: Promise<Record<strin
   return (
     <Screen
       title="Connectors"
-      description="External writes always require an explicit account and your approval; nothing connects or sends by default."
+      description="Enable Write to run routine actions directly. Other changes wait in Reviews; each action uses your selected account."
     >
       {resultMessage ? (
         <p

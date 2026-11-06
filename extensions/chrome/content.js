@@ -286,11 +286,13 @@
     }
     for (const item of recent) {
       const ago = timeAgo(item.timestamp);
-      const parked = item.delivery === "needs-auth" || item.delivery === "failed";
+      const parked = item.delivery === "needs-auth" || item.delivery === "failed" || item.delivery === "parked-identity";
       const sync =
         item.delivery === "pending" ? " — pending sync"
         : item.delivery === "failed" ? " — sync failed — click to fix"
         : item.delivery === "needs-auth" ? " — needs new API key — click to fix"
+        : item.delivery === "parked-identity" ? " — account changed — click to resume sync"
+        : item.delivery === "conflicted" ? " — already captured; text not saved — open Pending Sync"
         : "";
       const li = el("li", { class: "alfred-capture-item" }, [
         el("span", { class: "alfred-capture-item-title" }, item.title || "Untitled"),

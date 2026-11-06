@@ -208,7 +208,9 @@ describe("frameOf", () => {
       { type: "message", data: { role: "user", content: "How much is rent?", messageId: "m1" } },
       3,
     );
-    expect(frames).toEqual([{ type: "message", runId: RUN, role: "user", text: "How much is rent?", cursor: 3 }]);
+    expect(frames).toEqual([
+      { type: "message", runId: RUN, role: "user", text: "How much is rent?", cursor: 3, blockId: "user:stored:3" },
+    ]);
   });
 
   it("drops the stored dialect's objective echo too", () => {
@@ -292,10 +294,26 @@ describe("frameOf", () => {
     expect(frame && "error" in frame ? frame.error?.endsWith("…") : false).toBe(true);
   });
 
-  it("carries the reason on a failed turn without ending the session", () => {
-    expect(frameOf(RUN, { type: "turn.failed", data: { message: "tool timed out" } }, 10)).toEqual([
-      { type: "turn", runId: RUN, state: "failed", cursor: 10, error: "tool timed out" },
+  it("carries a persisted step failure on a failed turn after reconnect", () => {
+    expect(frameOf(RUN, { type: "turn.failed", data: { error: "OpenRouter needs more credits" } }, 10)).toEqual([
+      { type: "turn", runId: RUN, state: "failed", cursor: 10, error: "OpenRouter needs more credits" },
     ]);
+  });
+
+  it("turns insufficient-credit failures into a safe, actionable message", () => {
+    const [frame] = frameOf(
+      RUN,
+      {
+        type: "turn.failed",
+        data: {
+          error:
+            "This request requires more credits than available for max_tokens; see https://provider.example/account/key/123",
+        },
+      },
+      10,
+    );
+    expect(frame && "error" in frame ? frame.error : "").toContain("Reduce the reply length");
+    expect(frame && "error" in frame ? frame.error : "").not.toContain("provider.example");
   });
 
   it("drops lifecycle events the surface does not render", () => {
@@ -345,6 +363,24 @@ describe("ChatAccumulator", () => {
     acc.apply({ type: "message", runId: RUN, role: "user", text: "Rent?", cursor: 0 });
     acc.apply({ type: "delta", runId: RUN, blockId: "assistant:t:0", text: "2,400", cursor: 1 });
     expect(acc.list().map((b) => `${b.kind}:${b.text}`)).toEqual(["user:Rent?", "assistant:2,400"]);
+  });
+
+  it("keeps seeded questions single when the durable stream replays, including repeated text", () => {
+    const acc = new ChatAccumulator();
+    acc.apply({
+      type: "snapshot",
+      runId: RUN,
+      cursor: 0,
+      blocks: threadBlocks([
+        { sequence: 1, role: "user", text: "Top 50?" },
+        { sequence: 2, role: "user", text: "Top 50?" },
+      ]),
+    });
+    for (const sequence of [1, 2]) {
+      for (const frame of frameOf(RUN, { type: "message", data: { role: "user", content: "Top 50?" } }, sequence))
+        acc.apply(frame);
+    }
+    expect(acc.list().map((block) => block.text)).toEqual(["Top 50?", "Top 50?"]);
   });
 
   it("does not duplicate a replayed user message", () => {
@@ -607,7 +643,10 @@ describe("decodeDiagramToolOutput", () => {
 
   it("rejects the capPayload truncated marker", () => {
     expect(
-      decodeDiagramToolOutput({ truncated: true, reason: "Result over 8192 bytes; the full output stays in the run's recorded events." }),
+      decodeDiagramToolOutput({
+        truncated: true,
+        reason: "Result over 8192 bytes; the full output stays in the run's recorded events.",
+      }),
     ).toBeNull();
   });
 
@@ -632,6 +671,8 @@ describe("decodeDiagramToolOutput", () => {
   });
 
   it("is forward-compatible: unknown extra fields do not block a decode", () => {
-    expect(decodeDiagramToolOutput({ ...payload, renderMode: "excalidraw", somethingNew: true })?.canvasId).toBe(CANVAS);
+    expect(decodeDiagramToolOutput({ ...payload, renderMode: "excalidraw", somethingNew: true })?.canvasId).toBe(
+      CANVAS,
+    );
   });
 });

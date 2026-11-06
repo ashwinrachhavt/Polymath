@@ -58,7 +58,7 @@ background:
 - **Nothing is silently dropped.** After 8 failed attempts, or on a
   permanent error, the capture parks as failed / needs-auth and waits for
   you. A 401 means the API key was revoked — mint a fresh one, save it in
-  Settings, then Retry.
+  the extension pairing panel, then choose **Save key and sync captures**. The key is verified before parked captures are rebound and retried.
 - **Storage budget.** The outbox refuses new captures near ~8 MB instead of
   corrupting the queue; the Dashboard shows what is waiting.
 

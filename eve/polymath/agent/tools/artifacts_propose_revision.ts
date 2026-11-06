@@ -4,7 +4,10 @@ import { toolAllowed } from "../lib/policy";
 // Relative, not "@/...": eve bundles this agent from its own package root and
 // does not carry the app's tsconfig paths (see hooks/bridge.ts).
 import { getRunBySessionRef } from "../../../../src/domains/agents/queries";
-import { proposeArtifactRevision, ArtifactReviseNotAllowedError } from "../../../../src/domains/knowledge/revision-proposals";
+import {
+  proposeArtifactRevision,
+  ArtifactReviseNotAllowedError,
+} from "../../../../src/domains/knowledge/revision-proposals";
 
 /*
  * Proposes a revision to a saved artifact. The artifact's current words are
@@ -15,14 +18,23 @@ import { proposeArtifactRevision, ArtifactReviseNotAllowedError } from "../../..
  * must allow artifacts.revise.
  */
 export default defineTool({
+  deferred: true,
   description:
     "Propose new content for an existing artifact (a note, report, deck or infographic). Nothing changes until the owner approves it in the review queue; approval appends your content as a new version and keeps the old one. Read the artifact's current content first and revise against it. Pass a stable dedupe id so a retry proposes once.",
   inputSchema: z.object({
     artifactId: z.string().uuid(),
-    content: z.record(z.string(), z.unknown()).describe("The full proposed content as a JSON object - Tiptap/ProseMirror doc for rich text, or the artifact's structured payload."),
+    content: z
+      .record(z.string(), z.unknown())
+      .describe(
+        "The full proposed content as a JSON object - Tiptap/ProseMirror doc for rich text, or the artifact's structured payload.",
+      ),
     plainText: z.string().max(100_000).optional().describe("Plain-text projection of the content, for search."),
     note: z.string().max(500).optional().describe("What this revision changes and why, for the review card."),
-    dedupeId: z.string().min(1).max(200).describe("Stable identifier for this revision intent, so a retry proposes once."),
+    dedupeId: z
+      .string()
+      .min(1)
+      .max(200)
+      .describe("Stable identifier for this revision intent, so a retry proposes once."),
   }),
   async execute(input, ctx) {
     const current = ctx.session.auth.current;
@@ -49,7 +61,12 @@ export default defineTool({
           runId: run.id,
         },
       );
-      return { ok: true as const, proposalId: result.proposalId, deduplicated: result.deduplicated, status: "awaiting review" };
+      return {
+        ok: true as const,
+        proposalId: result.proposalId,
+        deduplicated: result.deduplicated,
+        status: "awaiting review",
+      };
     } catch (cause) {
       if (cause instanceof ArtifactReviseNotAllowedError) return { ok: false as const, error: cause.message };
       return { ok: false as const, error: "revision proposal failed" };

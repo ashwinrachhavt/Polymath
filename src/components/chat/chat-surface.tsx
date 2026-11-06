@@ -214,7 +214,13 @@ export function ChatSurface({
   // keeps the typed words), a reference kind becomes a link — replacing the
   // live @ token when the pick came from that gesture.
   function handleRecordPick(record: RecordReference) {
-    if (record.kind === "person" || record.kind === "company" || record.kind === "zettel") {
+    if (
+      record.kind === "person" ||
+      record.kind === "company" ||
+      record.kind === "zettel" ||
+      record.kind === "capture" ||
+      record.kind === "inbox"
+    ) {
       pickChip({ id: record.id, kind: record.kind, title: record.title, href: record.href });
       return;
     }
@@ -359,6 +365,10 @@ export function ChatSurface({
           // A new segment answered, so this transcript is no longer the head of
           // the conversation; the shell re-renders on the new run.
           router.refresh();
+        } else {
+          // A parked session closes its stream after announcing that it is
+          // waiting. Reopen it after the next message is accepted.
+          chat.retry();
         }
         return;
       }
@@ -374,6 +384,7 @@ export function ChatSurface({
         return;
       }
       setChips([]);
+      chat.retry();
     } catch {
       restore("The message was not sent. Check the connection and try again.");
     } finally {
