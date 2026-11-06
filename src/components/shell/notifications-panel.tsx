@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { NotificationCard } from "@/components/shell/notifications/NotificationCard";
 import { useWorkspace } from "@/components/workspace/workspace-provider";
-import { decideHomeAgentAction, decideHomeCaptureAction } from "@/domains/home/actions";
+import { decideHomeAgentAction } from "@/domains/home/actions";
 import { answerRunQuestion, dismissQuestionAction } from "@/app/(workspace)/polymath/[runId]/question-actions";
 import { triageTab, type TriageFeed, type TriageItem, type TriageTab } from "@/domains/notifications/triage";
 
@@ -142,19 +142,13 @@ export function NotificationsPanel({ feed }: { feed: TriageFeed }) {
     startTransition(async () => {
       applyRemove({ id: item.id });
       const idempotencyKey = (decisionKeys.current[item.id] ??= crypto.randomUUID());
-      const result =
-        item.decision.decisionType === "action"
-          ? await decideHomeAgentAction({
-              idempotencyKey,
-              proposalId: item.id,
-              expectedVersion: item.decision.version,
-              revisionId: item.decision.revisionId,
-              decision: intent === "approve" ? "approved" : "rejected",
-            })
-          : await decideHomeCaptureAction({
-              proposalId: item.id,
-              decision: intent === "approve" ? "accepted" : "rejected",
-            });
+      const result = await decideHomeAgentAction({
+        idempotencyKey,
+        proposalId: item.id,
+        expectedVersion: item.decision.version,
+        revisionId: item.decision.revisionId,
+        decision: intent === "approve" ? "approved" : "rejected",
+      });
       if (!result.ok) {
         notify(result.error);
         router.refresh();

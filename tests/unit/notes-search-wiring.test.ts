@@ -13,7 +13,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  */
 
 vi.mock("next/server", () => ({ connection: async () => undefined }));
-vi.mock("next/link", () => ({ default: (props: { href: string; children: ReactNode }) => h("a", { href: props.href }, props.children) }));
+vi.mock("next/link", () => ({
+  default: (props: { href: string; children: ReactNode }) => h("a", { href: props.href }, props.children),
+}));
 const auth = { userId: "u1", workspaceId: "w1", role: "owner" as const };
 vi.mock("@/lib/auth", () => ({ getAuthContext: vi.fn(async () => auth) }));
 const { searchKnowledge, countMeaningUncovered } = vi.hoisted(() => ({
@@ -45,9 +47,12 @@ vi.mock("@/app/(workspace)/polymath/notes/note-editor", () => ({ NewNoteButton: 
 vi.mock("@/app/(workspace)/polymath/notes/notebook-workspace", () => ({
   NotebookListToggle: () => null,
   NotebookWorkspace: (props: { list: unknown; children: unknown }) =>
-    h("div", null,
+    h(
+      "div",
+      null,
       h("div", { "data-testid": "list-column" }, props.list as ReactNode),
-      h("div", { "data-testid": "working-column" }, props.children as ReactNode)),
+      h("div", { "data-testid": "working-column" }, props.children as ReactNode),
+    ),
 }));
 
 const resultsProps = vi.hoisted(() => ({ fn: vi.fn((props: unknown) => (void props, null)) }));
@@ -83,8 +88,12 @@ describe("notes page search-filter wiring", () => {
   });
 
   it("parses kind/edited/source URL params into the scope handed to the results surface", async () => {
-    renderToStaticMarkup(await NotesSurface({ searchParams: params({ q: "quarterly", kind: "zettel", edited: "week", source: "agent" }) }));
-    const scope = (resultsProps.fn.mock.calls[0]?.[0] as { scope: { kinds: string[]; filters: { from: Date; provenance: string } } }).scope;
+    renderToStaticMarkup(
+      await NotesSurface({ searchParams: params({ q: "quarterly", kind: "zettel", edited: "week", source: "agent" }) }),
+    );
+    const scope = (
+      resultsProps.fn.mock.calls[0]?.[0] as { scope: { kinds: string[]; filters: { from: Date; provenance: string } } }
+    ).scope;
     expect(scope.kinds).toEqual(["zettel"]);
     expect(scope.filters.provenance).toBe("agent");
     const ageMs = Date.now() - scope.filters.from.getTime();
@@ -97,25 +106,39 @@ describe("notes page search-filter wiring", () => {
     expect(scope2.kinds).toBeUndefined();
   });
 
-  it("places ranked results in the working column while searching, and back in the list column once a note is open", async () => {
-    // No note selected: results take the wide reading column, not the 16rem sidebar.
-    const searching = renderToStaticMarkup(await NotesSurface({ searchParams: params({ q: "quarterly" }) }));
-    const working = searching.split('data-testid="working-column"')[1] ?? "";
-    const listCol = searching.split('data-testid="list-column"')[1]?.split('data-testid="working-column"')[0] ?? "";
-    expect(working).toContain('data-testid="search-results"');
-    expect(listCol).not.toContain('data-testid="search-results"');
-    expect(resultsProps.fn).toHaveBeenCalledTimes(1);
+  // Two full server-component renders in one test; under the full suite's
+  // parallel workers this routinely brushes the 5s default on a loaded machine,
+  // though it runs in ~1.5s in isolation.
+  it(
+    "places ranked results in the working column while searching, and back in the list column once a note is open",
+    { timeout: 15_000 },
+    async () => {
+      // No note selected: results take the wide reading column, not the 16rem sidebar.
+      const searching = renderToStaticMarkup(await NotesSurface({ searchParams: params({ q: "quarterly" }) }));
+      const working = searching.split('data-testid="working-column"')[1] ?? "";
+      const listCol = searching.split('data-testid="list-column"')[1]?.split('data-testid="working-column"')[0] ?? "";
+      expect(working).toContain('data-testid="search-results"');
+      expect(listCol).not.toContain('data-testid="search-results"');
+      expect(resultsProps.fn).toHaveBeenCalledTimes(1);
 
-    // A note open: results return to the sidebar so the reader can jump between hits.
-    const now = new Date();
-    vi.mocked(getNote).mockResolvedValue({
-      id: "n1", title: "Quarterly plan", kind: "note", tags: [], version: 1,
-      content: null, draft: null, createdAt: now, updatedAt: now,
-    } as never);
-    const open = renderToStaticMarkup(await NotesSurface({ searchParams: params({ q: "quarterly", id: "n1" }) }));
-    const openList = open.split('data-testid="list-column"')[1]?.split('data-testid="working-column"')[0] ?? "";
-    const openWorking = open.split('data-testid="working-column"')[1] ?? "";
-    expect(openList).toContain('data-testid="search-results"');
-    expect(openWorking).not.toContain('data-testid="search-results"');
-  });
+      // A note open: results return to the sidebar so the reader can jump between hits.
+      const now = new Date();
+      vi.mocked(getNote).mockResolvedValue({
+        id: "n1",
+        title: "Quarterly plan",
+        kind: "note",
+        tags: [],
+        version: 1,
+        content: null,
+        draft: null,
+        createdAt: now,
+        updatedAt: now,
+      } as never);
+      const open = renderToStaticMarkup(await NotesSurface({ searchParams: params({ q: "quarterly", id: "n1" }) }));
+      const openList = open.split('data-testid="list-column"')[1]?.split('data-testid="working-column"')[0] ?? "";
+      const openWorking = open.split('data-testid="working-column"')[1] ?? "";
+      expect(openList).toContain('data-testid="search-results"');
+      expect(openWorking).not.toContain('data-testid="search-results"');
+    },
+  );
 });

@@ -796,6 +796,13 @@
       "when": 1793878833314,
       "tag": "0287_drop_zettel_proposals",
       "breakpoints": true
+    },
+    {
+      "idx": 288,
+      "version": "7",
+      "when": 1793938648600,
+      "tag": "0288_drop_capture_proposals",
+      "breakpoints": true
     }
   ]
 }

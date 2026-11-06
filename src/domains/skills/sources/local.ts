@@ -15,8 +15,8 @@ import { failureResult, InspectError, type InspectResult, type SourceRequest } f
  * back inside, because a bytes map cannot say what it pointed at.
  */
 
-const MAX_FILES = 200;
-const MAX_BYTES = 5 * 1024 * 1024;
+const MAX_FILES = 2000;
+const MAX_BYTES = 50 * 1024 * 1024;
 
 type LocalRequest = Extract<SourceRequest, { kind: "local" }>;
 
@@ -56,7 +56,7 @@ async function walk(
   prefix: string,
   files: Map<string, PackageFile>,
   skipped: string[],
-  // Shared across the whole walk; a per-call counter would apply the 5 MB
+  // Shared across the whole walk; a per-call counter would apply the 50 MB
   // ceiling to each folder instead of the tree.
   budget: { bytes: number },
 ): Promise<void> {
@@ -113,12 +113,12 @@ async function walk(
     }
 
     // The size is checked before the read, so an oversized file costs a stat
-    // rather than a 5 MB buffer.
+    // rather than a 50 MB buffer.
     budget.bytes += stats.size;
     if (budget.bytes > MAX_BYTES) {
       throw new InspectError(
         "too_large",
-        `This folder is larger than the 5 MB limit. Inspect a single skill folder instead.`,
+        `This folder is larger than the 50 MB limit. Inspect a single skill folder instead.`,
       );
     }
 
@@ -203,9 +203,6 @@ export async function inspectLocal(request: LocalRequest): Promise<InspectResult
       warnings,
     };
   } catch (error) {
-    return failureResult(
-      error,
-      "Polymath could not finish reading that folder. Try again.",
-    );
+    return failureResult(error, "Polymath could not finish reading that folder. Try again.");
   }
 }

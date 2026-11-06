@@ -1,6 +1,10 @@
 "use server";
 
-import { acceptReadingSummary, summarizeReading, type VerifiedReadingSummary } from "@/domains/knowledge/reading-summary";
+import {
+  acceptReadingSummary,
+  summarizeReading,
+  type VerifiedReadingSummary,
+} from "@/domains/knowledge/reading-summary";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 

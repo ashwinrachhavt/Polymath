@@ -155,15 +155,12 @@ export async function listTriageFeed(
     detail: card.effect,
     href: card.href,
     at: card.createdAt,
-    decision:
-      card.decision.kind === "agent"
-        ? {
-            decisionType: "action",
-            revisionId: card.decision.revisionId,
-            version: card.decision.version,
-            expired: card.decision.expired,
-          }
-        : { decisionType: "capture" },
+    decision: {
+      decisionType: "action" as const,
+      revisionId: card.decision.revisionId,
+      version: card.decision.version,
+      expired: card.decision.expired,
+    },
   }));
 
   const runItems: Extract<TriageItem, { kind: "run" }>[] = runs

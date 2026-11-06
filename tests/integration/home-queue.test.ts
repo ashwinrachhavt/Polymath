@@ -2,27 +2,24 @@ import { randomUUID } from "crypto";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { actionProposals, actionRevisions } from "@/domains/actions/schema";
-import { captureProposals } from "@/domains/capture/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
- * ASH-309: the homepage queue merges every proposer - agents and capture
- * classification - workspace-scoped, ranked by the pinned order, each card
- * carrying what its one-tap decide binds. CI's pgvector service runs this.
+ * ASH-309: the homepage queue ranks the agent proposer's cards by the pinned
+ * order, each card carrying what its one-tap decide binds. CI's pgvector
+ * service runs this.
  */
 
 const handle = makeTestDb();
 const suite = handle ? describe : describe.skip;
 let db: NonNullable<typeof handle>["db"];
 let queue: typeof import("@/domains/home/queue");
-let commands: typeof import("@/domains/capture/commands");
 let actions: typeof import("@/domains/actions/commands");
 
 beforeAll(async () => {
   if (!handle) return;
   ({ db } = handle);
   queue = await import("@/domains/home/queue");
-  commands = await import("@/domains/capture/commands");
   actions = await import("@/domains/actions/commands");
 });
 
@@ -67,7 +64,7 @@ async function seedActionProposal(
 }
 
 suite("home queue", () => {
-  it("merges agent and capture proposals into one ranked queue", async () => {
+  it("ranks agent proposals, soonest expiry first", async () => {
     const auth = await seed("home-queue-merge");
     const expiring = await seedActionProposal(auth, {
       title: "Send the roadmap email",
@@ -75,62 +72,18 @@ suite("home queue", () => {
       expiresAt: new Date(Date.now() + 3600_000),
     });
     const timeless = await seedActionProposal(auth, { title: "Archive old threads", riskClass: "prepare" });
-    const capture = await commands.createCapture(auth, { text: "Renew the passport before the trip" });
-    await db.insert(captureProposals).values({
-      workspaceId: auth.workspaceId,
-      captureId: capture.id,
-      kind: "task",
-      payload: {},
-      rationale: "task 0.9",
-      confidence: "0.9",
-      // Same-risk ties rank newest first; pin the capture older than the
-      // timeless agent card so the merged order is deterministic.
-      createdAt: new Date(Date.now() - 60_000),
-      createdBy: auth.userId,
-      updatedBy: auth.userId,
-    });
 
     const cards = await queue.listHomeQueue(auth.workspaceId);
-    expect(cards.map((c) => c.title)).toEqual([
-      "Send the roadmap email",
-      "Archive old threads",
-      "Renew the passport before the trip",
-    ]);
-    expect(cards[0].origin).toBe("agent");
-    expect(cards[2].origin).toBe("capture");
-    // One-tap decide binds: agent cards carry revision + CAS version, capture cards their kind.
+    expect(cards.map((c) => c.title)).toEqual(["Send the roadmap email", "Archive old threads"]);
+    expect(cards.every((c) => c.origin === "agent")).toBe(true);
+    // One-tap decide binds the exact revision the card rendered (CAS).
     expect(cards[0].decision).toEqual({
       kind: "agent",
       revisionId: expiring.revision.id,
       version: expiring.proposal.version,
       expired: false,
     });
-    expect(cards[2].decision).toEqual({ kind: "capture" });
-    expect(cards[2].effect).toBe("Becomes a task.");
-    expect(cards[2].href).toContain(capture.id);
     void timeless;
-  });
-
-  it("titles capture cards from the capture's own title before the first line", async () => {
-    const auth = await seed("home-queue-capture-title");
-    const capture = await commands.createCapture(auth, {
-      text: "Scraped header noise\nBody line",
-      title: "Person's card title",
-    });
-    await db.insert(captureProposals).values({
-      workspaceId: auth.workspaceId,
-      captureId: capture.id,
-      kind: "note",
-      payload: {},
-      rationale: "note 0.8",
-      confidence: "0.8",
-      createdBy: auth.userId,
-      updatedBy: auth.userId,
-    });
-
-    const cards = await queue.listHomeQueue(auth.workspaceId);
-    const card = cards.find((c) => c.href.includes(capture.id));
-    expect(card?.title).toBe("Person's card title");
   });
 
   it("never shows another workspace's proposals", async () => {
@@ -190,31 +143,5 @@ suite("home queue", () => {
       expect(card.decision.revisionId).not.toBe(revision.id);
       expect(card.decision.version).toBe(2);
     }
-  });
-
-  it("a stale capture card cannot double-apply; the conflict is named", async () => {
-    const auth = await seed("home-queue-stale-capture");
-    const capture = await commands.createCapture(auth, { text: "Stale suggestion" });
-    const [proposal] = await db
-      .insert(captureProposals)
-      .values({
-        workspaceId: auth.workspaceId,
-        captureId: capture.id,
-        kind: "task",
-        payload: {},
-        rationale: "task 0.9",
-        confidence: "0.9",
-      })
-      .returning();
-
-    const first = await commands.acceptCaptureProposal(auth, { proposalId: proposal.id });
-    expect(first.resultType).toBe("task");
-
-    // A second tap from a card rendered before the first landed is a named
-    // conflict, not a second task.
-    await expect(commands.acceptCaptureProposal(auth, { proposalId: proposal.id })).rejects.toThrow(/already decided/);
-
-    const cards = await queue.listHomeQueue(auth.workspaceId);
-    expect(cards.find((c) => c.id === proposal.id)).toBeUndefined();
   });
 });

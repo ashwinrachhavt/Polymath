@@ -5,19 +5,16 @@ import { useEffect, useOptimistic, useRef, useState, useTransition } from "react
 import { Button } from "@/components/ui/button";
 import { WorkStatus } from "@/components/work-status";
 import {
-  acceptProposalAction,
   makeDraftAction,
   makeDocumentAction,
   makeNoteAction,
   makeTaskAction,
-  rejectProposalAction,
   retryCaptureUrlAction,
   setCaptureStateAction,
   unparkCaptureAction,
 } from "./actions";
 import { DRAFT_TEMPLATES, DRAFT_TEMPLATE_LABEL, type DraftTemplate } from "@/domains/capture/draft-templates";
 import type { PriorWriting } from "@/domains/knowledge/prior-writing";
-import { Sparkles } from "lucide-react";
 import dynamic from "next/dynamic";
 import { captureDetailHeading, captureKindLabel, captureStateLabel, captureTitle, type InboxRow } from "./inbox-list";
 import { generateZettelsAction } from "./zettel-actions";
@@ -97,35 +94,6 @@ function readExtensionExtraction(rawPayload: unknown): ExtensionExtraction | nul
   };
 }
 
-export type CaptureSuggestion = {
-  id: string;
-  kind: string;
-  rationale: string | null;
-  confidence: string | null;
-};
-
-/*
- * What the system's read offers (ASH-314). Accept runs the same conversion
- * the manual buttons run; the manual row stays because classification is
- * always secondary - the owner decides, the suggestion only saves a step.
- * A contact suggestion carries no fields to build a record from, so it
- * points at the CRM surface instead of pretending to create one.
- */
-const SUGGESTION_COPY: Record<string, { label: string; accept: string }> = {
-  task: { label: "Looks like a task", accept: "Make task" },
-  note: { label: "Looks like a note", accept: "Save as note" },
-  contact: { label: "Looks like someone new", accept: "" },
-  discard: { label: "Looks safe to archive", accept: "Archive" },
-};
-
-/** "0.87" reads as "87% sure"; the review-band "low" stays words. */
-function confidenceLabel(confidence: string | null): string | null {
-  if (!confidence) return null;
-  const value = Number.parseFloat(confidence);
-  if (Number.isNaN(value)) return `${confidence} confidence`;
-  return `${Math.round(value * 100)}% sure`;
-}
-
 /**
  * The fetch outcomes that mean the page was not read and asking again could
  * change that. `acquired` speaks for itself; `pending` is a read in flight.
@@ -135,11 +103,9 @@ const FETCH_FAILURES = new Set(["error-page", "access-denied", "empty", "provide
 export function InboxDetail({
   capture,
   priorWriting,
-  proposals = [],
   zettelProviderReady,
   zettelProviderReason,
 }: {
-  proposals?: CaptureSuggestion[];
   capture:
     | (Omit<InboxRow, "preview"> & {
         text: string | null;
@@ -171,20 +137,14 @@ export function InboxDetail({
   );
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  // Decided suggestions leave the card immediately; a failed decision puts
-  // the id back so the offer is not lost to a transient error. Selecting
-  // another capture resets the set during render (React's documented pattern
-  // for derive-on-prop-change) rather than in an effect.
-  const [decidedSuggestions, setDecidedSuggestions] = useState<Set<string>>(new Set());
-  const [suggestionsFor, setSuggestionsFor] = useState<string | null>(capture?.id ?? null);
   // The per-capture zettelize verb: a queued pass is one per capture until the
   // outbox worker files it, so the verb disables itself once queued and the
   // watch below carries the outcome. Each click mounts a fresh watch (the key
   // re-arms the poller); selecting another capture resets it.
   const [zettelPass, setZettelPass] = useState(0);
-  if ((capture?.id ?? null) !== suggestionsFor) {
-    setSuggestionsFor(capture?.id ?? null);
-    setDecidedSuggestions(new Set());
+  const [selectedCaptureFor, setSelectedCaptureFor] = useState<string | null>(capture?.id ?? null);
+  if ((capture?.id ?? null) !== selectedCaptureFor) {
+    setSelectedCaptureFor(capture?.id ?? null);
     setZettelPass(0);
   }
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -202,10 +162,6 @@ export function InboxDetail({
     }
   }, [capture]);
 
-  const suggestions =
-    capture && ["open", "unprocessed", "classifying", "enriched", "failed"].includes(capture.processingState)
-      ? proposals.filter((proposal) => !decidedSuggestions.has(proposal.id))
-      : [];
   // A voice note without its transcript yet has no words to convert (ASH-298).
   const voiceWithoutTranscript = capture?.kind === "voice" && !(capture.cleanText ?? capture.text)?.trim();
   // The Zettelize verb reads the same words Save to library reads: an open
@@ -213,23 +169,6 @@ export function InboxDetail({
   // without its transcript does not.
   const hasReadableText = Boolean((capture?.cleanText ?? capture?.text)?.trim());
   const zettelEligible = Boolean(capture) && !voiceWithoutTranscript && hasReadableText;
-
-  function decideSuggestion(suggestion: CaptureSuggestion, decision: "accept" | "reject") {
-    setError(null);
-    setDecidedSuggestions((current) => new Set(current).add(suggestion.id));
-    startTransition(async () => {
-      const run = decision === "accept" ? acceptProposalAction : rejectProposalAction;
-      const result = await run({ proposalId: suggestion.id });
-      if (!result.ok) {
-        setDecidedSuggestions((current) => {
-          const next = new Set(current);
-          next.delete(suggestion.id);
-          return next;
-        });
-        setError(result.error);
-      }
-    });
-  }
 
   if (!capture) {
     return (
@@ -477,52 +416,6 @@ export function InboxDetail({
           </p>
           <ZettelQueueWatch key={zettelPass} />
         </div>
-      ) : null}
-
-      {suggestions.length > 0 ? (
-        <section aria-label="Suggestions" className="mt-6 flex flex-col gap-2">
-          {suggestions.map((suggestion) => {
-            const copy = SUGGESTION_COPY[suggestion.kind];
-            if (!copy) return null;
-            const confidence = confidenceLabel(suggestion.confidence);
-            return (
-              <div
-                key={suggestion.id}
-                className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border bg-muted/40 px-3 py-2.5"
-              >
-                <Sparkles aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
-                <span className="text-body-dense font-medium">{copy.label}</span>
-                <span className="min-w-0 flex-1 text-xs text-muted-foreground">
-                  {[suggestion.rationale, confidence].filter(Boolean).join(" · ")}
-                </span>
-                <span className="flex shrink-0 items-center gap-1.5">
-                  {suggestion.kind === "contact" ? (
-                    <Button asChild size="sm" variant="outline">
-                      <Link href="/command-center/relationships/contacts">Add contact</Link>
-                    </Button>
-                  ) : (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={pending}
-                      onClick={() => decideSuggestion(suggestion, "accept")}
-                    >
-                      {copy.accept}
-                    </Button>
-                  )}
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={pending}
-                    onClick={() => decideSuggestion(suggestion, "reject")}
-                  >
-                    Dismiss
-                  </Button>
-                </span>
-              </div>
-            );
-          })}
-        </section>
       ) : null}
 
       <div className="mt-8 flex flex-wrap items-center gap-2 border-border border-t pt-4">

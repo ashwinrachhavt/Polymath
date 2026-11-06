@@ -54,10 +54,9 @@ describe("registry coverage", () => {
     expect(new Set(actions).size).toBe(actions.length);
   });
 
-  it("capture.converted groups as the operation outcome and its proposal rows as steps", () => {
+  it("capture.converted groups as the operation outcome and its step rows as steps", () => {
     expect(resolveEventDefinition("capture.converted").grouping.operation).toBe("outcome");
-    expect(resolveEventDefinition("capture.proposal_accepted").grouping.operation).toBe("step");
-    expect(resolveEventDefinition("capture.proposal_rejected").grouping.operation).toBe("step");
+    expect(resolveEventDefinition("capture.zettels_created").grouping.operation).toBe("step");
   });
 });
 

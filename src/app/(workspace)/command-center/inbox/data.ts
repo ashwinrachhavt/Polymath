@@ -2,8 +2,6 @@ import { cacheLife, cacheTag } from "next/cache";
 import {
   countInboxTabs,
   getCapture,
-  listCapturesWithPendingProposals,
-  listPendingCaptureProposals,
   searchCaptures,
   type InboxFilter,
   type CaptureKindFilter,
@@ -50,13 +48,5 @@ export async function getCaptureForPage(auth: AuthContext, id: string) {
   // "Shown what I already wrote about it": a URL capture carries the writing
   // the workspace already holds about that address (knowledge owns the read).
   const priorWriting = capture.url ? await listPriorWritingForUrl(auth, { url: capture.url }) : null;
-  // The system's read rides the (deliberately uncached) detail read: a
-  // suggestion that outlives its decision would offer to re-make a record.
-  const proposals = await listPendingCaptureProposals(auth, id);
-  return { capture, priorWriting, proposals };
-}
-
-/** Pending-suggestion markers for one page of list rows (ASH-314). */
-export async function listSuggestionMarksForPage(auth: AuthContext, captureIds: string[]) {
-  return listCapturesWithPendingProposals(auth, captureIds);
+  return { capture, priorWriting };
 }

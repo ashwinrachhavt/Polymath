@@ -70,10 +70,9 @@ describe("generateZettelsAction", () => {
     domain.requestZettelGeneration.mockResolvedValue(ok(3));
     const result = await generateZettelsAction({ idempotencyKey: KEY });
     expect(result).toEqual({ ok: true, queued: 3, skipped: 0, replayed: false });
-    expect(domain.requestZettelGeneration).toHaveBeenCalledWith(
-      expect.objectContaining({ workspaceId: "w1" }),
-      { idempotencyKey: KEY },
-    );
+    expect(domain.requestZettelGeneration).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: "w1" }), {
+      idempotencyKey: KEY,
+    });
     expect(revalidatePath).toHaveBeenCalledWith("/polymath/ideas");
     expect(updateTag).toHaveBeenCalledWith("captures:w1");
   });
@@ -95,7 +94,9 @@ describe("generateZettelsAction", () => {
   });
 
   it("surfaces a queue failure as a message and revalidates nothing", async () => {
-    domain.requestZettelGeneration.mockRejectedValue(new Error("This idempotency key was used for a different request."));
+    domain.requestZettelGeneration.mockRejectedValue(
+      new Error("This idempotency key was used for a different request."),
+    );
     const result = await generateZettelsAction({ idempotencyKey: KEY });
     expect(result).toEqual({ ok: false, message: "This idempotency key was used for a different request." });
     expect(revalidatePath).not.toHaveBeenCalled();

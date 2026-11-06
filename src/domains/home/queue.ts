@@ -1,7 +1,4 @@
-import { and, desc, eq, isNull } from "drizzle-orm";
 import { pageReviewQueue } from "@/domains/actions/queries";
-import { captureProposals, captures } from "@/domains/capture/schema";
-import { db } from "@/lib/db";
 
 /*
  * ASH-309: the root surface is a decision engine - one ranked queue of
@@ -17,7 +14,7 @@ import { db } from "@/lib/db";
 
 export type HomeQueueCard = {
   /** Which proposer surfaced this. */
-  origin: "agent" | "capture";
+  origin: "agent";
   id: string;
   /** What's proposed, one line. */
   title: string;
@@ -25,15 +22,14 @@ export type HomeQueueCard = {
   effect: string;
   /** Why it's proposed. */
   reason: string | null;
-  /** The queue's risk vocabulary; capture proposals carry no irreversible effect, so they are always "prepare". */
   riskClass: "read" | "prepare" | "external_write" | "sensitive_write" | "prohibited";
   /** Decisions with a deadline rank ahead of timeless ones. */
   expiresAt: Date | null;
   createdAt: Date;
   /** Where the card's own surface (and its edit action) lives. */
   href: string;
-  /** What one-tap decide binds. Agent approvals bind the exact revision shown (CAS); capture proposals carry no revision. */
-  decision: { kind: "agent"; revisionId: string; version: number; expired: boolean } | { kind: "capture" };
+  /** What one-tap decide binds: the exact revision shown (CAS). */
+  decision: { kind: "agent"; revisionId: string; version: number; expired: boolean };
 };
 
 /** Higher number = more of the owner's judgment at stake. */
@@ -73,90 +69,30 @@ const HOME_QUEUE_LIMIT = 50;
 export async function listHomeQueue(workspaceId: string): Promise<HomeQueueCard[]> {
   // The review queue's own read supplies proposals with their latest revision
   // and CAS version, so a homepage approve binds exactly what the card shows.
-  const [{ items: actions }, captureRows] = await Promise.all([
-    pageReviewQueue(workspaceId, { status: "pending", limit: HOME_QUEUE_LIMIT, offset: 0 }),
-    db
-      .select({
-        id: captureProposals.id,
-        captureId: captureProposals.captureId,
-        kind: captureProposals.kind,
-        rationale: captureProposals.rationale,
-        confidence: captureProposals.confidence,
-        createdAt: captureProposals.createdAt,
-        captureText: captures.text,
-        captureTitle: captures.title,
-        captureKind: captures.kind,
-      })
-      .from(captureProposals)
-      .innerJoin(captures, eq(captures.id, captureProposals.captureId))
-      .where(
-        and(
-          eq(captureProposals.workspaceId, workspaceId),
-          eq(captureProposals.status, "pending"),
-          isNull(captures.parkedAt),
-        ),
-      )
-      .orderBy(desc(captureProposals.createdAt))
-      .limit(HOME_QUEUE_LIMIT),
-  ]);
+  const { items: actions } = await pageReviewQueue(workspaceId, {
+    status: "pending",
+    limit: HOME_QUEUE_LIMIT,
+    offset: 0,
+  });
 
-  const cards: HomeQueueCard[] = [
-    ...actions
-      .filter((row) => row.latestRevision !== null)
-      .map((row) => ({
-        origin: "agent" as const,
-        id: row.id,
-        title: row.title,
-        effect: row.expectedEffect,
-        reason: `Proposed by ${row.capability}`,
-        riskClass: row.riskClass,
-        expiresAt: row.expiresAt,
-        createdAt: row.createdAt,
-        href: `/reviews?proposal=${row.id}`,
-        decision: {
-          kind: "agent" as const,
-          revisionId: row.latestRevision!.id,
-          version: row.version,
-          expired: row.expiresAt !== null && row.expiresAt.getTime() < Date.now(),
-        },
-      })),
-    ...captureRows.map((row) => {
-      const firstLine =
-        (row.captureText ?? "")
-          .split("\n")
-          .map((line) => line.trim())
-          .find(Boolean) ?? "Captured item";
-      const confidence = row.confidence ? ` (${Math.round(Number(row.confidence) * 100)}% sure)` : "";
-      return {
-        origin: "capture" as const,
-        id: row.id,
-        // The capture's own title (person or enrichment) names the card; the
-        // first line of the text is the fallback.
-        title: row.captureTitle?.trim() || firstLine,
-        effect: effectOfCaptureProposal(row.kind),
-        reason: `${row.rationale ?? "The classifier read this capture"}${confidence}`,
-        riskClass: "prepare" as const,
-        expiresAt: null,
-        createdAt: row.createdAt,
-        href: `/command-center/inbox?id=${row.captureId}`,
-        decision: { kind: "capture" as const },
-      };
-    }),
-  ];
+  const cards: HomeQueueCard[] = actions
+    .filter((row) => row.latestRevision !== null)
+    .map((row) => ({
+      origin: "agent" as const,
+      id: row.id,
+      title: row.title,
+      effect: row.expectedEffect,
+      reason: `Proposed by ${row.capability}`,
+      riskClass: row.riskClass,
+      expiresAt: row.expiresAt,
+      createdAt: row.createdAt,
+      href: `/reviews?proposal=${row.id}`,
+      decision: {
+        kind: "agent" as const,
+        revisionId: row.latestRevision!.id,
+        version: row.version,
+        expired: row.expiresAt !== null && row.expiresAt.getTime() < Date.now(),
+      },
+    }));
   return rankHomeQueue(cards).slice(0, HOME_QUEUE_LIMIT);
-}
-
-function effectOfCaptureProposal(kind: string): string {
-  switch (kind) {
-    case "task":
-      return "Becomes a task.";
-    case "note":
-      return "Becomes a note.";
-    case "contact":
-      return "Opens the person in Relationships.";
-    case "discard":
-      return "Archives the capture.";
-    default:
-      return `Becomes a ${kind}.`;
-  }
 }

@@ -299,20 +299,24 @@ suite("chat stream route (real Postgres)", () => {
     ]);
 
     const out = await frames(await streamOf(runId));
-    expect(out.map((frame) => frame.type)).toEqual(["run", "block", "block", "end"]);
+    // The stored user turn replays too: the thread writer's bare `message` row
+    // is the person's question, so a reload keeps it ahead of the answers it
+    // asked for instead of showing only the reply lane.
+    expect(out.map((frame) => frame.type)).toEqual(["run", "message", "block", "block", "end"]);
+    expect(out[1]).toMatchObject({ type: "message", role: "user", text: "How much is my rent?", cursor: 1 });
     // The block ids match what threadBlocks derives from the stored side, so a
     // replay replaces the SSR blocks instead of duplicating them.
-    expect(out[1]).toMatchObject({
+    expect(out[2]).toMatchObject({
       type: "block",
       blockId: "assistant:superagent:a:0",
       text: "Ask the owner for the lease.",
     });
-    expect(out[2]).toMatchObject({
+    expect(out[3]).toMatchObject({
       type: "block",
       blockId: "assistant:superagent:b:1",
       text: "Nothing covers this yet.",
     });
-    expect(out[3]).toMatchObject({ type: "end", state: "succeeded", cursor: 3 });
+    expect(out[4]).toMatchObject({ type: "end", state: "succeeded", cursor: 3 });
     expect(out.some((frame) => frame.type === "error")).toBe(false);
 
     // A resume from the applied cursor folds only the newer rows.
@@ -389,15 +393,16 @@ suite("chat stream route (real Postgres)", () => {
     } finally {
       clearTimeout(bail);
     }
-    // The head carries the run's durable stage facts; nothing follows it — no
-    // error frame ends the wait. (The first cut of the replay guard errored
-    // here — "This run has no agent session." — and told the surface the
-    // conversation had ended before the machinery could answer.)
+    // The head carries the run's durable stage facts, then the stored person
+    // turn; nothing terminates the wait — no error frame. (The first cut of the
+    // replay guard errored here — "This run has no agent session." — and told
+    // the surface the conversation had ended before the machinery could answer.)
     const out = got
       .split("\n")
       .map((line) => decodeFrame(line))
       .filter((frame): frame is NonNullable<typeof frame> => frame !== null);
-    expect(out.map((frame) => frame.type)).toEqual(["run"]);
+    expect(out.map((frame) => frame.type)).toEqual(["run", "message"]);
+    expect(out[1]).toMatchObject({ type: "message", role: "user", cursor: 1 });
     expect(out[0]).toMatchObject({ state: "running", lastTurnFailed: false });
   });
 

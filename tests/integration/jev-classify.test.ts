@@ -1,9 +1,8 @@
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { captureProposals, captures } from "@/domains/capture/schema";
+import { captures } from "@/domains/capture/schema";
 import { documentClassificationProposals, documents, taxonomyNodes } from "@/domains/knowledge/schema";
 import type { JevClient } from "@/integrations/jev/client";
-import { JEV_QUESTIONS_VERSION } from "@/integrations/jev/questions";
 import type { ProviderEntry } from "@/integrations/providers/registry";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
@@ -103,7 +102,7 @@ async function insertCapture(workspaceId: string, text: string) {
 }
 
 suite("jev capture triage (ASH-272)", () => {
-  it("writes one pending task proposal with full provenance, and settles quota", async () => {
+  it("classifies the domain, settles the quota, and spends one judger call", async () => {
     const { workspaceId } = await seedWorkspace(db, `jev-${Date.now()}-a`);
     await seedTaxonomyCatalog(workspaceId, db as never);
     const captureId = await insertCapture(
@@ -113,23 +112,9 @@ suite("jev capture triage (ASH-272)", () => {
     const client = fakeJev(COMMITMENT_ANSWERS);
 
     const { runCaptureEnrichment } = await import("@/domains/capture/enrichment-handler");
-    await runCaptureEnrichment(
-      { workspaceId, payload: { captureId } } as never,
-      { judger: testJudger(workspaceId, client) },
-    );
-
-    const proposals = await db
-      .select()
-      .from(captureProposals)
-      .where(and(eq(captureProposals.captureId, captureId), eq(captureProposals.workspaceId, workspaceId)));
-    expect(proposals).toHaveLength(1);
-    const [proposal] = proposals;
-    expect(proposal.kind).toBe("task");
-    expect(proposal.status).toBe("pending");
-    expect(proposal.rationale).toContain("commitment 0.90");
-    expect(proposal.model).toBe("jev-1.14.0");
-    expect(proposal.promptVersion).toBe(JEV_QUESTIONS_VERSION);
-    expect(proposal.confidence).toBe("0.90");
+    await runCaptureEnrichment({ workspaceId, payload: { captureId } } as never, {
+      judger: testJudger(workspaceId, client),
+    });
 
     const [row] = await db.select().from(captures).where(eq(captures.id, captureId));
     expect(row.processingState).toBe("enriched");
@@ -144,30 +129,6 @@ suite("jev capture triage (ASH-272)", () => {
     expect(client.calls).toBe(1);
   });
 
-  it("the all-band case produces exactly one low-confidence note proposal", async () => {
-    const { workspaceId } = await seedWorkspace(db, `jev-${Date.now()}-b`);
-    await seedTaxonomyCatalog(workspaceId, db as never);
-    const captureId = await insertCapture(
-      workspaceId,
-      "Half thought, half reminder, genuinely ambiguous prose that is long enough to clear the tier gate easily and then some more words to be sure of it. This sentence only exists to carry the capture well past the two hundred and eighty character escalation threshold, and the next one keeps the same ambiguous register - maybe a task, maybe a note, maybe nothing at all, padded just enough that the classifier tier cannot be skipped.",
-    );
-    const band = Object.fromEntries(
-      ["commitment", "contact", "reference", "worthless", "project"].map((k) => [k, { type: "noul", noul: 0.5 }]),
-    );
-
-    const { runCaptureEnrichment } = await import("@/domains/capture/enrichment-handler");
-    await runCaptureEnrichment(
-      { workspaceId, payload: { captureId } } as never,
-      { judger: testJudger(workspaceId, fakeJev(band)) },
-    );
-
-    const proposals = await db.select().from(captureProposals).where(eq(captureProposals.captureId, captureId));
-    expect(proposals).toHaveLength(1);
-    expect(proposals[0].kind).toBe("note");
-    expect(proposals[0].confidence).toBe("low");
-    expect(proposals[0].status).toBe("pending");
-  });
-
   it("a hallucinated domain slug is never stored", async () => {
     const { workspaceId } = await seedWorkspace(db, `jev-${Date.now()}-c`);
     await seedTaxonomyCatalog(workspaceId, db as never);
@@ -177,15 +138,15 @@ suite("jev capture triage (ASH-272)", () => {
     );
 
     const { runCaptureEnrichment } = await import("@/domains/capture/enrichment-handler");
-    await runCaptureEnrichment(
-      { workspaceId, payload: { captureId } } as never,
-      {
-        judger: testJudger(workspaceId, fakeJev({
+    await runCaptureEnrichment({ workspaceId, payload: { captureId } } as never, {
+      judger: testJudger(
+        workspaceId,
+        fakeJev({
           ...COMMITMENT_ANSWERS,
           domain: { type: "choice", choice: "alchemy", confidence: 0.99, probabilities: { alchemy: 0.99 } },
-        })),
-      },
-    );
+        }),
+      ),
+    });
 
     const [row] = await db.select().from(captures).where(eq(captures.id, captureId));
     expect(row.domain).toBeNull();
@@ -209,8 +170,6 @@ suite("jev capture triage (ASH-272)", () => {
       process.env = envBackup;
     }
 
-    const proposals = await db.select().from(captureProposals).where(eq(captureProposals.captureId, captureId));
-    expect(proposals).toHaveLength(0); // no producer without Jev, as before
     const [row] = await db.select().from(captures).where(eq(captures.id, captureId));
     expect(row.processingState).toBe("enriched");
     expect(row.failureReason).toBeNull();
@@ -260,7 +219,12 @@ suite("jev capture triage (ASH-272)", () => {
     });
     const out = await mod.proposeJevClassification(
       auth,
-      { documentId: doc.id, extractionId: null, text: "A document with no strong lexical signal at all.", fieldNames: [] },
+      {
+        documentId: doc.id,
+        extractionId: null,
+        text: "A document with no strong lexical signal at all.",
+        fieldNames: [],
+      },
       { judger: testJudger(workspaceId, client) },
     );
     expect(out.proposed).toBe(true);

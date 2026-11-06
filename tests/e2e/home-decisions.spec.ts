@@ -1,14 +1,14 @@
 import { expect, test } from "@playwright/test";
-import { removeSeededProposals, seedAgentProposal, seedCaptureProposal } from "./helpers/proposals";
+import { removeSeededProposals, seedAgentProposal } from "./helpers/proposals";
 import { waitSettled } from "./helpers/settled";
 
 /*
  * The decision queue moved from the root page into the header's notifications
  * panel: "/" redirects to the conversation now, and a decision is answered
- * where it interrupts, not on a page of its own. The invariants ASH-309 pinned
- * are unchanged - both proposers land in one ranked queue, each card states its
- * exact effect and risk, and deciding drains it - so this spec drives the same
- * journey through the panel.
+ * where it interrupts, not on a page of its own. The capture classification
+ * proposer is gone (captures land in the Inbox with no approval step), so the
+ * queue's cards are the agent proposals; this spec drives that journey through
+ * the panel.
  *
  * Pixels land in feature-pixels for both viewports.
  */
@@ -36,15 +36,12 @@ for (const vp of VIEWPORTS) {
     // instead of workspace-global counts or the global empty state.
     const nonce = crypto.randomUUID().slice(0, 8);
     const agentTitle = `Send the launch note ${vp.name} ${nonce}`;
-    const captureText = `Water the plants before the trip ${vp.name} ${nonce}`;
     const agent = await seedAgentProposal({
       title: agentTitle,
       effect: "Sends one email to priya@example.com.",
       riskClass: "external_write",
     });
     test.skip(!agent, "DATABASE_URL not configured");
-    const capture = await seedCaptureProposal({ text: captureText, kind: "task" });
-    expect(capture).not.toBeNull();
 
     await page.goto("/neuralflow/work?view=today");
     await waitSettled(page);
@@ -57,36 +54,26 @@ for (const vp of VIEWPORTS) {
     await trigger.click();
     await expect(page.getByRole("dialog").getByRole("tab", { name: /Inbox/ })).toBeVisible();
 
-    // Both proposers are in the queue, on the Inbox tab (the decision tab of
-    // the triage workspace).
-    await page.getByRole("dialog").getByRole("tab", { name: /Inbox/ }).click();
-
-    // The agent's external write outranks the capture's prepare. Ranking is
-    // the relative position of our two cards; foreign cards from parallel
-    // specs (and the other tabs' items) can sit anywhere without bearing on it.
+    // Our agent card is in the queue, on the Inbox tab (the decision tab of
+    // the triage workspace). Foreign cards from parallel specs (and the other
+    // tabs' items) can sit anywhere without bearing on it.
     const cards = page.getByRole("dialog").getByRole("option");
     await expect
       .poll(async () => {
         const texts = await cards.allTextContents();
-        const agentIdx = texts.findIndex((t) => t.includes(agentTitle));
-        const captureIdx = texts.findIndex((t) => t.includes(captureText));
-        return agentIdx >= 0 && captureIdx > agentIdx;
+        return texts.some((t) => t.includes(agentTitle));
       })
       .toBe(true);
 
     const agentCard = cards.filter({ hasText: agentTitle }).first();
-    const captureCard = cards.filter({ hasText: captureText }).first();
     await expect(agentCard).toContainText("Sends one email to priya@example.com.");
     await expect(agentCard).toContainText("Waiting on you");
-    await expect(captureCard).toContainText("Becomes a task.");
 
     await page.addStyleTag({ content: HIDE_DEV_CHROME });
     await page.screenshot({ path: `test-results/feature-pixels/notifications-decisions-${vp.name}.png` });
 
-    // One-tap reject on the capture read, one-tap approve on the agent
-    // proposal: each decides its own card and the queue drains them.
-    await captureCard.getByRole("button", { name: "Reject", exact: true }).click();
-    await expect(captureCard).toHaveCount(0);
+    // One-tap approve on the agent proposal decides its own card and drains
+    // it from the queue.
     await agentCard.getByRole("button", { name: "Approve", exact: true }).click();
     await expect(agentCard).toHaveCount(0);
     await page.screenshot({ path: `test-results/feature-pixels/notifications-decisions-drained-${vp.name}.png` });
