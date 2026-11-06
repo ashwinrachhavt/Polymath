@@ -32,6 +32,26 @@ function capped(acc: string, chunk: Buffer): string {
 }
 
 export function runInLocalSandbox(spec: SandboxSpec): Promise<SandboxResult> {
+  // This adapter is not a security boundary (same user, kernel and network;
+  // the env scrub only stops credential inheritance), so it must never become
+  // the production default by accident: production requires an explicit
+  // operator opt-in, and untrusted model/user code belongs on a real
+  // provider (issue #534 candidates 3-4), never here.
+  if (process.env.NODE_ENV === "production" && process.env.SANDBOX_LOCAL_PRODUCTION_OPT_IN !== "true") {
+    return Promise.resolve({
+      ok: false,
+      exitCode: null,
+      failure: "provider",
+      message:
+        "the local sandbox adapter is not isolation and does not run in production; use a provider adapter (issue #534 credits trial) or set SANDBOX_LOCAL_PRODUCTION_OPT_IN=true for an operator-driven run.",
+      stdout: "",
+      stderr: "",
+      wallMs: 0,
+      sandboxSeconds: 0,
+      network: "inherited",
+      provider: "local",
+    });
+  }
   const started = Date.now();
   const env: Record<string, string> = {};
   for (const key of BASE_ENV_KEYS) {

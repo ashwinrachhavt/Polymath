@@ -92,6 +92,29 @@ describe("runInSandbox (local adapter)", () => {
     expect(refused.failure).toBe("budget");
   });
 
+  it("refuses to be the production runner without an explicit operator opt-in", async () => {
+    const savedEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    try {
+      const refused = await runInSandbox({ command: [NODE, "-e", ""], timeoutSeconds: 5, label: "t" });
+      expect(refused.ok).toBe(false);
+      expect(refused.failure).toBe("provider");
+      expect(refused.message).toContain("not isolation");
+      process.env.SANDBOX_LOCAL_PRODUCTION_OPT_IN = "true";
+      const allowed = await runInSandbox({
+        command: [NODE, "-e", "console.log('opt-in')"],
+        timeoutSeconds: 5,
+        label: "t",
+      });
+      expect(allowed.ok).toBe(true);
+      delete process.env.SANDBOX_LOCAL_PRODUCTION_OPT_IN;
+    } finally {
+      if (savedEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = savedEnv;
+      delete process.env.SANDBOX_LOCAL_PRODUCTION_OPT_IN;
+    }
+  });
+
   it("fails loudly for credit providers until the trial lands (no silent fallback)", async () => {
     process.env.SANDBOX_PROVIDER = "daytona";
     const result = await runInSandbox({ command: [NODE, "-e", ""], timeoutSeconds: 5, label: "t" });
