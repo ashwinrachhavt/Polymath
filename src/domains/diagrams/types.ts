@@ -17,6 +17,18 @@ export const DIAGRAM_TYPES = ["flowchart", "sequence", "class", "state", "er", "
 
 export type DiagramType = (typeof DIAGRAM_TYPES)[number];
 
+/** Human-facing label per type; the stored code stays lowercase ("er"). */
+export const DIAGRAM_TYPE_LABELS: Record<DiagramType, string> = {
+  flowchart: "Flowchart",
+  sequence: "Sequence",
+  class: "Class",
+  state: "State",
+  er: "ER",
+  journey: "Journey",
+  gantt: "Gantt",
+  mindmap: "Mindmap",
+};
+
 /**
  * Editability honesty (locked decision 5): the mermaid-to-excalidraw
  * converter element-edits only flowcharts and sequences. Every other type

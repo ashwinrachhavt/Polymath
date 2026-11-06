@@ -38,6 +38,16 @@ export default function CanonicalCanvasExcalidraw({
   onSceneChange: () => void;
   sceneApiRef: RefObject<{ scene: () => ExcalidrawScenePayload } | null>;
 }) {
+  // Dirty tracking compares against the elements as mounted, not against
+  // any onChange: Excalidraw fires onChange when it applies initialData (and
+  // again while fonts and bindings settle), so a freshly loaded scene must
+  // not read as edited. The parent remounts this component per version and
+  // per save, which re-arms the baseline.
+  const mountedElements = (
+    convertSkeletons ? convertToExcalidrawElements(initial.elements as ExcalidrawElementSkeleton[]) : initial.elements
+  ) as never;
+  const baselineKey = JSON.stringify(mountedElements);
+
   return (
     <div className="panel relative h-[600px] min-h-96 overflow-hidden rounded-xl">
       <div className="h-full min-h-0">
@@ -55,14 +65,14 @@ export default function CanonicalCanvasExcalidraw({
           theme={theme}
           name={name}
           initialData={{
-            elements: convertSkeletons
-              ? convertToExcalidrawElements(initial.elements as ExcalidrawElementSkeleton[])
-              : (initial.elements as never),
+            elements: mountedElements,
             ...(initial.appState ? { appState: initial.appState as never } : {}),
             ...(initial.files ? { files: initial.files as never } : {}),
             scrollToContent: true,
           }}
-          onChange={() => onSceneChange()}
+          onChange={(elements) => {
+            if (JSON.stringify(elements) !== baselineKey) onSceneChange();
+          }}
           isCollaborating={false}
           aiEnabled={false}
           validateEmbeddable={false}

@@ -7,7 +7,7 @@ import { Check, Copy, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { supportsElementEdit } from "@/domains/diagrams/types";
+import { DIAGRAM_TYPE_LABELS, supportsElementEdit } from "@/domains/diagrams/types";
 import { pickDiagramVersion, type DiagramVersionView } from "@/domains/diagrams/view";
 import type { DiagramPreviewOutcome } from "./diagram-preview";
 
@@ -117,7 +117,7 @@ export function DiagramView({
 
       {!declaredEditable && (
         <p className="wrap-anywhere rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-          {active.diagramType} diagrams open as an image, not an editable scene.
+          {DIAGRAM_TYPE_LABELS[active.diagramType]} diagrams open as an image, not an editable scene.
         </p>
       )}
 
