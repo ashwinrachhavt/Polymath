@@ -70,7 +70,9 @@ export type AgentSearchResult =
 /** Rank 0 counts as 1/60, rank 1 as 1/61 - the same K the artifact search uses. */
 const RRF_K = 60;
 
-export type SearchLeg = "fts" | "vector";
+// Internal: only this module's ScoredHit names the legs. Export when a second
+// consumer needs it (knip flags unused exports).
+type SearchLeg = "fts" | "vector";
 
 /**
  * A hit with its normalized fused score PLUS the provenance the score alone
