@@ -18,6 +18,7 @@ import { listNotes } from "../../../../src/domains/knowledge/notes";
  * domain's own query does the work, and nothing here writes.
  */
 export default defineTool({
+  deferred: true,
   description:
     "Find records the owner asked to see: their open or completed tasks, or their notes. Use when they say show me, open, find, or list something — a navigation request, not a question about content. Returns the records themselves with their ids and kinds, which the interface renders as openable cards. For a question about what something SAYS, use documents_search instead; this lists what exists, it does not read it.",
   inputSchema: z.object({
@@ -97,7 +98,9 @@ export default defineTool({
         kind: "task" as const,
         id: task.id,
         title: task.title,
-        ...(task.dueAt ? { subtitle: `Due ${new Date(task.dueAt).toISOString().slice(0, 10)}` } : { subtitle: task.status }),
+        ...(task.dueAt
+          ? { subtitle: `Due ${new Date(task.dueAt).toISOString().slice(0, 10)}` }
+          : { subtitle: task.status }),
       })),
     };
   },

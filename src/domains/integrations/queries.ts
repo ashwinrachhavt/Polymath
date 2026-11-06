@@ -1,3 +1,4 @@
+import { PROVIDER_TIERS, type Provider } from "./capabilities";
 import { and, asc, eq, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
@@ -93,7 +94,9 @@ export async function listConnectors(auth: AuthContext): Promise<ConnectorCard[]
       capabilities: row.capabilities as string[],
       riskByCapability: row.riskByCapability as Record<string, string>,
       requiresApproval: row.requiresApproval,
-      accessTiers: row.accessTiers as Array<{ id: string; label: string; description: string; capabilities: string[] }>,
+      accessTiers:
+        PROVIDER_TIERS[row.provider as Provider] ??
+        (row.accessTiers as Array<{ id: string; label: string; description: string; capabilities: string[] }>),
       configured: missingConfig.length === 0,
       missingConfig,
       accounts: accounts

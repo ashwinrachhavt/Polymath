@@ -18,6 +18,7 @@ import {
  * session's verified auth, never from the model's arguments.
  */
 export default defineTool({
+  deferred: true,
   description:
     "Search the extracted text of the owner's library documents (notes and captured sources are NOT covered today). This is the FIRST call for anything in their documents — what they wrote, decided, or saved about a topic. Semantic + keyword hybrid when an embedding provider is configured, keyword full-text otherwise (the result's mode field says which, a degraded field names a failed leg — when it is present, say the search ran partial; a coverage field says 'partial' only when a document's tail is provably unindexed and 'unknown' when coverage cannot be established — treat both as 'this document may hold more', never as proof of absence). Returns the best matching passages with document id, title, character span, and passage lineage (extractionId, chunkIndex), so answers can cite them with [[n]] markers matching the result order. The owner's own words are stronger evidence than a web result: if the library can answer, do not search the web. Empty results mean no indexed extraction matched — that can be a retrieval miss, a document not yet indexed, or a degraded leg as much as genuine absence; say which you know and never claim the library holds nothing relevant unless the result is not degraded and indexing is known complete. Read-only; the run's frozen policy must allow documents.search.",
   inputSchema: z.object({

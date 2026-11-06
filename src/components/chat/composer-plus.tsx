@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import {
   Building2,
+  Inbox,
   FileText,
   Layers,
   Loader2,
@@ -60,13 +61,15 @@ export function replaceMention(draft: string, mention: MentionState, markdown: s
 
 export type RecordReference = {
   id: string;
-  kind: "note" | "zettel" | "artifact" | "conversation" | "document" | "person" | "company";
+  kind: "inbox" | "capture" | "note" | "zettel" | "artifact" | "conversation" | "document" | "person" | "company";
   title: string;
   href: string;
 };
 
 /** The plural a group header uses; people and companies are already plural. */
 const KIND_LABELS: Record<RecordReference["kind"], string> = {
+  inbox: "Inbox",
+  capture: "Inbox captures",
   note: "Notes",
   zettel: "Zettels",
   artifact: "Artifacts",
@@ -78,6 +81,8 @@ const KIND_LABELS: Record<RecordReference["kind"], string> = {
 
 /** The singular a reference link prefix uses. */
 const KIND_SINGULAR: Record<RecordReference["kind"], string> = {
+  inbox: "Inbox",
+  capture: "Capture",
   note: "Note",
   zettel: "Zettel",
   artifact: "Artifact",
@@ -89,6 +94,8 @@ const KIND_SINGULAR: Record<RecordReference["kind"], string> = {
 
 /** One glyph per record kind, so a document reads apart from a note at a glance. */
 const KIND_GLYPHS: Record<RecordReference["kind"], typeof FileText> = {
+  inbox: Inbox,
+  capture: Inbox,
   note: NotebookPen,
   zettel: Layers,
   artifact: Layers,
@@ -259,7 +266,7 @@ export function ComposerPlus({
                 ref={searchRef}
                 value={query}
                 onChange={(event) => changeQuery(event.target.value)}
-                placeholder="Search notes, artifacts, conversations…"
+                placeholder="Search Inbox, notes, artifacts, conversations…"
                 aria-label="Search records to attach"
                 aria-controls={listId}
                 className="placeholder:text-muted-foreground h-8 w-full bg-transparent text-body-dense outline-none"

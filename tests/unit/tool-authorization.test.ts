@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { authorizeToolInvocation, TOOL_OPERATION_REGISTRY, type GrantForAuthorization } from "@/domains/agents/authorization";
+import {
+  authorizeToolInvocation,
+  TOOL_OPERATION_REGISTRY,
+  type GrantForAuthorization,
+} from "@/domains/agents/authorization";
 import { supportsEffect } from "@/domains/actions/executor";
 
 /*
@@ -35,10 +39,25 @@ const req = (over: Partial<Parameters<typeof authorizeToolInvocation>[1]> = {}) 
 });
 
 describe("authorizeToolInvocation", () => {
+  it("never drops destination or resource bounds for generic connector actions", () => {
+    expect(
+      authorizeToolInvocation(grant(), req({ operation: "gmail.actions.write", accountAlias: "work-gmail" })),
+    ).toMatchObject({ allowed: false, reasons: ["connector_scope_unverifiable"] });
+    expect(
+      authorizeToolInvocation(
+        grant({ allowedDestinations: null, allowedResources: null }),
+        req({ operation: "gmail.actions.write", accountAlias: "work-gmail" }),
+      ),
+    ).toEqual({ allowed: true, requiresApproval: true });
+  });
+
   it("admits the authorized path, flagging approval-gated effects", () => {
     expect(authorizeToolInvocation(grant(), req())).toEqual({ allowed: true, requiresApproval: false });
     expect(
-      authorizeToolInvocation(grant(), req({ operation: "gmail.send", accountAlias: "work-gmail", destination: "ashwinr@vt.edu" })),
+      authorizeToolInvocation(
+        grant(),
+        req({ operation: "gmail.send", accountAlias: "work-gmail", destination: "ashwinr@vt.edu" }),
+      ),
     ).toEqual({ allowed: true, requiresApproval: true });
   });
 
@@ -54,7 +73,9 @@ describe("authorizeToolInvocation", () => {
       allowed: false,
       reasons: ["operation_not_granted"],
     });
-    expect(authorizeToolInvocation(grant({ allowedOperations: ["task.read"] }), req({ operation: "tasks.read" }))).toEqual({
+    expect(
+      authorizeToolInvocation(grant({ allowedOperations: ["task.read"] }), req({ operation: "tasks.read" })),
+    ).toEqual({
       allowed: true,
       requiresApproval: false,
     });
@@ -65,7 +86,10 @@ describe("authorizeToolInvocation", () => {
       allowed: false,
       reasons: ["grant_revoked"],
     });
-    expect(authorizeToolInvocation(grant({ expiresAt: NOW }), req())).toMatchObject({ allowed: false, reasons: ["grant_expired"] });
+    expect(authorizeToolInvocation(grant({ expiresAt: NOW }), req())).toMatchObject({
+      allowed: false,
+      reasons: ["grant_expired"],
+    });
     // The confused-deputy core: a row whose content was edited after issuance
     // no longer matches its pinned hash, and dies.
     expect(authorizeToolInvocation(grant(), req({ expectedContentHash: "b".repeat(64) }))).toMatchObject({
@@ -93,25 +117,33 @@ describe("authorizeToolInvocation", () => {
     ).toMatchObject({ allowed: false, reasons: ["account_not_granted"] });
     // Restricted data to an unapproved recipient fails.
     expect(
-      authorizeToolInvocation(grant(), req({ operation: "gmail.send", accountAlias: "work-gmail", destination: "attacker@example.com" })),
+      authorizeToolInvocation(
+        grant(),
+        req({ operation: "gmail.send", accountAlias: "work-gmail", destination: "attacker@example.com" }),
+      ),
     ).toMatchObject({ allowed: false, reasons: ["destination_not_granted"] });
     expect(
       authorizeToolInvocation(grant({ allowedResources: null }), req({ resourceRef: "person:111" })),
     ).toMatchObject({ allowed: false, reasons: ["resource_not_granted"] });
-    expect(
-      authorizeToolInvocation(grant(), req({ resourceRef: "person:999" })),
-    ).toMatchObject({ allowed: false, reasons: ["resource_not_granted"] });
+    expect(authorizeToolInvocation(grant(), req({ resourceRef: "person:999" }))).toMatchObject({
+      allowed: false,
+      reasons: ["resource_not_granted"],
+    });
   });
 
   it("profile visibility is not authorization: the ceiling only narrows", () => {
     // Operation visible in the profile but not granted still denies.
     expect(
-      authorizeToolInvocation(grant({ allowedOperations: ["document.read"] }), req({ operation: "web.search", profileCeiling: ["web.search"] })),
+      authorizeToolInvocation(
+        grant({ allowedOperations: ["document.read"] }),
+        req({ operation: "web.search", profileCeiling: ["web.search"] }),
+      ),
     ).toMatchObject({ allowed: false, reasons: ["operation_not_granted"] });
     // Granted but outside the profile ceiling denies too.
-    expect(
-      authorizeToolInvocation(grant(), req({ profileCeiling: ["gmail.send"] })),
-    ).toMatchObject({ allowed: false, reasons: ["outside_profile_ceiling"] });
+    expect(authorizeToolInvocation(grant(), req({ profileCeiling: ["gmail.send"] }))).toMatchObject({
+      allowed: false,
+      reasons: ["outside_profile_ceiling"],
+    });
   });
 
   it("collects every reason, so an audit row explains the whole denial", () => {
@@ -119,58 +151,78 @@ describe("authorizeToolInvocation", () => {
     const decision = authorizeToolInvocation(dead, req({ operation: "nope", accountAlias: "x" }));
     expect(decision.allowed).toBe(false);
     if (!decision.allowed) {
-      expect(decision.reasons).toEqual(expect.arrayContaining(["unknown_operation", "grant_revoked", "account_not_granted"]));
+      expect(decision.reasons).toEqual(
+        expect.arrayContaining(["unknown_operation", "grant_revoked", "account_not_granted"]),
+      );
     }
   });
 
-describe("github.issue.triage (ASH-284)", () => {
-  it("is an internal write under action.prepare with no executor and no approval gate", () => {
-    const spec = TOOL_OPERATION_REGISTRY["github.issue.triage"];
-    expect(spec.capability).toBe("action.prepare");
-    expect(spec.effectClass).toBe("internal_write");
-    expect(spec.requiresApproval).toBeUndefined();
+  describe("github.issue.triage (ASH-284)", () => {
+    it("is an internal write under action.prepare with no executor and no approval gate", () => {
+      const spec = TOOL_OPERATION_REGISTRY["github.issue.triage"];
+      expect(spec.capability).toBe("action.prepare");
+      expect(spec.effectClass).toBe("internal_write");
+      expect(spec.requiresApproval).toBeUndefined();
+    });
+
+    it("authorizes a member-grade grant and denies a viewer-grade read set", () => {
+      expect(
+        authorizeToolInvocation(
+          grant({ allowedOperations: ["action.prepare"] }),
+          req({ operation: "github.issue.triage" }),
+        ),
+      ).toEqual({ allowed: true, requiresApproval: false });
+      const viewerReads = [
+        "person.read",
+        "document.read",
+        "task.read",
+        "knowledge.read",
+        "member.read",
+        "role.read",
+        "integration.use",
+        "audit.read",
+      ];
+      expect(
+        authorizeToolInvocation(grant({ allowedOperations: viewerReads }), req({ operation: "github.issue.triage" })),
+      ).toEqual({ allowed: false, reasons: ["operation_not_granted"] });
+    });
   });
 
-  it("authorizes a member-grade grant and denies a viewer-grade read set", () => {
-    expect(
-      authorizeToolInvocation(grant({ allowedOperations: ["action.prepare"] }), req({ operation: "github.issue.triage" })),
-    ).toEqual({ allowed: true, requiresApproval: false });
-    const viewerReads = [
-      "person.read", "document.read", "task.read", "knowledge.read",
-      "member.read", "role.read", "integration.use", "audit.read",
-    ];
-    expect(
-      authorizeToolInvocation(grant({ allowedOperations: viewerReads }), req({ operation: "github.issue.triage" })),
-    ).toEqual({ allowed: false, reasons: ["operation_not_granted"] });
-  });
-});
+  describe("linear.issue.propose (ASH-285)", () => {
+    it("is an internal write under action.prepare - persisting a proposal note is not a read", () => {
+      const spec = TOOL_OPERATION_REGISTRY["linear.issue.propose"];
+      expect(spec.capability).toBe("action.prepare");
+      expect(spec.effectClass).toBe("internal_write");
+      // Internal writes authorize directly; only external effects and paid ops gate on approval.
+      expect(spec.requiresApproval).toBeUndefined();
+    });
 
-describe("linear.issue.propose (ASH-285)", () => {
-  it("is an internal write under action.prepare - persisting a proposal note is not a read", () => {
-    const spec = TOOL_OPERATION_REGISTRY["linear.issue.propose"];
-    expect(spec.capability).toBe("action.prepare");
-    expect(spec.effectClass).toBe("internal_write");
-    // Internal writes authorize directly; only external effects and paid ops gate on approval.
-    expect(spec.requiresApproval).toBeUndefined();
-  });
+    it("authorizes directly for a member-grade grant carrying action.prepare", () => {
+      expect(
+        authorizeToolInvocation(
+          grant({ allowedOperations: ["action.prepare"] }),
+          req({ operation: "linear.issue.propose" }),
+        ),
+      ).toEqual({ allowed: true, requiresApproval: false });
+    });
 
-  it("authorizes directly for a member-grade grant carrying action.prepare", () => {
-    expect(
-      authorizeToolInvocation(grant({ allowedOperations: ["action.prepare"] }), req({ operation: "linear.issue.propose" })),
-    ).toEqual({ allowed: true, requiresApproval: false });
+    it("denies a viewer-grade grant: the fixed-role read set carries no prepare authority", () => {
+      // Mirrors FIXED_ROLE_CAPABILITIES.viewer in domains/identity/capabilities.
+      const viewerReads = [
+        "person.read",
+        "document.read",
+        "task.read",
+        "knowledge.read",
+        "member.read",
+        "role.read",
+        "integration.use",
+        "audit.read",
+      ];
+      expect(
+        authorizeToolInvocation(grant({ allowedOperations: viewerReads }), req({ operation: "linear.issue.propose" })),
+      ).toEqual({ allowed: false, reasons: ["operation_not_granted"] });
+    });
   });
-
-  it("denies a viewer-grade grant: the fixed-role read set carries no prepare authority", () => {
-    // Mirrors FIXED_ROLE_CAPABILITIES.viewer in domains/identity/capabilities.
-    const viewerReads = [
-      "person.read", "document.read", "task.read", "knowledge.read",
-      "member.read", "role.read", "integration.use", "audit.read",
-    ];
-    expect(
-      authorizeToolInvocation(grant({ allowedOperations: viewerReads }), req({ operation: "linear.issue.propose" })),
-    ).toEqual({ allowed: false, reasons: ["operation_not_granted"] });
-  });
-});
 
   it("the proposal-only operations have no executor to fall through to", () => {
     // The reviews approve path runs executeApprovedEffect only when
@@ -182,49 +234,60 @@ describe("linear.issue.propose (ASH-285)", () => {
     expect(supportsEffect("github.issue.triage")).toBe(false);
   });
 
-describe("meetings.debrief authority correction", () => {
-  it("stays proposal-only: no executor can turn an approval into an effect", () => {
-    // The tool persists review-queue proposals; approving one of its tasks
-    // runs through the work domain's own approval, not this capability.
-    expect(supportsEffect("meetings.debrief")).toBe(false);
-  });
+  describe("meetings.debrief authority correction", () => {
+    it("stays proposal-only: no executor can turn an approval into an effect", () => {
+      // The tool persists review-queue proposals; approving one of its tasks
+      // runs through the work domain's own approval, not this capability.
+      expect(supportsEffect("meetings.debrief")).toBe(false);
+    });
 
+    it("is an internal write under action.prepare - it persists proposal rows, so it is not a read", () => {
+      const spec = TOOL_OPERATION_REGISTRY["meetings.debrief"];
+      expect(spec.capability).toBe("action.prepare");
+      expect(spec.effectClass).toBe("internal_write");
+      // An internal write authorizes directly; the approval boundary stays on
+      // the proposals it queues, not on the drafting itself.
+      expect(spec.requiresApproval).toBeUndefined();
+    });
 
-  it("is an internal write under action.prepare - it persists proposal rows, so it is not a read", () => {
-    const spec = TOOL_OPERATION_REGISTRY["meetings.debrief"];
-    expect(spec.capability).toBe("action.prepare");
-    expect(spec.effectClass).toBe("internal_write");
-    // An internal write authorizes directly; the approval boundary stays on
-    // the proposals it queues, not on the drafting itself.
-    expect(spec.requiresApproval).toBeUndefined();
-  });
+    it("authorizes a grant carrying action.prepare", () => {
+      expect(
+        authorizeToolInvocation(
+          grant({ allowedOperations: ["action.prepare"] }),
+          req({ operation: "meetings.debrief" }),
+        ),
+      ).toEqual({ allowed: true, requiresApproval: false });
+    });
 
-  it("authorizes a grant carrying action.prepare", () => {
-    expect(
-      authorizeToolInvocation(grant({ allowedOperations: ["action.prepare"] }), req({ operation: "meetings.debrief" })),
-    ).toEqual({ allowed: true, requiresApproval: false });
-  });
+    it("behavior change, pinned: a pre-fix grant that carried only knowledge.read now denies", () => {
+      // Grants issued while the entry was misclassified authorized through
+      // knowledge.read. The correction is a deliberate tightening toward
+      // deny-by-default: such a grant must be re-issued with action.prepare.
+      expect(
+        authorizeToolInvocation(
+          grant({ allowedOperations: ["knowledge.read"] }),
+          req({ operation: "meetings.debrief" }),
+        ),
+      ).toEqual({ allowed: false, reasons: ["operation_not_granted"] });
+    });
 
-  it("behavior change, pinned: a pre-fix grant that carried only knowledge.read now denies", () => {
-    // Grants issued while the entry was misclassified authorized through
-    // knowledge.read. The correction is a deliberate tightening toward
-    // deny-by-default: such a grant must be re-issued with action.prepare.
-    expect(
-      authorizeToolInvocation(grant({ allowedOperations: ["knowledge.read"] }), req({ operation: "meetings.debrief" })),
-    ).toEqual({ allowed: false, reasons: ["operation_not_granted"] });
+    it("denies a viewer-grade read set, which carries no prepare authority", () => {
+      // Mirrors FIXED_ROLE_CAPABILITIES.viewer in domains/identity/capabilities.
+      const viewerReads = [
+        "person.read",
+        "document.read",
+        "task.read",
+        "knowledge.read",
+        "member.read",
+        "role.read",
+        "integration.use",
+        "audit.read",
+      ];
+      expect(
+        authorizeToolInvocation(grant({ allowedOperations: viewerReads }), req({ operation: "meetings.debrief" })),
+      ).toEqual({ allowed: false, reasons: ["operation_not_granted"] });
+    });
   });
-
-  it("denies a viewer-grade read set, which carries no prepare authority", () => {
-    // Mirrors FIXED_ROLE_CAPABILITIES.viewer in domains/identity/capabilities.
-    const viewerReads = [
-      "person.read", "document.read", "task.read", "knowledge.read",
-      "member.read", "role.read", "integration.use", "audit.read",
-    ];
-    expect(
-      authorizeToolInvocation(grant({ allowedOperations: viewerReads }), req({ operation: "meetings.debrief" })),
-    ).toEqual({ allowed: false, reasons: ["operation_not_granted"] });
-  });
-});
 
   it("keeps the registry's approval gate on every external effect", () => {
     for (const [operation, spec] of Object.entries(TOOL_OPERATION_REGISTRY)) {

@@ -12,6 +12,7 @@ import {
   revokeAccountAction,
   setAccountAccessTierAction,
   setAccountCapabilityAction,
+  setAccountWriteAccessAction,
   setSenderAliasesAction,
   setSenderProposalsAction,
   setWriteDefaultAction,
@@ -370,6 +371,14 @@ export function AccessToggles({
   // The step sequence for every flip is the pure plan in access-toggles.ts,
   // offset by the version the card was rendered with.
   const flip = (toggle: "read" | "write", on: boolean) => {
+    if (toggle === "write") {
+      setError(null);
+      startTransition(async () => {
+        const result = await setAccountWriteAccessAction({ accountId, expectedVersion, enabled: on });
+        if (!result.ok) setError(result.error);
+      });
+      return;
+    }
     const steps = planToggleSteps({ provider: providerKey, currentTier, disabled, toggle, on });
     if (!steps.length) return;
     run(steps.map((step) => ({ ...step, expectedVersion: step.expectedVersion + expectedVersion })));
@@ -393,7 +402,7 @@ export function AccessToggles({
             state.write.label,
             state.write.label === "Send"
               ? "Agents can draft send proposals for your approval"
-              : "Agents can draft proposals for your approval",
+              : "Routine actions run directly; other changes wait in Reviews",
             state.write.on,
             state.write.available,
             () => flip("write", !state.write?.on),

@@ -5,8 +5,10 @@ import {
   closeRun,
   markWaitingForInput,
   mirrorMessage,
+  recordFailedTurn,
   recordQuestion,
   recordRoundEvent,
+  redactText,
   recordToolCall,
   recordUsageEvent,
 } from "../../../../src/domains/agents/event-bridge";
@@ -43,10 +45,21 @@ async function runIdOf(ctx: HookContext): Promise<string | null> {
   return run?.id ?? null;
 }
 
-/** Files headers and other opaque objects are stripped before a row is written. */
-function failureDetail(event: { data: { code?: string; message?: string } }): string {
-  const { code, message } = event.data;
-  return [code, message].filter(Boolean).join(": ");
+/** Normalize provider failure text before it reaches the durable timeline. */
+function failureDetail(event: { data: { code?: string; message?: string; error?: string; detail?: string } }): string {
+  const { code, message, error, detail: nestedDetail } = event.data;
+  const detail = [code, message, error, nestedDetail].filter(Boolean).join(": ");
+  if (
+    /insufficient.{0,80}credit|not enough.{0,80}credit|more credits? than available|credit.{0,80}(insufficient|not enough|available)|can only afford|only afford/i.test(
+      detail,
+    )
+  ) {
+    return "The provider did not have enough credit for the requested response size. Reduce the reply length, add provider credit, or choose a different model.";
+  }
+  // Provider errors can contain key-bearing URLs or request metadata.
+  return redactText(detail)
+    .replace(/https?:[^\s]+/gi, "[provider link removed]")
+    .slice(0, 1_000);
 }
 
 /*
@@ -257,9 +270,7 @@ export default defineHook({
       const workspaceId = workspaceIdOf(ctx);
       const runId = await runIdOf(ctx);
       if (!workspaceId || !runId) return;
-      await guarded("session.completed", () =>
-        closeRun({ runId, workspaceId, state: "succeeded" }),
-      );
+      await guarded("session.completed", () => closeRun({ runId, workspaceId, state: "succeeded" }));
       void event;
     },
 
@@ -325,11 +336,11 @@ export default defineHook({
       // left the UI offering Stop on a conversation the stream had already
       // ended. Park it the same way turn.completed does.
       await guarded("turn.failed", () =>
-        recordRoundEvent({
+        recordFailedTurn({
           runId,
           workspaceId,
-          type: "turn.failed",
-          data: { turnId: event.data.turnId },
+          ...(typeof event.data.turnId === "string" ? { turnId: event.data.turnId } : {}),
+          ...(failureDetail(event) ? { error: failureDetail(event) } : {}),
         }),
       );
       await guarded("turn.failed waiting state", () => markWaitingForInput({ runId, workspaceId }));

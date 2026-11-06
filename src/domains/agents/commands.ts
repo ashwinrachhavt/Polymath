@@ -1,3 +1,4 @@
+import { CONNECTOR_WRITES } from "@/domains/integrations/connector-action-catalog";
 import type postgres from "postgres";
 import { and, eq, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
@@ -18,6 +19,7 @@ import { agentProfiles } from "./schema";
  */
 /** The first-party profile's capabilities. documents.search and the wiki tools are reads or internal writes. */
 export const DEFAULT_ALLOWED_TOOLS = [
+  ...Object.keys(CONNECTOR_WRITES),
   "tasks.read",
   "documents.search",
   "wiki.read",
@@ -254,6 +256,7 @@ export async function ensureProfile(workspaceId: string, name = "polymath") {
     // `gmail.thread.read` is in this list for the same reason: it ships as a
     // gateway tool, so a profile without it makes the tool a dead 403.
     const gained = [
+      ...Object.keys(CONNECTOR_WRITES),
       "documents.search",
       "notion.page.append",
       "notion.page.create",

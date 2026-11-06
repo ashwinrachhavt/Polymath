@@ -13,10 +13,15 @@ import { WIKI_READ_CAPABILITY } from "../../../../src/domains/knowledge/wiki-age
  * session's verified auth, never from the model's arguments.
  */
 export default defineTool({
+  deferred: true,
   description:
     "Read the workspace wiki: the master index, a topic hub by slug, or one article by artifact id. Use this to answer from the maintained layer before falling back to raw documents — start here for questions the wiki's topics plausibly cover. It will not search raw passages (that is documents_search) and cannot read a document that was never ingested; an unknown slug or artifact id comes back as an empty result, not an error to retry. Read-only; the run's frozen policy must allow wiki.read.",
   inputSchema: z.object({
-    what: z.enum(["index", "topic", "article", "overview"]).describe("index = master index text; overview = topics, articles and log tail; topic/article need slug/artifactId."),
+    what: z
+      .enum(["index", "topic", "article", "overview"])
+      .describe(
+        "index = master index text; overview = topics, articles and log tail; topic/article need slug/artifactId.",
+      ),
     slug: z.string().min(1).max(61).optional().describe("Topic slug, when what=topic."),
     artifactId: z.string().uuid().optional().describe("Article artifact id, when what=article."),
   }),
@@ -40,7 +45,12 @@ export default defineTool({
       return {
         ok: true as const,
         topics: overview.topics,
-        articles: overview.articles.map((a) => ({ artifactId: a.artifactId, title: a.title, summary: a.summary, topics: a.topics })),
+        articles: overview.articles.map((a) => ({
+          artifactId: a.artifactId,
+          title: a.title,
+          summary: a.summary,
+          topics: a.topics,
+        })),
         logTail: overview.logTail,
       };
     }
@@ -49,7 +59,8 @@ export default defineTool({
       return { ok: true as const, text: overview?.indexText ?? "" };
     }
     const id = input.artifactId;
-    if (input.what === "article" && !id) return { ok: false as const, error: "artifactId is required for what=article" };
+    if (input.what === "article" && !id)
+      return { ok: false as const, error: "artifactId is required for what=article" };
     if (input.what === "topic") {
       const overview = await getWikiOverview(auth);
       const topic = overview?.topics.find((t) => t.slug === input.slug);

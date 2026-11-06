@@ -152,7 +152,13 @@ export function NewConversation({
   // add a chip and leave the draft alone; reference kinds become a link,
   // replacing the live @ token when the pick came from that gesture.
   function handleRecordPick(record: RecordReference) {
-    if (record.kind === "person" || record.kind === "company" || record.kind === "zettel") {
+    if (
+      record.kind === "person" ||
+      record.kind === "company" ||
+      record.kind === "zettel" ||
+      record.kind === "capture" ||
+      record.kind === "inbox"
+    ) {
       pickChip({ id: record.id, kind: record.kind, title: record.title, href: record.href });
       return;
     }

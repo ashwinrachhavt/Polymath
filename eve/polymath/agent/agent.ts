@@ -2,6 +2,7 @@ import { defineAgent, defineDynamic } from "eve";
 import { createOpenAI } from "@ai-sdk/openai";
 import { geminiFetch } from "./lib/gemini-openai";
 import { providerErrorGuardFetch } from "./lib/provider-error-guard";
+import { withMaxOutputTokens } from "../../../src/domains/agents/model-output-limit";
 import { headroomEnabled, headroomFetch } from "../../../src/integrations/headroom/client";
 // Relative, not "@/...": eve bundles from its own package root (see hooks/bridge.ts).
 import { DEFAULT_MODEL_ID, modelById } from "../../../src/domains/agents/models";
@@ -92,7 +93,11 @@ function polymathModel(runModel?: string | null) {
     name: entry.provider,
     fetch: entry.provider === "gemini" ? geminiFetch(transport) : transport,
   });
-  return provider.chat(entry.id);
+  const model = provider.chat(entry.id);
+  // OpenRouter's credit check reserves the full max_tokens amount. Its catalog
+  // maximum (16k) exceeded the remaining credit in a real chat and caused a
+  // silent-looking turn failure; cap the request while retaining streaming.
+  return entry.provider === "openrouter-free" ? withMaxOutputTokens(model, 12_000) : model;
 }
 
 export default defineAgent({

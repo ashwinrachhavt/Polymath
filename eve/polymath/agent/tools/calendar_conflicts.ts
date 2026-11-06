@@ -13,6 +13,7 @@ import { listCalendarConflicts } from "../../../../src/domains/calendar/conflict
  * was last read and what was not checked.
  */
 export default defineTool({
+  deferred: true,
   description:
     "Find overlapping events on the owner's calendar in the next days and get ranked rescheduling options for each, with the trade-offs of every option (how far it moves, who it affects, whether it clears the overlap). Use when the owner asks about double-booking, a clash, or 'what's wrong with my week'. Read only: it changes nothing. Events from Google Calendar cannot be moved from here, so they come back as 'resolve_in_provider' advice. To act on a move option, pass it unchanged to calendar_conflict_propose; never invent a time. Report the notices as they are: they say what was not checked.",
   inputSchema: z.object({

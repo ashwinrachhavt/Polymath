@@ -1,3 +1,12 @@
+import {
+  CONNECTOR_EXECUTORS,
+  connectorWrite,
+  connectorActionPayload,
+  executeConnectorAction,
+  readConnectorAction,
+  connectorObjectResultSchema,
+  connectorResponseSummarySchema,
+} from "@/domains/integrations/connector-actions";
 import { and, count, desc, eq, ne } from "drizzle-orm";
 import { z } from "zod";
 import { recordAudit } from "@/domains/audit/record";
@@ -16,13 +25,9 @@ import { resolveConnectedAccount } from "@/domains/integrations/queries";
 import { designBriefSchema } from "@/domains/knowledge/design-brief";
 import { designBriefDocx, designBriefDocxSha256 } from "@/domains/knowledge/design-brief-docx";
 import { applyNotionProposal } from "@/domains/knowledge/notion-proposals";
+import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
-import {
-  AttemptAlreadyClaimedError,
-  claimAttempt,
-  findClaimedAttempt,
-  settleAttempt,
-} from "./attempts";
+import { AttemptAlreadyClaimedError, claimAttempt, findClaimedAttempt, settleAttempt } from "./attempts";
 import { StaleRevisionError } from "./commands";
 import { checkSenderAlias, senderAliasPolicy } from "./policy";
 import { actionAttempts, actionProposals, actionRevisions, actionReviews, executionSettings } from "./schema";
@@ -71,7 +76,7 @@ export class EffectNotSupportedError extends Error {
 }
 
 export type EffectOutcome =
-  | { status: "sent"; providerId: string; at: string }
+  | { status: "sent"; providerId: string | null; at: string; result?: z.infer<typeof connectorObjectResultSchema> }
   | { status: "failed"; reason: string; retryable: boolean }
   /*
    * `note` separates two honest UNKNOWN phases a person must tell apart:
@@ -86,6 +91,7 @@ export type EffectOutcome =
  * unknown capability throws before anything is claimed.
  */
 const EXECUTORS = {
+  ...CONNECTOR_EXECUTORS,
   "gmail.send": {
     provider: "gmail",
     parse: z.object({
@@ -164,6 +170,7 @@ export const NON_TERMINAL_RUN_STATES = new Set(["queued", "running", "waiting_in
  * and never has to cast an unknown payload into the wrong provider's contract.
  */
 type ExecutorPayload =
+  | z.infer<typeof connectorActionPayload>
   | z.infer<(typeof EXECUTORS)["gmail.send"]["parse"]>
   | z.infer<(typeof EXECUTORS)["notion.page.append"]["parse"]>
   | z.infer<(typeof EXECUTORS)["notion.page.create"]["parse"]>
@@ -182,8 +189,14 @@ type Prepared = {
 
 /** The outcome a prior attempt already settled on, in the executor's vocabulary. */
 export function outcomeOf(attempt: typeof actionAttempts.$inferSelect): EffectOutcome | null {
-  if (attempt.status === "succeeded" && attempt.providerObjectId) {
-    return { status: "sent", providerId: attempt.providerObjectId, at: attempt.endedAt?.toISOString() ?? new Date().toISOString() };
+  if (attempt.status === "succeeded") {
+    const result = connectorResponseSummarySchema.safeParse(attempt.responseSummary);
+    return {
+      status: "sent",
+      providerId: attempt.providerObjectId,
+      at: attempt.endedAt?.toISOString() ?? new Date().toISOString(),
+      ...(result.success ? { result: result.data.result } : {}),
+    };
   }
   if (attempt.status === "unknown") {
     const phase = (attempt.responseSummary as { phase?: unknown } | null)?.phase;
@@ -199,6 +212,17 @@ export function outcomeOf(attempt: typeof actionAttempts.$inferSelect): EffectOu
     return { status: "failed", reason: attempt.errorCode ?? "The provider refused the effect.", retryable: false };
   }
   return null;
+}
+
+/** Read a settled receipt without authorizing or dispatching another effect. */
+export async function settledEffectOutcome(workspaceId: string, proposalId: string): Promise<EffectOutcome | null> {
+  const [attempt] = await db
+    .select()
+    .from(actionAttempts)
+    .where(and(eq(actionAttempts.workspaceId, workspaceId), eq(actionAttempts.proposalId, proposalId)))
+    .orderBy(desc(actionAttempts.startedAt))
+    .limit(1);
+  return attempt ? outcomeOf(attempt) : null;
 }
 
 type AccountPin = { externalAccountId?: unknown; connectedAccountId?: unknown; resolved?: unknown };
@@ -237,17 +261,13 @@ async function prepare(auth: AuthContext, proposalId: string): Promise<Prepared>
     const [revision] = await tx
       .select({ id: actionRevisions.id, payload: actionRevisions.payload })
       .from(actionRevisions)
-      .where(
-        and(eq(actionRevisions.workspaceId, auth.workspaceId), eq(actionRevisions.proposalId, proposal.id)),
-      )
+      .where(and(eq(actionRevisions.workspaceId, auth.workspaceId), eq(actionRevisions.proposalId, proposal.id)))
       .orderBy(desc(actionRevisions.revisionNumber))
       .limit(1);
     const [review] = await tx
       .select({ decision: actionReviews.decision, revisionId: actionReviews.revisionId })
       .from(actionReviews)
-      .where(
-        and(eq(actionReviews.workspaceId, auth.workspaceId), eq(actionReviews.proposalId, proposal.id)),
-      )
+      .where(and(eq(actionReviews.workspaceId, auth.workspaceId), eq(actionReviews.proposalId, proposal.id)))
       .orderBy(desc(actionReviews.createdAt))
       .limit(1);
 
@@ -333,10 +353,14 @@ async function prepare(auth: AuthContext, proposalId: string): Promise<Prepared>
     typeof pin.externalAccountId !== "string" ||
     typeof pin.connectedAccountId !== "string"
   ) {
-    throw new SendNotAllowedError("This revision was written before a sending account was bound to it. Review and approve a fresh revision.");
+    throw new SendNotAllowedError(
+      "This revision was written before a sending account was bound to it. Review and approve a fresh revision.",
+    );
   }
   if (pin.externalAccountId !== account.externalAccountId || pin.connectedAccountId !== account.connectedAccountId) {
-    throw new SendNotAllowedError("The sending account no longer matches the approved revision. Review and approve a fresh revision.");
+    throw new SendNotAllowedError(
+      "The sending account no longer matches the approved revision. Review and approve a fresh revision.",
+    );
   }
 
   // ASH-289: the sending grant is re-read at execution, not borrowed from the
@@ -380,6 +404,11 @@ async function prepare(auth: AuthContext, proposalId: string): Promise<Prepared>
     );
   }
 
+  const connector = connectorWrite(checked.capability);
+  if (connector) {
+    const payload = connectorActionPayload.parse(checked.payload);
+    await readConnectorAction(connector.toolkit, payload.toolSlug, payload.version);
+  }
   return { ...checked, connectedAccountId: account.connectedAccountId };
 }
 
@@ -397,12 +426,7 @@ async function claim(auth: AuthContext, prepared: Prepared): Promise<{ attemptId
     const rows = await tx
       .select()
       .from(actionAttempts)
-      .where(
-        and(
-          eq(actionAttempts.workspaceId, auth.workspaceId),
-          eq(actionAttempts.proposalId, prepared.proposalId),
-        ),
-      )
+      .where(and(eq(actionAttempts.workspaceId, auth.workspaceId), eq(actionAttempts.proposalId, prepared.proposalId)))
       .orderBy(desc(actionAttempts.attemptNumber))
       .limit(1);
     return rows[0] ?? null;
@@ -418,10 +442,7 @@ async function claim(auth: AuthContext, prepared: Prepared): Promise<{ attemptId
         .select({ attemptNumber: actionAttempts.attemptNumber })
         .from(actionAttempts)
         .where(
-          and(
-            eq(actionAttempts.workspaceId, auth.workspaceId),
-            eq(actionAttempts.proposalId, prepared.proposalId),
-          ),
+          and(eq(actionAttempts.workspaceId, auth.workspaceId), eq(actionAttempts.proposalId, prepared.proposalId)),
         )
         .orderBy(desc(actionAttempts.attemptNumber))
         .limit(1);
@@ -455,7 +476,7 @@ async function claim(auth: AuthContext, prepared: Prepared): Promise<{ attemptId
  * as the effect's subject - the recipient for mail, the page for Notion.
  */
 type Dispatched =
-  | { ok: true; providerObjectId: string; label: string; summary: Record<string, unknown> }
+  | { ok: true; providerObjectId: string | null; label: string; summary: Record<string, unknown> }
   /*
    * An accepted ASYNC job is not a finished effect: the settle path records
    * it as UNKNOWN with the job id as the reconciliation sweep's read-back
@@ -471,6 +492,13 @@ type Dispatched =
  * gets sent.
  */
 async function dispatch(auth: AuthContext, prepared: Prepared, attemptId: string): Promise<Dispatched> {
+  if (connectorWrite(prepared.capability)) {
+    return executeConnectorAction({
+      connectedAccountId: prepared.connectedAccountId,
+      payload: connectorActionPayload.parse(prepared.payload),
+      attemptId,
+    });
+  }
   switch (prepared.capability) {
     case "gmail.send": {
       const payload = prepared.payload as z.infer<(typeof EXECUTORS)["gmail.send"]["parse"]>;
@@ -483,10 +511,20 @@ async function dispatch(auth: AuthContext, prepared: Prepared, attemptId: string
           inReplyTo: payload.inReplyTo ?? null,
           attemptId,
         });
-        return { ok: true, providerObjectId: sent.providerObjectId, label: payload.to, summary: { threadId: sent.threadId } };
+        return {
+          ok: true,
+          providerObjectId: sent.providerObjectId,
+          label: payload.to,
+          summary: { threadId: sent.threadId },
+        };
       } catch (error) {
         if (error instanceof GmailSendRejectedError) {
-          return { ok: false, label: payload.to, rejected: { status: String(error.status), message: error.message }, ambiguous: "" };
+          return {
+            ok: false,
+            label: payload.to,
+            rejected: { status: String(error.status), message: error.message },
+            ambiguous: "",
+          };
         }
         // Anything else is a programming error, but it is also an unanswered
         // send: treating it as ambiguous is the only classification that cannot
@@ -514,7 +552,12 @@ async function dispatch(auth: AuthContext, prepared: Prepared, attemptId: string
       }
       // Notion answers with a status, so a whole-page failure is a refusal to
       // act rather than an unknown: no block was written that we did not see.
-      return { ok: false, label, rejected: { status: "notion", message: applied.error ?? "Notion refused the write." }, ambiguous: "" };
+      return {
+        ok: false,
+        label,
+        rejected: { status: "notion", message: applied.error ?? "Notion refused the write." },
+        ambiguous: "",
+      };
     }
     case "canva.design.import": {
       const payload = prepared.payload as z.infer<(typeof EXECUTORS)["canva.design.import"]["parse"]>;
@@ -527,7 +570,12 @@ async function dispatch(auth: AuthContext, prepared: Prepared, attemptId: string
         return { accepted: true, jobId, label: payload.title };
       } catch (error) {
         if (error instanceof CanvaImportRejectedError) {
-          return { ok: false, label: payload.title, rejected: { status: String(error.status), message: error.message }, ambiguous: "" };
+          return {
+            ok: false,
+            label: payload.title,
+            rejected: { status: String(error.status), message: error.message },
+            ambiguous: "",
+          };
         }
         // An unanswered job creation is ambiguous, never failed: the import
         // may exist on Canva's side, and a blind retry is a duplicate import.
@@ -540,16 +588,14 @@ async function dispatch(auth: AuthContext, prepared: Prepared, attemptId: string
       }
     }
   }
+  throw new EffectNotSupportedError(prepared.capability);
 }
 
 /*
  * The one effect. Exported so the reviews action can call it after an approval
  * and the tests can call it directly; nothing else in the app may.
  */
-export async function executeApprovedEffect(
-  auth: AuthContext,
-  input: { proposalId: string },
-): Promise<EffectOutcome> {
+export async function executeApprovedEffect(auth: AuthContext, input: { proposalId: string }): Promise<EffectOutcome> {
   const prepared = await prepare(auth, input.proposalId);
 
   if (prepared.capability === "canva.design.import") {
@@ -569,10 +615,14 @@ export async function executeApprovedEffect(
     // not an UNKNOWN attempt that would block the proposal against a fix.
     if (!canvaImportFixtureEnabled()) {
       if (!canvaImportLiveEnabled()) {
-        throw new SendNotAllowedError("Canva import is not enabled on this deployment; the import cannot be dispatched.");
+        throw new SendNotAllowedError(
+          "Canva import is not enabled on this deployment; the import cannot be dispatched.",
+        );
       }
       if (!composioWriteConfigured()) {
-        throw new SendNotAllowedError("Composio is not configured on this deployment yet; the import cannot be dispatched.");
+        throw new SendNotAllowedError(
+          "Composio is not configured on this deployment yet; the import cannot be dispatched.",
+        );
       }
     }
   }
@@ -589,7 +639,12 @@ export async function executeApprovedEffect(
   } catch (error) {
     // A throw out of the provider boundary is an unanswered effect, never a
     // clean failure.
-    dispatched = { ok: false, label: prepared.proposalId, rejected: null, ambiguous: error instanceof Error ? error.message : "Unknown provider failure." };
+    dispatched = {
+      ok: false,
+      label: prepared.proposalId,
+      rejected: null,
+      ambiguous: error instanceof Error ? error.message : "Unknown provider failure.",
+    };
   }
 
   return withTransaction(async (tx) => {
@@ -616,6 +671,7 @@ export async function executeApprovedEffect(
     }
 
     if (dispatched.ok) {
+      const result = connectorResponseSummarySchema.safeParse(dispatched.summary);
       await settleAttempt(tx, {
         attemptId,
         outcome: "succeeded",
@@ -629,13 +685,19 @@ export async function executeApprovedEffect(
           subjectType: "action_proposal",
           subjectId: prepared.proposalId,
           summary: `Sent ${prepared.capability} (${dispatched.label})`,
-          metadata: { attemptId, providerObjectId: dispatched.providerObjectId, revisionId: prepared.revisionId, runId: prepared.runId },
+          metadata: {
+            attemptId,
+            providerObjectId: dispatched.providerObjectId,
+            revisionId: prepared.revisionId,
+            runId: prepared.runId,
+          },
         },
         tx,
       );
       return {
         status: "sent" as const,
         providerId: dispatched.providerObjectId,
+        ...(result.success ? { result: result.data.result } : {}),
         at: new Date().toISOString(),
       };
     }

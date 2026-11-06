@@ -2,7 +2,10 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { ConnectorCatalog, type CatalogConnector } from "@/app/(workspace)/command-center/integrations/connector-catalog";
+import {
+  ConnectorCatalog,
+  type CatalogConnector,
+} from "@/app/(workspace)/command-center/integrations/connector-catalog";
 import { PROVIDER_TIERS } from "@/domains/integrations/capabilities";
 
 /*
@@ -112,7 +115,7 @@ describe("connector catalog pixel harness", () => {
     // gmail.send is switched off on the fixture account, so the Send switch
     // reads off while Read stays on; the old tier select and "Narrowed by"
     // copy are gone.
-    expect(html).toContain('aria-checked="false" aria-label="Send"');
+    expect(html).toContain('aria-checked="false" aria-label="Write"');
     expect(html).toContain('aria-checked="true" aria-label="Read"');
     expect(html).not.toContain("Narrowed by the switches below");
     expect(html).not.toContain("Agent access");
@@ -125,9 +128,8 @@ describe("connector catalog pixel harness", () => {
     expect(html).toContain("Turn on read access for read-off-gmail to turn this on.");
     expect(html).toContain("Coming soon");
     expect(html).toContain("Invalid API key (401)");
-    // instagram's active, non-default account must NOT offer a write default:
-    // the provider has no write capability, so the control would be a lie.
-    expect(html).not.toContain("Make write default");
+    // Instagram now supports reviewed writes, so its account can be the write default.
+    expect(html).toContain("Make write default");
     mkdirSync("/tmp/harness", { recursive: true });
     writeFileSync("/tmp/harness/fragment.html", html);
   });

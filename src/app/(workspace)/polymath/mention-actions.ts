@@ -10,6 +10,7 @@ import { db } from "@/lib/db";
 import { artifactLinks, artifactVersions, artifacts } from "@/domains/knowledge/schema";
 import { RELATION_LABELS, RELATION_TYPES } from "@/domains/knowledge/relations";
 import { ideaContextPayload } from "./idea-context";
+import { getCaptureChatContext, getInboxChatContext } from "@/domains/capture/queries";
 
 /*
  * The mention context read. A message that names a person or company with
@@ -20,7 +21,7 @@ import { ideaContextPayload } from "./idea-context";
  */
 
 const requested = z.object({
-  kind: z.enum(["person", "company", "zettel"]),
+  kind: z.enum(["person", "company", "zettel", "capture", "inbox"]),
   id: z.string().uuid(),
 });
 
@@ -30,6 +31,19 @@ export async function fetchMentionContext(raw: unknown): Promise<Record<string, 
 
   const auth = await getAuthContext();
   requireRole(auth, "member");
+
+  if (parsed.data.kind === "inbox") {
+    // Inbox is a workspace-scoped snapshot, not a client-supplied list. The
+    // server selects the current unparked queue and bounds it to ten items.
+    if (parsed.data.id !== auth.workspaceId) return null;
+    const inbox = await getInboxChatContext(auth);
+    return { total: inbox.total, items: inbox.items };
+  }
+
+  if (parsed.data.kind === "capture") {
+    const capture = await getCaptureChatContext(auth, parsed.data.id);
+    return capture ? { capture } : null;
+  }
 
   if (parsed.data.kind === "zettel") {
     // The idea chip carries the idea itself: the claim text from the

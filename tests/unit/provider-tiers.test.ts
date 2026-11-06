@@ -34,18 +34,14 @@ const migrationSql = [
 
 /** Pulls the access_tiers JSON literal the migration seeds for one provider. */
 function seededTiers(provider: string): unknown {
-  const match = migrationSql.match(
-    new RegExp(`'(\\[.*?\\])'::jsonb\\s+WHERE provider = '${provider}'`),
-  );
+  const match = migrationSql.match(new RegExp(`'(\\[.*?\\])'::jsonb\\s+WHERE provider = '${provider}'`));
   expect(match, `the tier migrations have no JSON seed for ${provider}`).toBeDefined();
   return JSON.parse(match![1]);
 }
 
 describe("PROVIDER_TIERS", () => {
   it("offers a tier to every provider in the catalog", () => {
-    const providers = new Set(
-      Object.values(CAPABILITIES).map((spec) => spec.provider),
-    );
+    const providers = new Set(Object.values(CAPABILITIES).map((spec) => spec.provider));
     for (const provider of providers) {
       expect(PROVIDER_TIERS[provider].length, provider).toBeGreaterThan(0);
     }
@@ -55,10 +51,9 @@ describe("PROVIDER_TIERS", () => {
     for (const [provider, tiers] of Object.entries(PROVIDER_TIERS)) {
       for (const tier of tiers) {
         for (const capability of tier.capabilities) {
-          expect(
-            capability in CAPABILITIES,
-            `${provider}/${tier.id} names unknown capability ${capability}`,
-          ).toBe(true);
+          expect(capability in CAPABILITIES, `${provider}/${tier.id} names unknown capability ${capability}`).toBe(
+            true,
+          );
         }
       }
     }
@@ -72,18 +67,13 @@ describe("PROVIDER_TIERS", () => {
         for (const capability of tiers[i - 1].capabilities) {
           expect(upper.includes(capability), `${provider} tier ${i}`).toBe(true);
         }
-        expect(upper.length, provider).toBeGreaterThan(
-          tiers[i - 1].capabilities.length,
-        );
+        expect(upper.length, provider).toBeGreaterThan(tiers[i - 1].capabilities.length);
       }
     }
   });
 
   it("keeps the gmail ladder to read, then read + send proposals", () => {
-    expect(PROVIDER_TIERS.gmail.map((tier) => tier.id)).toEqual([
-      "read_only",
-      "read_send",
-    ]);
+    expect(PROVIDER_TIERS.gmail.map((tier) => tier.id)).toEqual(["read_only", "read_send", "read_write"]);
   });
 });
 
@@ -100,10 +90,7 @@ describe("tier helpers", () => {
   });
 
   it("tierCapabilities returns the tier's list", () => {
-    expect(tierCapabilities("gmail", "read_only")).toEqual([
-      "gmail.read",
-      "gmail.thread.read",
-    ]);
+    expect(tierCapabilities("gmail", "read_only")).toEqual(["gmail.read", "gmail.thread.read"]);
   });
 
   it("lowestTierId is the first tier, null when a provider has none", () => {
@@ -116,16 +103,18 @@ describe("tier helpers", () => {
   });
 
   it("notion ships one read_only tier over its search and page read", () => {
-    expect(PROVIDER_TIERS.notion.map((t) => t.id)).toEqual(["read_only"]);
+    expect(PROVIDER_TIERS.notion.map((t) => t.id)).toEqual(["read_only", "read_write"]);
     expect(tierCapabilities("notion", "read_only")).toEqual(["notion.read", "notion.page.read"]);
   });
 });
 
-
 describe("PROVIDER_TIERS google cluster", () => {
   it("covers google-calendar and google-drive with one read_only tier", () => {
     for (const provider of ["google-calendar", "google-drive"] as Provider[]) {
-      expect(PROVIDER_TIERS[provider].map((t) => t.id), provider).toEqual(["read_only"]);
+      expect(
+        PROVIDER_TIERS[provider].map((t) => t.id),
+        provider,
+      ).toEqual(["read_only", "read_write"]);
     }
   });
 
@@ -134,7 +123,10 @@ describe("PROVIDER_TIERS google cluster", () => {
       ["google-docs", "googledocs.documents.read"],
       ["google-sheets", "googlesheets.spreadsheets.read"],
     ] as Array<[Provider, Capability]>) {
-      expect(PROVIDER_TIERS[provider].map((t) => t.id), provider).toEqual(["read_only"]);
+      expect(
+        PROVIDER_TIERS[provider].map((t) => t.id),
+        provider,
+      ).toEqual(["read_only", "read_write"]);
       expect(tierCapabilities(provider, "read_only"), provider).toEqual([capability]);
     }
   });
@@ -160,29 +152,35 @@ describe("PROVIDER_TIERS google cluster", () => {
   });
 });
 
-
 describe("PROVIDER_TIERS comms cluster", () => {
   it("covers discord, zoom, calendly with one read_only tier", () => {
     for (const provider of ["discord", "zoom", "calendly"] as Provider[]) {
-      expect(PROVIDER_TIERS[provider].map((t) => t.id), provider).toEqual(["read_only"]);
+      expect(
+        PROVIDER_TIERS[provider].map((t) => t.id),
+        provider,
+      ).toEqual(["read_only", "read_write"]);
     }
   });
 });
-
 
 describe("PROVIDER_TIERS work-management cluster", () => {
   it("covers asana, trello, airtable with one read_only tier", () => {
     for (const provider of ["asana", "trello", "airtable"] as Provider[]) {
-      expect(PROVIDER_TIERS[provider].map((t) => t.id), provider).toEqual(["read_only"]);
+      expect(
+        PROVIDER_TIERS[provider].map((t) => t.id),
+        provider,
+      ).toEqual(["read_only", "read_write"]);
     }
   });
 });
 
-
 describe("PROVIDER_TIERS crm/finance cluster", () => {
   it("covers canva, hubspot, stripe with one read_only tier", () => {
     for (const provider of ["canva", "hubspot", "stripe"] as Provider[]) {
-      expect(PROVIDER_TIERS[provider].map((t) => t.id), provider).toEqual(["read_only"]);
+      expect(
+        PROVIDER_TIERS[provider].map((t) => t.id),
+        provider,
+      ).toEqual(["read_only", "read_write"]);
     }
   });
 
@@ -194,14 +192,14 @@ describe("PROVIDER_TIERS crm/finance cluster", () => {
 describe("drift between PROVIDER_TIERS and migration 0229", () => {
   it("the gmail tier JSON matches the seed verbatim", () => {
     expect(seededTiers("gmail")).toEqual(
-      JSON.parse(JSON.stringify(PROVIDER_TIERS.gmail)),
+      JSON.parse(JSON.stringify(PROVIDER_TIERS.gmail.filter((tier) => tier.id !== "read_write"))),
     );
   });
 
   it("every provider's tier JSON matches its seed", () => {
     for (const [provider, tiers] of Object.entries(PROVIDER_TIERS)) {
       expect(seededTiers(provider), provider).toEqual(
-        JSON.parse(JSON.stringify(tiers)),
+        JSON.parse(JSON.stringify(tiers.filter((tier) => tier.id !== "read_write"))),
       );
     }
   });

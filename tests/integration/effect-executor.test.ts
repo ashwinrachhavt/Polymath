@@ -1,12 +1,7 @@
 import { desc, eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { agentProfiles, agentRuns } from "@/domains/agents/schema";
-import {
-  actionAttempts,
-  actionProposals,
-  actionReviews,
-  actionRevisions,
-} from "@/domains/actions/schema";
+import { actionAttempts, actionProposals, actionReviews, actionRevisions } from "@/domains/actions/schema";
 import { externalAccounts } from "@/domains/integrations/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
@@ -163,7 +158,14 @@ async function seedSend(options: {
     });
   }
 
-  return { auth, proposalId: proposal.id, revisionId: revision.id, accountAlias: alias, workspaceId, accountId: account.id };
+  return {
+    auth,
+    proposalId: proposal.id,
+    revisionId: revision.id,
+    accountAlias: alias,
+    workspaceId,
+    accountId: account.id,
+  };
 }
 
 async function seedRun(workspaceId: string, userId: string, allowedTools = ["gmail.send"]) {
@@ -186,6 +188,55 @@ async function seedRun(workspaceId: string, userId: string, allowedTools = ["gma
 }
 
 suite("executeApprovedEffect", () => {
+  it("executes an approved connected action once, then respects Write being disabled", async () => {
+    const seed = await seedSend({
+      slug: "connector-action",
+      payload: {
+        toolSlug: "GMAIL_SEND_EMAIL",
+        version: "20261101_00",
+        arguments: { recipient_email: "ada@example.test", body: "Hello" },
+        summary: "Send Ada the update",
+      },
+    });
+    await db
+      .update(actionProposals)
+      .set({ capability: "gmail.actions.write" })
+      .where(eq(actionProposals.id, seed.proposalId));
+    await db.update(externalAccounts).set({ accessTier: "read_write" }).where(eq(externalAccounts.id, seed.accountId));
+    const spy = vi.fn<typeof fetch>(async (_url, init) =>
+      init?.method === "POST"
+        ? Response.json({ successful: true, data: {}, log_id: "log-action-1" })
+        : Response.json({
+            slug: "GMAIL_SEND_EMAIL",
+            name: "Send email",
+            toolkit: { slug: "gmail" },
+            version: "20261101_00",
+            input_parameters: { type: "object" },
+          }),
+    );
+    vi.stubGlobal("fetch", spy);
+    expect(await executor.executeApprovedEffect(seed.auth, { proposalId: seed.proposalId })).toMatchObject({
+      status: "sent",
+    });
+    expect(await executor.executeApprovedEffect(seed.auth, { proposalId: seed.proposalId })).toMatchObject({
+      status: "sent",
+    });
+    const writes = spy.mock.calls.filter(([, init]) => init?.method === "POST");
+    expect(writes).toHaveLength(1);
+    expect(JSON.parse(String(writes[0]?.[1]?.body))).toMatchObject({
+      version: "20261101_00",
+      arguments: { recipient_email: "ada@example.test", body: "Hello" },
+    });
+    await db
+      .update(externalAccounts)
+      .set({ disabledCapabilities: ["gmail.actions.write"] })
+      .where(eq(externalAccounts.id, seed.accountId));
+    await expect(executor.executeApprovedEffect(seed.auth, { proposalId: seed.proposalId })).rejects.toThrow(
+      /switched off/,
+    );
+    expect(spy.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(1);
+  });
+
   it("sends exactly once; a second execution returns the settled outcome", async () => {
     const seeded = await seedSend({ slug: "effect-once" });
     const { spy } = stubProvider(sentOk("msg_1"));
@@ -197,10 +248,7 @@ suite("executeApprovedEffect", () => {
     expect(second).toMatchObject({ status: "sent", providerId: "msg_1" });
     expect(spy).toHaveBeenCalledTimes(1);
 
-    const attempts = await db
-      .select()
-      .from(actionAttempts)
-      .where(eq(actionAttempts.proposalId, seeded.proposalId));
+    const attempts = await db.select().from(actionAttempts).where(eq(actionAttempts.proposalId, seeded.proposalId));
     expect(attempts).toHaveLength(1);
     expect(attempts[0].status).toBe("succeeded");
     expect(attempts[0].idempotencyKey).toBe(`exec:${seeded.proposalId}`);
@@ -226,10 +274,7 @@ suite("executeApprovedEffect", () => {
       /no longer matches the approved revision/,
     );
     expect(spy).not.toHaveBeenCalled();
-    const attempts = await db
-      .select()
-      .from(actionAttempts)
-      .where(eq(actionAttempts.proposalId, seeded.proposalId));
+    const attempts = await db.select().from(actionAttempts).where(eq(actionAttempts.proposalId, seeded.proposalId));
     expect(attempts).toHaveLength(0);
   });
 
@@ -307,10 +352,7 @@ suite("executeApprovedEffect", () => {
     expect(outcome.status).toBe("unknown");
     expect(spy).not.toHaveBeenCalled();
 
-    const attempts = await db
-      .select()
-      .from(actionAttempts)
-      .where(eq(actionAttempts.proposalId, seeded.proposalId));
+    const attempts = await db.select().from(actionAttempts).where(eq(actionAttempts.proposalId, seeded.proposalId));
     expect(attempts).toHaveLength(1);
   });
 
@@ -337,9 +379,9 @@ suite("executeApprovedEffect", () => {
     });
     const { spy } = stubProvider(sentOk());
 
-    await expect(
-      executor.executeApprovedEffect(seeded.auth, { proposalId: seeded.proposalId }),
-    ).rejects.toBeInstanceOf(actions.StaleRevisionError);
+    await expect(executor.executeApprovedEffect(seeded.auth, { proposalId: seeded.proposalId })).rejects.toBeInstanceOf(
+      actions.StaleRevisionError,
+    );
     expect(spy).not.toHaveBeenCalled();
   });
 
@@ -347,14 +389,11 @@ suite("executeApprovedEffect", () => {
     const seeded = await seedSend({ slug: "effect-revoked", accountStatus: "revoked" });
     const { spy } = stubProvider(sentOk());
 
-    await expect(
-      executor.executeApprovedEffect(seeded.auth, { proposalId: seeded.proposalId }),
-    ).rejects.toBeInstanceOf(executor.SendNotAllowedError);
+    await expect(executor.executeApprovedEffect(seeded.auth, { proposalId: seeded.proposalId })).rejects.toBeInstanceOf(
+      executor.SendNotAllowedError,
+    );
     expect(spy).not.toHaveBeenCalled();
-    const attempts = await db
-      .select()
-      .from(actionAttempts)
-      .where(eq(actionAttempts.proposalId, seeded.proposalId));
+    const attempts = await db.select().from(actionAttempts).where(eq(actionAttempts.proposalId, seeded.proposalId));
     expect(attempts).toHaveLength(0);
   });
 
@@ -368,11 +407,13 @@ suite("executeApprovedEffect", () => {
       .set({ disabledCapabilities: ["gmail.send"] })
       .where(eq(externalAccounts.id, seeded.accountId));
 
-    await expect(
-      executor.executeApprovedEffect(seeded.auth, { proposalId: seeded.proposalId }),
-    ).rejects.toBeInstanceOf(executor.SendNotAllowedError);
+    await expect(executor.executeApprovedEffect(seeded.auth, { proposalId: seeded.proposalId })).rejects.toBeInstanceOf(
+      executor.SendNotAllowedError,
+    );
     expect(spy).not.toHaveBeenCalled();
-    expect(await db.select().from(actionAttempts).where(eq(actionAttempts.proposalId, seeded.proposalId))).toHaveLength(0);
+    expect(await db.select().from(actionAttempts).where(eq(actionAttempts.proposalId, seeded.proposalId))).toHaveLength(
+      0,
+    );
 
     // The refusal is not a revocation: restore access and the same approval sends.
     await db
@@ -388,16 +429,15 @@ suite("executeApprovedEffect", () => {
     const seeded = await seedSend({ slug: "effect-tier-down" });
     const { spy } = stubProvider(sentOk());
 
-    await db
-      .update(externalAccounts)
-      .set({ accessTier: "read_only" })
-      .where(eq(externalAccounts.id, seeded.accountId));
+    await db.update(externalAccounts).set({ accessTier: "read_only" }).where(eq(externalAccounts.id, seeded.accountId));
 
-    await expect(
-      executor.executeApprovedEffect(seeded.auth, { proposalId: seeded.proposalId }),
-    ).rejects.toBeInstanceOf(executor.SendNotAllowedError);
+    await expect(executor.executeApprovedEffect(seeded.auth, { proposalId: seeded.proposalId })).rejects.toBeInstanceOf(
+      executor.SendNotAllowedError,
+    );
     expect(spy).not.toHaveBeenCalled();
-    expect(await db.select().from(actionAttempts).where(eq(actionAttempts.proposalId, seeded.proposalId))).toHaveLength(0);
+    expect(await db.select().from(actionAttempts).where(eq(actionAttempts.proposalId, seeded.proposalId))).toHaveLength(
+      0,
+    );
   });
 
   it("a timeout settles unknown, never failed, and blocks a second send", async () => {
@@ -438,10 +478,7 @@ suite("executeApprovedEffect", () => {
     const outcome = await executor.executeApprovedEffect(seeded.auth, { proposalId: seeded.proposalId });
     expect(outcome).toMatchObject({ status: "failed", retryable: false });
 
-    const [attempt] = await db
-      .select()
-      .from(actionAttempts)
-      .where(eq(actionAttempts.proposalId, seeded.proposalId));
+    const [attempt] = await db.select().from(actionAttempts).where(eq(actionAttempts.proposalId, seeded.proposalId));
     expect(attempt.status).toBe("failed");
     expect(attempt.reconciliation).toBe("not_needed");
     expect(attempt.errorCode).toBe("provider_rejected_400");
@@ -490,15 +527,12 @@ suite("executeApprovedEffect", () => {
     }
 
     // The sixth proposal is the one under test; it must be charged to the run.
-    await db
-      .update(actionProposals)
-      .set({ runId })
-      .where(eq(actionProposals.id, seeded.proposalId));
+    await db.update(actionProposals).set({ runId }).where(eq(actionProposals.id, seeded.proposalId));
     const { spy } = stubProvider(sentOk());
 
-    await expect(
-      executor.executeApprovedEffect(seeded.auth, { proposalId: seeded.proposalId }),
-    ).rejects.toBeInstanceOf(executor.EffectBudgetExceededError);
+    await expect(executor.executeApprovedEffect(seeded.auth, { proposalId: seeded.proposalId })).rejects.toBeInstanceOf(
+      executor.EffectBudgetExceededError,
+    );
     expect(spy).not.toHaveBeenCalled();
   });
 
@@ -509,9 +543,9 @@ suite("executeApprovedEffect", () => {
     await db.update(actionProposals).set({ runId }).where(eq(actionProposals.id, seeded.proposalId));
     const { spy } = stubProvider(sentOk());
 
-    await expect(
-      executor.executeApprovedEffect(seeded.auth, { proposalId: seeded.proposalId }),
-    ).rejects.toBeInstanceOf(executor.SendNotAllowedError);
+    await expect(executor.executeApprovedEffect(seeded.auth, { proposalId: seeded.proposalId })).rejects.toBeInstanceOf(
+      executor.SendNotAllowedError,
+    );
     expect(spy).not.toHaveBeenCalled();
   });
 
@@ -523,9 +557,9 @@ suite("executeApprovedEffect", () => {
       .where(eq(actionProposals.id, seeded.proposalId));
     const { spy } = stubProvider(sentOk());
 
-    await expect(
-      executor.executeApprovedEffect(seeded.auth, { proposalId: seeded.proposalId }),
-    ).rejects.toBeInstanceOf(executor.EffectNotSupportedError);
+    await expect(executor.executeApprovedEffect(seeded.auth, { proposalId: seeded.proposalId })).rejects.toBeInstanceOf(
+      executor.EffectNotSupportedError,
+    );
     expect(spy).not.toHaveBeenCalled();
   });
 

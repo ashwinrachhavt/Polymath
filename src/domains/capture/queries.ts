@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, ilike, lt, or, sql, type SQL, isNull } from "drizzle-orm";
+import { and, count, desc, eq, gte, ilike, inArray, lt, or, sql, type SQL, isNull } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { escapeLike } from "@/lib/list-params";
@@ -157,6 +157,87 @@ export async function searchCapturesForLink(auth: AuthContext, query: string, li
     kind: "capture" as const,
     href: `/command-center/inbox?id=${row.id}`,
   }));
+}
+
+/**
+ * The bounded content the chat may read when the owner explicitly selects an
+ * Inbox capture or the Inbox as a whole. The current queue excludes parked
+ * work; each item contains only its readable text and source address.
+ */
+type CaptureChatContext = {
+  id: string;
+  title: string;
+  kind: (typeof captures.$inferSelect)["kind"];
+  text: string;
+  url: string | null;
+  processingState: (typeof captures.$inferSelect)["processingState"];
+  receivedAt: string;
+};
+
+function captureChatContext(row: {
+  id: string;
+  title: string | null;
+  kind: (typeof captures.$inferSelect)["kind"];
+  text: string | null;
+  cleanText: string | null;
+  fetchedText: string | null;
+  url: string | null;
+  filename: string | null;
+  processingState: (typeof captures.$inferSelect)["processingState"];
+  createdAt: Date;
+}): CaptureChatContext {
+  return {
+    id: row.id,
+    title: row.title?.trim() || row.filename?.trim() || captureLinkLabel({ text: row.text, url: row.url }),
+    kind: row.kind,
+    text: row.cleanText || row.text || row.fetchedText || "",
+    url: row.url,
+    processingState: row.processingState,
+    receivedAt: row.createdAt.toISOString(),
+  };
+}
+
+const inboxChatColumns = {
+  id: captures.id,
+  title: captures.title,
+  kind: captures.kind,
+  text: captures.text,
+  cleanText: captures.cleanText,
+  fetchedText: captures.fetchedText,
+  url: captures.url,
+  filename: sql<string | null>`${captures.rawPayload}->>'filename'`,
+  processingState: captures.processingState,
+  createdAt: captures.createdAt,
+};
+
+export async function getCaptureChatContext(auth: AuthContext, id: string): Promise<CaptureChatContext | null> {
+  const [row] = await db
+    .select(inboxChatColumns)
+    .from(captures)
+    .where(and(eq(captures.workspaceId, auth.workspaceId), eq(captures.id, id)))
+    .limit(1);
+  return row ? captureChatContext(row) : null;
+}
+
+export async function getInboxChatContext(auth: AuthContext): Promise<{
+  total: number;
+  items: CaptureChatContext[];
+}> {
+  const currentInbox = and(
+    eq(captures.workspaceId, auth.workspaceId),
+    isNull(captures.parkedAt),
+    inArray(captures.processingState, ["unprocessed", "classifying", "enriched", "failed"]),
+  );
+  const [rows, [countRow]] = await Promise.all([
+    db
+      .select(inboxChatColumns)
+      .from(captures)
+      .where(currentInbox)
+      .orderBy(desc(captures.createdAt), desc(captures.id))
+      .limit(10),
+    db.select({ total: count() }).from(captures).where(currentInbox),
+  ]);
+  return { total: countRow?.total ?? 0, items: rows.map(captureChatContext) };
 }
 
 /** The full row for the detail pane; the only inbox read that carries the whole text. */

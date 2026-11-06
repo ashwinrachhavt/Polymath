@@ -24,6 +24,7 @@ import { createHash } from "node:crypto";
  * minting duplicates.
  */
 export default defineTool({
+  deferred: true,
   description:
     "Create ideas (zettels) from source text or a saved artifact. Ideas become knowledge cards immediately - the tool call is the acceptance, and near-duplicates of existing cards are skipped.",
   inputSchema: z.object({

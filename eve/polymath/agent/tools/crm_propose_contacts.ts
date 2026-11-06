@@ -13,6 +13,7 @@ import { proposeContactsFromSenders } from "../../../../src/domains/crm/propose-
  * created until the owner approves each proposal in the review queue.
  */
 export default defineTool({
+  deferred: true,
   description:
     "Propose CRM contacts (and their company) for people who emailed the owner and are not in the CRM yet. Pass the messages you read with gmail_search: message id, thread id, From header, subject, date. Each new human sender becomes one proposal in the review queue linking the email thread; nothing is created until the owner approves it. Automated senders, the owner's own addresses and existing contacts are skipped and reported back.",
   inputSchema: z.object({
@@ -28,7 +29,10 @@ export default defineTool({
       )
       .min(1)
       .max(50),
-    ownAddresses: z.array(z.string().max(320)).max(10).describe("The owner's own email addresses, so mail from them is never proposed as a contact."),
+    ownAddresses: z
+      .array(z.string().max(320))
+      .max(10)
+      .describe("The owner's own email addresses, so mail from them is never proposed as a contact."),
   }),
   async execute(input, ctx) {
     const current = ctx.session.auth.current;
@@ -47,7 +51,11 @@ export default defineTool({
       { userId: current.principalId, workspaceId },
       // The tool contract allows the optional keys to be absent; the domain
       // type declares them present-and-nullable. Normalize at the boundary.
-      { messages: input.messages.map((m) => ({ ...m, subject: m.subject ?? null })), ownAddresses: input.ownAddresses, runId: run.id },
+      {
+        messages: input.messages.map((m) => ({ ...m, subject: m.subject ?? null })),
+        ownAddresses: input.ownAddresses,
+        runId: run.id,
+      },
     );
     return { ok: true as const, ...result, status: "awaiting review" };
   },

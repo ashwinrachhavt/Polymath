@@ -22,14 +22,11 @@ import type { LanguageModel } from "ai";
  * without a live probe — they surface only when their key is set, and a failing
  * one is removed on first failed probe, not shipped to the picker.
  *
- * Groq is deliberately absent. Its free tier meters a request at 7,000 input
- * tokens per minute (qwen3.8-27b) and 8,000 tokens per minute (gpt-oss-120b),
- * while Polymath's first request is about 12,000 tokens before the person's
- * message (instructions plus 23 tool schemas). Both entries answered a short
- * probe on 2026-10-21 but cannot answer a real turn; the picker offered them,
- * the turn failed at the provider with a 413, and the failure looked like a bug
- * in Polymath. Re-add them only when the account's Groq tier raises the cap
- * above the agent's baseline request.
+ * Provider quotas and credit change over time. A successful model listing or
+ * short probe does not guarantee that a full chat request fits current account
+ * limits, so runtime failures are surfaced in the transcript with a safe,
+ * actionable explanation. OpenRouter's high catalog output maximum is capped at
+ * the request boundary for credit-limited accounts.
  */
 
 type ModelProviderId =

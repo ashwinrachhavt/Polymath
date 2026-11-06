@@ -42,6 +42,28 @@ import { createApiKeyAction, listApiKeysAction, revokeApiKeyAction } from "@/app
 import { resolveCompanionToken } from "@/domains/identity/machine";
 
 suite("Settings API keys: the full owner journey on the 0234 schema", () => {
+  it("verifies write-only capture keys and refuses read-only keys for pairing", async () => {
+    holder.db = drizzle(client!);
+    const owner = await seedWorkspace(holder.db as never, `pairing-scopes-${Date.now()}`);
+    getAuthContext.mockResolvedValue(ownerAuth(owner.userId, owner.workspaceId));
+    const { GET } = await import("@/app/api/v1/captures/connection/route");
+    for (const [scope, status] of [
+      ["captures:write", 200],
+      ["captures:read", 403],
+    ] as const) {
+      const created = await createApiKeyAction({ name: "Pairing scope", kind: "companion", scopes: [scope] });
+      if (!created.ok) throw new Error("Fixture key creation failed");
+      const response = await GET(
+        new Request("http://localhost/api/v1/captures/connection", {
+          headers: { Authorization: `Bearer ${created.token}` },
+        }),
+        undefined,
+      );
+      expect(response.status).toBe(status);
+      if (status === 200) expect(await response.json()).toMatchObject({ ok: true, workspaceId: owner.workspaceId });
+    }
+  });
+
   afterAll(async () => {
     await client?.end();
   });

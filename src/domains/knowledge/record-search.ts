@@ -5,12 +5,14 @@ import { artifacts, documents, type artifactKind } from "@/domains/knowledge/sch
 import { threads } from "@/domains/agents/schema";
 import { organizations, people, contactPoints } from "@/domains/identity/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
+import { captures } from "@/domains/capture/schema";
+import { captureLinkLabel } from "@/domains/capture/queries";
 
 /*
  * Cross-record lookup for the composer's plus menu and @-mentions: when the
  * owner attaches context to a message, they search everything the message
- * could name — notes, zettels, generated artifacts, past conversations, and
- * the identity domain's people and companies (what the LinkedIn CSV import
+ * could name — the Inbox and its captures, notes, zettels, generated artifacts, past
+ * conversations, and the identity domain's people and companies (what the LinkedIn CSV import
  * writes and the People and Companies screens show). One query set, grouped
  * by kind client-side. Read-only; references travel in the message text, so
  * this module never writes anything.
@@ -24,7 +26,7 @@ const PER_GROUP_LIMIT = 5;
 
 export type RecordReference = {
   id: string;
-  kind: "note" | "zettel" | "artifact" | "conversation" | "document" | "person" | "company";
+  kind: "inbox" | "capture" | "note" | "zettel" | "artifact" | "conversation" | "document" | "person" | "company";
   title: string;
   /** Where the picker sends a click: the record's own screen. */
   href: string;
@@ -50,9 +52,9 @@ export async function searchRecordsForAttach(auth: AuthContext, query: string): 
     "other",
   ];
 
-  // Order matters: the queries below run artifacts, threads, documents, CRM
-  // people, and CRM companies, and the destructure must name them in that order.
-  const [artifactRows, threadRows, documentRows, contactRows, companyRows] = await Promise.all([
+  // Keep the result order aligned with the queries below: artifacts, threads,
+  // documents, people, captures, then companies.
+  const [artifactRows, threadRows, documentRows, contactRows, captureRows, companyRows] = await Promise.all([
     db
       .select({ id: artifacts.id, kind: artifacts.kind, title: artifacts.title, updatedAt: artifacts.updatedAt })
       .from(artifacts)
@@ -127,6 +129,32 @@ export async function searchRecordsForAttach(auth: AuthContext, query: string): 
       .orderBy(asc(people.displayName), asc(people.id))
       .limit(PER_GROUP_LIMIT),
     db
+      .select({
+        id: captures.id,
+        title: captures.title,
+        text: captures.text,
+        url: captures.url,
+        filename: sql<string | null>`${captures.rawPayload}->>'filename'`,
+      })
+      .from(captures)
+      .where(
+        and(
+          eq(captures.workspaceId, auth.workspaceId),
+          isNull(captures.parkedAt),
+          inArray(captures.processingState, ["unprocessed", "classifying", "enriched", "failed"]),
+          trimmed
+            ? or(
+                ilike(captures.title, like),
+                ilike(captures.text, like),
+                ilike(captures.url, like),
+                ilike(sql`${captures.rawPayload}->>'filename'`, like),
+              )!
+            : sql`true`,
+        ),
+      )
+      .orderBy(desc(captures.createdAt), desc(captures.id))
+      .limit(PER_GROUP_LIMIT),
+    db
       .select({ id: organizations.id, name: organizations.name })
       .from(organizations)
       .where(
@@ -141,21 +169,40 @@ export async function searchRecordsForAttach(auth: AuthContext, query: string): 
       .limit(PER_GROUP_LIMIT),
   ]);
 
-  const references: RecordReference[] = artifactRows
-    // The picker's groups; document/other/memo/diagram/transcript rows do not
-    // belong in a message-reference menu, they have their own surfaces.
-    .filter((row) => ["note", "zettel", "report", "deck", "infographic"].includes(row.kind))
-    .map((row) => ({
+  const references: RecordReference[] = [];
+  if (!trimmed || "inbox".includes(trimmed.toLocaleLowerCase())) {
+    references.push({
+      id: auth.workspaceId,
+      kind: "inbox",
+      title: "Inbox",
+      href: "/command-center/inbox",
+    });
+  }
+  references.push(
+    ...captureRows.map((row) => ({
       id: row.id,
-      kind: row.kind === "zettel" ? "zettel" : row.kind === "note" ? "note" : "artifact",
-      title: row.title,
-      href:
-        row.kind === "note"
-          ? `/polymath/notes?note=${row.id}`
-          : row.kind === "zettel"
-            ? `/polymath/ideas?zettel=${row.id}`
-            : `/polymath/artifacts/${row.id}`,
-    }));
+      kind: "capture" as const,
+      title: row.title?.trim() || row.filename?.trim() || captureLinkLabel({ text: row.text, url: row.url }),
+      href: `/command-center/inbox?id=${row.id}`,
+    })),
+  );
+  references.push(
+    ...artifactRows
+      // The picker's groups; document/other/memo/diagram/transcript rows do not
+      // belong in a message-reference menu, they have their own surfaces.
+      .filter((row) => ["note", "zettel", "report", "deck", "infographic"].includes(row.kind))
+      .map((row) => ({
+        id: row.id,
+        kind: (row.kind === "zettel" ? "zettel" : row.kind === "note" ? "note" : "artifact") as RecordReference["kind"],
+        title: row.title,
+        href:
+          row.kind === "note"
+            ? `/polymath/notes?note=${row.id}`
+            : row.kind === "zettel"
+              ? `/polymath/ideas?zettel=${row.id}`
+              : `/polymath/artifacts/${row.id}`,
+      })),
+  );
   references.push(
     ...documentRows.map((row) => ({
       id: row.id,

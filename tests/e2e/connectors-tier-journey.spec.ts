@@ -148,7 +148,9 @@ async function callGateway(tool: string, args: Record<string, unknown>): Promise
   return { status: response.status, text };
 }
 
-test("the connectors card names the tier, offers the picker, and marks tierless providers Coming soon", async ({ page }) => {
+test("the connectors card names the tier, offers the picker, and marks tierless providers Coming soon", async ({
+  page,
+}) => {
   await page.goto("/command-center/integrations");
 
   // The seeded gmail account is connected at read_only: the card badge says
@@ -156,9 +158,9 @@ test("the connectors card names the tier, offers the picker, and marks tierless 
   const row = e2eAccountRow(page);
   await expect(row).toBeVisible();
   await expect(page.locator("article", { hasText: "Gmail" }).getByText("Connected", { exact: true })).toBeVisible();
-  // The seeded gmail account is read_only: Read on, Send off.
+  // The seeded Gmail account is read_only: Read on, Write off.
   const readSwitch = row.getByRole("switch", { name: "Read" });
-  const sendSwitch = row.getByRole("switch", { name: "Send", exact: true });
+  const sendSwitch = row.getByRole("switch", { name: "Write", exact: true });
   await expect(readSwitch).toBeVisible();
   await expect(readSwitch).toHaveAttribute("aria-checked", "true");
   await expect(sendSwitch).toHaveAttribute("aria-checked", "false");
@@ -171,8 +173,8 @@ test("the connectors card names the tier, offers the picker, and marks tierless 
 test("raising the tier persists across a reload, and lowering it back does too", async ({ page }) => {
   await page.goto("/command-center/integrations");
 
-  // Flipping Send on raises the account to the tier granting gmail.send.
-  const row = () => e2eAccountRow(page).getByRole("switch", { name: "Send", exact: true });
+  // Enabling Write grants routine actions and reviewed consequential actions.
+  const row = () => e2eAccountRow(page).getByRole("switch", { name: "Write", exact: true });
   await row().click();
   await expect(row()).toHaveAttribute("aria-checked", "true");
 
@@ -205,7 +207,11 @@ test("a send within the tier files a proposal; a send above it is denied naming 
   await setTier("read_only");
   // Name the account like the allowed call: without it the gateway answers
   // the account-ambiguity error before the tier check ever runs.
-  const denied = await callGateway("gmail_send", { ...send, accountAlias: seeded.alias, messageId: `e2e-denied-${Date.now()}` });
+  const denied = await callGateway("gmail_send", {
+    ...send,
+    accountAlias: seeded.alias,
+    messageId: `e2e-denied-${Date.now()}`,
+  });
   expect(denied.status).toBe(403);
   expect(denied.text).toContain("Agent access");
   expect(denied.text).toContain("Connectors");

@@ -13,6 +13,7 @@ import { proposeConflictMove } from "../../../../src/domains/calendar/conflict-p
  * version and in a slot that are still valid when this is called.
  */
 export default defineTool({
+  deferred: true,
   description:
     "Propose moving an event to a time offered by calendar_conflicts, for the owner to approve. Pass eventId, expectedVersion, startsAt and endsAt exactly as a 'move' option returned them. Nothing changes until the owner approves in the review queue. A refusal (event changed, time taken, event owned by Google) is final for that option: read the conflicts again rather than retrying with a different time. Propose one option per conflict; say what you proposed and that it awaits approval.",
   inputSchema: z.object({
@@ -45,6 +46,11 @@ export default defineTool({
       },
     );
     if (!result.ok) return { ok: false as const, code: result.code, error: result.message };
-    return { ok: true as const, proposalId: result.proposalId, deduplicated: result.deduplicated, status: "awaiting owner approval" };
+    return {
+      ok: true as const,
+      proposalId: result.proposalId,
+      deduplicated: result.deduplicated,
+      status: "awaiting owner approval",
+    };
   },
 });
