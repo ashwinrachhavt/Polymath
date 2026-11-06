@@ -7,7 +7,7 @@
  * scope boundaries. Split: ~70% dev / ~30% heldout (deterministic by index).
  */
 
-export type Expected = { docKey: string; fragment: string };
+type Expected = { docKey: string; fragment: string };
 export type EvalQuestion = {
   id: string;
   question: string;
