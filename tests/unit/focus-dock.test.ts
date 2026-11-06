@@ -118,43 +118,66 @@ describe("FocusDock", () => {
     }
   });
 
-  it("a failed focus re-check marks the cache stale, and a navigation mount inside the window inherits the cue", async () => {
-    // Regression (CI, 2026-11-05): the revalidate window used to serve the
-    // focus re-check from the cache, so the failed read the e2e journey
-    // forces never happened and the dock stayed "verified". The window
-    // governs navigation mounts; a focus event must really re-read. The
-    // resulting stale mark rides on the cache, so the next navigation mount
-    // inside the window presents the last known session as stale, not fresh.
-    const fetchSpy = vi
-      .fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ session: live }) } as Response)
-      .mockResolvedValueOnce({ ok: false, json: async () => ({}) } as Response);
+  it("routine focus events inside the revalidate window reuse the verified cache instead of re-reading", async () => {
+    // The request storm (2026-11-06): every window focus and visibility
+    // event fired a FORCED network read that bypassed the revalidate window,
+    // so an otherwise idle open tab hit /api/v1/focus/live on every refocus.
+    // A verified fresh cache answers focus events the same way it answers
+    // navigation mounts; only an expired or stale cache re-reads.
+    const fetchSpy = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ session: live }) } as Response);
     vi.stubGlobal("fetch", fetchSpy);
+    render(h(FocusDock));
+    const dock = await screen.findByLabelText("Focus session");
+    expect(dock.textContent).not.toContain("last known");
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+    for (let i = 0; i < 10; i++) {
+      window.dispatchEvent(new Event("focus"));
+      document.dispatchEvent(new Event("visibilitychange"));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(screen.getByLabelText("Focus session").textContent).not.toContain("last known");
+  });
+
+  it("a failed re-check past the window marks the session unverified, and the next focus event retries the network", async () => {
+    // The focus event stays the failed read's recovery path: once a re-check
+    // fails, the next focus event must attempt the network again — the
+    // attempt may never be silently dropped — and a good read clears the
+    // mark. (CI regression 2026-11-05, re-pinned after the storm fix.)
     const realNow = Date.now;
     const offset = { ms: 0 };
     const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => realNow() + offset.ms);
     try {
-      const first = render(h(FocusDock));
+      const fetchSpy = vi
+        .fn()
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ session: live }) } as Response)
+        .mockResolvedValueOnce({ ok: false, json: async () => ({}) } as Response)
+        .mockResolvedValue({ ok: true, json: async () => ({ session: live }) } as Response);
+      vi.stubGlobal("fetch", fetchSpy);
+      render(h(FocusDock));
       const dock = await screen.findByLabelText("Focus session");
       expect(dock.textContent).not.toContain("last known");
 
-      // The focus re-check happens inside the revalidate window - but past
-      // the debounce (a focus event milliseconds after the first read is the
-      // thrash the debounce exists to absorb) - and it still reads the
-      // network, fails, and marks the session unverified.
+      // Inside the window a focus event is served from the cache: no re-read.
       offset.ms = 3_000;
+      window.dispatchEvent(new Event("focus"));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+      // Past the window the re-check really reads; a failure keeps the last
+      // known session on screen but marks it unverified.
+      offset.ms = 31_000;
       window.dispatchEvent(new Event("focus"));
       await waitFor(() => expect(screen.getByLabelText("Focus session").textContent).toContain("last known"));
       expect(screen.getByLabelText("Focus session").textContent).toContain("status may be out of date");
       expect(fetchSpy).toHaveBeenCalledTimes(2);
-      first.unmount();
 
-      // A navigation remount inside the revalidate window reads the cache
-      // without refetching - and inherits the stale mark, not a cleared one.
-      render(h(FocusDock));
-      await screen.findByLabelText("Focus session");
-      expect(screen.getByLabelText("Focus session").textContent).toContain("status may be out of date");
-      expect(fetchSpy).toHaveBeenCalledTimes(2);
+      // The recovery attempt is never dropped: the next focus event hits the
+      // network again, and a good read clears the mark.
+      window.dispatchEvent(new Event("focus"));
+      await waitFor(() => expect(screen.getByLabelText("Focus session").textContent).not.toContain("last known"));
+      expect(fetchSpy).toHaveBeenCalledTimes(3);
     } finally {
       nowSpy.mockRestore();
     }

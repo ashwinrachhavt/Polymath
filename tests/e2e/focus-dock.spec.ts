@@ -20,6 +20,18 @@ test("the dock follows a real session across pages, marks a failed read stale, a
   test.setTimeout(180_000);
   const client = db();
   const tag = `dock-${Date.now().toString(36)}`;
+  // The dock's revalidate window reads Date.now; bending it lets the journey
+  // expire the cache on demand instead of waiting 30 real seconds per phase.
+  // Only Date.now is wrapped - timers, rAF and the rest of the clock run real.
+  await page.addInitScript(() => {
+    const realNow = Date.now.bind(Date);
+    (window as unknown as { __dockNowOffset: number }).__dockNowOffset = 0;
+    Date.now = () => realNow() + (window as unknown as { __dockNowOffset: number }).__dockNowOffset;
+  });
+  const bendClock = (ms: number) =>
+    page.evaluate((delta) => {
+      (window as unknown as { __dockNowOffset: number }).__dockNowOffset += delta;
+    }, ms);
   try {
     // Start a real session from the task's Focus action on Work.
     await page.goto("/neuralflow/work?view=saved");
@@ -57,20 +69,37 @@ test("the dock follows a real session across pages, marks a failed read stale, a
     expect(dockBox!.y + dockBox!.height).toBeLessThanOrEqual(navBox!.y + 1);
     await page.screenshot({ path: "test-results/feature-pixels/focus-dock-mobile.png" });
 
+    // The request-storm regression (2026-11-06): routine refocus events of
+    // an open tab each fired a forced /api/v1/focus/live read that bypassed
+    // the revalidate window. A verified fresh cache serves focus events
+    // exactly like navigation mounts - no request at all.
+    let liveReads = 0;
+    const countLive = (request: import("@playwright/test").Request) => {
+      if (request.url().includes("/api/v1/focus/live")) liveReads += 1;
+    };
+    page.on("request", countLive);
+    for (let i = 0; i < 5; i++) await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await page.waitForTimeout(250);
+    expect(liveReads).toBe(0);
+    page.removeListener("request", countLive);
+
     // A failed read keeps the last known session, marked stale - it never
     // claims the session ended, and never presents it as verified. The stale
     // state lives in the mounted component, so the failed read must happen
-    // through the dock's own refetch (window focus), not a page reload that
-    // remounts it with nothing.
+    // through the dock's own refetch (window focus, once the window has
+    // expired), not a page reload that remounts it with nothing.
     await page.route("**/api/v1/focus/live", (route) => route.abort());
+    await bendClock(31_000);
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await expect(dock).toContainText("last known");
     await expect(dock).toContainText("status may be out of date");
     await page.screenshot({ path: "test-results/feature-pixels/focus-dock-mobile-stale.png" });
     await page.setViewportSize({ width: 1280, height: 800 });
 
-    // A successful read clears the stale mark.
+    // The focus event is the failed read's recovery path - the next one
+    // attempts the network again - and a successful read clears the mark.
     await page.unroute("**/api/v1/focus/live");
+    await bendClock(31_000);
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await expect(dock).toContainText("Focus running");
     await expect(dock).not.toContainText("last known");

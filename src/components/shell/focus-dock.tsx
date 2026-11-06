@@ -8,12 +8,14 @@ import { useWorkspace } from "@/components/workspace/workspace-provider";
 
 type LiveSession = { id: string; state: "running" | "paused"; title: string };
 
-// The live-session read is bounded twice (spec W4): a result younger than
-// REVALIDATE_MS is reused across navigation mounts, and concurrent read
-// intents (a focus event landing on a visibility event, a remount landing on
-// an in-flight fetch) join one round trip instead of starting another. The
-// cache is module-level on purpose: the session is workspace-global, not per
-// page.
+// The live-session read is bounded twice (spec W4): a verified result younger
+// than REVALIDATE_MS is reused across navigation mounts AND focus events —
+// re-reading on every window focus was a request storm (each refocus of an
+// open tab fired a forced fetch that bypassed this window) — and concurrent
+// read intents (a focus event landing on a visibility event, a remount
+// landing on an in-flight fetch) join one round trip instead of starting
+// another. The cache is module-level on purpose: the session is
+// workspace-global, not per page.
 const REVALIDATE_MS = 30_000;
 // `stale` rides on the cache, not the component: once a read fails, the last
 // known session is unverified until a read succeeds, and a cache hit must not
@@ -60,11 +62,14 @@ function LiveDock({ pathname }: { pathname: string }) {
     let cancelled = false;
     async function load(options?: { force?: boolean }) {
       const now = Date.now();
-      // The revalidate window serves navigation mounts from the cache; a
-      // focus/visibility event is an explicit re-check and always attempts
-      // the network — that attempt is what a failed read depends on to
-      // surface staleness, so it may never be silently dropped.
-      if (!options?.force && liveCache && now - liveCache.at < REVALIDATE_MS) {
+      // The revalidate window serves navigation mounts and routine focus
+      // events from the cache. One exception: a focus/visibility event is the
+      // re-check a FAILED read depends on to surface staleness, so a cache
+      // marked stale is never served to a focus event — the event always
+      // attempts the network then. A verified fresh cache is served to both:
+      // refocusing a tab is not new information, and forcing a read on every
+      // focus event produced a request storm on an otherwise idle open tab.
+      if (liveCache && now - liveCache.at < REVALIDATE_MS && (!options?.force || !liveCache.stale)) {
         setRead({ path: pathname, session: liveCache.session, stale: liveCache.stale });
         return;
       }
