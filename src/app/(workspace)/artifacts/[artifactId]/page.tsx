@@ -111,7 +111,7 @@ export async function ArtifactSurface({ artifactId }: { artifactId: string }) {
         ) : null}
         <article className="min-w-0 flex-1">
           {diagram ? (
-            <DiagramView title={diagram.title} versions={diagram.versions} />
+            <DiagramView title={diagram.title} versions={diagram.versions} canvasId={diagram.canvasId} />
           ) : structured?.kind === "deck" ? (
             <DeckView
               content={structured}

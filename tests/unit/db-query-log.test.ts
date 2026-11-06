@@ -35,6 +35,7 @@ vi.mock("drizzle-orm/postgres-js", () => ({
 
 let withQueryLog: typeof import("@/lib/db-query-log").withQueryLog;
 let dbQueryLogger: typeof import("@/lib/db-query-log").dbQueryLogger;
+let rawQueryDebugger: typeof import("@/lib/db-query-log").rawQueryDebugger;
 let isQueryLogEnabled: typeof import("@/lib/db-query-log").isQueryLogEnabled;
 
 beforeEach(async () => {
@@ -46,7 +47,7 @@ beforeEach(async () => {
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
   mocks.logger = undefined;
-  ({ withQueryLog, dbQueryLogger, isQueryLogEnabled } = await import("@/lib/db-query-log"));
+  ({ withQueryLog, dbQueryLogger, rawQueryDebugger, isQueryLogEnabled } = await import("@/lib/db-query-log"));
 });
 
 afterEach(() => {
@@ -176,6 +177,41 @@ describe("withQueryLog", () => {
     const line = JSON.parse(log.mock.calls[0][0] as string) as { sql: string };
     expect(line.sql.startsWith("SELECT xxx")).toBe(true);
     expect(line.sql.length).toBe(501); // 500 chars + ellipsis
+  });
+});
+
+describe("rawQueryDebugger — the raw postgres() clients' hook", () => {
+  it("records the raw statement into the ambient unit with the same redaction", async () => {
+    vi.stubEnv("POLYMATH_DB_QUERY_LOG", "1");
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await withQueryLog("outbox.dispatch", async () => {
+      // postgres-js calls debug(connection, query, parameters, paramTypes)
+      // pre-execution: placeholder-form SQL, values only in parameters.
+      rawQueryDebugger(0, "UPDATE outbox_events SET status = $1 WHERE id = $2", ["dispatched", "secret-row-id"]);
+      return { claimed: 1 };
+    });
+
+    expect(log).toHaveBeenCalledTimes(1);
+    const line = JSON.parse(log.mock.calls[0][0] as string) as Record<string, unknown>;
+    expect(line.msg).toBe("db_query");
+    expect(line.key).toBe("outbox.dispatch");
+    expect(line.sql).toBe("UPDATE outbox_events SET status = $1 WHERE id = $2");
+    expect(line.paramCount).toBe(2);
+    expect(log.mock.calls[0][0]).not.toContain("secret-row-id");
+  });
+
+  it("records nothing outside a unit and nothing with the flag off", async () => {
+    vi.stubEnv("POLYMATH_DB_QUERY_LOG", "1");
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    expect(() => rawQueryDebugger(0, "SELECT 1", [])).not.toThrow();
+    expect(log).not.toHaveBeenCalled();
+
+    vi.stubEnv("POLYMATH_DB_QUERY_LOG", "0");
+    await withQueryLog("outbox.muted", async () => {
+      rawQueryDebugger(0, "SELECT 1", []);
+    });
+    expect(log).not.toHaveBeenCalled();
   });
 });
 

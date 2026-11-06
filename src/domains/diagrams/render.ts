@@ -24,7 +24,7 @@
  * is the same contract).
  */
 
-import { supportsElementEdit, type DiagramRenderResult, type DiagramType } from "./types";
+import { DIAGRAM_TYPE_LABELS, supportsElementEdit, type DiagramRenderResult, type DiagramType } from "./types";
 
 /** Rung 1 of the failure ladder: the source never parsed. The `message`
  * carries the parser's own text — the card shows it verbatim and the agent
@@ -89,7 +89,7 @@ export async function renderDiagram(
     return {
       renderMode: "image-fallback",
       svg,
-      fallbackReason: `${diagramType} diagrams open as an image, not an editable scene.`,
+      fallbackReason: `${DIAGRAM_TYPE_LABELS[diagramType]} diagrams open as an image, not an editable scene.`,
     };
   }
 
