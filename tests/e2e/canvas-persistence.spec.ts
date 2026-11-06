@@ -45,7 +45,7 @@ async function seedCanvas(input: { title: string; mermaid: string; diagramType: 
     insert into canvas_versions (workspace_id, canvas_id, version_number, scene, created_by)
     values (
       ${owner.workspace_id}, ${canvas.id}, 1,
-      ${JSON.stringify({ format: "mermaid", mermaid: input.mermaid, diagramType: input.diagramType })}::jsonb,
+      ${client!.json({ format: "mermaid", mermaid: input.mermaid, diagramType: input.diagramType })},
       ${owner.user_id}
     )`;
   return canvas.id;

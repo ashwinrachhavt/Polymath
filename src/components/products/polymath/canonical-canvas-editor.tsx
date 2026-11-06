@@ -280,4 +280,3 @@ export default function CanonicalCanvasEditor({
 }
 
 /** The imperative seam the Excalidraw island exposes to the editor above. */
-export type CanonicalCanvasSceneApi = { scene: () => ExcalidrawScenePayload };

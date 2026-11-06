@@ -96,7 +96,7 @@ export type DiagramToolOutput = {
 export const MAX_CANVAS_SCENE_CHARS = 2_000_000;
 
 /** The generation-time envelope: Mermaid source awaiting client conversion. */
-export type MermaidSceneEnvelope = { format: "mermaid"; mermaid: string; diagramType: DiagramType };
+type MermaidSceneEnvelope = { format: "mermaid"; mermaid: string; diagramType: DiagramType };
 
 /** The serialized Excalidraw drawing a save from the canvas editor stores. */
 export type ExcalidrawScenePayload = {
@@ -105,7 +105,7 @@ export type ExcalidrawScenePayload = {
   files?: Record<string, unknown>;
 };
 
-export type ExcalidrawSceneEnvelope = { format: "excalidraw"; scene: ExcalidrawScenePayload };
+type ExcalidrawSceneEnvelope = { format: "excalidraw"; scene: ExcalidrawScenePayload };
 
 export type CanvasSceneEnvelope = MermaidSceneEnvelope | ExcalidrawSceneEnvelope;
 
