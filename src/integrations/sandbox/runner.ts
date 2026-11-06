@@ -22,7 +22,9 @@
 
 import { runInLocalSandbox } from "./local";
 
-export type SandboxProvider = "local" | "daytona" | "e2b";
+// Internal for now: the env gate below is the only consumer. Export it when
+// a second module needs to name the provider set (knip flags unused exports).
+type SandboxProvider = "local" | "daytona" | "e2b";
 
 export type SandboxSpec = {
   /** The command and its arguments, never a shell string. */
