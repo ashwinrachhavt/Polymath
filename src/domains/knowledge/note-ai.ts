@@ -5,6 +5,7 @@ import { recordAudit } from "@/domains/audit/record";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
+import { noteContentToMarkdown } from "./note-content";
 import { commitNoteSnapshot, type NoteContent } from "./notes";
 import { artifactLinks, artifactVersions, artifacts } from "./schema";
 
@@ -84,10 +85,7 @@ async function loadNote(auth: AuthContext, artifactId: string) {
     .where(and(eq(artifacts.id, artifactId), eq(artifacts.workspaceId, auth.workspaceId), eq(artifacts.kind, "note")))
     .limit(1);
   if (!note) throw new NoteAIError("note_not_found", "No such note.");
-  const markdown =
-    note.content && typeof (note.content as { text?: unknown }).text === "string"
-      ? ((note.content as { text: string }).text as string)
-      : "";
+  const markdown = noteContentToMarkdown(note.content as Record<string, unknown> | null);
   return { id: note.id, title: note.title, markdown };
 }
 
