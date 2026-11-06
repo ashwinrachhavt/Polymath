@@ -62,6 +62,7 @@ import { SourceRegistry } from "./sources/registry";
 import { createSuperagentStore, getPolicy, readStateValue, storedPolicyConfig, writeStateValue } from "./store";
 import { superagentState, workThreads, workTickets } from "./store/schema";
 import type { SuperagentStore } from "./store/repositories";
+import { rawQueryDebugger, withQueryLog } from "@/lib/db-query-log";
 
 /** The executor's delivery-effect payload: which ticket run the input wakes. */
 type DeliveryPayload = { ticketId: string; runId: string };
@@ -552,7 +553,7 @@ export const emptyDrain = (): DrainSummary => ({ passes: 0, claimed: 0, complete
 /** The module's one raw client for the queue's claim/complete/fail mechanics (single connection, as the routes use). */
 let rawClient: RawClient | undefined;
 function queueClient(): RawClient {
-  rawClient ??= postgres(process.env.DATABASE_URL ?? "", { max: 1 });
+  rawClient ??= postgres(process.env.DATABASE_URL ?? "", { max: 1, debug: rawQueryDebugger });
   return rawClient;
 }
 
@@ -581,22 +582,27 @@ async function tickWorkspace(workspaceId: string): Promise<void> {
  * pipeline is warm and never blocks the send when it is not.
  */
 export async function drainSuperagentInline(workspaceId: string): Promise<DrainSummary> {
-  const summary = emptyDrain();
-  await tickWorkspace(workspaceId);
-  for (let pass = 0; pass < MAX_INLINE_PASSES; pass += 1) {
-    summary.passes += 1;
-    const drained = await runEffectsPass(queueClient(), await superagentEffectHandlers(), {
-      workerId: `inline:${workspaceId}`,
-      workspaceId,
-    });
-    summary.claimed += drained.claimed;
-    summary.completed += drained.done;
-    summary.failed += drained.failed;
-    summary.deferred += drained.deferred;
-    await observeWorkspace(workspaceId);
-    if (drained.claimed === 0) break;
-  }
-  return summary;
+  // One canonical query-log line per inline drain: the queue's raw-client
+  // statements (claim/complete/fail) and the drizzle statements the tick and
+  // the observers run attribute to the same unit.
+  return withQueryLog("superagent.inline_drain", async () => {
+    const summary = emptyDrain();
+    await tickWorkspace(workspaceId);
+    for (let pass = 0; pass < MAX_INLINE_PASSES; pass += 1) {
+      summary.passes += 1;
+      const drained = await runEffectsPass(queueClient(), await superagentEffectHandlers(), {
+        workerId: `inline:${workspaceId}`,
+        workspaceId,
+      });
+      summary.claimed += drained.claimed;
+      summary.completed += drained.done;
+      summary.failed += drained.failed;
+      summary.deferred += drained.deferred;
+      await observeWorkspace(workspaceId);
+      if (drained.claimed === 0) break;
+    }
+    return summary;
+  });
 }
 
 /* ------------------------------------------------------------------ */

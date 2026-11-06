@@ -27,6 +27,12 @@ export const POST = authedHandler(async (auth, _request, ctx: { params: Promise<
         "No extraction provider is configured. Set DOCLING_SERVE_URL, REDUCTO_API_KEY or LLAMAPARSE_API_KEY, or OCR_PROVIDER=openrouter.",
       );
     }
-    throw error;
+    /*
+     * Anything else from here down is the external provider's own failure —
+     * a network drop, a 5xx, a malformed response. That is a bad gateway
+     * with a problem body, never an unhandled 500 without one (RFC 9457).
+     */
+    console.error("document extraction failed", error);
+    return problemResponse(502, "extraction_provider_failed", "The extraction provider failed. Try again.");
   }
 });
