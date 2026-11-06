@@ -178,12 +178,19 @@ export type ChunkHit = {
 
 /*
  * One bounded aggregate query derives coverage for a candidate set: chunk
- * count + furthest span end per (extraction, model), joined in code against
- * each extraction's recorded embedModel/embedError/text length. No N+1, no
- * text transfer (lengths come from the queries that already fetch the rows).
+ * count, index range and span range per (extraction, model), joined in code
+ * against each extraction's recorded embedModel/embedError/text shape. No
+ * N+1, no text transfer (lengths come from the queries that already fetch
+ * the rows).
  */
 async function coverageFor(
-  extractions: { id: string; embedModel: string | null; embedError: string | null; textLength: number }[],
+  extractions: {
+    id: string;
+    embedModel: string | null;
+    embedError: string | null;
+    textLength: number;
+    leadingWhitespace: number;
+  }[],
   workspaceId: string,
 ): Promise<Map<string, EmbeddingCoverage>> {
   const out = new Map<string, EmbeddingCoverage>();
@@ -194,6 +201,9 @@ async function coverageFor(
       ownerId: embeddings.ownerId,
       model: embeddings.model,
       count: sql<number>`count(*)::int`,
+      minIndex: sql<number | null>`min(${embeddings.chunkIndex})`,
+      maxIndex: sql<number | null>`max(${embeddings.chunkIndex})`,
+      minStart: sql<number | null>`min(${embeddings.spanStart})`,
       maxEnd: sql<number | null>`max(${embeddings.spanEnd})`,
     })
     .from(embeddings)
@@ -214,7 +224,14 @@ async function coverageFor(
         embedModel: e.embedModel,
         embedError: e.embedError,
         textLength: e.textLength,
-        chunks: { count: Number(agg?.count ?? 0), maxSpanEnd: agg?.maxEnd == null ? null : Number(agg.maxEnd) },
+        leadingWhitespace: e.leadingWhitespace,
+        chunks: {
+          count: Number(agg?.count ?? 0),
+          minIndex: agg?.minIndex == null ? null : Number(agg.minIndex),
+          maxIndex: agg?.maxIndex == null ? null : Number(agg.maxIndex),
+          minSpanStart: agg?.minStart == null ? null : Number(agg.minStart),
+          maxSpanEnd: agg?.maxEnd == null ? null : Number(agg.maxEnd),
+        },
       }),
     );
   }
@@ -223,6 +240,9 @@ async function coverageFor(
 
 /** Trimmed length server-side: chunk spans index the untrimmed text, and trailing whitespace must not flip coverage to "partial". */
 const trimmedTextLength = sql<number>`char_length(regexp_replace(coalesce(${documentExtractions.text}, ''), '\\s+$', ''))`;
+
+/** Leading whitespace server-side: chunk 0 starts at the first non-blank, so coverage of the head is "first span start <= leading whitespace". */
+const leadingWhitespace = sql<number>`char_length(coalesce(${documentExtractions.text}, '')) - char_length(regexp_replace(coalesce(${documentExtractions.text}, ''), '^\\s+', ''))`;
 
 /*
  * Nearest chunks to a question, inside one workspace. Three scopes apply to
@@ -259,6 +279,7 @@ export async function searchChunks(
       embedModel: documentExtractions.embedModel,
       embedError: documentExtractions.embedError,
       textLength: trimmedTextLength,
+      leadingWhitespace,
       distance,
     })
     .from(embeddings)
@@ -283,7 +304,13 @@ export async function searchChunks(
     .limit(limit);
 
   const coverage = await coverageFor(
-    rows.map((r) => ({ id: r.extractionId, embedModel: r.embedModel, embedError: r.embedError, textLength: Number(r.textLength) })),
+    rows.map((r) => ({
+      id: r.extractionId,
+      embedModel: r.embedModel,
+      embedError: r.embedError,
+      textLength: Number(r.textLength),
+      leadingWhitespace: Number(r.leadingWhitespace),
+    })),
     auth.workspaceId,
   );
   return rows.map((r) => ({
@@ -402,6 +429,7 @@ export async function searchChunksFts(
       embedModel: r.embedModel,
       embedError: r.embedError,
       textLength: (r.text ?? "").trimEnd().length,
+      leadingWhitespace: (r.text ?? "").length - (r.text ?? "").trimStart().length,
     })),
     auth.workspaceId,
   );

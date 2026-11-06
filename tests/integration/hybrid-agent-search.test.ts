@@ -255,6 +255,23 @@ suite("hybrid agent search (real Postgres + pgvector)", () => {
       .update(documentExtractions)
       .set({ embeddedAt: new Date(), embedModel: "fake:hash-1536", embedError: null })
       .where(eq(documentExtractions.id, capEx.id));
+    // Holey doc: chunks reach the tail but one middle index is missing ->
+    // "unknown": the endpoint alone must never read as complete.
+    const holeyDoc = await seed(a, EXACT, "lease-holey", provider);
+    const [holeyEx] = await holder.db!
+      .select()
+      .from(documentExtractions)
+      .where(eq(documentExtractions.documentId, holeyDoc.id));
+    const holeyRows = await holder.db!
+      .select()
+      .from(embeddings)
+      .where(and(eq(embeddings.ownerType, EMBEDDING_OWNER_TYPE), eq(embeddings.ownerId, holeyEx.id)));
+    const middle = holeyRows.find((r) => r.chunkIndex === 1) ?? holeyRows[0];
+    await holder.db!.delete(embeddings).where(eq(embeddings.id, middle.id));
+    await holder.db!
+      .update(documentExtractions)
+      .set({ embedError: null })
+      .where(eq(documentExtractions.id, holeyEx.id));
     // Broken doc: a recorded failure on the last pass -> "unknown".
     const brokenDoc = await seed(a, EXACT, "lease-broken", provider);
     const [brokenEx] = await holder.db!
@@ -273,6 +290,7 @@ suite("hybrid agent search (real Postgres + pgvector)", () => {
     expect(byTitle.get("lease-exact")).toBe("complete");
     expect(byTitle.get("capped-lease")).toBe("partial");
     expect(byTitle.get("lease-broken")).toBe("unknown");
+    expect(byTitle.get("lease-holey")).toBe("unknown");
   });
 
   it("finding 1: one document contributes several distinct passages when the evidence is distant", async () => {

@@ -160,9 +160,12 @@ export function rrfMerge(
         // Coverage backfills the same way, but never upgrades caution:
         // "unknown" beats "complete" when the legs disagree.
         if (entry.hit.coverage !== hit.coverage && hit.coverage != null) {
-          const cautious = [entry.hit.coverage, hit.coverage].includes("unknown")
-            ? "unknown"
-            : ([entry.hit.coverage, hit.coverage].includes("partial") ? "partial" : "complete");
+          // Conservative precedence: a PROVEN partial is never hidden by an
+          // unknown from another leg, and a claimed complete is demoted by
+          // either disagreement.
+          const cautious = [entry.hit.coverage, hit.coverage].includes("partial")
+            ? "partial"
+            : ([entry.hit.coverage, hit.coverage].includes("unknown") ? "unknown" : "complete");
           entry.hit = { ...entry.hit, coverage: cautious };
         }
       } else {
