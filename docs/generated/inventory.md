@@ -20,11 +20,11 @@ dependent, so `inventory:check` behaves the same on a laptop and in CI.
 | `pg` | absent |
 | `@clerk/nextjs` | 7.9.21 |
 | `@tiptap/react` | ^3.32.2 |
-| `tailwindcss` | ^4.3.3 |
+| `tailwindcss` | ^4.3.4 |
 | `zod` | ^4.6.7 |
 | `@vercel/blob` | ^2.8.2 |
 | `eve` | ^0.76.3 |
-| `vitest` | ^5.0.5 |
+| `vitest` | 5.0.5 |
 | `@playwright/test` | ^1.64.1 |
 
 Migrations: 114 files, highest `0287_drop_zettel_proposals`.
