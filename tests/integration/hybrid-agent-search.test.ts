@@ -142,11 +142,12 @@ suite("hybrid agent search (real Postgres + pgvector)", () => {
     expect(res.mode).toBe("hybrid");
     expect(res.results[0]).toMatchObject({ title: "lease-exact" });
     // The loose match is vector-only (the keyword leg refuses it: the query's
-    // terms are ANDed) past the provisional single-leg rank bound (issue #533
-    // finding 3: admission is leg provenance, not the miscalibrated 0.5 fused
-    // floor, whose 0.5 was leg-count in disguise). The unrelated document is
+    // terms are ANDed) and sits deep enough on its leg that the production
+    // fused-score floor drops it (issue #533 finding 3 is documented but NOT
+    // repaired: the measured rank-provenance replacement regressed precision
+    // on the draft eval set, so the floor stays). The unrelated document is
     // likewise single-leg and far down its leg. Neither may pollute results;
-    // additional passages of the exact document now MAY appear (finding 1's
+    // additional passages of the exact document MAY appear (finding 1's
     // per-document budget), so the assertion is membership, not list length.
     expect(res.results.length).toBeGreaterThan(0);
     expect(res.results.every((r) => r.title === "lease-exact")).toBe(true);

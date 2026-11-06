@@ -54,7 +54,12 @@ describe("finding 1: one document may contribute several distinct passages", () 
   });
 });
 
-describe("finding 3: rank provenance, not the fused score, decides evidence", () => {
+// EXPERIMENTAL, HARNESS-ONLY (issue #533 finding 3 is NOT repaired in
+// production): these pin the behavior of the candidate rank-provenance rule
+// the eval harness measures. searchDocumentsForAgent still admits by the
+// fused-score floor - the candidate regressed precision and never abstained
+// on the draft set, so it must not ship without validated improvement.
+describe("finding 3 (experimental candidate, harness-only): rank provenance vs fused score", () => {
   const scored = (legs: ("fts" | "vector")[], bestRank: { fts?: number; vector?: number }): ScoredHit => ({
     ...hit("x"),
     fusedScore: 0.1,

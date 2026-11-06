@@ -60,6 +60,16 @@ const BASE: Base[] = [
   { question: "What did the wet-ink amendment change about parking?", category: "partial_indexing", expected: [], unanswerable: true },
   // --- stale version / archived ---
   { question: "What was the rent at 800 Mission Street?", category: "stale_version", expected: [], unanswerable: true, forbidden: [{ docKey: "archive-old-lease", fragment: "$6,000" }] },
+  // --- adversarial negatives: vocabulary shared with real documents, but the
+  // asked-for fact is absent. A truthful retrieval returns nothing (or at
+  // least nothing it should call evidence); these characterize the admission
+  // rule's abstention behavior (issue #533 findings 3+7).
+  { question: "What is the pet policy in the Market Street lease?", category: "unanswerable", expected: [], unanswerable: true },
+  { question: "What interest rate does the IRS notice charge on unpaid balances?", category: "unanswerable", expected: [], unanswerable: true },
+  { question: "What is the notice period for terminating the payroll policy?", category: "unanswerable", expected: [], unanswerable: true },
+  { question: "How much did the board budget for office rent in resolution 2025-07?", category: "unanswerable", expected: [], unanswerable: true },
+  { question: "What is the auto-renewal notice window in the employee handbook?", category: "unanswerable", expected: [], unanswerable: true },
+  { question: "What penalty does the Acme agreement set for early termination?", category: "unanswerable", expected: [], unanswerable: true },
   // --- scope boundary ---
   { question: "What pricing change does the Notebook X strategy memo propose?", category: "scope_boundary", expected: [{ docKey: "notebook-x", fragment: "twelve percent" }] },
 ];

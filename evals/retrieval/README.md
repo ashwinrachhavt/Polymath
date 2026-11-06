@@ -27,16 +27,23 @@ Answer-level metrics (answer correctness, claim support, answer abstention)
 are **unmeasured**: they require an answering model, which is a paid call and
 is not authorized. They are reported as null, never invented.
 
-## First measured result (draft set, 92 candidates, 2026-11-05)
+## Measured result (draft set, 116 candidates incl. 24 adversarial negatives, 2026-11-05)
 
 | policy | recall | precision | abstention | violations |
 | --- | --- | --- | --- | --- |
-| old-floor-0.5 | 0.322 | 0.315 | 0.000 | 0 |
-| single-leg-rank0 | 0.322 | 0.315 | 0.000 | 0 |
-| experimental-rank2 | 0.467 | 0.176 | 0.000 | 0 |
-| no-admission | 0.737 | 0.105 | 0.000 | 0 |
+| old-floor-0.5 (PRODUCTION) | 0.322 | 0.250 | 0.000 | 0 |
+| single-leg-rank0 | 0.322 | 0.250 | 0.000 | 0 |
+| experimental-rank2 | 0.467 | 0.139 | 0.000 | 0 |
+| no-admission | 0.737 | 0.083 | 0.000 | 0 |
 
-Two honest findings: the experimental rank<=2 rule lifts recall over the old
-floor at a precision cost, and NO policy abstains on unanswerable questions -
-retrieval always returns something, so "empty results" messaging can never
-fire. Both need the owner-reviewed set before they become release thresholds.
+Honest findings:
+- The experimental rank<=2 rule lifts recall over the production floor at a
+  steep precision cost (0.139 vs 0.250): NOT shipped. Production keeps the
+  0.5 floor; finding 3 stays an open gap until a validated replacement exists.
+- NO policy abstains on unanswerable or adversarial-negative questions:
+  retrieval always returns something (the floor passes a single-leg rank-0
+  hit at exactly 0.5, and the vector leg has no distance cutoff). The
+  finding-7 "empty results" messaging can therefore never fire - a real
+  abstention mechanism is a remaining gap, not a repaired finding.
+- Zero scope/version violations across all policies (archived and
+  foreign-workspace decoys never leaked).
