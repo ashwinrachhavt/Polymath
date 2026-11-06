@@ -22,20 +22,41 @@ import {
  * the owner made between proposal and approval.
  */
 export default defineTool({
+  deferred: true,
   description:
     "Propose adding content to a Notion page, or creating a new one, for the owner to approve. Use when the owner asks to save something to Notion, or when a finding belongs in a page they already keep there. Nothing reaches Notion until the owner approves the diff in the review queue. Appending is safe and reversible by deleting the blocks; do not use this to rewrite or reorganise an existing page, which this cannot do safely. Pass a stable dedupeId so a retry proposes once.",
   inputSchema: z.object({
     mode: z.enum(["append", "create"]).describe("append adds to an existing page; create makes a new one."),
-    pageId: z.string().min(1).max(200).optional().describe("The Notion page id to append to. Required when mode is append; find it with notion_search."),
-    parentId: z.string().min(1).max(200).optional().describe("The parent page or database id for a new page. Required when mode is create."),
+    pageId: z
+      .string()
+      .min(1)
+      .max(200)
+      .optional()
+      .describe("The Notion page id to append to. Required when mode is append; find it with notion_search."),
+    parentId: z
+      .string()
+      .min(1)
+      .max(200)
+      .optional()
+      .describe("The parent page or database id for a new page. Required when mode is create."),
     parentType: z.enum(["page", "database"]).optional().describe("What the parent is. Defaults to page."),
-    title: z.string().min(1).max(300).describe("The page title to show the owner in the review card, and the new page's title when creating."),
+    title: z
+      .string()
+      .min(1)
+      .max(300)
+      .describe("The page title to show the owner in the review card, and the new page's title when creating."),
     markdown: z
       .string()
       .min(1)
       .max(20_000)
-      .describe("The exact content to add, as markdown. This is what the owner reviews and what is written; headings, lists, quotes and inline links are supported."),
-    dedupeId: z.string().min(1).max(200).describe("Stable identifier for this write, so a retry resolves the same proposal instead of queuing a second."),
+      .describe(
+        "The exact content to add, as markdown. This is what the owner reviews and what is written; headings, lists, quotes and inline links are supported.",
+      ),
+    dedupeId: z
+      .string()
+      .min(1)
+      .max(200)
+      .describe("Stable identifier for this write, so a retry resolves the same proposal instead of queuing a second."),
   }),
   async execute(input, ctx) {
     const current = ctx.session.auth.current;
@@ -73,7 +94,10 @@ export default defineTool({
         status: "awaiting review",
       };
     } catch (error) {
-      return { ok: false as const, error: error instanceof Error ? error.message : "could not propose the Notion write" };
+      return {
+        ok: false as const,
+        error: error instanceof Error ? error.message : "could not propose the Notion write",
+      };
     }
   },
 });

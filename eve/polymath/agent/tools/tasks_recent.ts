@@ -14,6 +14,7 @@ import { listRecentlyCompletedTasks } from "../../../../src/domains/work/queries
  * model's arguments.
  */
 export default defineTool({
+  deferred: true,
   description:
     "List the workspace's tasks completed in the last N days (default 7), newest first. Use for progress and review questions ('how did my week go', 'what did I finish'); it will not show open or upcoming work. Read-only; the run's frozen policy must allow the tasks.read capability.",
   inputSchema: z.object({
@@ -32,10 +33,7 @@ export default defineTool({
       return { ok: false as const, error: "tasks.read is not in this run's policy snapshot" };
     }
 
-    const tasks = await listRecentlyCompletedTasks(
-      { workspaceId },
-      { days: input.days, limit: input.limit },
-    );
+    const tasks = await listRecentlyCompletedTasks({ workspaceId }, { days: input.days, limit: input.limit });
     // Dates are not JSON-serializable across eve's tool boundary; the run's
     // result row carries jsonb. ISO strings keep the ordering information.
     return {

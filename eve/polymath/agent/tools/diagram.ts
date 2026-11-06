@@ -29,6 +29,7 @@ import {
  * heavy conversion to an editable Excalidraw scene happens client-side.
  */
 export default defineTool({
+  deferred: true,
   description:
     "Generate or refine a diagram and persist it as a versioned diagram artifact. Author valid Mermaid (flowchart or sequence preferred); the tool guards it, stores it, and returns the ids. Call with no targetCanvasId to create a new diagram, or pass the canvasId from an earlier result to refine that existing diagram with a new version.",
   inputSchema: z.object({

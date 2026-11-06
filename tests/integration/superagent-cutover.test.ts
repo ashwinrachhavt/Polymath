@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { agentRuns, runEvents } from "@/domains/agents/schema";
+import { ticketRuns } from "@/domains/superagent/store/schema";
 import { key } from "@/domains/superagent/core";
 import type { Outcome } from "@/domains/superagent/core";
 import { policyVersion } from "@/domains/superagent/core/policy/gate";
@@ -49,6 +50,26 @@ afterAll(async () => {
 });
 
 suite("the chat cutover", () => {
+  it("hydrates a cold workspace before a background deadline reap", async () => {
+    const { workspaceId } = await seedWorkspace(db, `superagent-cold-reap-${Date.now()}`);
+    const { superagentEffectHandlers } = await import("@/domains/superagent/wiring");
+    const handlers = await superagentEffectHandlers();
+    const reap = handlers.reap;
+    if (!reap) throw new Error("Missing deadline handler");
+    await expect(
+      reap({
+        id: "cold-reap",
+        workspaceId,
+        kind: "reap",
+        key: "deadline",
+        payload: {},
+        attempts: 1,
+        consecutiveFailures: 0,
+        leaseToken: "test-lease",
+      }),
+    ).resolves.toBeUndefined();
+  });
+
   it("turns a chat message into a trigger, an assessment, and an accepted ticket", async () => {
     // A unique slug per run: the seeded user's clerk id derives from it, and
     // a rerun against a persistent scratch database must not collide.
@@ -151,6 +172,31 @@ suite("the chat cutover", () => {
       meta: {},
     });
     expect(replay).toBe("duplicate");
+
+    // A terminal provider failure must return to the conversation, not only
+    // settle the ticket behind an endless Working indicator.
+    const [ticketRun] = await db.select().from(ticketRuns).where(eq(ticketRuns.ticketId, ticket.id));
+    if (!ticketRun || !run) throw new Error("Missing accepted ticket run");
+    await db
+      .update(workEffects)
+      .set({ status: "done", doneAt: new Date() })
+      .where(eq(workEffects.workspaceId, workspaceId));
+    host.engine.runStarted(ticket.id, ticketRun.id);
+    await host.flush();
+    await db.insert(agentRuns).values({
+      workspaceId,
+      agentProfileId: run.agentProfileId,
+      objective: "Q3 plan worker",
+      state: "failed",
+      error: "Provider request exceeds its token limit",
+      subjects: [{ type: "superagent_ticket_run", id: ticketRun.id }],
+      policySnapshot: {},
+    });
+    const { drainSuperagentInline } = await import("@/domains/superagent/wiring");
+    await drainSuperagentInline(workspaceId);
+    const transcript = await db.select().from(runEvents).where(eq(runEvents.runId, runId)).orderBy(runEvents.sequence);
+    expect(transcript.some((event) => event.type === "message.completed")).toBe(true);
+    expect(transcript.at(-1)?.type).toBe("session.waiting");
   });
 
   it("a follow-up on a sessionless conversation goes back through the pipeline, not the Eve driver", async () => {

@@ -4,14 +4,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { settleSpend } from "@/domains/spending/commands";
 import { db } from "@/lib/db";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
-import {
-  agentQuestions,
-  agentRuns,
-  messages,
-  runEvents,
-  threads,
-  toolCalls,
-} from "./schema";
+import { agentQuestions, agentRuns, messages, runEvents, threads, toolCalls } from "./schema";
 
 /*
  * The event bridge: the one place eve's observe-only stream events become
@@ -72,9 +65,7 @@ export function redactText(text: string): string {
  * not a `{ rows }` envelope. Typing that once here keeps every read below from
  * being a cast.
  */
-function firstRow<TRow extends Record<string, unknown>>(
-  rows: unknown[],
-): TRow | undefined {
+function firstRow<TRow extends Record<string, unknown>>(rows: unknown[]): TRow | undefined {
   return rows[0] as TRow | undefined;
 }
 
@@ -85,15 +76,9 @@ function firstRow<TRow extends Record<string, unknown>>(
  * write is scoped by both columns anyway; this is the guard that makes a
  * cross-workspace call a no-op rather than a row with a mismatched owner.
  */
-async function assertRunInWorkspace(
-  tx: TxDrizzle,
-  runId: string,
-  workspaceId: string,
-): Promise<void> {
+async function assertRunInWorkspace(tx: TxDrizzle, runId: string, workspaceId: string): Promise<void> {
   const run = firstRow<{ id: string }>(
-    await tx.execute(
-      sql`select id from agent_runs where id = ${runId} and workspace_id = ${workspaceId} limit 1`,
-    ),
+    await tx.execute(sql`select id from agent_runs where id = ${runId} and workspace_id = ${workspaceId} limit 1`),
   );
   if (!run) throw new Error("run not found in workspace");
 }
@@ -136,9 +121,7 @@ async function appendEvent(
   if (existing) return { sequence: existing.sequence, deduplicated: true };
 
   const next = firstRow<{ next: number }>(
-    await tx.execute(
-      sql`select coalesce(max(sequence), 0) + 1 as next from run_events where run_id = ${input.runId}`,
-    ),
+    await tx.execute(sql`select coalesce(max(sequence), 0) + 1 as next from run_events where run_id = ${input.runId}`),
   );
   const sequence = next?.next ?? 1;
 
@@ -242,6 +225,46 @@ export async function recordQuestion(input: {
 }
 
 /**
+ * Persist a failed turn with the preceding model error attached. The UI can
+ * then explain a failure after Eve's stream closes or a browser reconnects.
+ */
+export async function recordFailedTurn(input: {
+  workspaceId: string;
+  runId: string;
+  turnId?: string;
+  error?: string;
+}): Promise<{ sequence: number; deduplicated: boolean }> {
+  return withTransaction(async (tx) => {
+    await assertRunInWorkspace(tx, input.runId, input.workspaceId);
+    // Serialize with step.failed so its explanation is visible before this
+    // turn boundary is committed.
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${input.runId}, 0))`);
+    const previousFailure = input.turnId
+      ? firstRow<{ detail: string | null }>(
+          await tx.execute(sql`
+            select data->>'detail' as detail
+            from run_events
+            where run_id = ${input.runId}
+              and type = 'step.failed'
+              and data->>'turnId' = ${input.turnId}
+            order by sequence desc
+            limit 1
+          `),
+        )
+      : undefined;
+    return appendEvent(tx, {
+      runId: input.runId,
+      workspaceId: input.workspaceId,
+      type: "turn.failed",
+      data: {
+        ...(input.turnId ? { turnId: input.turnId } : {}),
+        ...(previousFailure?.detail || input.error ? { error: previousFailure?.detail ?? input.error } : {}),
+      },
+    });
+  });
+}
+
+/**
  * Token/cost usage for one model step, appended to the run timeline. The
  * terminal close sums these rows in SQL — cost is `numeric`, never a JS float,
  * and the running total is derived rather than stored.
@@ -293,10 +316,7 @@ export async function mirrorMessage(input: {
         .values({ workspaceId: input.workspaceId, agentProfileId: run.agentProfileId })
         .returning({ id: threads.id });
       threadId = thread.id;
-      await tx
-        .update(agentRuns)
-        .set({ threadId, updatedAt: new Date() })
-        .where(eq(agentRuns.id, input.runId));
+      await tx.update(agentRuns).set({ threadId, updatedAt: new Date() }).where(eq(agentRuns.id, input.runId));
     }
 
     await tx.insert(messages).values({
@@ -330,11 +350,7 @@ export async function markWaitingForInput(input: { workspaceId: string; runId: s
     .update(agentRuns)
     .set({ state: "waiting_input", updatedAt: new Date() })
     .where(
-      and(
-        eq(agentRuns.id, input.runId),
-        eq(agentRuns.workspaceId, input.workspaceId),
-        eq(agentRuns.state, "running"),
-      ),
+      and(eq(agentRuns.id, input.runId), eq(agentRuns.workspaceId, input.workspaceId), eq(agentRuns.state, "running")),
     );
 }
 
@@ -344,11 +360,7 @@ export async function markWaitingForInput(input: { workspaceId: string; runId: s
  * on "running", so a close that landed first is never rewritten, and a run
  * already waiting for input is not disturbed.
  */
-export async function parkRunForReview(input: {
-  workspaceId: string;
-  runId: string;
-  reason: string;
-}): Promise<void> {
+export async function parkRunForReview(input: { workspaceId: string; runId: string; reason: string }): Promise<void> {
   await withTransaction(async (tx) => {
     const flipped = await tx
       .update(agentRuns)

@@ -35,7 +35,6 @@
 
   // ── Load settings ──────────────────────────────────────────────────
 
-  await AlfredAPI.ensureTokenPreloaded();
   const res = await chrome.storage.local.get(["alfredBaseUrl", "axiomToken"]);
   if (res.alfredBaseUrl) {
     $("#setting-api-url").value = res.alfredBaseUrl;
@@ -409,9 +408,14 @@
       await AlfredAPI.setBase("http://localhost:3000");
     }
     const token = $("#setting-api-token");
-    if (token) await AlfredAPI.setToken(token.value);
-    status.textContent = "Settings saved!";
+    try {
+      if (token) await AlfredAPI.pairAndSync(token.value);
+    status.textContent = "Key verified. Capture sync resumed.";
     status.className = "success";
+    } catch (error) {
+      status.textContent = error.message || "Could not resume sync.";
+      status.className = "error";
+    }
     setTimeout(() => (status.textContent = ""), 3000);
     checkStatus();
   });

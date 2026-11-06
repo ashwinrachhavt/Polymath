@@ -2,6 +2,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { agentAuthorizationDecisions, agentProfiles, agentRuns, runEvents, toolCalls } from "@/domains/agents/schema";
+import { CONNECTOR_WRITES } from "@/domains/integrations/connector-action-catalog";
 import { actionProposals, actionRevisions } from "@/domains/actions/schema";
 import { issueDelegationGrant } from "@/domains/agents/delegation";
 import { registerAgentPrincipal } from "@/domains/agents/principals";
@@ -29,7 +30,11 @@ import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace"
 const handle = makeTestDb();
 const suite = handle ? describe : describe.skip;
 const holder: { db: ReturnType<typeof drizzle> | undefined } = { db: undefined };
-vi.mock("@/lib/db", () => ({ get db() { return holder.db; } }));
+vi.mock("@/lib/db", () => ({
+  get db() {
+    return holder.db;
+  },
+}));
 
 /*
  * The route builds its gateway from `composioTransport` at import time, so the
@@ -159,9 +164,7 @@ function post(body: unknown, options: { token?: string | null; session?: string 
   const token = options.token === undefined ? null : options.token;
   if (token) headers.set("authorization", `Bearer ${token}`);
   if (options.session) headers.set("x-polymath-session", options.session);
-  return route.POST(
-    new Request("http://localhost/api/mcp", { method: "POST", headers, body: JSON.stringify(body) }),
-  );
+  return route.POST(new Request("http://localhost/api/mcp", { method: "POST", headers, body: JSON.stringify(body) }));
 }
 
 function tokenFor(seed: Seeded, options: { now?: Date; ttlSeconds?: number } = {}) {
@@ -193,37 +196,40 @@ suite("POST /api/mcp bindings (real Postgres)", () => {
     const response = await post(listTools, { token: tokenFor(seed) });
     expect(response.status).toBe(200);
     const body = (await response.json()) as { result: { tools: Array<{ name: string; inputSchema: unknown }> } };
-    expect(body.result.tools.map((tool) => tool.name).sort()).toEqual([
-      "airtable_list_records",
-      "asana_list_tasks",
-      "calendly_list_events",
-      "canva_list_designs",
-      "discord_list_channels",
-      "github_read_issue",
-      "github_search",
-      "gmail_read_thread",
-      "gmail_search",
-      "gmail_send",
-      "googlecalendar_list_events",
-      "googledocs_search_files",
-      "googledrive_search_files",
-      "googlesheets_list_spreadsheets",
-      "hubspot_list_contacts",
-      "instagram_get_profile",
-      "instagram_list_media",
-      "linear_read_issue",
-      "linear_search_issues",
-      "linkedin_get_profile",
-      "notion_read_page",
-      "notion_search",
-      "slack_list_channels",
-      "slack_read_channel",
-      "stripe_list_payments",
-      "trello_list_cards",
-      "writer_draft_follow_up",
-      "writer_draft_reply",
-      "zoom_list_meetings",
-    ]);
+    expect(body.result.tools.map((tool) => tool.name).sort()).toEqual(
+      [
+        ...Object.values(CONNECTOR_WRITES).map((spec) => spec.tool),
+        "airtable_list_records",
+        "asana_list_tasks",
+        "calendly_list_events",
+        "canva_list_designs",
+        "discord_list_channels",
+        "github_read_issue",
+        "github_search",
+        "gmail_read_thread",
+        "gmail_search",
+        "gmail_send",
+        "googlecalendar_list_events",
+        "googledocs_search_files",
+        "googledrive_search_files",
+        "googlesheets_list_spreadsheets",
+        "hubspot_list_contacts",
+        "instagram_get_profile",
+        "instagram_list_media",
+        "linear_read_issue",
+        "linear_search_issues",
+        "linkedin_get_profile",
+        "notion_read_page",
+        "notion_search",
+        "slack_list_channels",
+        "slack_read_channel",
+        "stripe_list_payments",
+        "trello_list_cards",
+        "writer_draft_follow_up",
+        "writer_draft_reply",
+        "zoom_list_meetings",
+      ].sort(),
+    );
     expect(body.result.tools.every((tool) => typeof tool.inputSchema === "object")).toBe(true);
   });
 
@@ -231,7 +237,9 @@ suite("POST /api/mcp bindings (real Postgres)", () => {
     const seed = await seedRun();
     expect((await post(listTools)).status).toBe(401);
     expect((await post(listTools, { token: `${tokenFor(seed)}tampered` })).status).toBe(401);
-    expect((await post(listTools, { token: tokenFor(seed, { now: new Date(NOW.getTime() - 120_000) }) })).status).toBe(401);
+    expect((await post(listTools, { token: tokenFor(seed, { now: new Date(NOW.getTime() - 120_000) }) })).status).toBe(
+      401,
+    );
     const bridge = signBridgeToken(
       { userId: seed.userId, workspaceId: seed.workspaceId, role: "owner" },
       { secret: SECRET, now: NOW },
@@ -372,9 +380,18 @@ function call(seed: Seeded, name: string, args: unknown) {
   );
 }
 
-async function toolText(
-  response: Response,
-): Promise<{ text: string; parsed: { messages?: Array<{ id: string; from?: string | null; subject?: string | null }>; truncated?: boolean; returnedBytes?: number; status?: string; proposalId?: string; deduplicated?: boolean; bodyChanged?: boolean } }> {
+async function toolText(response: Response): Promise<{
+  text: string;
+  parsed: {
+    messages?: Array<{ id: string; from?: string | null; subject?: string | null }>;
+    truncated?: boolean;
+    returnedBytes?: number;
+    status?: string;
+    proposalId?: string;
+    deduplicated?: boolean;
+    bodyChanged?: boolean;
+  };
+}> {
   expect(response.status).toBe(200);
   const body = (await response.json()) as { result: { content: Array<{ type: string; text: string }> } };
   const text = body.result.content[0].text;
@@ -382,12 +399,186 @@ async function toolText(
 }
 
 suite("tools/call dispatch (real Postgres)", () => {
+  it("does not redispatch an unknown routine effect after its summary is reworded", async () => {
+    const seed = await seedRun();
+    await seedAccount(seed, { provider: "gmail", alias: "unknown-draft", accessTier: "read_write" });
+    vi.stubEnv("COMPOSIO_API_KEY", "fixture-key");
+    const spy = vi.fn<typeof fetch>(async (_url, init) => {
+      if (init?.method === "POST") throw new Error("lost acknowledgement");
+      return Response.json({
+        slug: "GMAIL_CREATE_EMAIL_DRAFT",
+        name: "Create draft",
+        toolkit: { slug: "gmail" },
+        version: "20261104_00",
+        input_parameters: { type: "object", properties: { subject: { type: "string" } }, required: ["subject"] },
+      });
+    });
+    vi.stubGlobal("fetch", spy);
+    try {
+      const args = {
+        toolSlug: "GMAIL_CREATE_EMAIL_DRAFT",
+        arguments: { subject: "Update" },
+        summary: "Draft the update",
+        accountAlias: "unknown-draft",
+      };
+      expect((await toolText(await call(seed, "gmail_action_propose", args))).parsed.status).toBe("unknown");
+      expect(
+        (await toolText(await call(seed, "gmail_action_propose", { ...args, summary: "Retry drafting the update" })))
+          .parsed.status,
+      ).toBe("unknown");
+      expect(spy.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("changes every Write grant atomically with one account version", async () => {
+    const seed = await seedRun();
+    await seedAccount(seed, { provider: "gmail", alias: "atomic-write", accessTier: "read_only" });
+    const [account] = await holder
+      .db!.select()
+      .from(externalAccounts)
+      .where(eq(externalAccounts.workspaceId, seed.workspaceId));
+    const { setAccountWriteAccess } = await import("@/domains/integrations/commands");
+    const auth = { userId: seed.userId, workspaceId: seed.workspaceId, role: "owner" as const };
+    const enabled = await setAccountWriteAccess(auth, {
+      accountId: account.id,
+      expectedVersion: account.version,
+      enabled: true,
+    });
+    expect(enabled.version).toBe(account.version + 1);
+    expect(enabled.accessTier).toBe("read_write");
+    const disabled = await setAccountWriteAccess(auth, {
+      accountId: account.id,
+      expectedVersion: enabled.version,
+      enabled: false,
+    });
+    expect(disabled.version).toBe(enabled.version + 1);
+    expect(disabled.disabledCapabilities).toEqual(expect.arrayContaining(["gmail.send", "gmail.actions.write"]));
+    await expect(
+      setAccountWriteAccess(auth, { accountId: account.id, expectedVersion: enabled.version, enabled: true }),
+    ).rejects.toThrow(/changed/);
+  });
+
+  it("executes enabled routine actions directly exactly once and observes Write revocation", async () => {
+    const seed = await seedRun();
+    await seedAccount(seed, { provider: "gmail", alias: "routine-gmail", accessTier: "read_write" });
+    vi.stubEnv("COMPOSIO_API_KEY", "fixture-key");
+    const spy = vi.fn<typeof fetch>(async (_url, init) =>
+      init?.method === "POST"
+        ? Response.json({
+            successful: true,
+            data: { id: "draft-1", url: "https://mail.google.com/draft-1" },
+            log_id: "routine-log-1",
+          })
+        : Response.json({
+            slug: "GMAIL_CREATE_EMAIL_DRAFT",
+            name: "Create issue",
+            toolkit: { slug: "gmail" },
+            version: "20261104_00",
+            input_parameters: { type: "object", required: ["title"], properties: { title: { type: "string" } } },
+          }),
+    );
+    vi.stubGlobal("fetch", spy);
+    try {
+      const args = {
+        toolSlug: "GMAIL_CREATE_EMAIL_DRAFT",
+        arguments: { title: "Fix sync" },
+        summary: "Create sync issue",
+        accountAlias: "routine-gmail",
+      };
+      const first = await toolText(await call(seed, "gmail_action_propose", args));
+      expect(first.parsed.status).toBe("completed");
+      expect(JSON.parse(first.text)).toMatchObject({
+        outcome: { providerId: "draft-1", result: { objectId: "draft-1", url: "https://mail.google.com/draft-1" } },
+      });
+      expect(
+        (
+          await toolText(
+            await call(seed, "gmail_action_propose", { ...args, summary: "Retry with a different description" }),
+          )
+        ).parsed.status,
+      ).toBe("completed");
+      expect(spy.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(1);
+      await holder
+        .db!.update(externalAccounts)
+        .set({ disabledCapabilities: ["gmail.actions.write"] })
+        .where(eq(externalAccounts.workspaceId, seed.workspaceId));
+      expect((await call(seed, "gmail_action_propose", { ...args, arguments: { title: "Another" } })).status).toBe(403);
+      expect(spy.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("proposes connected writes with a pinned version, refuses bad arguments, and never executes during chat", async () => {
+    const seed = await seedRun();
+    await seedAccount(seed, { provider: "github", alias: "work-github", accessTier: "read_write" });
+    vi.stubEnv("COMPOSIO_API_KEY", "fixture-key");
+    const spy = vi.fn<typeof fetch>(async () =>
+      Response.json({
+        slug: "GITHUB_CREATE_A_DEPLOYMENT",
+        name: "Create issue",
+        toolkit: { slug: "github" },
+        version: "20261104_00",
+        input_parameters: {
+          type: "object",
+          required: ["title"],
+          properties: { title: { type: "string" } },
+          additionalProperties: false,
+        },
+      }),
+    );
+    vi.stubGlobal("fetch", spy);
+    try {
+      const args = {
+        toolSlug: "GITHUB_CREATE_A_DEPLOYMENT",
+        arguments: { title: "Fix sync" },
+        summary: "Create a sync issue",
+        accountAlias: "work-github",
+      };
+      const { parsed } = await toolText(await call(seed, "github_action_propose", args));
+      expect(parsed.status).toBe("awaiting_review");
+      const [revision] = await holder
+        .db!.select()
+        .from(actionRevisions)
+        .where(eq(actionRevisions.proposalId, parsed.proposalId!));
+      expect(revision.payload).toMatchObject({
+        version: "20261104_00",
+        arguments: { title: "Fix sync" },
+        accountPin: { resolved: true, alias: "work-github" },
+      });
+      const repeated = await toolText(await call(seed, "github_action_propose", args));
+      expect(repeated.parsed.proposalId).toBe(parsed.proposalId);
+      expect(repeated.parsed.deduplicated).toBe(true);
+      const invalid = await call(seed, "github_action_propose", { ...args, arguments: {} });
+      expect(JSON.stringify(await invalid.json())).toContain("Invalid connector arguments");
+      const [proposal] = await holder
+        .db!.select()
+        .from(actionProposals)
+        .where(eq(actionProposals.id, parsed.proposalId!));
+      const { decideProposal } = await import("@/domains/actions/commands");
+      await decideProposal(
+        { userId: seed.userId, workspaceId: seed.workspaceId, role: "owner" },
+        { proposalId: proposal.id, revisionId: revision.id, expectedVersion: proposal.version, decision: "rejected" },
+      );
+      expect((await toolText(await call(seed, "github_action_propose", args))).parsed.status).toBe("rejected");
+      expect(spy.mock.calls.every(([, init]) => init?.method !== "POST")).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("returns the fixture search shape", async () => {
     const seed = await seedRun();
     await seedAccount(seed);
     // Detail routes first: the fixture matches by `startsWith`, and the list
     // endpoint is a prefix of every detail endpoint.
-    install([detailRoute("msg_fixture_alpha", "Alpha subject"), detailRoute("msg_fixture_beta", "Beta subject"), searchRoute]);
+    install([
+      detailRoute("msg_fixture_alpha", "Alpha subject"),
+      detailRoute("msg_fixture_beta", "Beta subject"),
+      searchRoute,
+    ]);
 
     const { parsed } = await toolText(await call(seed, "gmail_search", { query: "in:inbox", limit: 10 }));
     expect(parsed.messages).toHaveLength(2);
@@ -469,10 +660,7 @@ suite("tools/call dispatch (real Postgres)", () => {
     const fourth = await call(seed, "gmail_search", { query: "other query" });
     expect(fourth.status).toBe(409);
 
-    const loopEvents = await holder.db!
-      .select()
-      .from(runEvents)
-      .where(eq(runEvents.runId, seed.runId));
+    const loopEvents = await holder.db!.select().from(runEvents).where(eq(runEvents.runId, seed.runId));
     expect(loopEvents.filter((e) => e.type === "loop.detected")).toHaveLength(1);
   });
 
@@ -510,15 +698,15 @@ suite("tools/call dispatch (real Postgres)", () => {
     expect(parsed.status).toBe("awaiting_review");
     expect(parsed.deduplicated).toBe(false);
 
-    const proposals = await holder.db!
-      .select()
+    const proposals = await holder
+      .db!.select()
       .from(actionProposals)
       .where(eq(actionProposals.workspaceId, seed.workspaceId));
     expect(proposals).toHaveLength(1);
     expect(proposals[0]).toMatchObject({ status: "pending", riskClass: "external_write", runId: seed.runId });
 
-    const revisions = await holder.db!
-      .select()
+    const revisions = await holder
+      .db!.select()
       .from(actionRevisions)
       .where(eq(actionRevisions.proposalId, parsed.proposalId!));
     expect(revisions).toHaveLength(1);
@@ -547,8 +735,8 @@ suite("tools/call dispatch (real Postgres)", () => {
     expect(second.parsed).toMatchObject({ status: "awaiting_review", deduplicated: true });
     expect(second.parsed.proposalId).toBe(first.parsed.proposalId);
 
-    const revisions = await holder.db!
-      .select()
+    const revisions = await holder
+      .db!.select()
       .from(actionRevisions)
       .where(eq(actionRevisions.proposalId, first.parsed.proposalId!));
     expect(revisions).toHaveLength(1);
@@ -585,8 +773,8 @@ suite("tools/call dispatch (real Postgres)", () => {
         messageId: "m1",
       }),
     );
-    const [row] = await holder.db!
-      .select({ expiresAt: actionProposals.expiresAt })
+    const [row] = await holder
+      .db!.select({ expiresAt: actionProposals.expiresAt })
       .from(actionProposals)
       .where(eq(actionProposals.id, parsed.proposalId!));
     const hours = (row.expiresAt!.getTime() - Date.now()) / 3_600_000;
@@ -666,7 +854,9 @@ suite("tools/call dispatch (real Postgres)", () => {
     ]);
     const search = await call(seed, "github_search", { query: "repo:o/r is:open" });
     expect(search.status).toBe(200);
-    const searchBody = JSON.parse(((await search.json()) as { result: { content: Array<{ text: string }> } }).result.content[0].text) as {
+    const searchBody = JSON.parse(
+      ((await search.json()) as { result: { content: Array<{ text: string }> } }).result.content[0].text,
+    ) as {
       items: Array<{ number: number }>;
     };
     expect(searchBody.items[0].number).toBe(3);
@@ -691,7 +881,15 @@ suite("tools/call dispatch (real Postgres)", () => {
         method: "GRAPHQL",
         endpointPrefix: "https://api.linear.app/graphql#PolymathReadIssue",
         status: 200,
-        body: { issue: { identifier: "ASH-1", title: "T", state: { name: "Todo" }, comments: { nodes: [] }, labels: { nodes: [] } } },
+        body: {
+          issue: {
+            identifier: "ASH-1",
+            title: "T",
+            state: { name: "Todo" },
+            comments: { nodes: [] },
+            labels: { nodes: [] },
+          },
+        },
       },
     ]);
     const ok = await call(seed, "linear_read_issue", { identifier: "ASH-1" });
@@ -779,8 +977,8 @@ suite("tools/call with a delegation grant (real Postgres)", () => {
     const response = await call(seed, "gmail_search", { query: "x", accountAlias: "work-gmail" });
     expect(response.status).toBe(200);
 
-    const decisions = await holder.db!
-      .select()
+    const decisions = await holder
+      .db!.select()
       .from(agentAuthorizationDecisions)
       .where(eq(agentAuthorizationDecisions.grantId, seed.grantId!));
     expect(decisions).toHaveLength(1);
@@ -795,8 +993,8 @@ suite("tools/call with a delegation grant (real Postgres)", () => {
     const response = await call(seed, "gmail_search", { query: "x", accountAlias: "work-gmail" });
     expect(response.status).toBe(403);
 
-    const decisions = await holder.db!
-      .select()
+    const decisions = await holder
+      .db!.select()
       .from(agentAuthorizationDecisions)
       .where(eq(agentAuthorizationDecisions.grantId, seed.grantId!));
     expect(decisions).toHaveLength(1);
@@ -831,8 +1029,8 @@ suite("tools/call with a delegation grant (real Postgres)", () => {
     expect(allowed.status).toBe(200);
     expect(reads).toHaveLength(1);
 
-    const decisions = await holder.db!
-      .select()
+    const decisions = await holder
+      .db!.select()
       .from(agentAuthorizationDecisions)
       .where(eq(agentAuthorizationDecisions.grantId, seed.grantId!));
     expect(decisions.map((d) => d.decision).sort()).toEqual(["allowed", "denied"]);
@@ -845,14 +1043,13 @@ suite("tools/call with a delegation grant (real Postgres)", () => {
     install([{ ...searchRoute, body: { messages: [] } }]);
 
     expect((await call(seed, "gmail_search", { query: "x" })).status).toBe(200);
-    const decisions = await holder.db!
-      .select()
+    const decisions = await holder
+      .db!.select()
       .from(agentAuthorizationDecisions)
       .where(eq(agentAuthorizationDecisions.runId, seed.runId));
     expect(decisions).toHaveLength(0);
   });
 });
-
 
 /*
  * Tier enforcement (0229 + PROVIDER_TIERS): the snapshot bounds what the run
@@ -876,16 +1073,11 @@ suite("tools/call tier gate (real Postgres)", () => {
     expect(response.status).toBe(403);
     const body = (await response.json()) as { code: string; title: string };
     expect(body.code).toBe("permission_denied");
-    expect(body.title).toBe(
-      'Agent access for "work-gmail" does not include this. Raise the tier in Connectors.',
-    );
+    expect(body.title).toBe('Agent access for "work-gmail" does not include this. Raise the tier in Connectors.');
     expect(reads).toHaveLength(0);
 
     // The tier gate sits before budget reservation: a denial is free.
-    const calls = await holder.db!
-      .select()
-      .from(toolCalls)
-      .where(eq(toolCalls.runId, seed.runId));
+    const calls = await holder.db!.select().from(toolCalls).where(eq(toolCalls.runId, seed.runId));
     expect(calls).toHaveLength(0);
   });
 
@@ -918,8 +1110,8 @@ suite("tools/call tier gate (real Postgres)", () => {
     // The owner lowers the tier while the run is in flight; the next call is
     // refused because the tier is re-read with the account, not copied into
     // the run's snapshot.
-    await holder.db!
-      .update(externalAccounts)
+    await holder
+      .db!.update(externalAccounts)
       .set({ accessTier: "read_only" })
       .where(eq(externalAccounts.workspaceId, seed.workspaceId));
 

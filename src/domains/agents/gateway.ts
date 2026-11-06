@@ -1,3 +1,10 @@
+import {
+  connectorWriteForTool,
+  connectorWrite,
+  connectorActionArguments,
+} from "@/domains/integrations/connector-actions";
+import { executeApprovedEffect, settledEffectOutcome } from "@/domains/actions/executor";
+import { proposeConnectorAction } from "@/domains/integrations/connector-action-proposals";
 import { and, count, desc, eq, gte, isNotNull, like, sql } from "drizzle-orm";
 import { z } from "zod";
 import { toolAllowed } from "../../../eve/polymath/agent/lib/policy";
@@ -71,8 +78,7 @@ export type ToolResult = { content: Array<{ type: "text"; text: string }> };
 const LOOP_CALL_THRESHOLD = 3;
 
 export type GatewayOutcome =
-  | { ok: true; result: ToolResult }
-  | { ok: false; status: number; code: string; message: string };
+  { ok: true; result: ToolResult } | { ok: false; status: number; code: string; message: string };
 
 type SearchArgs = z.infer<typeof TOOL_SCHEMAS.gmail_search>;
 type ThreadArgs = z.infer<typeof TOOL_SCHEMAS.gmail_read_thread>;
@@ -84,7 +90,14 @@ type SendArgs = z.infer<typeof TOOL_SCHEMAS.gmail_send>;
  * read: without it the bound is skipped and delegation stops narrowing, which
  * is a stated invariant rather than a nicety.
  */
-type ParsedSearch = { ok: true; generic?: undefined; tool: "gmail_search"; args: SearchArgs; accountAlias?: string; destination?: string };
+type ParsedSearch = {
+  ok: true;
+  generic?: undefined;
+  tool: "gmail_search";
+  args: SearchArgs;
+  accountAlias?: string;
+  destination?: string;
+};
 type ParsedThread = {
   ok: true;
   generic?: undefined;
@@ -94,7 +107,14 @@ type ParsedThread = {
   destination?: string;
   resourceRef: string;
 };
-type ParsedSend = { ok: true; generic?: undefined; tool: "gmail_send"; args: SendArgs; accountAlias?: string; destination: string };
+type ParsedSend = {
+  ok: true;
+  generic?: undefined;
+  tool: "gmail_send";
+  args: SendArgs;
+  accountAlias?: string;
+  destination: string;
+};
 type ParsedWriterDraft = {
   ok: true;
   generic?: undefined;
@@ -123,7 +143,7 @@ type ParsedGeneric = {
   ok: true;
   generic: true;
   tool: string;
-  args: { query?: string; limit?: number; accountAlias?: string };
+  args: Record<string, unknown> & { query?: string; limit?: number; accountAlias?: string };
   accountAlias?: string;
   destination?: undefined;
   resourceRef?: string;
@@ -149,7 +169,15 @@ type ParsedOther = {
   resourceRef?: string;
 };
 
-type ParsedCall = ParsedSearch | ParsedThread | ParsedSend | ParsedWriterDraft | ParsedWriterFollowUp | ParsedOther | ParsedGeneric | { ok: false; message: string };
+type ParsedCall =
+  | ParsedSearch
+  | ParsedThread
+  | ParsedSend
+  | ParsedWriterDraft
+  | ParsedWriterFollowUp
+  | ParsedOther
+  | ParsedGeneric
+  | { ok: false; message: string };
 
 function invalidArguments(message: string): GatewayOutcome {
   return { ok: false, status: 400, code: "invalid_arguments", message };
@@ -181,7 +209,8 @@ export const GENERIC_READ_ARGS = z.object({
 
 /** The pure validation half of dispatch; exported for the schema-reuse unit test. */
 export function parseCall(tool: string, input: unknown): ParsedCall {
-  const raw = input !== null && typeof input === "object" ? normaliseLimit({ ...(input as Record<string, unknown>) }) : {};
+  const raw =
+    input !== null && typeof input === "object" ? normaliseLimit({ ...(input as Record<string, unknown>) }) : {};
   const firstIssue = (error: z.ZodError) => error.issues[0]?.message ?? "Invalid arguments.";
 
   if (tool === "gmail_search") {
@@ -226,6 +255,12 @@ export function parseCall(tool: string, input: unknown): ParsedCall {
         }
       : { ok: false, message: firstIssue(parsed.error) };
   }
+  if (connectorWriteForTool(tool)) {
+    const parsed = connectorActionArguments.safeParse(raw);
+    return parsed.success
+      ? { ok: true, generic: true, tool, args: parsed.data, accountAlias: parsed.data.accountAlias }
+      : { ok: false, message: firstIssue(parsed.error) };
+  }
   if (tool in GENERIC_READS) {
     const parsed = GENERIC_READ_ARGS.safeParse(raw);
     if (!parsed.success) return { ok: false, message: firstIssue(parsed.error) };
@@ -249,12 +284,18 @@ export function parseCall(tool: string, input: unknown): ParsedCall {
             ? `issue:linear:${String(args.identifier).toUpperCase()}`
             : name === "notion_read_page"
               ? `page:notion:${args.pageId}`
-            : undefined,
+              : undefined,
     };
   }
   const parsed = TOOL_SCHEMAS.gmail_send.safeParse(raw);
   return parsed.success
-    ? { ok: true, tool: "gmail_send", args: parsed.data, accountAlias: parsed.data.accountAlias, destination: parsed.data.to }
+    ? {
+        ok: true,
+        tool: "gmail_send",
+        args: parsed.data,
+        accountAlias: parsed.data.accountAlias,
+        destination: parsed.data.to,
+      }
     : { ok: false, message: firstIssue(parsed.error) };
 }
 
@@ -311,9 +352,7 @@ async function recordGrantDecision(
         expectedContentHash,
       },
     });
-    return decision.allowed
-      ? { allowed: true, reasons: [] }
-      : { allowed: false, reasons: decision.reasons };
+    return decision.allowed ? { allowed: true, reasons: [] } : { allowed: false, reasons: decision.reasons };
   });
 }
 
@@ -405,9 +444,12 @@ async function reserveCall(
  */
 function redactArguments(parsed: ParsedCall & { ok: true }): Record<string, unknown> {
   if (parsed.generic) return { query: parsed.args.query, limit: parsed.args.limit ?? LIMITS.defaultResults };
-  if (parsed.tool === "gmail_search") return { query: parsed.args.query, limit: parsed.args.limit ?? LIMITS.defaultResults };
-  if (parsed.tool === "gmail_read_thread" || parsed.tool === "writer_draft_reply") return { threadId: parsed.args.threadId };
-  if (parsed.tool === "writer_draft_follow_up") return { sessionId: parsed.args.sessionId, contactId: parsed.args.contactId };
+  if (parsed.tool === "gmail_search")
+    return { query: parsed.args.query, limit: parsed.args.limit ?? LIMITS.defaultResults };
+  if (parsed.tool === "gmail_read_thread" || parsed.tool === "writer_draft_reply")
+    return { threadId: parsed.args.threadId };
+  if (parsed.tool === "writer_draft_follow_up")
+    return { sessionId: parsed.args.sessionId, contactId: parsed.args.contactId };
   if (parsed.tool !== "gmail_send") {
     // Reads of other providers: the arguments are queries and ids, never bodies.
     const { accountAlias: _alias, ...rest } = parsed.args as Record<string, unknown>;
@@ -463,8 +505,10 @@ function truncateMessages(messages: readonly unknown[], maxBytes: number): { tex
   const widestMarker = Number("9".repeat(String(maxBytes).length));
   for (const message of messages) {
     if (
-      Buffer.byteLength(JSON.stringify({ messages: [...kept, message], truncated: true, returnedBytes: widestMarker }), "utf8") >
-      maxBytes
+      Buffer.byteLength(
+        JSON.stringify({ messages: [...kept, message], truncated: true, returnedBytes: widestMarker }),
+        "utf8",
+      ) > maxBytes
     ) {
       break;
     }
@@ -531,7 +575,8 @@ async function instantCall(context: GatewayContext, tool: string, _toolkitSlug: 
       message: `This run may not use ${tool}.`,
     };
   }
-  const args = context.args !== null && typeof context.args === "object" ? (context.args as Record<string, unknown>) : {};
+  const args =
+    context.args !== null && typeof context.args === "object" ? (context.args as Record<string, unknown>) : {};
   try {
     const result = await InstantTools.executeInstantTool({
       toolSlug: tool,
@@ -576,7 +621,11 @@ async function instantCall(context: GatewayContext, tool: string, _toolkitSlug: 
  * unverified tool happens only after a human approval routes it through the
  * approved-effect executor.
  */
-async function instantPropose(context: GatewayContext, tool: string, args: Record<string, unknown>): Promise<GatewayOutcome> {
+async function instantPropose(
+  context: GatewayContext,
+  tool: string,
+  args: Record<string, unknown>,
+): Promise<GatewayOutcome> {
   // Key-order canonicalization: the same semantic arguments in a different
   // insertion order must dedupe to one proposal, not two approval cards.
   // Top-level keys only — nested objects with differing order remain distinct
@@ -612,12 +661,14 @@ async function instantPropose(context: GatewayContext, tool: string, args: Recor
   return {
     ok: true,
     result: {
-      content: [{
-        type: "text",
-        text: created.deduplicated
-          ? `A proposal to run ${tool} already awaits your owner's approval.`
-          : `Filed a proposal to run ${tool}; it is awaiting approval and was not executed.`,
-      }],
+      content: [
+        {
+          type: "text",
+          text: created.deduplicated
+            ? `A proposal to run ${tool} already awaits your owner's approval.`
+            : `Filed a proposal to run ${tool}; it is awaiting approval and was not executed.`,
+        },
+      ],
     },
   };
 }
@@ -704,7 +755,7 @@ export function createGateway({ transport }: { transport: Transport }) {
     // sends may be legitimate wording revisions. Same tool and same redacted
     // arguments is the identity; the redacted form is what the rows store, so
     // the comparison cannot miss what it already recorded.
-    if (parsed.tool !== "gmail_send" && parsed.tool !== "writer_draft_reply" && parsed.tool !== "writer_draft_follow_up") {
+    if (spec.kind === "read") {
       const parked = await detectLoop(context, parsed);
       if (parked) {
         return {
@@ -720,6 +771,62 @@ export function createGateway({ transport }: { transport: Transport }) {
     const reservation = await reserveCall(context, spec.provider, parsed, account.alias);
     if (!reservation.ok) return reservation.outcome;
 
+    if (parsed.generic && connectorWrite(capability)) {
+      try {
+        const proposal = await proposeConnectorAction({
+          auth: context.auth,
+          runId: context.run.id,
+          capability,
+          allowRoutine: !grantId,
+          args: connectorActionArguments.parse(parsed.args),
+          account,
+        });
+        const outcome =
+          proposal.execution === "direct"
+            ? await executeApprovedEffect(context.auth, { proposalId: proposal.proposalId })
+            : proposal.deduplicated
+              ? await settledEffectOutcome(context.auth.workspaceId, proposal.proposalId)
+              : null;
+        await settleCall(reservation.reservationId, {
+          ok: true,
+          result: proposal,
+          durationMs: Date.now() - reservation.startedAt,
+        });
+        return {
+          ok: true,
+          result: {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  ...proposal,
+                  status: outcome
+                    ? outcome.status === "sent"
+                      ? "completed"
+                      : outcome.status
+                    : proposal.proposalStatus === "pending"
+                      ? "awaiting_review"
+                      : proposal.proposalStatus,
+                  ...(outcome ? { outcome } : {}),
+                }),
+              },
+            ],
+          },
+        };
+      } catch (error) {
+        await settleCall(reservation.reservationId, {
+          ok: false,
+          errorCode: "connector_action_invalid",
+          durationMs: Date.now() - reservation.startedAt,
+        });
+        return {
+          ok: false,
+          status: 422,
+          code: "connector_action_invalid",
+          message: error instanceof Error ? error.message : "Could not propose the connector action.",
+        };
+      }
+    }
     if (parsed.generic) {
       return read(context, parsed, account.alias, account.connectedAccountId, reservation);
     }
@@ -883,11 +990,14 @@ export function createGateway({ transport }: { transport: Transport }) {
     // The registry branch returned above for every generic tool, so only the
     // bespoke reads reach the switch.
     const other = parsed as ParsedOther;
-    let outcome: { ok: true; text: string; truncated: boolean; count: number } | { ok: false; code: string; message: string };
+    let outcome:
+      { ok: true; text: string; truncated: boolean; count: number } | { ok: false; code: string; message: string };
     switch (other.tool) {
       case "github_search": {
         const r = await searchGithub(transport, { connectedAccountId, query: String(other.args.query), limit });
-        outcome = r.ok ? { ok: true, ...truncateList("items", r.items, {}, LIMITS.maxResponseBytes), count: r.items.length } : r;
+        outcome = r.ok
+          ? { ok: true, ...truncateList("items", r.items, {}, LIMITS.maxResponseBytes), count: r.items.length }
+          : r;
         break;
       }
       case "github_read_issue": {
@@ -902,12 +1012,18 @@ export function createGateway({ transport }: { transport: Transport }) {
           break;
         }
         const { comments, ...issue } = r.item;
-        outcome = { ok: true, ...truncateList("comments", comments, { issue }, LIMITS.maxResponseBytes), count: comments.length + 1 };
+        outcome = {
+          ok: true,
+          ...truncateList("comments", comments, { issue }, LIMITS.maxResponseBytes),
+          count: comments.length + 1,
+        };
         break;
       }
       case "linear_search_issues": {
         const r = await searchLinearIssues(transport, { connectedAccountId, term: String(other.args.query), limit });
-        outcome = r.ok ? { ok: true, ...truncateList("items", r.items, {}, LIMITS.maxResponseBytes), count: r.items.length } : r;
+        outcome = r.ok
+          ? { ok: true, ...truncateList("items", r.items, {}, LIMITS.maxResponseBytes), count: r.items.length }
+          : r;
         break;
       }
       case "linear_read_issue": {
@@ -917,17 +1033,25 @@ export function createGateway({ transport }: { transport: Transport }) {
           break;
         }
         const { comments, ...issue } = r.item;
-        outcome = { ok: true, ...truncateList("comments", comments, { issue }, LIMITS.maxResponseBytes), count: comments.length + 1 };
+        outcome = {
+          ok: true,
+          ...truncateList("comments", comments, { issue }, LIMITS.maxResponseBytes),
+          count: comments.length + 1,
+        };
         break;
       }
       case "slack_list_channels": {
         const r = await listSlackChannels(transport, { connectedAccountId, limit });
-        outcome = r.ok ? { ok: true, ...truncateList("channels", r.channels, {}, LIMITS.maxResponseBytes), count: r.channels.length } : r;
+        outcome = r.ok
+          ? { ok: true, ...truncateList("channels", r.channels, {}, LIMITS.maxResponseBytes), count: r.channels.length }
+          : r;
         break;
       }
       case "notion_search": {
         const r = await searchNotion(transport, { connectedAccountId, query: String(other.args.query), limit });
-        outcome = r.ok ? { ok: true, ...truncateList("items", r.items, {}, LIMITS.maxResponseBytes), count: r.items.length } : r;
+        outcome = r.ok
+          ? { ok: true, ...truncateList("items", r.items, {}, LIMITS.maxResponseBytes), count: r.items.length }
+          : r;
         break;
       }
       case "notion_read_page": {
@@ -944,27 +1068,29 @@ export function createGateway({ transport }: { transport: Transport }) {
       }
       case "linkedin_get_profile": {
         const r = await getLinkedInProfile(transport, { connectedAccountId });
-        outcome = r.ok
-          ? { ok: true, text: JSON.stringify({ profile: r.profile }), truncated: false, count: 1 }
-          : r;
+        outcome = r.ok ? { ok: true, text: JSON.stringify({ profile: r.profile }), truncated: false, count: 1 } : r;
         break;
       }
       case "instagram_get_profile": {
         const r = await getInstagramProfile(transport, { connectedAccountId });
-        outcome = r.ok
-          ? { ok: true, text: JSON.stringify({ profile: r.profile }), truncated: false, count: 1 }
-          : r;
+        outcome = r.ok ? { ok: true, text: JSON.stringify({ profile: r.profile }), truncated: false, count: 1 } : r;
         break;
       }
       case "instagram_list_media": {
         const r = await listInstagramMedia(transport, { connectedAccountId, limit });
-        outcome = r.ok ? { ok: true, ...truncateList("items", r.items, {}, LIMITS.maxResponseBytes), count: r.items.length } : r;
+        outcome = r.ok
+          ? { ok: true, ...truncateList("items", r.items, {}, LIMITS.maxResponseBytes), count: r.items.length }
+          : r;
         break;
       }
       case "slack_read_channel": {
         const r = await readSlackChannel(transport, { connectedAccountId, channel: String(other.args.channel), limit });
         outcome = r.ok
-          ? { ok: true, ...truncateList("messages", r.messages, { hasMore: r.hasMore }, LIMITS.maxResponseBytes), count: r.messages.length }
+          ? {
+              ok: true,
+              ...truncateList("messages", r.messages, { hasMore: r.hasMore }, LIMITS.maxResponseBytes),
+              count: r.messages.length,
+            }
           : r;
         break;
       }
@@ -1167,7 +1293,9 @@ export function createGateway({ transport }: { transport: Transport }) {
       const [session] = await db
         .select()
         .from(focusSessions)
-        .where(and(eq(focusSessions.id, parsed.args.sessionId), eq(focusSessions.workspaceId, context.auth.workspaceId)))
+        .where(
+          and(eq(focusSessions.id, parsed.args.sessionId), eq(focusSessions.workspaceId, context.auth.workspaceId)),
+        )
         .limit(1);
       if (!session || session.state !== "finished" || !session.taskId) {
         await settleCall(reservation.reservationId, {
@@ -1175,7 +1303,12 @@ export function createGateway({ transport }: { transport: Transport }) {
           errorCode: "session_not_finished",
           durationMs: Date.now() - reservation.startedAt,
         });
-        return { ok: false, status: 422, code: "session_not_finished", message: "Only a finished focus session with a linked task earns a follow-up pair." };
+        return {
+          ok: false,
+          status: 422,
+          code: "session_not_finished",
+          message: "Only a finished focus session with a linked task earns a follow-up pair.",
+        };
       }
       const [task] = await db
         .select({ title: tasks.title })
@@ -1193,7 +1326,12 @@ export function createGateway({ transport }: { transport: Transport }) {
           errorCode: "party_not_found",
           durationMs: Date.now() - reservation.startedAt,
         });
-        return { ok: false, status: 404, code: "party_not_found", message: "The session's task or the named contact is not in this workspace." };
+        return {
+          ok: false,
+          status: 404,
+          code: "party_not_found",
+          message: "The session's task or the named contact is not in this workspace.",
+        };
       }
 
       const outcome = await draftFollowUp(
@@ -1204,7 +1342,12 @@ export function createGateway({ transport }: { transport: Transport }) {
           contactId: parsed.args.contactId,
           threadId: parsed.args.threadId,
           taskId: session.taskId,
-          session: { outcome: session.outcome, whatChanged: session.whatChanged, nextStep: session.nextStep, endedAt: session.endedAt },
+          session: {
+            outcome: session.outcome,
+            whatChanged: session.whatChanged,
+            nextStep: session.nextStep,
+            endedAt: session.endedAt,
+          },
           taskTitle: task.title,
           contact,
         },

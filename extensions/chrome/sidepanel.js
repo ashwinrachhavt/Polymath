@@ -145,37 +145,21 @@
 
   function bindPairing() {
     const saveBtn = $('#btn-pairing-save');
-    const builtinBtn = $('#btn-pairing-builtin');
     if (saveBtn) {
       saveBtn.addEventListener('click', async () => {
         const value = ($('#pairing-token-input') || {}).value?.trim() || '';
         if (!value) {
-          pairingStatus('Paste a key first, or use the built-in key button.', 'err');
+          pairingStatus('Paste the key from Polymath Settings first.', 'err');
           return;
         }
-        await AlfredAPI.setToken(value);
-        pairingStatus('Key saved. Retrying parked captures…', 'ok');
-        await retryParkedFromPanel();
+        try {
+          pairingStatus('Verifying key and syncing captures…', 'ok');
+        await AlfredAPI.pairAndSync(value);
         $('#pairing-section').hidden = true;
-      });
+      } catch (error) {
+          pairingStatus(error.message || 'Could not verify the key. Your captures are still saved on this device.', 'err');
     }
-    if (builtinBtn) {
-      builtinBtn.addEventListener('click', async () => {
-        await AlfredAPI.setToken(null);
-        await AlfredAPI.ensureTokenPreloaded();
-        pairingStatus('Re-paired with the built-in key. Retrying parked captures…', 'ok');
-        await retryParkedFromPanel();
-        $('#pairing-section').hidden = true;
-      });
-    }
-  }
-
-  /** Parked captures queue in the worker's outbox; the dock picks the retry up. */
-  async function retryParkedFromPanel() {
-    try {
-      await chrome.runtime.sendMessage({ type: 'AXIOM_OUTBOX_RETRY' });
-    } catch {
-      // The dock listens on its own tabs; a miss just means the next visit retries.
+  });
     }
   }
 

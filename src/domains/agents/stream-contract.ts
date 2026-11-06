@@ -44,7 +44,7 @@ export type ChatFrame =
       cursor: number;
     }
   /** The person's own message, replayed from the durable stream so a reload keeps it. */
-  | { type: "message"; runId: string; role: "user"; text: string; cursor: number }
+  | { type: "message"; runId: string; role: "user"; text: string; cursor: number; blockId?: string }
   /** Citations a tool produced; `onCitation` on the surface receives these. */
   | { type: "citations"; runId: string; citations: ChatCitation[]; cursor: number }
   /**
@@ -139,11 +139,20 @@ const asNumber = (value: unknown): number | null => (typeof value === "number" ?
 const MAX_FAILURE_MESSAGE = 400;
 
 function failureMessageOf(data: Record<string, unknown>): string | null {
-  const message = asString(data.message)?.trim();
-  if (message) {
-    return message.length > MAX_FAILURE_MESSAGE ? `${message.slice(0, MAX_FAILURE_MESSAGE)}…` : message;
+  const raw = [data.message, data.error, data.detail, data.code].find(
+    (value) => typeof value === "string" && value.trim(),
+  );
+  if (typeof raw !== "string") return null;
+  const message = raw.trim();
+  if (
+    /insufficient.{0,80}credit|not enough.{0,80}credit|more credits? than available|credit.{0,80}(insufficient|not enough|available)|can only afford|only afford/i.test(
+      message,
+    )
+  ) {
+    return "The provider did not have enough credit for the requested response size. Reduce the reply length, add provider credit, or choose a different model.";
   }
-  return asString(data.code)?.trim() || null;
+  const safe = message.replace(/https?:[^\s]+/gi, "[provider link removed]");
+  return safe.length > MAX_FAILURE_MESSAGE ? `${safe.slice(0, MAX_FAILURE_MESSAGE)}…` : safe;
 }
 
 /**
@@ -424,7 +433,16 @@ export function frameOf(
       const text = asString(data.message ?? data.content);
       if (text === null || text.length === 0) return [];
       if (options.suppressObjectiveText != null && text === options.suppressObjectiveText) return [];
-      return [{ type: "message", runId, role: "user", text, cursor }];
+      return [
+        {
+          type: "message",
+          runId,
+          role: "user",
+          text,
+          cursor,
+          ...(event.type === "message" ? { blockId: `user:stored:${cursor}` } : {}),
+        },
+      ];
     }
     case "turn.completed":
       return [{ type: "turn", runId, state: "completed", cursor }];
@@ -498,7 +516,7 @@ export class ChatAccumulator {
     if (frame.type === "message") {
       // Keyed by cursor: a replayed turn writes the same id, so the question
       // does not appear twice after a reconnect.
-      const id = `user:${frame.cursor}`;
+      const id = frame.blockId ?? `user:${frame.cursor}`;
       if (this.blocks.has(id)) return;
       this.blocks.set(id, { id, kind: "user", text: frame.text, done: true });
       return;

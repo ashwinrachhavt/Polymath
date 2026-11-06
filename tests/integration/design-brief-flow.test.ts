@@ -1,3 +1,4 @@
+import { GENERATION_ENV_KEYS } from "../helpers/generation-env";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { and, eq, sql } from "drizzle-orm";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
@@ -48,7 +49,13 @@ const fakeProvider: GenerationProvider = {
   generate: async () => ({ text: BRIEF_JSON }),
 };
 
-async function insertSource(workspaceId: string, userId: string, kind: string, text: string | null, title = "Acme research") {
+async function insertSource(
+  workspaceId: string,
+  userId: string,
+  kind: string,
+  text: string | null,
+  title = "Acme research",
+) {
   const [artifact] = await db
     .insert(artifacts)
     .values({ workspaceId, kind: kind as never, title, createdBy: userId, updatedBy: userId })
@@ -56,7 +63,15 @@ async function insertSource(workspaceId: string, userId: string, kind: string, t
   if (text !== null) {
     const [version] = await db
       .insert(artifactVersions)
-      .values({ workspaceId, artifactId: artifact.id, versionNumber: 1, content: { text }, plainText: text, reason: "created", createdBy: userId })
+      .values({
+        workspaceId,
+        artifactId: artifact.id,
+        versionNumber: 1,
+        content: { text },
+        plainText: text,
+        reason: "created",
+        createdBy: userId,
+      })
       .returning({ id: artifactVersions.id });
     await db.update(artifacts).set({ currentVersionId: version.id }).where(eq(artifacts.id, artifact.id));
   }
@@ -67,7 +82,12 @@ suite("designBriefFromArtifact", () => {
   it("turns a research report into a memo brief artifact", async () => {
     const { userId, workspaceId } = await seedWorkspace(db, `brief-flow-${Date.now()}-${process.pid}`);
     const auth = ownerAuth(userId, workspaceId);
-    const sourceId = await insertSource(workspaceId, userId, "report", "Acme sells annual plans. Customers renew in Q4.");
+    const sourceId = await insertSource(
+      workspaceId,
+      userId,
+      "report",
+      "Acme sells annual plans. Customers renew in Q4.",
+    );
 
     const result = await brief.designBriefFromArtifact(auth, sourceId, { provider: fakeProvider });
 
@@ -75,7 +95,11 @@ suite("designBriefFromArtifact", () => {
     expect(memo?.kind).toBe("memo");
     expect(memo?.status).toBe("generated");
     expect(memo?.title).toBe("Design brief: Launch one-pager");
-    const [version] = await db.select().from(artifactVersions).where(eq(artifactVersions.id, memo!.currentVersionId!)).limit(1);
+    const [version] = await db
+      .select()
+      .from(artifactVersions)
+      .where(eq(artifactVersions.id, memo!.currentVersionId!))
+      .limit(1);
     expect(version?.plainText).toContain("Annual billing stays.");
     expect(version?.plainText).toContain('from "Acme research"');
     expect(result.title).toBe("Design brief: Launch one-pager");
@@ -85,7 +109,12 @@ suite("designBriefFromArtifact", () => {
   it("a repeat click returns the existing brief instead of writing a duplicate", async () => {
     const { userId, workspaceId } = await seedWorkspace(db, `brief-idem-${Date.now()}-${process.pid}`);
     const auth = ownerAuth(userId, workspaceId);
-    const sourceId = await insertSource(workspaceId, userId, "report", "Acme sells annual plans. Customers renew in Q4.");
+    const sourceId = await insertSource(
+      workspaceId,
+      userId,
+      "report",
+      "Acme sells annual plans. Customers renew in Q4.",
+    );
 
     const first = await brief.designBriefFromArtifact(auth, sourceId, { provider: fakeProvider });
     const second = await brief.designBriefFromArtifact(auth, sourceId, { provider: fakeProvider });
@@ -103,7 +132,12 @@ suite("designBriefFromArtifact", () => {
   it("two concurrent first clicks produce exactly one brief", async () => {
     const { userId, workspaceId } = await seedWorkspace(db, `brief-race-${Date.now()}-${process.pid}`);
     const auth = ownerAuth(userId, workspaceId);
-    const sourceId = await insertSource(workspaceId, userId, "report", "Acme sells annual plans. Customers renew in Q4.");
+    const sourceId = await insertSource(
+      workspaceId,
+      userId,
+      "report",
+      "Acme sells annual plans. Customers renew in Q4.",
+    );
 
     const [a, b] = await Promise.all([
       brief.designBriefFromArtifact(auth, sourceId, { provider: fakeProvider }),
@@ -128,7 +162,15 @@ suite("designBriefFromArtifact", () => {
 
     const [v2] = await db
       .insert(artifactVersions)
-      .values({ workspaceId, artifactId: sourceId, versionNumber: 2, content: { text: "Acme now sells monthly plans too." }, plainText: "Acme now sells monthly plans too.", reason: "edited", createdBy: userId })
+      .values({
+        workspaceId,
+        artifactId: sourceId,
+        versionNumber: 2,
+        content: { text: "Acme now sells monthly plans too." },
+        plainText: "Acme now sells monthly plans too.",
+        reason: "edited",
+        createdBy: userId,
+      })
       .returning({ id: artifactVersions.id });
     await db.update(artifacts).set({ currentVersionId: v2.id }).where(eq(artifacts.id, sourceId));
 
@@ -148,7 +190,7 @@ suite("designBriefFromArtifact", () => {
     const auth = ownerAuth(userId, workspaceId);
     const sourceId = await insertSource(workspaceId, userId, "report", "Acme sells annual plans.");
 
-    const KEYS = ["GENERATION_PROVIDER", "OPENROUTER_API_KEY", "GEMINI_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY"] as const;
+    const KEYS = GENERATION_ENV_KEYS;
     const saved = KEYS.map((k) => [k, process.env[k]] as const);
     for (const k of KEYS) delete process.env[k];
     try {
@@ -170,7 +212,9 @@ suite("designBriefFromArtifact", () => {
     const { userId, workspaceId } = await seedWorkspace(db, `brief-transcript-${Date.now()}-${process.pid}`);
     const auth = ownerAuth(userId, workspaceId);
     const sourceId = await insertSource(workspaceId, userId, "transcript", "speaker: hello");
-    await expect(brief.designBriefFromArtifact(auth, sourceId, { provider: fakeProvider })).rejects.toThrow(brief.DesignBriefNotAllowedError);
+    await expect(brief.designBriefFromArtifact(auth, sourceId, { provider: fakeProvider })).rejects.toThrow(
+      brief.DesignBriefNotAllowedError,
+    );
     expect(brief.BRIEFABLE_KINDS).not.toContain("transcript");
   });
 
@@ -186,14 +230,20 @@ suite("designBriefFromArtifact", () => {
     const other = await seedWorkspace(db, `brief-scope-b-${Date.now()}-${process.pid}`);
     const auth = ownerAuth(other.userId, other.workspaceId);
     const sourceId = await insertSource(workspaceId, userId, "report", "Secret research.");
-    await expect(brief.designBriefFromArtifact(auth, sourceId, { provider: fakeProvider })).rejects.toThrow(/does not exist/);
+    await expect(brief.designBriefFromArtifact(auth, sourceId, { provider: fakeProvider })).rejects.toThrow(
+      /does not exist/,
+    );
   });
 
   it("propagates an unusable model answer without writing anything", async () => {
     const { userId, workspaceId } = await seedWorkspace(db, `brief-bad-${Date.now()}-${process.pid}`);
     const auth = ownerAuth(userId, workspaceId);
     const sourceId = await insertSource(workspaceId, userId, "report", "Acme sells annual plans.");
-    const bad: GenerationProvider = { name: "fixture:bad", registryId: "fixture", generate: async () => ({ text: "not json" }) };
+    const bad: GenerationProvider = {
+      name: "fixture:bad",
+      registryId: "fixture",
+      generate: async () => ({ text: "not json" }),
+    };
     await expect(brief.designBriefFromArtifact(auth, sourceId, { provider: bad })).rejects.toThrow(/not JSON/);
     const rows = await db
       .select()
@@ -236,10 +286,10 @@ suite("designBriefFromArtifact", () => {
     // The write still commits after the reorder: one memo, its version, its audit row.
     const [memo] = await db.select().from(artifacts).where(eq(artifacts.id, result.briefArtifactId)).limit(1);
     expect(memo?.currentVersionId).toBeTruthy();
-    const [audit] = await db.execute(sql`
+    const [audit] = (await db.execute(sql`
       select count(*)::int as n from audit_events
       where workspace_id = ${workspaceId} and action = 'knowledge.design_brief.generated'
-    `) as unknown as Array<{ n: number }>;
+    `)) as unknown as Array<{ n: number }>;
     expect(audit?.n).toBe(1);
   });
 });

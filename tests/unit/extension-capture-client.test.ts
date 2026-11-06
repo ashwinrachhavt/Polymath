@@ -14,6 +14,7 @@ type CaptureResult = { ok: boolean; delivered: boolean; unconfirmed?: boolean };
 type EnqueueMessage = { type: string; text: string; url?: string; title?: string; mode?: string };
 type Api = {
   base(): Promise<string>;
+  pairAndSync(value: string): Promise<unknown>;
   queueCapture(input: Record<string, unknown>): Promise<CaptureResult>;
   capturePage(input: Record<string, unknown>): Promise<CaptureResult>;
   captureSelection(input: Record<string, unknown>): Promise<CaptureResult>;
@@ -33,7 +34,9 @@ function storageStub(values: Record<string, unknown> = {}) {
   return {
     local: {
       get: vi.fn(async (key: string) => (key in values ? { [key]: values[key] } : {})),
-      set: vi.fn(async () => undefined),
+      set: vi.fn(async (patch: Record<string, unknown>) => {
+        Object.assign(values, patch);
+      }),
     },
   };
 }
@@ -46,6 +49,28 @@ afterEach(() => {
 });
 
 describe("capture client", () => {
+  it("verifies a replacement key before releasing captures to its account", async () => {
+    const sendMessage = vi.fn(async () => ({ ok: true, rebound: true }));
+    const fetchMock = vi.fn<typeof fetch>(async () => Response.json({ captures: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+    const api = await loadApi({ runtime: { id: "x", sendMessage }, storage: storageStub() });
+    await api.pairAndSync("fresh-key");
+    expect(fetchMock.mock.calls[0]?.[1]?.headers).toMatchObject({ Authorization: "Bearer fresh-key" });
+    expect(sendMessage).toHaveBeenCalledWith({ type: "AXIOM_OUTBOX_REBIND" });
+    expect(fetchMock.mock.invocationCallOrder[0]).toBeLessThan(sendMessage.mock.invocationCallOrder[0]);
+  });
+
+  it("keeps parked captures when the replacement key is rejected", async () => {
+    const sendMessage = vi.fn();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("Unauthorized", { status: 401 })),
+    );
+    const api = await loadApi({ runtime: { id: "x", sendMessage }, storage: storageStub() });
+    await expect(api.pairAndSync("invalid-key")).rejects.toThrow(/rejected this API key/);
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
   it("reports an unanswered enqueue as unconfirmed, not as a save", async () => {
     const api = await loadApi({
       // The worker takes the message and never answers: Chrome killed it mid-await.
@@ -307,6 +332,30 @@ describe("capture worker delivery", () => {
     expect(form.get("text")).toBe("Copied headline and paragraph");
     expect(form.get("textSource")).toBe("clipboard");
     expect((form.get("file") as File).name).toBe("clipboard-image.png");
+  });
+
+  it("syncs an auth-blocked capture after an explicit key replacement, preserving its receipt key", async () => {
+    const entry = Outbox.makeEntry(
+      {
+        id: "rotated-key-capture",
+        text: "Keep this capture",
+        url: "https://example.com/article",
+        destination: { origin: "http://localhost:3000", tokenHash: await tokenHash("old-key") },
+      },
+      Date.now(),
+    );
+    const { message, store, fetchMock } = await loadWorker({
+      stored: { [OUTBOX_KEY]: [{ ...entry, status: "needs-auth" }] },
+      api: { base: async () => "http://localhost:3000", token: async () => SAVED_TOKEN },
+      fetchImpl: async () => new Response("{}", { status: 201 }),
+    });
+    expect(await message({ type: "AXIOM_OUTBOX_REBIND" })).toMatchObject({ ok: true, rebound: true });
+    expect(store[OUTBOX_KEY]).toEqual([]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[1]?.headers).toMatchObject({
+      "Idempotency-Key": "rotated-key-capture",
+      Authorization: `Bearer ${SAVED_TOKEN}`,
+    });
   });
 
   it("delivers the mode the message carried", async () => {

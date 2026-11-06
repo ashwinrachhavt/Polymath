@@ -1,3 +1,4 @@
+import { GENERATION_ENV_KEYS } from "../helpers/generation-env";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { captures } from "@/domains/capture/schema";
@@ -159,9 +160,7 @@ suite("jev capture triage (ASH-272)", () => {
     const captureId = await insertCapture(workspaceId, text);
 
     const envBackup = { ...process.env };
-    delete process.env.OPENROUTER_API_KEY;
-    delete process.env.GEMINI_API_KEY;
-    delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+    for (const key of GENERATION_ENV_KEYS) delete process.env[key];
     delete process.env.TYPESAFE_API_KEY;
     try {
       const { runCaptureEnrichment } = await import("@/domains/capture/enrichment-handler");

@@ -232,7 +232,7 @@ describe("bundle hygiene — heavy libs are dynamically imported only", () => {
       const path = join(dir, entry);
       const stat = statSync(path);
       if (stat.isDirectory()) {
-        if (entry === "node_modules") continue;
+        if (entry === "node_modules" || entry === ".eve") continue;
         yield* walk(path);
       } else if (/\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/.test(entry)) {
         yield path;

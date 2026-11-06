@@ -21,6 +21,7 @@ import {
  * that the budget stays on screen while the dive is open.
  */
 export default defineTool({
+  deferred: true,
   description:
     "Go one hop deeper in a research graph. Use when the owner says to go deeper on something, or asks what relates to a node. Each call expands one node: it follows connections already in the library first (free), and only searches the web when the library has nothing new. Returns the nodes it reached, any web pages worth reading, and the remaining budget — report the remaining hops to the owner when you stop. Do not call this repeatedly without telling the owner how much budget is left.",
   inputSchema: z.object({
@@ -34,10 +35,26 @@ export default defineTool({
       .min(1)
       .max(300)
       .optional()
-      .describe("A question to start a dive from, when there is no node yet. The best-matching library document becomes the seed."),
-    hopsUsed: z.number().int().min(0).max(DEEP_DIVE_MAX_HOPS).describe("How many hops this dive has already taken. Start at 0."),
-    callsUsed: z.number().int().min(0).describe("How many paid searches this dive has already made, summed from prior results. Start at 0."),
-    callsMax: z.number().int().min(0).optional().describe("The owner's cap on paid searches for this dive, when one was stated."),
+      .describe(
+        "A question to start a dive from, when there is no node yet. The best-matching library document becomes the seed.",
+      ),
+    hopsUsed: z
+      .number()
+      .int()
+      .min(0)
+      .max(DEEP_DIVE_MAX_HOPS)
+      .describe("How many hops this dive has already taken. Start at 0."),
+    callsUsed: z
+      .number()
+      .int()
+      .min(0)
+      .describe("How many paid searches this dive has already made, summed from prior results. Start at 0."),
+    callsMax: z
+      .number()
+      .int()
+      .min(0)
+      .optional()
+      .describe("The owner's cap on paid searches for this dive, when one was stated."),
   }),
   async execute(input, ctx) {
     const current = ctx.session.auth.current;
@@ -69,7 +86,12 @@ export default defineTool({
     // The nodes carry the shape the thread renders as record cards, so a hop
     // shows up as the documents it reached rather than as a paragraph about them.
     const asRecords = (nodes: ResearchNode[]) =>
-      nodes.map((node) => ({ kind: "document" as const, id: node.artifactId, title: node.title, subtitle: node.via ?? undefined }));
+      nodes.map((node) => ({
+        kind: "document" as const,
+        id: node.artifactId,
+        title: node.title,
+        subtitle: node.via ?? undefined,
+      }));
 
     return {
       ok: true as const,

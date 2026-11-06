@@ -137,6 +137,39 @@ describe("useChatStream recoverable turn failure (no terminal end frame)", () =>
   });
 });
 
+describe("useChatStream parked session", () => {
+  it("stays waiting after a completed turn closes its stream", async () => {
+    mockStreamOnce([
+      { type: "message", runId: RUN, role: "assistant", text: "Here is the answer.", cursor: 2 },
+      { type: "turn", runId: RUN, state: "waiting", cursor: 3 },
+    ]);
+    const { result } = renderHook(() => useChatStream(RUN, { enabled: true }));
+    await waitFor(() => expect(result.current.blocks.some((block) => block.text === "Here is the answer.")).toBe(true));
+    await waitFor(() => expect(result.current.connection).toBe("waiting"));
+    expect(result.current.error).toBeNull();
+  });
+
+  it("reopens after a new message asks for another turn", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(ndjson([{ type: "turn", runId: RUN, state: "waiting", cursor: 2 }]), { status: 200 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          ndjson([{ type: "message", runId: RUN, role: "assistant", text: "A second answer.", cursor: 4 }]),
+          { status: 200 },
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const { result } = renderHook(() => useChatStream(RUN, { enabled: true }));
+    await waitFor(() => expect(result.current.connection).toBe("waiting"));
+    result.current.retry();
+    await waitFor(() => expect(result.current.blocks.some((block) => block.text === "A second answer.")).toBe(true));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe("useChatStream run facts and the reconnect pause", () => {
   it("pins runFailed from the run frame's terminal row state", async () => {
     // The run frame is every connection's head: the durable facts arrive even

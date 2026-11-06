@@ -13,6 +13,8 @@
  * All five are members of `risk_class` in src/domains/actions/schema.ts; this
  * fixture restates them so the evals never drift from the enum without a diff.
  */
+import { CONNECTOR_WRITES } from "../../../src/domains/integrations/connector-action-catalog";
+
 export type PolymathRiskClass = "read" | "prepare" | "external_write" | "sensitive_write" | "prohibited";
 
 /** The status an eve approval policy is allowed to return for a risk class. */
@@ -34,6 +36,7 @@ export const AXIOM_APPROVAL_POLICY_TEXT =
  * capability is a gap the eval can see.
  */
 export const CAPABILITY_RISK: Readonly<Record<string, PolymathRiskClass>> = {
+  ...Object.fromEntries(Object.keys(CONNECTOR_WRITES).map((capability) => [capability, "external_write" as const])),
   "tasks.read": "read",
   "gmail.read": "read",
   // Reading one thread is the same authority as searching them. Without a row

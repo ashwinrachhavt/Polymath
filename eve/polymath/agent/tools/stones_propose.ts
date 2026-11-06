@@ -18,6 +18,7 @@ import { stoneRecipeSchema } from "../../../../src/domains/gamification/recipe";
  * policy must allow stones.foundry.create.
  */
 export default defineTool({
+  deferred: true,
   description:
     "Propose an ML-designed stone recipe for the owner to review. Call when the run has designed a stone worth adding to the collection - a name, rarity, theme, palette, and SVG on a 200x200 canvas. Do not propose stones the collection already covers. Nothing is created until the owner approves it; the approval writes the stone's definition into the gen- namespace. Pass a stable dedupeId so a retry resolves the same proposal.",
   inputSchema: stoneRecipeSchema.extend({

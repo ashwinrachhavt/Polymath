@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { artifacts } from "@/domains/knowledge/schema";
+import { captures } from "@/domains/capture/schema";
 import { agentProfiles, threads } from "@/domains/agents/schema";
 import { contactPoints, organizations, people } from "@/domains/identity/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
@@ -57,6 +58,65 @@ suite("record search for attach", () => {
       .returning({ id: artifacts.id });
     return row.id;
   }
+
+  it("offers the Inbox and matching current captures as workspace-scoped context", async () => {
+    const stamp = Date.now();
+    const [capture] = await handle!.db
+      .insert(captures)
+      .values({
+        workspaceId: auth.workspaceId,
+        kind: "text",
+        captureMode: "authored",
+        rawPayload: { text: `Orbit notes ${stamp}` },
+        text: `Orbit notes ${stamp}`,
+        createdBy: auth.userId,
+        updatedBy: auth.userId,
+      })
+      .returning({ id: captures.id });
+    const [foreign] = await handle!.db
+      .insert(captures)
+      .values({
+        workspaceId: otherWorkspace.workspaceId,
+        kind: "text",
+        captureMode: "authored",
+        rawPayload: { text: `Orbit notes ${stamp}` },
+        text: `Orbit notes ${stamp}`,
+        createdBy: otherWorkspace.userId,
+        updatedBy: otherWorkspace.userId,
+      })
+      .returning({ id: captures.id });
+    const [parked] = await handle!.db
+      .insert(captures)
+      .values({
+        workspaceId: auth.workspaceId,
+        kind: "text",
+        captureMode: "authored",
+        rawPayload: { text: `Orbit notes parked ${stamp}` },
+        text: `Orbit notes parked ${stamp}`,
+        parkedAt: new Date(),
+        createdBy: auth.userId,
+        updatedBy: auth.userId,
+      })
+      .returning({ id: captures.id });
+
+    const inboxResults = await searchRecordsForAttach(auth, "");
+    expect(inboxResults).toContainEqual({
+      id: auth.workspaceId,
+      kind: "inbox",
+      title: "Inbox",
+      href: "/command-center/inbox",
+    });
+
+    const matching = await searchRecordsForAttach(auth, `Orbit notes ${stamp}`);
+    const byId = new Map(matching.map((record) => [record.id, record]));
+    expect(byId.get(capture.id)).toMatchObject({
+      kind: "capture",
+      title: `Orbit notes ${stamp}`,
+      href: `/command-center/inbox?id=${capture.id}`,
+    });
+    expect(byId.has(foreign.id)).toBe(false);
+    expect(byId.has(parked.id)).toBe(false);
+  });
 
   it("finds notes, zettels and artifacts by title, grouped with the right hrefs", async () => {
     // Earlier runs of this suite leave rows behind (no truncation here), so

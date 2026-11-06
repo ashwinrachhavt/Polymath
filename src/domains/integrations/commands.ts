@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { and, eq, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
 import type { AuthContext } from "@/domains/identity/resolve";
@@ -5,6 +6,7 @@ import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { isUniqueViolation } from "@/lib/pg-errors";
 import { CAPABILITIES, PROVIDER_TIERS, type Capability, type Provider } from "./capabilities";
+import { planToggleSteps } from "./access-toggles";
 import { externalAccounts, integrationCatalog } from "./schema";
 
 /*
@@ -63,7 +65,12 @@ export async function registerAccount(
         .returning();
       await recordAudit(
         auth,
-        { action: "integration.account_registered", subjectType: "external_account", subjectId: account.id, summary: `Connector registered: ${input.provider} as "${input.alias}"` },
+        {
+          action: "integration.account_registered",
+          subjectType: "external_account",
+          subjectId: account.id,
+          summary: `Connector registered: ${input.provider} as "${input.alias}"`,
+        },
         tx,
       );
       return account;
@@ -112,7 +119,12 @@ export async function setAccountStatus(
     }
     await recordAudit(
       auth,
-      { action: `integration.account_${input.status}`, subjectType: "external_account", subjectId: updated.id, summary: `Connector ${updated.alias}: ${input.status}` },
+      {
+        action: `integration.account_${input.status}`,
+        subjectType: "external_account",
+        subjectId: updated.id,
+        summary: `Connector ${updated.alias}: ${input.status}`,
+      },
       tx,
     );
     return updated;
@@ -183,6 +195,67 @@ export async function setAccountAccessTier(
  * what the tier does not — so a capability outside the current tier is
  * rejected with copy that points at the tier control, not the switch.
  */
+/** Apply the whole Write switch with one version check and one committed update. */
+export async function setAccountWriteAccess(
+  auth: AuthContext,
+  input: { accountId: string; expectedVersion: number; enabled: boolean },
+) {
+  return withTransaction(async (tx) => {
+    const [account] = await tx
+      .select()
+      .from(externalAccounts)
+      .where(and(eq(externalAccounts.workspaceId, auth.workspaceId), eq(externalAccounts.id, input.accountId)))
+      .limit(1);
+    if (!account || account.version !== input.expectedVersion)
+      throw new StaleWriteError("The connector account changed. Reload and try again.");
+    const disabledCapabilities = z.array(z.string()).parse(account.disabledCapabilities ?? []);
+    const steps = planToggleSteps({
+      provider: account.provider as Provider,
+      currentTier: account.accessTier,
+      disabled: disabledCapabilities,
+      toggle: "write",
+      on: input.enabled,
+    });
+    let accessTier = account.accessTier;
+    const disabled = new Set(disabledCapabilities);
+    for (const step of steps) {
+      if (step.kind === "tier") accessTier = step.tierId;
+      else if (step.enabled) disabled.delete(step.capability);
+      else disabled.add(step.capability);
+    }
+    const [updated] = await tx
+      .update(externalAccounts)
+      .set({
+        accessTier,
+        disabledCapabilities: [...disabled],
+        version: sql`${externalAccounts.version} + 1`,
+        updatedAt: new Date(),
+        updatedBy: auth.userId,
+      })
+      .where(
+        and(
+          eq(externalAccounts.workspaceId, auth.workspaceId),
+          eq(externalAccounts.id, input.accountId),
+          eq(externalAccounts.version, input.expectedVersion),
+        ),
+      )
+      .returning();
+    if (!updated) throw new StaleWriteError("The connector account changed. Reload and try again.");
+    await recordAudit(
+      auth,
+      {
+        action: "integration.account_capability_set",
+        subjectType: "external_account",
+        subjectId: updated.id,
+        summary: `Connector ${updated.alias}: Write ${input.enabled ? "enabled" : "disabled"}`,
+        metadata: { enabled: input.enabled, accessTier, disabledCapabilities: [...disabled] },
+      },
+      tx,
+    );
+    return updated;
+  });
+}
+
 export async function setAccountCapability(
   auth: AuthContext,
   input: { accountId: string; expectedVersion: number; capability: string; enabled: boolean },
@@ -313,7 +386,12 @@ export async function renameAccount(
     }
     await recordAudit(
       auth,
-      { action: "integration.account_renamed", subjectType: "external_account", subjectId: updated.id, summary: `Connector renamed: "${account.alias}" is now "${alias}"` },
+      {
+        action: "integration.account_renamed",
+        subjectType: "external_account",
+        subjectId: updated.id,
+        summary: `Connector renamed: "${account.alias}" is now "${alias}"`,
+      },
       tx,
     );
     return { renamed: true };
@@ -332,10 +410,7 @@ export async function renameAccount(
  * read as a failure. Any other status change still requires the version the
  * caller loaded.
  */
-export async function revokeConnectedAccount(
-  auth: AuthContext,
-  input: { accountId: string; expectedVersion: number },
-) {
+export async function revokeConnectedAccount(auth: AuthContext, input: { accountId: string; expectedVersion: number }) {
   // Read first, write second. The read is not in the write's transaction on
   // purpose: the version predicate in `setAccountStatus` is what makes the
   // write safe, and a read-only precheck inside a second transaction would
@@ -343,12 +418,7 @@ export async function revokeConnectedAccount(
   const [account] = await db
     .select({ status: externalAccounts.status, version: externalAccounts.version })
     .from(externalAccounts)
-    .where(
-      and(
-        eq(externalAccounts.workspaceId, auth.workspaceId),
-        eq(externalAccounts.id, input.accountId),
-      ),
-    )
+    .where(and(eq(externalAccounts.workspaceId, auth.workspaceId), eq(externalAccounts.id, input.accountId)))
     .limit(1);
   if (!account) {
     throw new StaleWriteError("The connector account changed since you loaded it. Reload and try again.");
@@ -381,10 +451,7 @@ export async function revokeConnectedAccount(
  * transaction. Models choose aliases, never ids, and nothing writes by
  * default until this is set.
  */
-export async function setDefaultForWrites(
-  auth: AuthContext,
-  input: { accountId: string; expectedVersion: number },
-) {
+export async function setDefaultForWrites(auth: AuthContext, input: { accountId: string; expectedVersion: number }) {
   return withTransaction(async (tx) => {
     const [account] = await tx
       .select({ provider: externalAccounts.provider })
@@ -394,13 +461,22 @@ export async function setDefaultForWrites(
     if (!account) {
       throw new StaleWriteError("The connector account changed since you loaded it. Reload and try again.");
     }
-    const hasWrites = Object.values(CAPABILITIES).some((spec) => spec.provider === account.provider && spec.kind === "proposal");
+    const hasWrites = Object.values(CAPABILITIES).some(
+      (spec) => spec.provider === account.provider && spec.kind === "proposal",
+    );
     if (!hasWrites) {
-      throw new ConflictError(`${account.provider} has nothing an agent can write with, so there is no write default to choose.`);
+      throw new ConflictError(
+        `${account.provider} has nothing an agent can write with, so there is no write default to choose.`,
+      );
     }
     const [target] = await tx
       .update(externalAccounts)
-      .set({ isDefaultForWrites: true, version: sql`${externalAccounts.version} + 1`, updatedAt: new Date(), updatedBy: auth.userId })
+      .set({
+        isDefaultForWrites: true,
+        version: sql`${externalAccounts.version} + 1`,
+        updatedAt: new Date(),
+        updatedBy: auth.userId,
+      })
       .where(
         and(
           eq(externalAccounts.workspaceId, auth.workspaceId),
@@ -414,7 +490,12 @@ export async function setDefaultForWrites(
     }
     await tx
       .update(externalAccounts)
-      .set({ isDefaultForWrites: false, version: sql`${externalAccounts.version} + 1`, updatedAt: new Date(), updatedBy: auth.userId })
+      .set({
+        isDefaultForWrites: false,
+        version: sql`${externalAccounts.version} + 1`,
+        updatedAt: new Date(),
+        updatedBy: auth.userId,
+      })
       .where(
         and(
           eq(externalAccounts.workspaceId, auth.workspaceId),
@@ -424,7 +505,12 @@ export async function setDefaultForWrites(
       );
     await recordAudit(
       auth,
-      { action: "integration.write_default_set", subjectType: "external_account", subjectId: target.id, summary: `Write default for ${target.provider}: "${target.alias}"` },
+      {
+        action: "integration.write_default_set",
+        subjectType: "external_account",
+        subjectId: target.id,
+        summary: `Write default for ${target.provider}: "${target.alias}"`,
+      },
       tx,
     );
     return target;

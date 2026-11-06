@@ -103,6 +103,24 @@ suite("event bridge", () => {
     expect(run.lastEventSeq).toBe(b.sequence);
   });
 
+  it("attaches the last model failure to the durable turn boundary", async () => {
+    const { workspaceId, runId } = await seedRun("bridge-turn-failure");
+
+    await bridge.recordRoundEvent({
+      runId,
+      workspaceId,
+      type: "step.failed",
+      data: { turnId: "t1", stepIndex: 0, detail: "provider credit limit" },
+    });
+    await bridge.recordFailedTurn({ runId, workspaceId, turnId: "t1" });
+
+    const [failedTurn] = await db
+      .select()
+      .from(runEvents)
+      .where(and(eq(runEvents.runId, runId), eq(runEvents.type, "turn.failed")));
+    expect(failedTurn.data).toEqual({ turnId: "t1", error: "provider credit limit" });
+  });
+
   it("concurrent writers cannot claim the same sequence", async () => {
     const { workspaceId, runId } = await seedRun("bridge-conc");
 
@@ -119,9 +137,7 @@ suite("event bridge", () => {
 
     const sequences = results.map((r) => r.sequence);
     expect(new Set(sequences).size).toBe(12);
-    expect([...sequences].sort((x, y) => x - y)).toEqual(
-      Array.from({ length: 12 }, (_, i) => i + 1),
-    );
+    expect([...sequences].sort((x, y) => x - y)).toEqual(Array.from({ length: 12 }, (_, i) => i + 1));
     const [run] = await db.select().from(agentRuns).where(eq(agentRuns.id, runId));
     expect(run.lastEventSeq).toBe(12);
   });
@@ -177,10 +193,7 @@ suite("event bridge", () => {
     expect(events).toHaveLength(0);
     const calls = await db.select().from(toolCalls).where(eq(toolCalls.runId, owner.runId));
     expect(calls).toHaveLength(0);
-    const questions = await db
-      .select()
-      .from(agentQuestions)
-      .where(eq(agentQuestions.runId, owner.runId));
+    const questions = await db.select().from(agentQuestions).where(eq(agentQuestions.runId, owner.runId));
     expect(questions).toHaveLength(0);
   });
 
@@ -286,10 +299,7 @@ suite("event bridge", () => {
       options: [{ id: "work-gmail", label: "work-gmail" }],
     });
 
-    const questions = await db
-      .select()
-      .from(agentQuestions)
-      .where(eq(agentQuestions.runId, runId));
+    const questions = await db.select().from(agentQuestions).where(eq(agentQuestions.runId, runId));
     expect(questions).toHaveLength(1);
     expect(questions[0].state).toBe("open");
 
@@ -303,11 +313,7 @@ suite("event bridge", () => {
   it("close settles the reservation from accumulated usage, once", async () => {
     const { workspaceId, runId } = await seedRun("bridge-close");
     const claim = await withTransaction((tx) =>
-      commands.reserveSpend(
-        tx,
-        { workspaceId },
-        { runId, model: "claude-sonnet-4-6", estimateUsd: "0.500000" },
-      ),
+      commands.reserveSpend(tx, { workspaceId }, { runId, model: "claude-sonnet-4-6", estimateUsd: "0.500000" }),
     );
     if (!claim.ok) throw new Error("reserve should have succeeded");
 

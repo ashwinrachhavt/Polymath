@@ -1,3 +1,4 @@
+import { CONNECTOR_WRITES } from "@/domains/integrations/connector-action-catalog";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -271,6 +272,7 @@ suite("documents.search for the agent (real Postgres + pgvector)", () => {
     // denied on every call, so any addition here is a deliberate widening and
     // deserves this diff.
     expect(p.allowedTools).toEqual([
+      ...Object.keys(CONNECTOR_WRITES),
       "tasks.read",
       "documents.search",
       "wiki.read",
@@ -442,6 +444,7 @@ suite("documents.search for the agent (real Postgres + pgvector)", () => {
     const [old] = await holder.db!.select().from(agentProfiles).where(eq(agentProfiles.workspaceId, b.workspaceId));
     expect(old.allowedTools).toEqual([
       "tasks.read",
+      ...Object.keys(CONNECTOR_WRITES),
       "documents.search",
       "notion.page.append",
       "notion.page.create",

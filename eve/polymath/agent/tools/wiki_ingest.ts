@@ -15,6 +15,7 @@ import { WIKI_INGEST_CAPABILITY } from "../../../../src/domains/knowledge/wiki-a
  * wiki.ingest.
  */
 export default defineTool({
+  deferred: true,
   description:
     "Ingest a document into the wiki: write or update its article, refresh its topic hubs and the master index, and log the ingest. Call when a document has not been ingested yet or its source has changed — do not re-ingest a document the wiki already covers unchanged, and do not call it to read anything (wiki_read does that). It will not modify the source document, only wiki pages; the run's frozen policy must allow wiki.ingest.",
   inputSchema: z.object({

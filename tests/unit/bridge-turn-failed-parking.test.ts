@@ -16,8 +16,10 @@ const eventBridge = vi.hoisted(() => ({
   closeRun: vi.fn(async () => undefined),
   markWaitingForInput: vi.fn(async () => undefined),
   mirrorMessage: vi.fn(async () => undefined),
+  recordFailedTurn: vi.fn(async () => undefined),
   recordQuestion: vi.fn(async () => undefined),
   recordRoundEvent: vi.fn(async () => undefined),
+  redactText: vi.fn((text: string) => text),
   recordToolCall: vi.fn(async () => undefined),
   recordUsageEvent: vi.fn(async () => undefined),
 }));
@@ -55,9 +57,17 @@ describe("bridge turn.failed parking", () => {
     it(`${name}: a failed turn records the event and parks the run for input`, async () => {
       await bridge.events["turn.failed"](failedTurn, ctx());
 
-      expect(eventBridge.recordRoundEvent).toHaveBeenCalledWith(
-        expect.objectContaining({ runId: "run_1", workspaceId: "ws_1", type: "turn.failed" }),
-      );
+      if (name === "polymath") {
+        expect(eventBridge.recordFailedTurn).toHaveBeenCalledWith({
+          runId: "run_1",
+          workspaceId: "ws_1",
+          turnId: "turn_9",
+        });
+      } else {
+        expect(eventBridge.recordRoundEvent).toHaveBeenCalledWith(
+          expect.objectContaining({ runId: "run_1", workspaceId: "ws_1", type: "turn.failed" }),
+        );
+      }
       expect(eventBridge.markWaitingForInput).toHaveBeenCalledWith({ runId: "run_1", workspaceId: "ws_1" });
       // Parking, not closing: only session.completed/session.failed end the run.
       expect(eventBridge.closeRun).not.toHaveBeenCalled();
@@ -69,6 +79,7 @@ describe("bridge turn.failed parking", () => {
 
       await bridge.events["turn.failed"](failedTurn, ctx());
 
+      expect(eventBridge.recordFailedTurn).not.toHaveBeenCalled();
       expect(eventBridge.recordRoundEvent).not.toHaveBeenCalled();
       expect(eventBridge.markWaitingForInput).not.toHaveBeenCalled();
     });

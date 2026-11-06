@@ -7,6 +7,8 @@ import { notFound } from "next/navigation";
  * notFound() renders src/app/not-found.tsx; the browser keeps the original
  * URL.
  */
+export const instant = false;
+
 export default function NotFoundRenderer() {
   notFound();
 }

@@ -205,11 +205,11 @@ const AlfredAPI = {
         const probeHeaders = { "Content-Type": "application/json" };
         const probeToken = await this.token();
         if (probeToken) probeHeaders.Authorization = `Bearer ${probeToken}`;
-        const resp = await fetch(`${stored}/api/v1/captures`, {
+        const resp = await fetch(`${stored}/api/v1/captures/connection`, {
           signal: AbortSignal.timeout(1500),
           headers: probeHeaders,
         });
-        reachable = resp.ok;
+        reachable = resp.ok || resp.status === 401 || resp.status === 403;
       } catch {
         reachable = false;
       }
@@ -241,19 +241,13 @@ const AlfredAPI = {
     await this._setStorage("axiomToken", clean || null);
   },
 
-  /**
-   * First-run pairing: an empty token picks up the owner's companion key so
-   * the extension works before anyone opens Settings. Replace the constant
-   * when re-pairing; a stored value always wins, so the field stays editable.
-   */
-  async ensureTokenPreloaded() {
-    const CONFIGURED_TOKEN = "axm_0PV9s4CkRn_c.7O5TVMU3HAbPQwRxswZL3wKlsbnx4zMl5Aa5X5ST7O0";
-    try {
-      const stored = await this._getStorage("axiomToken");
-      if (!stored) await this.setToken(CONFIGURED_TOKEN);
-    } catch {
-      // Storage unavailable: nothing to preload.
-    }
+  /** Explicitly pair and deliver waiting captures to the selected account. */
+  async pairAndSync(value) {
+    await this.setToken(value);
+    await this._fetch("/api/v1/captures/connection");
+    const result = await chrome.runtime.sendMessage({ type: "AXIOM_OUTBOX_REBIND" });
+    if (!result || !result.ok) throw new Error(result?.error || "Key saved, but sync could not resume. Open Pending Sync and retry.");
+    return result;
   },
 
   /** Generic fetch wrapper with JSON parsing and error handling. */
@@ -277,7 +271,7 @@ const AlfredAPI = {
       const text = await resp.text().catch(() => "");
       if (resp.status === 401 && bearer) {
         throw new Error(
-          "Polymath rejected this API key (401). Mint a fresh one in Polymath → Settings → Account and machine clients, paste it into the extension settings, or clear the token field to save without one.",
+          "Polymath rejected this API key (401). Mint a fresh one in Polymath → Settings → Account and machine clients, paste it into the extension settings.",
         );
       }
       throw new Error(`Polymath API ${resp.status}: ${text}`);
@@ -481,7 +475,7 @@ const AlfredAPI = {
     try {
       // Same relay as _fetch: from a page, a direct fetch is subject to that
       // page's CORS and would report offline on every third-party site.
-      const resp = await this._fetch("/api/v1/captures?filter=all");
+      const resp = await this._fetch("/api/v1/captures/connection");
       return Boolean(resp);
     } catch {
       return false;

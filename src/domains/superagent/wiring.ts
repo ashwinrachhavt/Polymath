@@ -404,6 +404,7 @@ async function sendChatReply(workspaceId: string, message: OutboundMessage): Pro
     type: "message.completed",
     data: { turnId: `superagent:${message.id}`, stepIndex: 0, message: message.text, finishReason: null },
   });
+  await recordRoundEvent({ runId, workspaceId, type: "session.waiting", data: {} });
   return "sent";
 }
 
@@ -610,8 +611,8 @@ export async function drainSuperagentInline(workspaceId: string): Promise<DrainS
       summary.completed += drained.done;
       summary.failed += drained.failed;
       summary.deferred += drained.deferred;
-      await observeWorkspace(workspaceId);
-      if (drained.claimed === 0) break;
+      const observedChanges = await observeWorkspace(workspaceId);
+      if (drained.claimed === 0 && !observedChanges) break;
     }
     return summary;
   });
@@ -627,6 +628,7 @@ async function dispatchEffect(
   run: (host: SuperagentHost) => Promise<void>,
 ): Promise<void> {
   const host = await superagentForWorkspace(effect.workspaceId);
+  await host.hydrate();
   await run(host);
 }
 
@@ -676,7 +678,7 @@ export async function superagentEffectHandlers(): Promise<EffectHandlers> {
  *   signals "work happened". Each turn.completed is reported once, with the
  *   turn's newest assistant answer as the ready summary.
  */
-async function observeWorkspace(workspaceId: string): Promise<void> {
+async function observeWorkspace(workspaceId: string): Promise<boolean> {
   const host = await superagentForWorkspace(workspaceId);
   await host.hydrate();
   const live = host.store.repositories.tickets
@@ -686,14 +688,14 @@ async function observeWorkspace(workspaceId: string): Promise<void> {
       (entry): entry is { ticket: (typeof entry)["ticket"]; run: NonNullable<(typeof entry)["run"]> } =>
         entry.run !== undefined,
     );
-  if (live.length === 0) return;
+  if (live.length === 0) return false;
 
   // The ticket run → agent run link is the executor's own subjects marker
   // (executor/eve.ts's byRunSubject), not a column: query it the same way.
-  const agentRunById = new Map<string, { id: string; state: string }>();
+  const agentRunById = new Map<string, { id: string; state: string; error: string | null }>();
   for (const { run } of live) {
     const rows = await db
-      .select({ id: agentRuns.id, state: agentRuns.state })
+      .select({ id: agentRuns.id, state: agentRuns.state, error: agentRuns.error })
       .from(agentRuns)
       .where(
         and(
@@ -714,7 +716,7 @@ async function observeWorkspace(workspaceId: string): Promise<void> {
   for (const { ticket, run } of live) {
     const agentRun = agentRunById.get(run.id);
     if (!agentRun) continue;
-    const report = reportFor(agentRun.state, agentRun.id);
+    const report = reportFor(agentRun.state, agentRun.id, agentRun.error);
     if (report) {
       if (alreadyObserved.has(observerKey(agentRun.id))) continue;
       try {
@@ -722,7 +724,7 @@ async function observeWorkspace(workspaceId: string): Promise<void> {
         host.engine.report(ticket.id, report);
         // A closed run's result tells the outcome in the channel the ticket
         // started in (the ready/completed rule), same as a turn's answer.
-        if (report.state === "ready") {
+        if (report.state === "ready" || report.state === "failed") {
           host.engine.reply({ purpose: "result", ticketId: ticket.id, text: report.summary });
         }
       } catch (error) {
@@ -768,6 +770,7 @@ async function observeWorkspace(workspaceId: string): Promise<void> {
     changed = true;
   }
   if (changed) await host.flush();
+  return changed;
 }
 
 /** The observer's state key for one agent run: reported exactly once. */
@@ -838,9 +841,13 @@ export function classifyTurnEnd(
 }
 
 /** Map an agent run's terminal state to the worker report the domain records. */
-function reportFor(state: string, agentRunId: string): WorkerReport | undefined {
+function reportFor(state: string, agentRunId: string, error: string | null): WorkerReport | undefined {
   if (state === "succeeded") return { state: "ready", summary: `Run ${agentRunId} finished.` };
-  if (state === "failed") return { state: "failed", summary: `Run ${agentRunId} failed.` };
+  if (state === "failed")
+    return {
+      state: "failed",
+      summary: error ? `The reply failed: ${error.slice(0, 500)}` : `Run ${agentRunId} failed.`,
+    };
   if (state === "cancelled") return { state: "failed", summary: `Run ${agentRunId} was cancelled.` };
   return undefined;
 }

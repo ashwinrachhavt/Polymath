@@ -28,6 +28,7 @@ import {
  * issue is a new proposal, never a silent edit of one the owner is reading.
  */
 export default defineTool({
+  deferred: true,
   description:
     "Propose labels, assignees, or a close reason for one GitHub issue, for the owner to approve in the review queue. Use after reading open issues with the GitHub tools when the owner asks for triage suggestions. Nothing is applied to GitHub - the proposal records the suggested triage and the owner applies or dismisses it. Label and assignee validity against the repository is not checked here: the proposal records the suggestion exactly as made, so say when you have not verified that a label or login exists. Pass the issue's coordinates and a stable dedupeId so a retry proposes once; proposing different changes for the same issue creates a fresh proposal instead of altering the old one.",
   inputSchema: z.object({
@@ -38,9 +39,18 @@ export default defineTool({
     addLabels: z.array(z.string().min(1).max(100)).max(10).optional().describe("Labels to add."),
     removeLabels: z.array(z.string().min(1).max(100)).max(10).optional().describe("Labels to remove."),
     assignees: z.array(z.string().min(1).max(100)).max(10).optional().describe("GitHub logins to assign."),
-    closeReason: z.enum(["completed", "not_planned"]).optional().describe("Propose closing the issue with this reason."),
+    closeReason: z
+      .enum(["completed", "not_planned"])
+      .optional()
+      .describe("Propose closing the issue with this reason."),
     rationale: z.string().min(1).max(2000).describe("Why this triage fits the issue, in one or two sentences."),
-    dedupeId: z.string().min(1).max(200).describe("Stable identifier for this triage within this conversation, so a retry resolves the same proposal instead of queuing a second."),
+    dedupeId: z
+      .string()
+      .min(1)
+      .max(200)
+      .describe(
+        "Stable identifier for this triage within this conversation, so a retry resolves the same proposal instead of queuing a second.",
+      ),
   }),
   async execute(input, ctx) {
     const current = ctx.session.auth.current;

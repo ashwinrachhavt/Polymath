@@ -26,6 +26,8 @@
  * connect screen. Nothing gates on it.
  */
 
+import { CONNECTOR_WRITES, CONNECTOR_TOOL_CAPABILITIES } from "./connector-action-catalog";
+
 export type Provider =
   | "gmail"
   | "github"
@@ -72,6 +74,7 @@ export type CapabilitySpec = {
  * is a migration with no benefit.
  */
 export const CAPABILITIES = {
+  ...CONNECTOR_WRITES,
   "gmail.read": { provider: "gmail", kind: "read", riskClass: "read", tool: "gmail_search" },
   "gmail.thread.read": { provider: "gmail", kind: "read", riskClass: "read", tool: "gmail_read_thread" },
   "gmail.send": { provider: "gmail", kind: "proposal", riskClass: "external_write", tool: "gmail_send" },
@@ -87,10 +90,30 @@ export const CAPABILITIES = {
   // Docs and Sheets list through Drive's files endpoint filtered by mimeType,
   // which the same generic read expresses — the 0230 comment claiming they
   // had no GET list API was wrong.
-  "googlecalendar.events.read": { provider: "google-calendar", kind: "read", riskClass: "read", tool: "googlecalendar_list_events" },
-  "googledrive.files.read": { provider: "google-drive", kind: "read", riskClass: "read", tool: "googledrive_search_files" },
-  "googledocs.documents.read": { provider: "google-docs", kind: "read", riskClass: "read", tool: "googledocs_search_files" },
-  "googlesheets.spreadsheets.read": { provider: "google-sheets", kind: "read", riskClass: "read", tool: "googlesheets_list_spreadsheets" },
+  "googlecalendar.events.read": {
+    provider: "google-calendar",
+    kind: "read",
+    riskClass: "read",
+    tool: "googlecalendar_list_events",
+  },
+  "googledrive.files.read": {
+    provider: "google-drive",
+    kind: "read",
+    riskClass: "read",
+    tool: "googledrive_search_files",
+  },
+  "googledocs.documents.read": {
+    provider: "google-docs",
+    kind: "read",
+    riskClass: "read",
+    tool: "googledocs_search_files",
+  },
+  "googlesheets.spreadsheets.read": {
+    provider: "google-sheets",
+    kind: "read",
+    riskClass: "read",
+    tool: "googlesheets_list_spreadsheets",
+  },
   // Comms and meetings cluster B: read-only lists through the generic registry.
   "discord.guilds.read": { provider: "discord", kind: "read", riskClass: "read", tool: "discord_list_channels" },
   "zoom.meetings.read": { provider: "zoom", kind: "read", riskClass: "read", tool: "zoom_list_meetings" },
@@ -127,6 +150,7 @@ export type Capability = keyof typeof CAPABILITIES;
  * becoming an unroutable 404 at runtime.
  */
 export const PROVIDER_TOOLS = {
+  ...CONNECTOR_TOOL_CAPABILITIES,
   gmail_search: "gmail.read",
   gmail_read_thread: "gmail.thread.read",
   gmail_send: "gmail.send",
@@ -337,8 +361,7 @@ export const PROVIDER_TIERS: Record<Provider, AccessTier[]> = {
     {
       id: "read_only",
       label: "Read only",
-      description:
-        "Agents can list payments and charges. Read-only; charges are never agent-proposed in this tier.",
+      description: "Agents can list payments and charges. Read-only; charges are never agent-proposed in this tier.",
       capabilities: ["stripe.payments.read"],
     },
   ],
@@ -368,16 +391,25 @@ export const PROVIDER_TIERS: Record<Provider, AccessTier[]> = {
   ],
 };
 
+// Action tiers derive from the same catalog as execution. Existing accounts
+// retain their current read tier until the owner enables Write.
+for (const [capability, spec] of Object.entries(CONNECTOR_WRITES)) {
+  const tiers = PROVIDER_TIERS[spec.provider];
+  const reads = tiers.at(-1)?.capabilities ?? [];
+  tiers.push({
+    id: "read_write",
+    label: "Read + write proposals",
+    description: "Routine actions run directly; consequential changes wait in Reviews.",
+    capabilities: [...reads, capability as Capability],
+  });
+}
+
 /** The capabilities a tier grants; empty for an unknown tier id or provider. */
 export function tierCapabilities(provider: Provider, tierId: string): Capability[] {
   return PROVIDER_TIERS[provider]?.find((tier) => tier.id === tierId)?.capabilities ?? [];
 }
 
-export function tierAllows(
-  provider: Provider,
-  tierId: string,
-  capability: Capability,
-): boolean {
+export function tierAllows(provider: Provider, tierId: string, capability: Capability): boolean {
   return tierCapabilities(provider, tierId).includes(capability);
 }
 
@@ -393,6 +425,9 @@ export function lowestTierId(provider: Provider): string | null {
  * deciding what one account may do.
  */
 export const CAPABILITY_LABELS: Record<Capability, string> = {
+  ...(Object.fromEntries(
+    Object.keys(CONNECTOR_WRITES).map((capability) => [capability, "Propose connected actions"]),
+  ) as Record<keyof typeof CONNECTOR_WRITES, string>),
   "gmail.read": "Search mail",
   "gmail.thread.read": "Read threads",
   "gmail.send": "Prepare send proposals",
@@ -427,11 +462,7 @@ export const CAPABILITY_LABELS: Record<Capability, string> = {
  * the owner switched off on that account. The tier stays the ceiling — a
  * switch can only ever narrow it, never grant above it.
  */
-export function effectiveCapabilities(
-  provider: Provider,
-  tierId: string,
-  disabled: readonly string[],
-): Capability[] {
+export function effectiveCapabilities(provider: Provider, tierId: string, disabled: readonly string[]): Capability[] {
   const off = new Set(disabled);
   return tierCapabilities(provider, tierId).filter((capability) => !off.has(capability));
 }

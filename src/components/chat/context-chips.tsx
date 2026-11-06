@@ -1,18 +1,22 @@
 "use client";
 
-import { Building2, Lightbulb, Loader2, User } from "lucide-react";
+import { Building2, Inbox, Lightbulb, Loader2, User } from "lucide-react";
 import type { ContextChip, MentionEntity } from "./mention-context";
 
 const KIND_LABEL: Record<MentionEntity["kind"], string> = {
   person: "Person",
   company: "Company",
   zettel: "Idea",
+  capture: "Capture",
+  inbox: "Inbox",
 };
 
 const KIND_GLYPHS: Record<MentionEntity["kind"], typeof User> = {
   person: User,
   company: Building2,
   zettel: Lightbulb,
+  capture: Inbox,
+  inbox: Inbox,
 };
 
 /*
@@ -53,7 +57,7 @@ export function ContextChips({
           >
             <Glyph aria-hidden className="size-3.5 shrink-0" />
             <span className="text-foreground max-w-40 truncate">{chip.entity.title}</span>
-            <span>{KIND_LABEL[chip.entity.kind]}</span>
+            {chip.entity.kind === "inbox" ? null : <span>{KIND_LABEL[chip.entity.kind]}</span>}
             {pending ? <Loader2 aria-hidden className="size-3.5 animate-spin" /> : null}
             {failed ? (
               <button

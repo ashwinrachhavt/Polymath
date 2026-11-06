@@ -31,7 +31,7 @@ Migrations: 116 files, highest `0289_poll_fact_suggestions`.
 
 ## Tests
 
-573 `.test.ts` and 52 `.spec.ts` files (unit: 340, integration: 230, e2e: 52).
+575 `.test.ts` and 52 `.spec.ts` files (unit: 342, integration: 230, e2e: 52).
 ## Domains
 
 25 folders; 19 own tables.
@@ -225,6 +225,7 @@ Totals: 88 versioned, 56 append-only, 6 versionless but guarded (each declared w
 - `/api/mcp`
 - `/api/v1/captures`
 - `/api/v1/captures/[captureId]/file`
+- `/api/v1/captures/connection`
 - `/api/v1/captures/file`
 - `/api/v1/documents/[documentId]/extract`
 - `/api/v1/documents/[documentId]/file`
