@@ -137,8 +137,8 @@ describe("the prompt contract", () => {
 
 describe("selectFactPool with extras", () => {
   const extra = [
-    { id: "s1", topic: "science" as const, tags: ["time"], text: "An extra fact about time." },
-    { id: "s2", topic: "philosophy" as const, tags: ["mind"], text: "An extra fact about the mind." },
+    { id: "s1", kind: "science" as const, tags: ["time"], text: "An extra fact about time." },
+    { id: "s2", kind: "philosophy" as const, tags: ["mind"], text: "An extra fact about the mind." },
   ];
 
   it("joins extras into the fallback deck", () => {

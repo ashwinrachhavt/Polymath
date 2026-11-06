@@ -8,7 +8,7 @@ export async function activeSuggestions(limit = 40): Promise<PollFact[]> {
   const rows = await db
     .select({
       id: pollFactSuggestions.id,
-      topic: pollFactSuggestions.topic,
+      kind: pollFactSuggestions.topic,
       tags: pollFactSuggestions.tags,
       text: pollFactSuggestions.text,
     })
@@ -18,5 +18,5 @@ export async function activeSuggestions(limit = 40): Promise<PollFact[]> {
     .limit(limit);
   // The column is text; the write path (parseSuggestions) is the only writer
   // and admits just the two topics, so the narrow is the stored invariant.
-  return rows.filter((row): row is PollFact => row.topic === "science" || row.topic === "philosophy");
+  return rows.filter((row): row is PollFact => row.kind === "science" || row.kind === "philosophy");
 }
