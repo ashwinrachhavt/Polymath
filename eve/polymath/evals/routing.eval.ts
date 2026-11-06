@@ -58,8 +58,7 @@ function onDeciderFailure(): { model: string; fellBack: boolean } {
 }
 
 export default defineEval({
-  description:
-    "Polymath routes a task to an allowlisted model, and a decider answer outside the allowlist falls back.",
+  description: "Polymath routes a task to an allowlisted model, and a decider answer outside the allowlist falls back.",
   tags: ["routing", "fixture"],
   async test(t) {
     // The allowlist itself is the contract; an empty or fallback-less set would
@@ -77,13 +76,16 @@ export default defineEval({
     );
 
     const routine = await decide({
-      model: fixtureDecider(() => "gemini-3.5-flash-lite"),
+      model: fixtureDecider(() => "openai/gpt-oss-120b"),
       state: { messages: [{ role: "user", text: "Draft a short reply to Sam about Thursday." }] },
       questions: ROUTING_QUESTION,
     });
     const routineRoute = resolveRoute(routine.answers.route.choice);
-    t.check(routineRoute.model, includes("gemini-3.5-flash-lite")).label("routine task routes to the routine model");
-    t.check(routineRoute.fellBack, satisfies((v: unknown) => v === false, "routine choice was allowlisted"));
+    t.check(routineRoute.model, includes("openai/gpt-oss-120b")).label("routine task routes to the routine model");
+    t.check(
+      routineRoute.fellBack,
+      satisfies((v: unknown) => v === false, "routine choice was allowlisted"),
+    );
 
     const hard = await decide({
       model: fixtureDecider(() => "gpt-6.1-terra"),
@@ -115,10 +117,16 @@ export default defineEval({
     // error path itself needs a live turn, which the report records as the one
     // credential-blocked gap.
     const fellBack = onDeciderFailure();
-    t.check(fellBack.fellBack, satisfies((v: unknown) => v === true, "decider failure reports a fallback"));
+    t.check(
+      fellBack.fellBack,
+      satisfies((v: unknown) => v === true, "decider failure reports a fallback"),
+    );
     t.check(
       fellBack.model,
-      satisfies((m: unknown) => typeof m === "string" && ALLOWED_MODELS.includes(m), "the fallback model is allowlisted"),
+      satisfies(
+        (m: unknown) => typeof m === "string" && ALLOWED_MODELS.includes(m),
+        "the fallback model is allowlisted",
+      ),
     ).label("fallback stays inside the allowlist");
   },
 });

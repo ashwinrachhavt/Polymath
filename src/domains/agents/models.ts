@@ -5,13 +5,16 @@ import type { LanguageModel } from "ai";
  * The model catalog: every provider the workspace holds a key for, and the
  * models a probe answered or a listing named — the probe field says which.
  *
- * Verified 2026-10-21 against the live keys. NVIDIA advertises 83 models in its
- * listing but most return 410 end-of-life or 404 not-found; LLM7 lists 70 and
- * returns "Insufficient balance" on every call. Shipping an entry that does not
- * answer is worse than omitting it — the owner picks it, the turn fails, and the
- * failure looks like a bug in Polymath rather than in the account. Provider
- * account state (balance, quota) stays operator data: it never renders on a
- * product page.
+ * Verified 2026-10-21 against the live keys; re-verified 2026-11-05 with the
+ * Groq-first decision — the owner holds Groq credit, so a Groq model is the
+ * default and Gemini stays in the catalog for narrower roles the owner will
+ * pick later. NVIDIA advertises 83 models in its listing but most return 410
+ * end-of-life or 404 not-found (meta/llama-3.2-11b-vision-instruct went 410
+ * 2026-11-05 and was removed). Shipping an entry that does not answer is
+ * worse than omitting it —
+ * the owner picks it, the turn fails, and the failure looks like a bug in
+ * Polymath rather than in the account. Provider account state (balance, quota)
+ * stays operator data: it never renders on a product page.
  *
  * The `probe` field records how each entry was verified, so a later reader can
  * tell a live model from one carried forward on a listing alone. Entries marked
@@ -60,22 +63,31 @@ export type ModelOption = {
 
 export const MODEL_CATALOG: readonly ModelOption[] = [
   {
+    id: "openai/gpt-oss-120b",
+    provider: "groq",
+    label: "GPT-OSS 120B (Groq)",
+    note: "Default. Large open model on Groq's fast inference; works with tools.",
+    baseUrl: "https://api.groq.com/openai/v1",
+    keyEnv: "GROQ_API_KEY",
+    probe: "live 2026-11-05 (chat and tool calling verified; current default)",
+  },
+  {
+    id: "qwen/qwen3.8-27b",
+    provider: "groq",
+    label: "Qwen 3.8 27B (Groq)",
+    note: "Smaller and quicker; good for short turns.",
+    baseUrl: "https://api.groq.com/openai/v1",
+    keyEnv: "GROQ_API_KEY",
+    probe: "live 2026-11-05; tool calling verified 2026-10-21",
+  },
+  {
     id: "gemini-3.5-flash-lite",
     provider: "gemini",
     label: "Gemini 3.5 Flash Lite",
-    note: "Default. Free tier, fast, works with tools.",
+    note: "Free tier, fast; reserved for narrower roles the owner will pick later.",
     baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai/",
     keyEnv: "GEMINI_API_KEY",
-    probe: "live 2026-10-21 (current default)",
-  },
-  {
-    id: "meta/llama-3.2-11b-vision-instruct",
-    provider: "nvidia",
-    label: "Llama 3.2 11B Vision (NVIDIA)",
-    note: "The one NVIDIA model that answered; most others are end-of-life.",
-    baseUrl: "https://integrate.api.nvidia.com/v1",
-    keyEnv: "NVIDIA_API_KEY",
-    probe: "live 2026-10-21; tool calling unverified",
+    probe: "live 2026-10-21; former default until the 2026-11-05 Groq-first decision",
   },
   {
     id: "nvidia/nemotron-3.5-lightning-30b-a3b",
@@ -245,7 +257,7 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
 ];
 
 /** The model used when nothing is chosen, and the one every run used before this existed. */
-export const DEFAULT_MODEL_ID = "gemini-3.5-flash-lite";
+export const DEFAULT_MODEL_ID = "openai/gpt-oss-120b";
 
 /**
  * The assessor profile's designed-in default (superagent spec §9, owner

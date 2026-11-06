@@ -33,6 +33,12 @@ const PROVIDER_CATALOG: Record<string, ProviderCatalogEntry> = {
     defaultModel: "mercury-3",
     modelEnv: "MERCURY_MODEL",
   },
+  groq: {
+    baseUrl: "https://api.groq.com/openai/v1",
+    apiKeyEnv: ["GROQ_API_KEY"],
+    defaultModel: "openai/gpt-oss-120b",
+    modelEnv: "GROQ_MODEL",
+  },
   openrouter: {
     baseUrl: "https://openrouter.ai/api/v1",
     apiKeyEnv: ["OPENROUTER_API_KEY"],
