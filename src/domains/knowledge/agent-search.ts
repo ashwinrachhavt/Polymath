@@ -29,11 +29,11 @@ export const AGENT_SEARCH_MAX_RESULTS = 10;
 const AGENT_SEARCH_MAX_TEXT = 1200;
 
 /**
- * The relevance floor on a hit's fused score, which lives on a (0, 1] scale:
- * normalized RRF is `(K / legsRun) × Σ_legs 1/(K + rank_leg)`, so rank 0 on
- * every leg scores 1.0. In hybrid mode 0.5 means both legs agree, or a single
- * leg ranks the passage first; in text mode (one leg) it drops nothing an @@
- * match already admitted. A passage below the floor is not evidence.
+ * @deprecated The absolute fused-score floor is removed (issue #533 finding
+ * 3): a single leg's rank-1 hit scored below it while a rank-0 hit scored
+ * exactly at it, so the floor was measuring leg count, not relevance.
+ * Admission is `isEvidence` on leg provenance; this constant stays only so
+ * older callers fail loudly at import instead of silently changing meaning.
  */
 export const AGENT_SEARCH_MIN_SCORE = 0.5;
 
@@ -42,6 +42,12 @@ export type DocumentCitation = {
   title: string;
   text: string;
   span: { start: number; end: number; page: number | null };
+  /** Passage lineage (issue #533 finding 6): the citation resolves to the
+   * pinned extraction and canonical passage, not only the document. Always
+   * set on fresh search results; optional because persisted historical
+   * answers predate the lineage. */
+  extractionId?: string;
+  chunkIndex?: number;
 };
 
 export type AgentSearchResult =
@@ -50,7 +56,10 @@ export type AgentSearchResult =
       query: string;
       results: DocumentCitation[];
       mode: "semantic" | "text" | "hybrid";
-      /** Present when hits came back but every one fell below the floor. */
+      /** Present when one leg failed and the other answered alone (issue #533
+       * finding 4): the model must know retrieval ran degraded. */
+      degraded?: "vector_leg_failed" | "fts_leg_failed";
+      /** Present when hits came back but none passed the evidence rule. */
       reason?: "no_relevant_passages";
     }
   | { ok: false; error: string };
@@ -58,11 +67,43 @@ export type AgentSearchResult =
 /** Rank 0 counts as 1/60, rank 1 as 1/61 - the same K the artifact search uses. */
 const RRF_K = 60;
 
+export type SearchLeg = "fts" | "vector";
+
 /**
- * A hit with its normalized fused score on a (0, 1] scale — see
- * `AGENT_SEARCH_MIN_SCORE` for the calibration.
+ * A hit with its normalized fused score PLUS the provenance the score alone
+ * hid (issue #533 finding 3): which legs saw it and each leg's best rank.
+ * fusedScore orders; it is not calibrated answerability and is never the
+ * admission test.
  */
-export type ScoredHit = ChunkHit & { fusedScore: number };
+export type ScoredHit = ChunkHit & {
+  fusedScore: number;
+  legs: SearchLeg[];
+  bestRank: { fts?: number; vector?: number };
+};
+
+/**
+ * The most passages one document may contribute to one result (issue #533
+ * finding 1): questions that need two distant sections of ONE document were
+ * starved by the old one-passage-per-document dedupe. Overlapping passages
+ * are already one fusion key, so this budget bounds crowding without
+ * dropping distinct evidence.
+ */
+export const AGENT_SEARCH_PER_DOCUMENT_LIMIT = 3;
+
+/**
+ * Provisional admission rule, pending the Phase-1 evaluation set's measured
+ * threshold (issue #533 finding 3): both legs agreeing is evidence; a hit a
+ * single leg saw must sit at or under this rank in that leg. Rank ordering
+ * and relevance admission are separate decisions on purpose.
+ */
+export const AGENT_SEARCH_SINGLE_LEG_MAX_RANK = 2;
+
+/** Is this hit evidence the model may see? Rank provenance, never the fused score, answers. */
+export function isEvidence(hit: ScoredHit): boolean {
+  if (hit.legs.length > 1) return true;
+  const rank = hit.bestRank.fts ?? hit.bestRank.vector ?? Number.POSITIVE_INFINITY;
+  return rank <= AGENT_SEARCH_SINGLE_LEG_MAX_RANK;
+}
 
 /**
  * Reciprocal rank fusion over the two chunk rankings, normalized by how many
@@ -77,35 +118,55 @@ export function rrfMerge(
   ftsHits: ChunkHit[],
   vectorHits: ChunkHit[],
   limit: number,
-  input?: { legsRun?: number },
+  input?: { legsRun?: number; perDocumentLimit?: number },
 ): ScoredHit[] {
   const legsRun = input?.legsRun ?? (ftsHits.length && vectorHits.length ? 2 : 1);
+  const perDocumentLimit = input?.perDocumentLimit ?? AGENT_SEARCH_PER_DOCUMENT_LIMIT;
   const rrf = (rank: number) => RRF_K / legsRun / (RRF_K + rank);
-  const scores = new Map<string, { hit: ChunkHit; score: number }>();
-  const add = (hits: ChunkHit[]) =>
+  const scores = new Map<
+    string,
+    { hit: ChunkHit; score: number; legs: Set<SearchLeg>; bestRank: { fts?: number; vector?: number } }
+  >();
+  const add = (hits: ChunkHit[], leg: SearchLeg) =>
     hits.forEach((hit, i) => {
       const key = `${hit.documentId}:${hit.extractionId}:${hit.chunkIndex}`;
       const entry = scores.get(key);
       if (entry) {
         entry.score += rrf(i);
+        entry.legs.add(leg);
+        const seen = entry.bestRank[leg];
+        entry.bestRank[leg] = seen === undefined ? i : Math.min(seen, i);
         // First side keeps its passage text, but an FTS passage has no page -
         // backfill it from the same passage's vector hit when one saw it.
         if (entry.hit.span.page == null && hit.span.page != null) {
           entry.hit = { ...entry.hit, span: { ...entry.hit.span, page: hit.span.page } };
         }
-      } else scores.set(key, { hit, score: rrf(i) });
+      } else {
+        scores.set(key, { hit, score: rrf(i), legs: new Set([leg]), bestRank: { [leg]: i } });
+      }
     });
-  add(ftsHits);
-  add(vectorHits);
-  // One passage per document: a repeated-text document fills every chunk with
-  // the query terms, and without this its chunks crowd the other documents
-  // out of the citation list. The best-fused chunk stands for its document.
-  const seen = new Set<string>();
+  add(ftsHits, "fts");
+  add(vectorHits, "vector");
+  // One document may contribute up to perDocumentLimit DISTINCT passages
+  // (issue #533 finding 1): distant sections of one document are real
+  // evidence, while a repeated-text document still cannot crowd every other
+  // document out of the citation list.
+  const perDocument = new Map<string, number>();
   return [...scores.values()]
     .sort((a, b) => b.score - a.score)
-    .filter((s) => (seen.has(s.hit.documentId) ? false : (seen.add(s.hit.documentId), true)))
+    .filter((entry) => {
+      const used = perDocument.get(entry.hit.documentId) ?? 0;
+      if (used >= perDocumentLimit) return false;
+      perDocument.set(entry.hit.documentId, used + 1);
+      return true;
+    })
     .slice(0, limit)
-    .map((s) => ({ ...s.hit, fusedScore: s.score }));
+    .map((entry) => ({
+      ...entry.hit,
+      fusedScore: entry.score,
+      legs: [...entry.legs],
+      bestRank: entry.bestRank,
+    }));
 }
 
 export async function searchDocumentsForAgent(
@@ -124,41 +185,63 @@ export async function searchDocumentsForAgent(
       if (!ids) return { ok: false, error: "project not found" };
       documentIds = ids;
     }
+    // Each leg fails independently (issue #533 finding 4): a transient
+    // embedding outage must not take keyword search down with it, and vice
+    // versa. The survivor answers alone and the result says it is degraded.
+    // Each side gets the full requested limit: RRF re-ranks down afterwards,
+    // and a deeper list per leg is what lets the merge see past one leg's
+    // noise. The per-leg limit is capped again inside each read.
+    const [vectorLeg, ftsLeg] = await Promise.allSettled([
+      searchChunks(auth, { query, limit, provider: input.provider, documentIds }),
+      searchChunksFts(auth, { query, limit, documentIds }),
+    ]);
+    const vectorHits = vectorLeg.status === "fulfilled" ? vectorLeg.value : null;
+    const ftsHits = ftsLeg.status === "fulfilled" ? ftsLeg.value : null;
+    if (vectorHits === null && ftsHits === null) {
+      // Both legs failed: an unconfigured embedding key alone degrades to
+      // text, but text search failing too is a real failure.
+      if (
+        vectorLeg.reason instanceof EmbeddingUnconfiguredError ||
+        ftsLeg.reason instanceof EmbeddingUnconfiguredError
+      ) {
+        return { ok: false, error: "document search is not configured (no embedding key)" };
+      }
+      return { ok: false, error: "document search failed, try again" };
+    }
     let hits: ScoredHit[];
-    let mode: "semantic" | "text" | "hybrid" = "semantic";
-    try {
-      // With a provider configured, both rankings run in parallel and fuse.
-      // Each side gets the full requested limit: RRF re-ranks down afterwards,
-      // and a deeper list per leg is what lets the merge see past one leg's
-      // noise. The per-leg limit is capped again inside each read.
-      const [vectorHits, ftsHits] = await Promise.all([
-        searchChunks(auth, { query, limit, provider: input.provider, documentIds }),
-        searchChunksFts(auth, { query, limit, documentIds }),
-      ]);
+    let mode: "semantic" | "text" | "hybrid";
+    let degraded: "vector_leg_failed" | "fts_leg_failed" | undefined;
+    if (vectorHits !== null && ftsHits !== null) {
       hits = rrfMerge(ftsHits, vectorHits, limit, { legsRun: 2 });
       mode = "hybrid";
-    } catch (cause) {
-      if (!(cause instanceof EmbeddingUnconfiguredError)) throw cause;
-      // No embedding key is a deployment gap, not a reason to fail closed:
-      // answer from Postgres full-text over the same current extractions and
-      // label the mode so the model can say how the passage was found.
-      hits = rrfMerge(await searchChunksFts(auth, { query, limit, documentIds }), [], limit, { legsRun: 1 });
+    } else if (ftsHits !== null) {
+      // Includes the no-key deployment gap: answer from Postgres full-text
+      // over the same current extractions and say the vector leg was absent.
+      hits = rrfMerge(ftsHits, [], limit, { legsRun: 1 });
       mode = "text";
+      degraded = "vector_leg_failed";
+    } else {
+      hits = rrfMerge([], vectorHits!, limit, { legsRun: 1 });
+      mode = "semantic";
+      degraded = "fts_leg_failed";
     }
-    // A passage below the floor is not evidence, so it does not leave the
-    // domain. Dropping every hit is still a successful search: the model gets
-    // an empty list plus the reason, never an error.
-    const relevant = hits.filter((h) => h.fusedScore >= AGENT_SEARCH_MIN_SCORE);
+    // Rank provenance, not the fused score, decides what is evidence (issue
+    // #533 finding 3). Dropping every hit is still a successful search: the
+    // model gets an empty list plus the reason, never an error.
+    const relevant = hits.filter(isEvidence);
     return {
       ok: true,
       query,
       mode,
+      ...(degraded ? { degraded } : {}),
       ...(hits.length > 0 && relevant.length === 0 ? { reason: "no_relevant_passages" as const } : {}),
       results: relevant.map((h) => ({
         documentId: h.documentId,
         title: h.title,
         text: h.text.length > AGENT_SEARCH_MAX_TEXT ? `${h.text.slice(0, AGENT_SEARCH_MAX_TEXT)}…` : h.text,
         span: h.span,
+        extractionId: h.extractionId,
+        chunkIndex: h.chunkIndex,
       })),
     };
   } catch (cause) {

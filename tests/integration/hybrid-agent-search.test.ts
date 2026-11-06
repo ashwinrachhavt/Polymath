@@ -140,11 +140,15 @@ suite("hybrid agent search (real Postgres + pgvector)", () => {
     if (!res.ok) return;
     expect(res.mode).toBe("hybrid");
     expect(res.results[0]).toMatchObject({ title: "lease-exact" });
-    // The loose match is vector-only at rank 3 (the keyword leg refuses it:
-    // the query's terms are ANDed), fusing at 30/63 ≈ 0.48 — below the floor.
-    // Before the floor it surfaced second; a passage neither leg ranks highly
-    // is not evidence, so it no longer pollutes the results.
-    expect(res.results[1]).toBeUndefined();
+    // The loose match is vector-only (the keyword leg refuses it: the query's
+    // terms are ANDed) past the provisional single-leg rank bound (issue #533
+    // finding 3: admission is leg provenance, not the miscalibrated 0.5 fused
+    // floor, whose 0.5 was leg-count in disguise). The unrelated document is
+    // likewise single-leg and far down its leg. Neither may pollute results;
+    // additional passages of the exact document now MAY appear (finding 1's
+    // per-document budget), so the assertion is membership, not list length.
+    expect(res.results.length).toBeGreaterThan(0);
+    expect(res.results.every((r) => r.title === "lease-exact")).toBe(true);
   });
 
   it("a gibberish query returns mode hybrid with a low result list, never a thrown error or a text label", async () => {
@@ -174,5 +178,51 @@ suite("hybrid agent search (real Postgres + pgvector)", () => {
     if (!res.ok) return;
     expect(res.mode).toBe("hybrid");
     expect(res.results.map((r) => r.documentId)).toContain(lease.id);
+  });
+
+  it("finding 2: the FTS leg returns canonical chunk units, so equivalent evidence fuses across legs", async () => {
+    const provider = fakeProvider();
+    const a = await workspace();
+    await seed(a, EXACT, "lease-exact", provider);
+    const { searchChunks, searchChunksFts } = await import("@/domains/knowledge/search");
+    const query = "monthly rent security deposit";
+    const [vectorHits, ftsHits] = await Promise.all([
+      searchChunks(a, { query, limit: 5, provider }),
+      searchChunksFts(a, { query, limit: 5 }),
+    ]);
+    expect(ftsHits.length).toBeGreaterThan(0);
+    expect(vectorHits.length).toBeGreaterThan(0);
+    // The same passage carries the same (extractionId, chunkIndex) on both
+    // legs: before the repair the FTS leg labeled its query-dependent window
+    // chunkIndex 0 and collided with the vector leg's real chunk 0.
+    const vectorKeys = new Set(vectorHits.map((h) => `${h.extractionId}:${h.chunkIndex}`));
+    expect(ftsHits.some((h) => vectorKeys.has(`${h.extractionId}:${h.chunkIndex}`))).toBe(true);
+    // And the fused result records both legs on that passage.
+    const res = await searchDocumentsForAgent(a, { query, limit: 5, provider });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.results[0]?.extractionId).toBeTruthy();
+    expect(typeof res.results[0]?.chunkIndex).toBe("number");
+  });
+
+  it("finding 1: one document contributes several distinct passages when the evidence is distant", async () => {
+    const provider = fakeProvider();
+    const a = await workspace();
+    // Two distant sections share words with the query; filler separates them
+    // so they land in different canonical chunks.
+    const filler = "Ordinary minutes of the quarterly board meeting. ".repeat(60);
+    const text = `Alpha clause: the tenant pays monthly rent by transfer. ${filler} Omega clause: the landlord returns the security deposit after inspection.`;
+    await seed(a, text, "long-lease", provider);
+    const res = await searchDocumentsForAgent(a, {
+      query: "monthly rent security deposit",
+      limit: 8,
+      provider,
+    });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    const chunks = new Set(
+      res.results.filter((r) => r.title === "long-lease").map((r) => r.chunkIndex),
+    );
+    expect(chunks.size).toBeGreaterThan(1);
   });
 });

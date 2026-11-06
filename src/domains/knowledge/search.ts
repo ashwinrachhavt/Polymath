@@ -3,6 +3,7 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { embeddingProvider, type EmbeddingProvider } from "@/integrations/embeddings/provider";
 import { EMBEDDING_OWNER_TYPE, vectorLiteral } from "./embedding";
+import { chunkText } from "./chunking";
 import { currentExtractionSql } from "./versions";
 import { documents, documentExtractions, embeddings, files, reviewedAssertions } from "./schema";
 
@@ -283,22 +284,29 @@ export async function searchChunksFts(
     .orderBy(desc(rank))
     .limit(limit);
 
+  // Canonical passage units (issue #533 finding 2): the FTS leg re-chunks
+  // the extraction with the same deterministic chunker the embedding
+  // pipeline used, so its hits carry the SAME chunkIndex the vector leg
+  // returns - fusion aligns equivalent evidence instead of colliding on a
+  // query-dependent window mislabeled chunk 0. The passage window picks
+  // which canonical chunks carry the match; chunking is pure and costs no
+  // query. Chunks past the embedding cap still fuse as single-leg hits.
   return rows.flatMap((r) => {
     const text = r.text ?? "";
     if (!text) return [];
-    const { start, end } = passageWindow(text, query);
-    return [
-      {
-        documentId: r.documentId,
-        title: r.title,
-        extractionId: r.extractionId,
-        chunkIndex: 0,
-        text: text.slice(start, end),
-        span: { start, end, page: null },
-        // ts_rank is higher-is-better; ChunkHit.distance is lower-is-closer.
-        distance: 1 / (1 + Number(r.rank)),
-      },
-    ];
+    const window = passageWindow(text, query);
+    const carrying = chunkText(text).filter((c) => c.end > window.start && c.start < window.end);
+    // ts_rank is higher-is-better; ChunkHit.distance is lower-is-closer.
+    const distance = 1 / (1 + Number(r.rank));
+    return carrying.map((chunk) => ({
+      documentId: r.documentId,
+      title: r.title,
+      extractionId: r.extractionId,
+      chunkIndex: chunk.index,
+      text: chunk.text,
+      span: { start: chunk.start, end: chunk.end, page: chunk.page },
+      distance,
+    }));
   });
 }
 
