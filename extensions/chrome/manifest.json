@@ -2,10 +2,11 @@
   "manifest_version": 3,
   "name": "Polymath - Capture",
   "version": "2.1.0",
-  "description": "Capture text, pages, and notes directly into your Polymath inbox from any webpage.",
+  "description": "Capture text, pages, screenshots, and notes directly into your Polymath inbox from any webpage.",
   "permissions": [
     "storage",
     "activeTab",
+    "clipboardRead",
     "scripting",
     "sidePanel",
     "alarms",

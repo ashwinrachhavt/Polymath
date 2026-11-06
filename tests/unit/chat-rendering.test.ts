@@ -22,7 +22,10 @@ const citation = (documentId: string, title: string, start: number) => ({
 describe("cited answers", () => {
   it("renders a [[n]] marker as a numbered anchor into the source list", () => {
     const html = renderToStaticMarkup(
-      createElement(CitedText, { text: "The lease runs for two years [[1]].", citations: [citation("d1", "Lease", 0)] }),
+      createElement(CitedText, {
+        text: "The lease runs for two years [[1]].",
+        citations: [citation("d1", "Lease", 0)],
+      }),
     );
     expect(html).toContain('href="#citation-0"');
     expect(html).toContain(">1</a>");
@@ -30,7 +33,9 @@ describe("cited answers", () => {
   });
 
   it("drops a marker that names no source rather than rendering a dead number", () => {
-    const html = renderToStaticMarkup(createElement(CitedText, { text: "A claim [[7]].", citations: [citation("d1", "Lease", 0)] }));
+    const html = renderToStaticMarkup(
+      createElement(CitedText, { text: "A claim [[7]].", citations: [citation("d1", "Lease", 0)] }),
+    );
     expect(html).not.toContain("#citation-6");
     expect(html).not.toContain("[[7]]");
     expect(html).toContain("A claim");
@@ -69,7 +74,10 @@ describe("cited answers", () => {
 
   it("keeps citations working inside a list item", () => {
     const html = renderToStaticMarkup(
-      createElement(CitedText, { text: "- the lease runs two years [[1]]\n- it renews\n", citations: [citation("d1", "Lease", 0)] }),
+      createElement(CitedText, {
+        text: "- the lease runs two years [[1]]\n- it renews\n",
+        citations: [citation("d1", "Lease", 0)],
+      }),
     );
     expect(html).toContain("<li");
     expect(html).toContain('href="#citation-0"');
@@ -79,14 +87,20 @@ describe("cited answers", () => {
 
 describe("record cards", () => {
   it("links a document card to its library route", () => {
-    const html = renderToStaticMarkup(createElement(RecordCards, { records: [{ kind: "document", id: "doc-1", title: "Renewal terms" }] }));
+    const html = renderToStaticMarkup(
+      createElement(RecordCards, { records: [{ kind: "document", id: "doc-1", title: "Renewal terms" }] }),
+    );
     expect(html).toContain('href="/polymath/library/doc-1"');
     expect(html).toContain("Renewal terms");
     expect(html).toContain("Document");
   });
 
   it("shows a record without a detail route as a card, not a broken link", () => {
-    const html = renderToStaticMarkup(createElement(RecordCards, { records: [{ kind: "task", id: "t1", title: "Renew the lease", subtitle: "Due 2026-11-01" }] }));
+    const html = renderToStaticMarkup(
+      createElement(RecordCards, {
+        records: [{ kind: "task", id: "t1", title: "Renew the lease", subtitle: "Due 2026-11-01" }],
+      }),
+    );
     expect(html).toContain("Renew the lease");
     expect(html).toContain("Due 2026-11-01");
     // Tasks link to their collection, never to an invented /tasks/<id>.
@@ -110,6 +124,19 @@ describe("markdown links", () => {
     const html = renderToStaticMarkup(createElement("div", null, inline("[docs](https://example.com/x)")));
     expect(html).toContain('target="_blank"');
     expect(html).toContain('rel="noreferrer noopener"');
+  });
+
+  it("renders uploaded Markdown images inline with a safe source", () => {
+    const html = renderToStaticMarkup(createElement("div", null, inline("![Screenshot](/api/v1/captures/id/file)")));
+    expect(html).toContain('<img src="/api/v1/captures/id/file"');
+    expect(html).toContain('alt="Screenshot"');
+    expect(html).not.toContain("target=");
+  });
+
+  it("does not render data URLs as images", () => {
+    const html = renderToStaticMarkup(createElement("div", null, inline("![bad](data:image/svg+xml;base64,abc)")));
+    expect(html).not.toContain("<img");
+    expect(html).not.toContain("data:image");
   });
 
   it("refuses a javascript: href, keeping only its label", () => {

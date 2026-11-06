@@ -16,6 +16,125 @@ function isContentScript() {
   );
 }
 
+const MAX_CLIPBOARD_IMAGE_BYTES = 4 * 1024 * 1024;
+
+async function clipboardBlobAsImage(blob, filename) {
+  if (!blob || !["image/png", "image/jpeg", "image/webp"].includes(blob.type)) {
+    throw new Error("Copy images as PNG, JPEG, or WebP.");
+  }
+  if (blob.size > MAX_CLIPBOARD_IMAGE_BYTES) {
+    throw new Error("Clipboard images must be 4 MB or smaller.");
+  }
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 32_768) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 32_768));
+  }
+  const extension = blob.type === "image/jpeg" ? "jpg" : blob.type.split("/")[1] || "png";
+  return {
+    filename: (filename || `clipboard-image.${extension}`).slice(0, 500),
+    mimeType: blob.type,
+    base64: btoa(binary),
+  };
+}
+
+function textFromClipboardHtml(html) {
+  const documentCopy = new DOMParser().parseFromString(html, "text/html");
+  documentCopy.querySelectorAll("script,style,noscript").forEach((node) => node.remove());
+  return (documentCopy.body.innerText || documentCopy.body.textContent || "").trim();
+}
+
+async function clipboardImageFromHtml(html) {
+  const documentCopy = new DOMParser().parseFromString(html, "text/html");
+  const image = documentCopy.querySelector("img[src]");
+  if (!image) return null;
+  const source = image.getAttribute("src") || "";
+  if (source.startsWith("data:image/")) {
+    const match = source.match(/^data:(image\/[a-z0-9.+-]+);base64,([a-z0-9+/=]+)$/i);
+    if (!match) return null;
+    if (!["image/png", "image/jpeg", "image/webp"].includes(match[1].toLowerCase())) {
+      throw new Error("Copy images as PNG, JPEG, or WebP.");
+    }
+    if (match[2].length > Math.ceil((MAX_CLIPBOARD_IMAGE_BYTES * 4) / 3) + 4) {
+      throw new Error("Clipboard images must be 4 MB or smaller.");
+    }
+    const binary = atob(match[2]);
+    if (binary.length > MAX_CLIPBOARD_IMAGE_BYTES) {
+      throw new Error("Clipboard images must be 4 MB or smaller.");
+    }
+    return {
+      filename: `clipboard-image.${match[1].split("/")[1].split("+")[0]}`,
+      mimeType: match[1],
+      base64: match[2],
+    };
+  }
+  let url;
+  try {
+    url = new URL(source);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:") {
+    throw new Error("Only public HTTPS clipboard images can be saved. Copy the image itself if it is from a local or insecure page.");
+  }
+  const response = await fetch(url.href, { credentials: "omit", signal: AbortSignal.timeout(8_000) });
+  if (!response.ok) throw new Error("The copied image could not be fetched. Copy the image itself and try again.");
+  const declaredLength = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_CLIPBOARD_IMAGE_BYTES) {
+    throw new Error("Clipboard images must be 4 MB or smaller.");
+  }
+  const blob = await response.blob();
+  if (!blob.type.startsWith("image/")) throw new Error("The clipboard image could not be read. Copy the image itself and try again.");
+  const filename = decodeURIComponent(url.pathname.split("/").pop() || "clipboard-image");
+  return clipboardBlobAsImage(blob, filename);
+}
+
+async function readClipboardPayload() {
+  let text = "";
+  let image = null;
+  let html = "";
+  if (navigator.clipboard?.read) {
+    try {
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        if (!text && item.types.includes("text/plain")) {
+          text = await (await item.getType("text/plain")).text();
+        }
+        if (!html && item.types.includes("text/html")) {
+          html = await (await item.getType("text/html")).text();
+        }
+        if (!image) {
+          const imageType = item.types.find((type) => type.startsWith("image/"));
+          if (imageType) image = await clipboardBlobAsImage(await item.getType(imageType));
+        }
+      }
+    } catch (error) {
+      // Permission failures fall back to text. Unsupported images are explicit:
+      // never claim the full clipboard was saved after dropping its image.
+      if (error instanceof Error && /4 MB|PNG, JPEG, or WebP/.test(error.message)) throw error;
+    }
+  }
+  if (!text && html) text = textFromClipboardHtml(html);
+  if (!image && html) {
+    try {
+      image = await clipboardImageFromHtml(html);
+    } catch (error) {
+      if (error) throw error;
+    }
+  }
+  if (!text && !image) {
+    try {
+      text = await navigator.clipboard.readText();
+    } catch {
+      // Clipboard access may be unavailable; the caller can report empty.
+    }
+  }
+  if (text.length > 200_000) {
+    throw new Error("Clipboard text is limited to 200,000 characters.");
+  }
+  return { text: text.trim(), image };
+}
+
 /** Ask the service worker to perform the request; reply as a Response. */
 async function relayThroughWorker(url, options) {
   let reply;
@@ -166,6 +285,25 @@ const AlfredAPI = {
 
   // ── Capture helpers ────────────────────────────────────────────────
 
+  /** Read text and the first copied image using the popup's user gesture. */
+  async readClipboardPayload() {
+    return readClipboardPayload();
+  },
+
+  /** Upload a clipboard image and its accompanying text as one Inbox capture. */
+  async createClipboardCapture({ text, image, idempotencyKey }) {
+    const bytes = Uint8Array.from(atob(image.base64), (char) => char.charCodeAt(0));
+    const form = new FormData();
+    form.set("file", new Blob([bytes], { type: image.mimeType }), image.filename);
+    if (text) form.set("text", text);
+    if (text) form.set("textSource", "clipboard");
+    return this._fetch("/api/v1/captures/file", {
+      method: "POST",
+      headers: { "Idempotency-Key": idempotencyKey || crypto.randomUUID() },
+      body: form,
+    });
+  },
+
   /**
    * One capture into the Polymath inbox. `mode` states how it arrived
    * ("authored" | "selection" | "page" | "url-reference"); omitted, the server
@@ -193,6 +331,17 @@ const AlfredAPI = {
   async listCaptures(filter) {
     const query = filter ? `?filter=${encodeURIComponent(filter)}` : "";
     return this._fetch(`/api/v1/captures${query}`);
+  },
+
+  /** Save clipboard text, an optional image, or both into the inbox. */
+  async captureClipboard({ text, image, title, history }) {
+    return this.queueCapture({
+      mode: "authored",
+      text: text || "",
+      title: title || image?.filename || "Clipboard capture",
+      image: image || null,
+      history: history || { title: text?.slice(0, 80) || image?.filename || "Clipboard capture", type: "clipboard" },
+    });
   },
 
   /** Ingest a captured page (or a short excerpt) into the inbox. */
@@ -233,7 +382,7 @@ const AlfredAPI = {
    * Falls back to a direct POST only when the worker cannot be messaged at
    * all (e.g. an unpacked dashboard outside the extension runtime).
    */
-  async queueCapture({ text, url, title, mode, raw_markdown, quality, history }) {
+  async queueCapture({ text, url, title, mode, raw_markdown, quality, history, image }) {
     const canMessage =
       typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.id && chrome.runtime.sendMessage;
     if (canMessage) {
@@ -248,6 +397,7 @@ const AlfredAPI = {
             mode,
             raw_markdown: raw_markdown || null,
             quality: quality || null,
+            image: image || null,
             history: history || null,
           },
           ENQUEUE_REPLY_DEADLINE_MS,
@@ -272,7 +422,11 @@ const AlfredAPI = {
       }
       return reply;
     }
-    await this.createCapture({ text, url, title, mode, raw_markdown, quality });
+    if (image) {
+      await this.createClipboardCapture({ text, image });
+    } else {
+      await this.createCapture({ text, url, title, mode, raw_markdown, quality });
+    }
     return { ok: true, delivered: true };
   },
 

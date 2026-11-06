@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useOptimistic, useRef, useState, useTransition } from "react";
+import { ArtifactMarkdown } from "@/components/artifact-markdown";
 import { Button } from "@/components/ui/button";
 import { WorkStatus } from "@/components/work-status";
 import {
@@ -543,7 +544,13 @@ export function InboxDetail({
   );
 }
 
-type FilePayload = { filename?: string; mimeType?: string; sizeBytes?: number; quarantined?: boolean };
+type FilePayload = {
+  filename?: string;
+  mimeType?: string;
+  sizeBytes?: number;
+  quarantined?: boolean;
+  textSource?: string;
+};
 
 function formatBytes(n: number | undefined): string {
   if (typeof n !== "number" || !Number.isFinite(n)) return "unknown size";
@@ -593,7 +600,9 @@ function ExtensionMarkdownBlock({ extraction }: { extraction: ExtensionExtractio
  * error or the deployment's not-configured shape. A quarantined file (type
  * unrecognized) is named as such and downloads rather than rendering.
  */
-function FileCapturePanel({
+/* eslint-disable @next/next/no-img-element -- Authenticated capture URLs must load directly without an image optimizer proxy. */
+
+export function FileCapturePanel({
   captureId,
   rawPayload,
   text,
@@ -621,7 +630,25 @@ function FileCapturePanel({
         {formatBytes(payload.sizeBytes)}
       </p>
       {isImage ? (
-        reading ? (
+        <figure
+          aria-label={`Preview of ${filename}`}
+          className="overflow-hidden rounded-xl border border-border bg-muted/30 shadow-sm"
+        >
+          <img
+            src={`/api/v1/captures/${captureId}/file`}
+            alt={filename}
+            loading="eager"
+            decoding="async"
+            className="mx-auto max-h-[70vh] w-full object-contain"
+          />
+        </figure>
+      ) : null}
+      {reading ? (
+        payload.textSource === "clipboard" ? (
+          <section aria-label="Copied text" className="prose-reading max-w-[70ch] text-foreground">
+            <ArtifactMarkdown text={reading} />
+          </section>
+        ) : isImage ? (
           <>
             <p className="max-w-[70ch] text-body-dense break-words whitespace-pre-wrap text-foreground/90">
               {reading.length > 300 ? `${reading.slice(0, 300)}…` : reading}
@@ -630,31 +657,32 @@ function FileCapturePanel({
               The words were read from the image and are searchable.
             </p>
           </>
-        ) : pendingRead ? (
-          <p className="max-w-[70ch] text-body-dense text-muted-foreground" role="status">
-            Reading the image now. The words land here when they arrive.
-          </p>
-        ) : (
-          <p className="max-w-[70ch] text-body-dense text-muted-foreground" role="status">
-            {failureReason ?? "Reading the image now. The words land here when they arrive."}
-          </p>
-        )
-      ) : (
+        ) : null
+      ) : isImage && pendingRead ? (
+        <p className="max-w-[70ch] text-body-dense text-muted-foreground" role="status">
+          Reading the image now. The words land here when they arrive.
+        </p>
+      ) : isImage && failureReason ? (
+        <p className="max-w-[70ch] text-body-dense text-muted-foreground" role="status">
+          {failureReason}
+        </p>
+      ) : !isImage ? (
         <p className="max-w-[70ch] text-body-dense text-muted-foreground">
           Stored as captured. The file&apos;s contents aren&apos;t searchable; the filename is the label.
           {quarantined ? " It downloads rather than opening in the browser." : ""}
         </p>
-      )}
+      ) : null}
       <div>
         <a
           href={`/api/v1/captures/${captureId}/file`}
-          target="_blank"
-          rel="noreferrer"
+          {...(isImage || quarantined ? { download: filename } : { target: "_blank", rel: "noreferrer" })}
           className="text-body-dense font-medium text-primary underline-offset-4 hover:underline"
         >
-          {quarantined ? "Download file" : "Open file"}
+          {isImage ? "Download image" : quarantined ? "Download file" : "Open file"}
         </a>
       </div>
     </section>
   );
 }
+
+/* eslint-enable @next/next/no-img-element */

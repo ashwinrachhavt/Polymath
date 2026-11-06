@@ -172,6 +172,14 @@ describe("capture outbox mode", () => {
     });
   });
 
+  it("keeps a clipboard image through the JSON-backed outbox", () => {
+    const image = { filename: "clipboard-image.png", mimeType: "image/png", base64: "iVBORw0KGgo=" };
+    const queued = Outbox.makeEntry({ ...ENTRY, image }, 1_760_000_000_000);
+    const loaded = JSON.parse(JSON.stringify([queued]))[0];
+    expect(loaded.image).toEqual(image);
+    expect(Outbox.deliveryBody(loaded)).not.toHaveProperty("image");
+  });
+
   it("omits the mode from the body when the entry has none", () => {
     // An entry written by an extension build that predates the mode field.
     const queued = Outbox.makeEntry(ENTRY, 1_760_000_000_000);
@@ -296,6 +304,36 @@ async function loadWorker(options: {
 }
 
 describe("capture worker delivery", () => {
+  it("delivers clipboard text and image as multipart to one capture", async () => {
+    const { message, fetchMock, pumpByAlarm } = await loadWorker({
+      api: { base: async () => "http://localhost:3000", token: async () => SAVED_TOKEN },
+      fetchImpl: async () => new Response("{}", { status: 201 }),
+    });
+    const image = { filename: "clipboard-image.png", mimeType: "image/png", base64: "iVBORw0KGgo=" };
+
+    const reply = await message({
+      type: "AXIOM_ENQUEUE_CAPTURE",
+      text: "Copied headline and paragraph",
+      image,
+      title: "Clipboard screenshot",
+      history: { title: "Copied headline", type: "clipboard" },
+    });
+    expect(reply).toMatchObject({ ok: true, delivered: false });
+    await pumpByAlarm();
+
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(String(url)).toBe("http://localhost:3000/api/v1/captures/file");
+    expect(init?.headers).toMatchObject({
+      "Idempotency-Key": expect.any(String),
+      Authorization: `Bearer ${SAVED_TOKEN}`,
+    });
+    expect(init?.headers).not.toHaveProperty("Content-Type");
+    const form = init?.body as FormData;
+    expect(form.get("text")).toBe("Copied headline and paragraph");
+    expect(form.get("textSource")).toBe("clipboard");
+    expect((form.get("file") as File).name).toBe("clipboard-image.png");
+  });
+
   it("syncs an auth-blocked capture after an explicit key replacement, preserving its receipt key", async () => {
     const entry = Outbox.makeEntry(
       {
@@ -347,6 +385,36 @@ describe("capture worker delivery", () => {
       title: "Article",
       mode: "selection",
     });
+  });
+
+  it("delivers clipboard text and image as multipart to one capture", async () => {
+    const { message, fetchMock, pumpByAlarm } = await loadWorker({
+      api: { base: async () => "http://localhost:3000", token: async () => SAVED_TOKEN },
+      fetchImpl: async () => new Response("{}", { status: 201 }),
+    });
+    const image = { filename: "clipboard-image.png", mimeType: "image/png", base64: "iVBORw0KGgo=" };
+
+    const reply = await message({
+      type: "AXIOM_ENQUEUE_CAPTURE",
+      text: "Copied headline and paragraph",
+      image,
+      title: "Clipboard screenshot",
+      history: { title: "Copied headline", type: "clipboard" },
+    });
+    expect(reply).toMatchObject({ ok: true, delivered: false });
+    await pumpByAlarm();
+
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(String(url)).toBe("http://localhost:3000/api/v1/captures/file");
+    expect(init?.headers).toMatchObject({
+      "Idempotency-Key": expect.any(String),
+      Authorization: `Bearer ${SAVED_TOKEN}`,
+    });
+    expect(init?.headers).not.toHaveProperty("Content-Type");
+    const form = init?.body as FormData;
+    expect(form.get("text")).toBe("Copied headline and paragraph");
+    expect(form.get("textSource")).toBe("clipboard");
+    expect((form.get("file") as File).name).toBe("clipboard-image.png");
   });
 
   it("posts no mode key for an entry queued before the field existed", async () => {

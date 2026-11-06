@@ -31,7 +31,7 @@ Migrations: 116 files, highest `0289_poll_fact_suggestions`.
 
 ## Tests
 
-572 `.test.ts` and 52 `.spec.ts` files (unit: 339, integration: 230, e2e: 52).
+575 `.test.ts` and 52 `.spec.ts` files (unit: 342, integration: 230, e2e: 52).
 ## Domains
 
 25 folders; 19 own tables.

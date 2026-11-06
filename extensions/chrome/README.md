@@ -1,13 +1,13 @@
 # Alfred - Knowledge Capture (Chrome Extension)
 
-A Chrome extension that lets you capture text selections, full pages, and quick notes directly into Alfred's knowledge base from any webpage.
+A Chrome extension that captures text, images, selections, full pages, and quick notes directly into Polymath's inbox.
 
 ## Features
 
 - **Floating Dock** (Alt+N): A sidebar widget with a quick-note textarea, page capture, and recent captures list.
 - **Selection Toolbar**: Select text on any page to see "Save to Polymath" (lands in the inbox, where the suggestion card proposes what it becomes) and "Summarize" (saves the selection, then opens Polymath's read of it in the inbox).
 - **Keyboard Shortcuts**: Alt+N (toggle dock), Alt+S (save selection/note), Alt+P (capture full page).
-- **Popup**: Quick actions, page capture, and settings accessible from the toolbar icon.
+- **Popup**: Quick actions, page capture, and settings accessible from the toolbar icon. Leave Quick Note empty to save copied clipboard text and a PNG, JPEG, or WebP image together.
 - **Dashboard**: Full note management, library browsing, capture history, and settings (opens in a new tab).
 - **Connection Indicator**: Green/red dot showing Alfred backend status.
 

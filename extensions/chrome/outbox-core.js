@@ -130,6 +130,9 @@
       // still load and deliver.
       raw_markdown: fields.raw_markdown || null,
       quality: fields.quality || null,
+      // Base64 is used only for the bounded clipboard image; this entry remains
+      // JSON-safe so it survives worker shutdowns and retries.
+      image: fields.image || null,
       destination: fields.destination || null,
       status: "queued", // queued | sending | failed | needs-auth | conflicted | parked-identity
       attempts: 0,

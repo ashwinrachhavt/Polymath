@@ -6,7 +6,12 @@ import { sha256Hex } from "@/lib/hash";
 import { validateFile, MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL } from "@/lib/file-validation";
 import { ObjectStoreUnconfiguredError } from "@/integrations/object-store/object-store";
 import { IdempotencyConflictError, peekReceipt, receiptRequestHash } from "@/domains/audit/receipt";
-import { ConflictError, createFileCapture, fileCaptureReceiptRequest, StorageWriteFailedError } from "@/domains/capture/commands";
+import {
+  ConflictError,
+  createFileCapture,
+  fileCaptureReceiptRequest,
+  StorageWriteFailedError,
+} from "@/domains/capture/commands";
 
 /*
  * The deploy-supported ceiling: 4 MB, the same one every intake path shares.
@@ -39,8 +44,26 @@ export const POST = authedHandler(async (auth, request) => {
     return problemResponse(400, "invalid_request", "Attach a file in the 'file' field.");
   }
   if (file.size > MAX_CAPTURE_UPLOAD_BYTES) {
-    return problemResponse(413, "payload_too_large", `Captures are limited to ${MAX_UPLOAD_LABEL} - the largest upload this deployment accepts.`);
+    return problemResponse(
+      413,
+      "payload_too_large",
+      `Captures are limited to ${MAX_UPLOAD_LABEL} - the largest upload this deployment accepts.`,
+    );
   }
+  const copiedTextValue = form.get("text");
+  if (copiedTextValue !== null && typeof copiedTextValue !== "string") {
+    return problemResponse(400, "invalid_request", "Copied text must be plain text.");
+  }
+  const copiedText =
+    typeof copiedTextValue === "string" ? copiedTextValue.trim().replaceAll(String.fromCharCode(13), "") : "";
+  if (copiedText.length > 200_000) {
+    return problemResponse(413, "payload_too_large", "Copied text is limited to 200,000 characters.");
+  }
+  const textSourceValue = form.get("textSource");
+  if (textSourceValue !== null && textSourceValue !== "clipboard") {
+    return problemResponse(400, "invalid_request", "Unsupported text source.");
+  }
+
   const idempotencyKey = request.headers.get("idempotency-key");
   if (idempotencyKey !== null && !z.string().uuid().safeParse(idempotencyKey).success) {
     return problemResponse(400, "invalid_request", "Idempotency-Key must be a UUID.");
@@ -67,11 +90,12 @@ export const POST = authedHandler(async (auth, request) => {
   // filename is normalized exactly as the command normalizes it, so this
   // hash matches the receipt the backstop writes.
   const filename = file.name.trim().slice(0, 500);
+  const textHash = copiedText ? await sha256Hex(copiedText) : undefined;
   if (idempotencyKey) {
     const precheck = await peekReceipt(
       auth,
       idempotencyKey,
-      await receiptRequestHash(fileCaptureReceiptRequest(contentHash, filename)),
+      await receiptRequestHash(fileCaptureReceiptRequest(contentHash, filename, textHash)),
     );
     if (precheck.action === "conflict") {
       return problemResponse(422, "idempotency_conflict", "This idempotency key was used for a different request.");
@@ -90,6 +114,8 @@ export const POST = authedHandler(async (auth, request) => {
       filename,
       verdict,
       contentHash,
+      ...(copiedText ? { text: copiedText, textHash } : {}),
+      ...(textSourceValue === "clipboard" ? { textSource: "clipboard" as const } : {}),
       source: "quick_capture",
       idempotencyKey: idempotencyKey ?? undefined,
     });

@@ -2,14 +2,15 @@ import type { ReactNode } from "react";
 
 /*
  * The inline rules shared by the transcript renderer and the artifact body:
- * bold, italic, inline code, links, and the 【citation】 chip. Extracted from
+ * bold, italic, inline code, links, images, and the 【citation】 chip. Extracted from
  * components/markdown.tsx so the two renderers cannot drift.
  */
 
 // Link must precede bold/italic so `[text](href)` is claimed whole: otherwise
 // the `*`-less alternation splits it and the brackets reach the user as text.
-const INLINE = /(\[[^\]\n]+\]\([^)\s]+\)|\*\*[^*]+\*\*|\*[^*\n]+\*|`[^`\n]+`|【[^】\n]+】)/g;
+const INLINE = /(!\[[^\]\n]*\]\([^)\s]+\)|\[[^\]\n]+\]\([^)\s]+\)|\*\*[^*]+\*\*|\*[^*\n]+\*|`[^`\n]+`|【[^】\n]+】)/g;
 
+const IMAGE = /^!\[([^\]\n]*)\]\(([^)\s]+)\)$/;
 const LINK = /^\[([^\]\n]+)\]\(([^)\s]+)\)$/;
 
 /**
@@ -24,11 +25,32 @@ export function safeHref(href: string): string | null {
   return null;
 }
 
+/* eslint-disable @next/next/no-img-element -- Markdown images may use authenticated app URLs and must load directly. */
+
 export function inline(raw: string): ReactNode[] {
   // Models escape pipes in answers; a citation mark like 【Document: Lease】
   // becomes a chip instead of raw brackets.
   const text = raw.replace(/\\\|/g, "|");
   return text.split(INLINE).map((part, i) => {
+    const image = IMAGE.exec(part);
+    if (image) {
+      const [, alt, source] = image;
+      const safe = safeHref(source);
+      if (safe) {
+        return (
+          <img
+            key={i}
+            src={safe}
+            alt={alt}
+            loading="lazy"
+            decoding="async"
+            referrerPolicy="no-referrer"
+            className="my-4 max-h-[70vh] max-w-full rounded-xl border border-border bg-muted/30 object-contain shadow-sm"
+          />
+        );
+      }
+      return <span key={i}>{alt}</span>;
+    }
     const link = LINK.exec(part);
     if (link) {
       const [, label, href] = link;
@@ -76,3 +98,5 @@ export function inline(raw: string): ReactNode[] {
     return part;
   });
 }
+
+/* eslint-enable @next/next/no-img-element */
