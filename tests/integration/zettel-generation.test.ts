@@ -3,7 +3,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { auditEvents, outboxEvents } from "@/domains/audit/schema";
 import { captures } from "@/domains/capture/schema";
-import { artifactVersions, artifacts, documents, zettelProposals } from "@/domains/knowledge/schema";
+import { artifactVersions, artifacts, documents } from "@/domains/knowledge/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
@@ -147,12 +147,6 @@ suite("zettel generation from the inbox", () => {
       .where(and(eq(outboxEvents.workspaceId, auth.workspaceId), eq(outboxEvents.topic, ZETTEL_GENERATION_TOPIC)));
     expect(rows.map((r) => (r.payload as { captureId: string }).captureId)).toEqual([withText.id]);
 
-    const audits = await holder
-      .db!.select()
-      .from(auditEvents)
-      .where(and(eq(auditEvents.workspaceId, auth.workspaceId), eq(auditEvents.action, "capture.zettels_requested")));
-    expect(audits.map((a) => a.subjectId)).toEqual([withText.id]);
-
     // A converted capture keeps the home the owner chose.
     const again = await requestZettelGeneration(auth, { idempotencyKey: crypto.randomUUID() });
     expect(again.captureIds).not.toContain(alreadyFiled.id);
@@ -204,9 +198,6 @@ suite("zettel generation from the inbox", () => {
       .where(and(eq(artifacts.workspaceId, auth.workspaceId), eq(artifacts.kind, "zettel")));
     expect(cards).toHaveLength(2);
     expect(cards.every((c) => c.status === "reviewed" && c.currentVersionId !== null)).toBe(true);
-    expect(
-      await holder.db!.select().from(zettelProposals).where(eq(zettelProposals.workspaceId, auth.workspaceId)),
-    ).toHaveLength(0);
 
     const versions = await holder
       .db!.select()

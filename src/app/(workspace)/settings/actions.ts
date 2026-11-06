@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import {
   getPreferences,
   updatePreferences,
@@ -15,8 +15,10 @@ import { getDefaultProfile } from "@/domains/agents/queries";
 import { updateDefaultProfileBrief } from "@/domains/agents/commands";
 import { selfMembership } from "@/domains/identity/members";
 import { actionError } from "@/lib/action-error";
+import { invitationsTag, prefsTag, workspacesTag } from "@/lib/cache-tags";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
+import type { Result } from "@/lib/result";
 import type { AuthContext } from "@/domains/identity/resolve";
 
 /*
@@ -24,8 +26,6 @@ import type { AuthContext } from "@/domains/identity/resolve";
  * caller sends only the keys it owns plus the version it rendered, and the
  * domain compare-and-sets. A viewer can read preferences but not move them.
  */
-
-type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
 // Invitations are admin+ (ASH-121). The domain re-checks; this action-layer
 // guard keeps the authorization legible where the action sweep looks.
@@ -78,6 +78,9 @@ export async function savePreferencesAction(input: {
       expectedVersion: Number(input.expectedVersion),
       ...patch,
     });
+    // The layout reads preferences through the cached wrapper, so the write
+    // expires it by tag — the next render settles on the saved value.
+    updateTag(prefsTag(auth));
     revalidatePath("/settings");
     return { ok: true, preferences };
   } catch (error) {
@@ -183,6 +186,9 @@ export async function changeMemberRoleAction(input: {
   try {
     requireRole(auth, "admin");
     const changed = await changeMembership(auth, { membershipId, role });
+    // The switcher is cached per user: the member whose row changed gets the
+    // fresh role on their next render.
+    updateTag(workspacesTag(changed.userId));
     revalidatePath("/settings/access");
     return { ok: true, ...changed };
   } catch (error) {
@@ -204,6 +210,7 @@ export async function removeMemberAction(input: {
   try {
     requireRole(auth, "admin");
     const changed = await changeMembership(auth, { membershipId, status: "removed" });
+    updateTag(workspacesTag(changed.userId));
     revalidatePath("/settings/access");
     return { ok: true, ...changed };
   } catch (error) {
@@ -225,6 +232,7 @@ export async function leaveWorkspaceAction(): Promise<Result<{ left: true }>> {
     const self = await selfMembership(auth);
     if (!self) return { ok: false, error: "You are not a member of this workspace." };
     await changeMembership(auth, { membershipId: self.membershipId, status: "removed" });
+    updateTag(workspacesTag(auth.userId));
     revalidatePath("/settings/access");
     return { ok: true, left: true };
   } catch (error) {
@@ -255,6 +263,9 @@ export async function createInvitationAction(input: {
   const role = input.role === "admin" || input.role === "viewer" ? input.role : "member";
   try {
     const invitation = await createInvitation(auth, { email: String(input.email), role });
+    // The invitee's switcher reads open invitations by their email; expire
+    // exactly that mailbox's cached read.
+    updateTag(invitationsTag(String(input.email)));
     revalidatePath("/settings/access");
     return {
       ok: true,
@@ -277,6 +288,7 @@ export async function revokeInvitationAction(invitationId: string): Promise<Resu
   }
   try {
     const result = await revokeInvitation(auth, String(invitationId));
+    if (result.revoked && result.email) updateTag(invitationsTag(result.email));
     revalidatePath("/settings/access");
     return { ok: true, revoked: result.revoked };
   } catch (error) {

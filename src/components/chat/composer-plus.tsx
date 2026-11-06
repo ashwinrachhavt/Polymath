@@ -289,7 +289,7 @@ export function ComposerPlus({
             >
               {grouped.map((group) => (
                 <li key={group.kind} role="presentation">
-                  <p className="text-muted-foreground px-2.5 pt-1.5 pb-0.5 text-data font-medium">
+                  <p className="text-muted-foreground px-2.5 pt-1.5 pb-0.5 text-label font-medium">
                     {KIND_LABELS[group.kind]}
                   </p>
                   <ul role="presentation">

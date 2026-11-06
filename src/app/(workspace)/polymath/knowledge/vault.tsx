@@ -320,8 +320,8 @@ function ListView({
             </span>
           </span>
           <span aria-hidden />
-          <span className="text-muted-foreground hidden text-xs sm:block">—</span>
-          <span className="text-muted-foreground hidden text-right text-xs sm:block">—</span>
+          <span className="text-muted-foreground hidden text-xs sm:block"></span>
+          <span className="text-muted-foreground hidden text-right text-xs sm:block"></span>
         </Link>
       ))}
 

@@ -25,7 +25,6 @@ import {
   createNoteAction,
   findLinkTargetsAction,
   getNoteAIRunOutputAction,
-  linkRelatedNoteAction,
   proposeLinearIssueAction,
   removeLinkAction,
   renameNoteAction,
@@ -591,16 +590,6 @@ export function NoteEditor({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
-
-  const [linkingId, setLinkingId] = useState<string | null>(null);
-  const confirmLink = async (targetId: string) => {
-    setError("");
-    setLinkingId(targetId);
-    const result = await linkRelatedNoteAction({ artifactId: noteId, targetId });
-    setLinkingId(null);
-    if (!result.ok) return setError(result.error);
-    router.refresh();
-  };
 
   // The note reads as a document until the reader chooses to write to it. The
   // body stays mounted in both states, but the editor only takes focus and
@@ -1256,7 +1245,7 @@ export function NoteEditor({
                   .map((r) => (
                     <li
                       key={r.id}
-                      className="group inline-flex max-w-full items-center rounded-full border border-border bg-background text-body-dense transition-colors hover:bg-muted/60"
+                      className="inline-flex max-w-full items-center rounded-full border border-border bg-background text-body-dense transition-colors hover:bg-muted/60"
                     >
                       <Link
                         className="flex min-w-0 items-center gap-1.5 rounded-full py-1 pl-2.5 pr-2 outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -1269,28 +1258,6 @@ export function NoteEditor({
                           {Math.round(r.score * 100)}%
                         </span>
                       </Link>
-                      <button
-                        type="button"
-                        aria-label={`Link ${r.title}`}
-                        disabled={linkingId === r.id}
-                        onClick={() => void confirmLink(r.id)}
-                        className="mr-0.5 rounded-full px-2 py-1 text-xs text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-                      >
-                        {linkingId === r.id ? "Linking" : "Link"}
-                      </button>
-                      <button
-                        type="button"
-                        aria-label={`Dismiss ${r.title}`}
-                        title="Not related. Stop suggesting this."
-                        onClick={async () => {
-                          const res = await removeLinkAction({ artifactId: noteId, targetId: r.id, dismiss: true });
-                          if (!res.ok) setError(res.error);
-                          else router.refresh();
-                        }}
-                        className="mr-1 rounded-full px-1.5 py-1 text-xs text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-                      >
-                        <X aria-hidden className="size-3.5" />
-                      </button>
                     </li>
                   ))}
               </ul>

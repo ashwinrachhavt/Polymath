@@ -13,8 +13,6 @@ import { acceptAssertions, acceptParty, type PartyDecision } from "@/domains/kno
 import { acceptObligation, rejectObligation } from "@/domains/knowledge/obligations";
 import { captureUrl } from "@/domains/knowledge/capture-url";
 import { createFolder, FolderError } from "@/domains/knowledge/folders";
-import { acceptZettel, proposeZettels, rejectZettel } from "@/domains/knowledge/zettels";
-import { EmbeddingUnconfiguredError } from "@/integrations/embeddings/provider";
 import { applyTitle } from "@/domains/knowledge/naming";
 import {
   acceptClassification,
@@ -40,9 +38,9 @@ import { db } from "@/lib/db";
 
 const uuid = z.string().uuid();
 
-// A decision is visible on two surfaces: the workbench and the Ideas "In
-// review" queue. One mutation revalidates both, so neither cache can show a
-// proposal the other just decided.
+// A decision is visible on two surfaces: the workbench and the Ideas
+// collection (a card's links can change with a decision). One mutation
+// revalidates both, so neither cache can show a state the other just changed.
 const revalidate = () => {
   revalidatePath("/polymath/knowledge");
   revalidatePath("/polymath/ideas");
@@ -69,6 +67,8 @@ function wrap(what: string, cause: unknown): never {
 
 export type CreateFolderResult = { ok: true; folderId: string; name: string } | { ok: false; error: string };
 
+const folderNameSchema = z.string().trim().min(1).max(120);
+
 /*
  * New folder from the vault's New menu. Folders come from the same versioned,
  * audited domain the Files explorer uses; this action only adds the vault's
@@ -79,7 +79,7 @@ export async function createVaultFolder(folderName: string, parentId: string | n
   const auth = await authorize();
   let name: string;
   try {
-    name = z.string().trim().min(1).max(120).parse(folderName);
+    name = folderNameSchema.parse(folderName);
   } catch {
     return { ok: false, error: "A folder needs a name under 120 characters." };
   }
@@ -117,13 +117,13 @@ const partyDecision: z.ZodType<PartyDecision> = z.discriminatedUnion("action", [
  * DM-spec §6 acceptance and lands with corpus data.
  */
 
+const acceptFieldInput = z.object({
+  fieldProposalId: uuid,
+  acceptedValue: z.string().trim().min(1).max(500).nullable().optional(),
+});
+
 export async function acceptField(fieldProposalId: string, acceptedValue?: string | null): Promise<{ ok: true }> {
-  const parsed = z
-    .object({
-      fieldProposalId: uuid,
-      acceptedValue: z.string().trim().min(1).max(500).nullable().optional(),
-    })
-    .parse({ fieldProposalId, acceptedValue: acceptedValue || undefined });
+  const parsed = acceptFieldInput.parse({ fieldProposalId, acceptedValue: acceptedValue || undefined });
   const auth = await authorize();
   try {
     await acceptFieldProposal(auth, parsed);
@@ -161,8 +161,10 @@ export async function deferField(fieldProposalId: string): Promise<{ ok: true }>
  * are written to the assertion ledger for that record. Fields of another
  * party, or document-level facts like the total, never land on it.
  */
+const partyDecisionInput = z.object({ partyId: uuid, decision: partyDecision });
+
 export async function acceptPartyDecision(partyId: string, decision: PartyDecision): Promise<{ ok: true }> {
-  const parsed = z.object({ partyId: uuid, decision: partyDecision }).parse({ partyId, decision });
+  const parsed = partyDecisionInput.parse({ partyId, decision });
   const auth = await authorize();
 
   const [party] = await db
@@ -218,11 +220,11 @@ export async function acceptPartyDecision(partyId: string, decision: PartyDecisi
   }
 }
 
+const obligationInput = z.object({ obligationId: uuid, dueAt: z.string().min(1).optional() });
+
 /** Accept or reject one obligation; acceptance creates the task inside the domain. */
 export async function acceptDocumentObligation(obligationId: string, dueAt?: string): Promise<{ ok: true }> {
-  const parsed = z
-    .object({ obligationId: uuid, dueAt: z.string().min(1).optional() })
-    .parse({ obligationId, dueAt: dueAt || undefined });
+  const parsed = obligationInput.parse({ obligationId, dueAt: dueAt || undefined });
   const auth = await authorize();
   try {
     await acceptObligation(auth, {
@@ -248,18 +250,18 @@ export async function rejectDocumentObligation(obligationId: string): Promise<{ 
   }
 }
 
+const applyTitleInput = z.object({
+  documentId: uuid,
+  title: z.string().trim().min(1).max(500),
+  expectedVersion: z.number().int().positive(),
+});
+
 export async function applyTitleAction(
   documentId: string,
   title: string,
   expectedVersion: number,
 ): Promise<{ ok: true }> {
-  const parsed = z
-    .object({
-      documentId: uuid,
-      title: z.string().trim().min(1).max(500),
-      expectedVersion: z.number().int().positive(),
-    })
-    .parse({ documentId, title, expectedVersion });
+  const parsed = applyTitleInput.parse({ documentId, title, expectedVersion });
   const auth = await authorize();
   try {
     // "suggested": the workbench only ever applies the composed suggestion;
@@ -275,10 +277,10 @@ export async function applyTitleAction(
   }
 }
 
+const classificationInput = z.object({ proposalId: uuid, expectedVersion: z.number().int().positive() });
+
 export async function acceptClassificationAction(proposalId: string, expectedVersion: number): Promise<{ ok: true }> {
-  const parsed = z
-    .object({ proposalId: uuid, expectedVersion: z.number().int().positive() })
-    .parse({ proposalId, expectedVersion });
+  const parsed = classificationInput.parse({ proposalId, expectedVersion });
   const auth = await authorize();
   try {
     await acceptClassification(auth, parsed);
@@ -291,9 +293,7 @@ export async function acceptClassificationAction(proposalId: string, expectedVer
 }
 
 export async function rejectClassificationAction(proposalId: string, expectedVersion: number): Promise<{ ok: true }> {
-  const parsed = z
-    .object({ proposalId: uuid, expectedVersion: z.number().int().positive() })
-    .parse({ proposalId, expectedVersion });
+  const parsed = classificationInput.parse({ proposalId, expectedVersion });
   const auth = await authorize();
   try {
     await rejectClassification(auth, parsed);
@@ -307,6 +307,8 @@ export async function rejectClassificationAction(proposalId: string, expectedVer
 
 export type CaptureUrlActionResult = { ok: true; message: string } | { ok: false; message: string };
 
+const captureUrlSchema = z.string().max(2000);
+
 /*
  * Paste a URL, get the same document an upload would make. Failures come back
  * as a message rather than a throw: a site that is down is an ordinary outcome,
@@ -315,7 +317,7 @@ export type CaptureUrlActionResult = { ok: true; message: string } | { ok: false
  */
 export async function captureUrlAction(url: string): Promise<CaptureUrlActionResult> {
   const auth = await authorize();
-  const result = await captureUrl(auth, { url: z.string().max(2000).parse(url) });
+  const result = await captureUrl(auth, { url: captureUrlSchema.parse(url) });
   revalidate();
   if (!result.ok) return { ok: false, message: result.error };
   if (!result.extraction.ok) return { ok: false, message: result.extraction.error };
@@ -323,48 +325,4 @@ export async function captureUrlAction(url: string): Promise<CaptureUrlActionRes
     ok: true,
     message: result.created ? "Captured. It is in the inbox." : "That address is already in the inbox.",
   };
-}
-
-/** Ask for zettel proposals from one succeeded document. Proposes only; nothing becomes knowledge yet. */
-export async function proposeZettelsAction(documentId: string): Promise<{ ok: true; created: number }> {
-  const id = uuid.parse(documentId);
-  const auth = await authorize();
-  try {
-    const { proposals } = await proposeZettels(auth, { documentId: id });
-    revalidate();
-    return { ok: true, created: proposals.length };
-  } catch (cause) {
-    if (cause instanceof EmbeddingUnconfiguredError) {
-      throw new Error("Zettel proposals need OPENROUTER_API_KEY to be set.");
-    }
-    if (cause instanceof Error && /no succeeded extraction/.test(cause.message)) {
-      throw new Error("This document has no extracted text yet.");
-    }
-    throw cause;
-  }
-}
-
-/** Accept writes the concept and the evidence link; reject writes only the decision. */
-export async function acceptZettelAction(proposalId: string): Promise<{ ok: true }> {
-  const id = uuid.parse(proposalId);
-  const auth = await authorize();
-  try {
-    await acceptZettel(auth, { proposalId: id });
-    revalidate();
-    return { ok: true };
-  } catch (cause) {
-    wrap("This zettel", cause);
-  }
-}
-
-export async function rejectZettelAction(proposalId: string): Promise<{ ok: true }> {
-  const id = uuid.parse(proposalId);
-  const auth = await authorize();
-  try {
-    await rejectZettel(auth, { proposalId: id });
-    revalidate();
-    return { ok: true };
-  } catch (cause) {
-    wrap("This zettel", cause);
-  }
 }

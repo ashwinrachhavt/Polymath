@@ -1,7 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
-  boolean,
   check,
   date,
   index,
@@ -50,12 +49,6 @@ export const taskStatus = pgEnum("task_status", [
 ]);
 export const taskPriority = pgEnum("task_priority", ["none", "low", "medium", "high", "urgent"]);
 export const dependencyKind = pgEnum("dependency_kind", ["blocks", "blocked_by", "waiting_on"]);
-export const recurrenceCadence = pgEnum("recurrence_cadence", [
-  "daily",
-  "weekly",
-  "monthly",
-  "yearly",
-]);
 
 export const spaces = pgTable(
   "spaces",
@@ -103,27 +96,6 @@ export const projects = pgTable(
  * next one and records which template produced it, so a recurring chore cannot
  * masquerade as a project or duplicate itself on retry.
  */
-export const recurrenceTemplates = pgTable(
-  "recurrence_templates",
-  {
-    id: primaryId(),
-    workspaceId: tenantId(),
-    projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }),
-    title: text("title").notNull(),
-    description: text("description"),
-    cadence: recurrenceCadence("cadence").notNull(),
-    intervalCount: integer("interval_count").notNull().default(1),
-    /** IANA rule fragments: { weekdays: [1,3], monthDay: 15 }. */
-    rule: jsonb("rule"),
-    nextOccurrenceAt: timestamp("next_occurrence_at", { withTimezone: true }),
-    active: boolean("active").notNull().default(true),
-    ...mutable,
-  },
-  (t) => [
-    index("recurrence_templates_due_idx").on(t.workspaceId, t.nextOccurrenceAt, t.active),
-    index("recurrence_templates_project_idx").on(t.projectId),
-  ],
-);
 
 export const tasks = pgTable(
   "tasks",
@@ -133,9 +105,8 @@ export const tasks = pgTable(
     projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
     spaceId: uuid("space_id").references(() => spaces.id, { onDelete: "set null" }),
     parentTaskId: uuid("parent_task_id").references((): AnyPgColumn => tasks.id, { onDelete: "set null" }),
-    recurrenceTemplateId: uuid("recurrence_template_id").references(() => recurrenceTemplates.id, {
-      onDelete: "set null",
-    }),
+    /** Legacy column: its recurrence_templates FK was dropped with that dead table. */
+    recurrenceTemplateId: uuid("recurrence_template_id"),
     title: text("title").notNull(),
     description: text("description"),
     status: taskStatus("status").notNull().default("inbox"),
@@ -250,39 +221,7 @@ export const boards = pgTable(
   ],
 );
 
-export const boardColumns = pgTable(
-  "board_columns",
-  {
-    id: primaryId(),
-    workspaceId: tenantId(),
-    boardId: uuid("board_id")
-      .notNull()
-      .references(() => boards.id, { onDelete: "cascade" }),
-    /** The group value this column shows, e.g. the task status it maps to. */
-    value: text("value").notNull(),
-    label: text("label").notNull(),
-    /** Soft ceiling; the column warns past it rather than hiding work. */
-    wipLimit: integer("wip_limit"),
-    rank: text("rank").notNull().default("m"),
-    ...mutable,
-  },
-  (t) => [uniqueIndex("board_columns_board_value_key").on(t.boardId, t.value)],
-);
 
-export const savedViews = pgTable(
-  "saved_views",
-  {
-    id: primaryId(),
-    workspaceId: tenantId(),
-    name: text("name").notNull(),
-    /** "list" | "board" | "calendar" | "focus" — one task model, four presentations. */
-    view: text("view").notNull().default("list"),
-    filters: jsonb("filters").notNull().default({}),
-    sort: jsonb("sort").notNull().default([]),
-    ...mutable,
-  },
-  (t) => [uniqueIndex("saved_views_workspace_name_key").on(t.workspaceId, t.name)],
-);
 
 /*
  * ASH-305: tomorrow's briefing seed. The shutdown ritual's suggestion that a

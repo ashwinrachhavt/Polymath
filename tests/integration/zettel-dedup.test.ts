@@ -4,12 +4,11 @@ import { artifacts, documents, documentExtractions, embeddings } from "@/domains
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
- * Task 19 corpus dedup. The claim embedder is stubbed to return the unit
- * vector e1 for every candidate; the accepted ideas in the corpus are seeded
- * with hand-written vectors at chosen cosine distances from it. Within 0.15
- * the proposal is flagged with the idea's id; at 0.30 (merely related) it is
- * not. Accepting a flagged proposal still creates the artifact — the flag
- * never decides.
+ * Task 19 corpus dedup, now a create-time gate. The claim embedder is stubbed
+ * to return the unit vector e1 for every candidate; the existing cards in the
+ * corpus are seeded with hand-written vectors at chosen cosine distances from
+ * it. Within 0.15 the candidate is skipped - no second card is minted; at
+ * 0.30 (merely related) the card is created.
  */
 
 const handle = makeTestDb();
@@ -114,66 +113,33 @@ async function seedIdea(auth: ReturnType<typeof ownerAuth>, title: string, d: nu
   return idea;
 }
 
-suite("corpus dedup against accepted ideas (real Postgres)", () => {
-  it("flags a candidate within the duplicate distance with the idea's id", async () => {
+suite("corpus dedupe at create time (real Postgres)", () => {
+  it("a near-duplicate of an existing card is skipped, not minted", async () => {
     const { auth, documentId } = await seedDocument("dup", TEXT);
-    const idea = await seedIdea(auth, "Prior idea", 0.08);
+    await seedIdea(auth, "Prior idea", 0.08);
 
-    const { proposeZettels, listZettelProposals } = await import("@/domains/knowledge/zettels");
-    const result = await proposeZettels(auth, { documentId, extractor });
-    expect(result.proposals).toHaveLength(1);
-    expect(result.proposals[0]?.duplicateOfArtifactId).toBe(idea.id);
+    const { createZettelsFromSource } = await import("@/domains/knowledge/zettels");
+    const result = await createZettelsFromSource(auth, { documentId, extractor });
 
-    // The review surface reads the flag as a link. No audit row exists (the
-    // pass ran outside capture), so the read report defaults to zero/unknown.
-    const listed = await listZettelProposals(auth, documentId);
-    expect(listed.proposals[0]?.duplicateOf).toEqual({ id: idea.id, title: "Prior idea" });
-    expect(listed.readChars).toBe(0);
-    expect(listed.unreadChars).toBe(0);
+    expect(result.created).toEqual([]);
+    expect(result.skippedDuplicates).toBe(1);
+    const cards = await holder
+      .db!.select()
+      .from(artifacts)
+      .where(and(eq(artifacts.workspaceId, auth.workspaceId), eq(artifacts.kind, "zettel")));
+    // Only the seeded prior idea remains: the near-duplicate candidate was
+    // skipped, not minted.
+    expect(cards.map((c) => c.title)).toEqual(["Prior idea"]);
   });
 
-  it("does not flag a merely-related candidate", async () => {
+  it("a merely-related candidate still creates its card", async () => {
     const { auth, documentId } = await seedDocument("related", TEXT);
     await seedIdea(auth, "Related idea", 0.3);
 
-    const { proposeZettels, listZettelProposals } = await import("@/domains/knowledge/zettels");
-    const result = await proposeZettels(auth, { documentId, extractor });
-    expect(result.proposals[0]?.duplicateOfArtifactId).toBeNull();
-    const listed = await listZettelProposals(auth, documentId);
-    expect(listed.proposals[0]?.duplicateOf).toBeNull();
-  });
+    const { createZettelsFromSource } = await import("@/domains/knowledge/zettels");
+    const result = await createZettelsFromSource(auth, { documentId, extractor });
 
-  it("accepting a flagged proposal still creates the artifact", async () => {
-    const { auth, documentId } = await seedDocument("accept", TEXT);
-    const idea = await seedIdea(auth, "Prior idea", 0.08);
-
-    const { proposeZettels, acceptZettel } = await import("@/domains/knowledge/zettels");
-    const [proposal] = (await proposeZettels(auth, { documentId, extractor })).proposals;
-    const accepted = await acceptZettel(auth, { proposalId: proposal.id });
-
-    expect(accepted.artifactId).not.toBe(idea.id);
-    const [card] = await holder
-      .db!.select()
-      .from(artifacts)
-      .where(and(eq(artifacts.id, accepted.artifactId), eq(artifacts.workspaceId, auth.workspaceId)));
-    expect(card.kind).toBe("zettel");
-    expect(card.title).toBe("Rent timing");
-  });
-
-  it("reports the pass's read counts from the latest audit row", async () => {
-    const { auth, documentId } = await seedDocument("counts", TEXT);
-    const { listZettelProposals } = await import("@/domains/knowledge/zettels");
-    const { auditEvents } = await import("@/domains/audit/schema");
-    await holder.db!.insert(auditEvents).values({
-      workspaceId: auth.workspaceId,
-      action: "capture.zettels_created",
-      subjectType: "capture",
-      summary: "Created 1 zettel",
-      metadata: { documentId, readChars: 12_000, unreadChars: 423 },
-    });
-
-    const listed = await listZettelProposals(auth, documentId);
-    expect(listed.readChars).toBe(12_000);
-    expect(listed.unreadChars).toBe(423);
+    expect(result.created).toHaveLength(1);
+    expect(result.created[0]?.title).toBe("Rent timing");
   });
 });

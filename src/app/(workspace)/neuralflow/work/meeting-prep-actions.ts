@@ -1,8 +1,13 @@
 "use server";
 
-import { generateMeetingPrep, MeetingPrepNotAllowedError, MeetingPrepUnusableAnswerError } from "@/domains/knowledge/meeting-prep";
+import {
+  generateMeetingPrep,
+  MeetingPrepNotAllowedError,
+  MeetingPrepUnusableAnswerError,
+} from "@/domains/knowledge/meeting-prep";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
+import type { Result } from "@/lib/result";
 
 /*
  * Meeting prep (ASH-302) entry point. The owner asks one event for a prep
@@ -10,11 +15,9 @@ import { requireRole } from "@/lib/auth/guards";
  * regenerating before the meeting refreshes the link to the newest one.
  */
 
-type Result = { ok: true; artifactId: string } | { ok: false; error: string };
-
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export async function generateMeetingPrepAction(input: { eventId: string }): Promise<Result> {
+export async function generateMeetingPrepAction(input: { eventId: string }): Promise<Result<{ artifactId: string }>> {
   const auth = await getAuthContext();
   requireRole(auth, "member");
   if (!UUID.test(input.eventId)) return { ok: false, error: "Malformed event id." };

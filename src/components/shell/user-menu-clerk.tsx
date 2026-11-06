@@ -22,7 +22,7 @@ export default function SignedInMenu() {
   const { isLoaded, isSignedIn, user } = useUser();
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  const initial = user?.firstName?.[0] ?? user?.primaryEmailAddress?.emailAddress?.[0] ?? "?";
+  const initial = (user?.firstName?.[0] ?? user?.primaryEmailAddress?.emailAddress?.[0] ?? "?").toUpperCase();
   const name = user?.fullName ?? user?.primaryEmailAddress?.emailAddress ?? "Account";
 
   // Hold the slot's width while Clerk resolves so the header does not jump
@@ -37,7 +37,7 @@ export default function SignedInMenu() {
         <Popover.Trigger
           aria-label="Open account menu"
           className={cn(
-            "text-muted-foreground hover:bg-muted hover:text-foreground flex size-7 items-center justify-center overflow-hidden rounded-full bg-muted text-data font-medium uppercase outline-none",
+            "text-muted-foreground hover:bg-muted hover:text-foreground flex size-7 items-center justify-center overflow-hidden rounded-full bg-muted text-data font-medium outline-none",
             "focus-visible:ring-ring focus-visible:ring-3",
             "data-[state=open]:text-foreground",
           )}

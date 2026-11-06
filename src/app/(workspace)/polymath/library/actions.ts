@@ -22,7 +22,12 @@ const inputSchema = z.object({
   kind: z.enum(["opened", "progress", "closed"]),
   progress: z.number().min(0).max(1).nullish(),
   page: z.number().int().positive().nullish(),
-  activeSeconds: z.number().int().min(0).max(4 * 60 * 60).nullish(),
+  activeSeconds: z
+    .number()
+    .int()
+    .min(0)
+    .max(4 * 60 * 60)
+    .nullish(),
   clientEventId: z.string().uuid().optional(),
 });
 
@@ -32,7 +37,9 @@ async function authorize(): Promise<AuthContext> {
   return auth;
 }
 
-export async function recordReadingEventAction(raw: z.infer<typeof inputSchema>) {
+// The action boundary is the parse below, so the parameter is `unknown`: typing
+// it as the schema's output claimed a guarantee the typechecker cannot enforce.
+export async function recordReadingEventAction(raw: unknown) {
   const auth = await authorize();
   const input = inputSchema.parse(raw);
   try {
@@ -58,7 +65,7 @@ const restoreSchema = z.object({
   expectedVersion: z.number().int().min(0),
 });
 
-export async function restoreDocumentVersionAction(raw: z.infer<typeof restoreSchema>) {
+export async function restoreDocumentVersionAction(raw: unknown) {
   const auth = await authorize();
   requireRole(auth, "member");
   const input = restoreSchema.parse(raw);
@@ -68,8 +75,10 @@ export async function restoreDocumentVersionAction(raw: z.infer<typeof restoreSc
   } catch (cause) {
     if (cause instanceof VersionRestoreError) {
       if (cause.code === "not_found") return { ok: false as const, error: "That version is not available." };
-      if (cause.code === "not_succeeded") return { ok: false as const, error: "Only a successfully read version can be restored." };
-      if (cause.code === "stale_write") return { ok: false as const, error: "That document changed. Reload to see the current state." };
+      if (cause.code === "not_succeeded")
+        return { ok: false as const, error: "Only a successfully read version can be restored." };
+      if (cause.code === "stale_write")
+        return { ok: false as const, error: "That document changed. Reload to see the current state." };
     }
     throw cause;
   }
@@ -86,7 +95,7 @@ const archiveSchema = z.object({
   expectedVersion: z.number().int().min(0),
 });
 
-export async function archiveDocumentAction(raw: z.infer<typeof archiveSchema>) {
+export async function archiveDocumentAction(raw: unknown) {
   const auth = await authorize();
   requireRole(auth, "member");
   const input = archiveSchema.parse(raw);
@@ -97,7 +106,8 @@ export async function archiveDocumentAction(raw: z.infer<typeof archiveSchema>) 
     if (cause instanceof DocumentLifecycleError) {
       if (cause.code === "not_found") return { ok: false as const, error: "That document is not available." };
       if (cause.code === "already_archived") return { ok: false as const, error: "That document is already archived." };
-      if (cause.code === "stale_write") return { ok: false as const, error: "That document changed. Reload to see the current state." };
+      if (cause.code === "stale_write")
+        return { ok: false as const, error: "That document changed. Reload to see the current state." };
     }
     throw cause;
   }
@@ -113,7 +123,7 @@ const passageSchema = z.object({
   comment: z.string().max(2000).optional(),
 });
 
-export async function savePassageAction(raw: z.infer<typeof passageSchema>) {
+export async function savePassageAction(raw: unknown) {
   const auth = await getAuthContext();
   requireRole(auth, "member");
   const input = passageSchema.parse(raw);

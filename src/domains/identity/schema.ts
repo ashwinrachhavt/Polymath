@@ -410,39 +410,6 @@ export const partyRelationshipStatus = pgEnum("party_relationship_status", [
   "ended",
 ]);
 
-export const partyRelationships = pgTable(
-  "party_relationships",
-  {
-    id: primaryId(),
-    workspaceId: tenantId(),
-    kind: partyRelationshipKind("kind").notNull().default("prospect"),
-    status: partyRelationshipStatus("status").notNull().default("active"),
-    personId: uuid("person_id"),
-    organizationId: uuid("organization_id"),
-    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
-    endedAt: timestamp("ended_at", { withTimezone: true }),
-    ...mutable,
-  },
-  (t) => [
-    // A relationship has at least one side, and both sides belong to this
-    // workspace — the composite FKs make a cross-tenant endpoint impossible.
-    check("party_relationships_one_side_check", sql`(person_id is null) <> (organization_id is null)`),
-    foreignKey({
-      name: "party_relationships_person_fk",
-      columns: [t.workspaceId, t.personId],
-      foreignColumns: [people.workspaceId, people.id],
-    })
-      .onDelete("cascade"),
-    foreignKey({
-      name: "party_relationships_organization_fk",
-      columns: [t.workspaceId, t.organizationId],
-      foreignColumns: [organizations.workspaceId, organizations.id],
-    })
-      .onDelete("cascade"),
-    index("party_relationships_person_idx").on(t.personId, t.kind),
-    index("party_relationships_organization_idx").on(t.organizationId, t.kind),
-  ],
-);
 
 /*
  * Emails, phones, and urls attached to a person or an organization. A value
@@ -498,30 +465,6 @@ export const contactPoints = pgTable(
  * set only by code that saw the provider confirm the address — never by email
  * equality with a contact_point. Unverified equality links nothing, ever.
  */
-export const externalIdentities = pgTable(
-  "external_identities",
-  {
-    id: primaryId(),
-    workspaceId: tenantId(),
-    provider: text("provider").notNull(),
-    providerAccountId: text("provider_account_id").notNull(),
-    email: text("email"),
-    verified: boolean("verified").notNull().default(false),
-    accountId: uuid("account_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    ...recordedBy,
-  },
-  (t) => [
-    // Scoped, not global: the same human legitimately exists in several
-    // workspaces (ADR 0001), so (provider, provider_account_id) must be
-    // unique only inside a tenant. Two people in one workspace cannot share
-    // one provider account.
-    uniqueIndex("external_identities_workspace_provider_key")
-      .on(t.workspaceId, t.provider, t.providerAccountId),
-    index("external_identities_email_idx").on(t.workspaceId, t.email),
-  ],
-);
 
 /*
  * The explicit, reviewed account↔person link. It is written only from a

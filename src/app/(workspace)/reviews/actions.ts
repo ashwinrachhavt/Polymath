@@ -10,7 +10,9 @@ import { actionProposals, actionReviews } from "@/domains/actions/schema";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { getAuthContext } from "@/lib/auth";
+import type { AuthContext } from "@/domains/identity/resolve";
 import { requireRole } from "@/lib/auth/guards";
+import type { Result } from "@/lib/result";
 
 /*
  * Reviews decisions (canonical queue). Every write carries the idempotency
@@ -26,9 +28,9 @@ import { requireRole } from "@/lib/auth/guards";
  * executes.
  */
 
-type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
-
-const revalidate = () => {
+// Every decision changes the workspace's pending-proposal set; reviews own
+// the canonical queue view of it.
+const revalidate = (_auth: AuthContext) => {
   revalidatePath("/reviews");
   revalidatePath("/");
 };
@@ -51,9 +53,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * the client keeps its decided card + alert and must NOT refresh them away;
  * a refresh is only honest when the decision itself never landed.
  */
-type DecideResult =
-  | { ok: true; outcome: EffectOutcome | null }
-  | { ok: false; error: string; decided?: boolean };
+type DecideResult = { ok: true; outcome: EffectOutcome | null } | { ok: false; error: string; decided?: boolean };
 
 export async function decideProposalAction(input: {
   idempotencyKey: string;
@@ -87,7 +87,7 @@ export async function decideProposalAction(input: {
   }
 
   if (input.decision !== "approved") {
-    revalidate();
+    revalidate(auth);
     return { ok: true, outcome: null };
   }
 
@@ -112,16 +112,16 @@ export async function decideProposalAction(input: {
         revisionId: input.revisionId,
       });
     } catch (error) {
-      revalidate();
+      revalidate(auth);
       const message = error instanceof Error ? error.message : writer.failure;
       return { ok: false, error: message, decided: true };
     }
-    revalidate();
+    revalidate(auth);
     return { ok: true, outcome: null };
   }
 
   if (!proposal || !supportsEffect(proposal.capability)) {
-    revalidate();
+    revalidate(auth);
     return { ok: true, outcome: null };
   }
 
@@ -165,10 +165,10 @@ export async function decideProposalAction(input: {
         });
       }
     });
-    revalidate();
+    revalidate(auth);
     return { ok: false, error: message, decided: true };
   }
-  revalidate();
+  revalidate(auth);
   return { ok: true, outcome };
 }
 
@@ -203,8 +203,13 @@ export async function reviseProposalAction(input: {
       expectedVersion: input.expectedVersion,
       payload,
     });
-    revalidate();
-    return { ok: true, revisionId: revised.revisionId, revisionNumber: revised.revisionNumber, version: revised.version };
+    revalidate(auth);
+    return {
+      ok: true,
+      revisionId: revised.revisionId,
+      revisionNumber: revised.revisionNumber,
+      version: revised.version,
+    };
   } catch (error) {
     return fail(error);
   }

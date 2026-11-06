@@ -137,8 +137,8 @@ export type ZettelGenerationRequest = {
 
 /**
  * Queue a generation pass. Idempotent on `idempotencyKey`: a replay returns the
- * first request's answer and enqueues nothing. The audit row commits with the
- * outbox row, so a queued capture is never invisible.
+ * first request's answer and enqueues nothing. The outbox row is the queue
+ * record; the cards' own zettel.created rows are the activity trail.
  */
 export async function requestZettelGeneration(
   auth: AuthContext,
@@ -162,16 +162,6 @@ export async function requestZettelGeneration(
           });
           if (!queued.enqueued) continue;
           captureIds.push(row.id);
-          await recordAudit(
-            auth,
-            {
-              action: "capture.zettels_requested",
-              subjectType: "capture",
-              subjectId: row.id,
-              summary: "Queued for zettel creation",
-            },
-            tx,
-          );
         }
         const requested = ids?.length ?? rows.length;
         return { queued: captureIds.length, skipped: Math.max(0, requested - captureIds.length), captureIds };

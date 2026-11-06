@@ -22,10 +22,9 @@ import { unparkCapture } from "@/domains/capture/parking";
 import { getAuthContext } from "@/lib/auth";
 import { capturesTag, tasksTag } from "@/lib/cache-tags";
 import { requireRole } from "@/lib/auth/guards";
+import type { Result } from "@/lib/result";
 
 /* Inbox actions (A02). Every write carries the version the caller rendered. */
-
-type Result = { ok: true } | { ok: false; error: string };
 
 const revalidate = (auth: Awaited<ReturnType<typeof authorize>>) => {
   updateTag(capturesTag(auth));
@@ -42,9 +41,9 @@ function fail(error: unknown): { ok: false; error: string } {
   return { ok: false, error: error instanceof Error ? error.message : "The inbox write failed." };
 }
 
-export async function captureTextAction(input: { text: string }): Promise<
-  { ok: true; id: string } | { ok: false; error: string; existingId?: string }
-> {
+export async function captureTextAction(input: {
+  text: string;
+}): Promise<{ ok: true; id: string } | { ok: false; error: string; existingId?: string }> {
   const auth = await authorize();
   let capture: { id: string };
   try {
@@ -78,7 +77,11 @@ const makeDraftInput = z.object({
 });
 
 /** Turn a capture into a starter draft (email / product spec / tech spec) - one transaction, same guards as note conversion. */
-export async function makeDraftAction(input: { captureId: string; expectedVersion: number; template: DraftTemplate }): Promise<Result> {
+export async function makeDraftAction(input: {
+  captureId: string;
+  expectedVersion: number;
+  template: DraftTemplate;
+}): Promise<Result> {
   const auth = await authorize();
   const parsed = makeDraftInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "That draft request was malformed. Reload and try again." };
@@ -204,7 +207,9 @@ export async function retryCaptureUrlAction(input: { captureId: string }): Promi
 
 /* --- Classification proposal decisions (ASH-314) --- */
 
-export async function acceptProposalAction(input: { proposalId: string }): Promise<
+export async function acceptProposalAction(input: {
+  proposalId: string;
+}): Promise<
   { ok: true; resultType: "task" | "note" | "discard"; resultId: string | null } | { ok: false; error: string }
 > {
   const auth = await authorize();

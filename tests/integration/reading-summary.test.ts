@@ -1,13 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import {
-  artifactLinks,
-  artifactVersions,
-  artifacts,
-  documentExtractions,
-  documents,
-  zettelProposals,
-} from "@/domains/knowledge/schema";
+import { artifactLinks, artifactVersions, artifacts, documentExtractions, documents } from "@/domains/knowledge/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
@@ -123,9 +116,6 @@ suite("reading summary accept", () => {
       .from(artifactLinks)
       .where(and(eq(artifactLinks.artifactId, increaseCard.id), eq(artifactLinks.linkType, "related")));
     expect(siblings.some((e) => e.targetId === renewalCard.id)).toBe(true);
-
-    const proposals = await db.select().from(zettelProposals).where(eq(zettelProposals.documentId, doc.id));
-    expect(proposals).toHaveLength(0);
 
     // Same key, same claims: the note folds and the cards' span dedupe holds.
     const second = await mod.acceptReadingSummary(auth, {

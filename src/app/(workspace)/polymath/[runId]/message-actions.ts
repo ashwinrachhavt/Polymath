@@ -6,6 +6,7 @@ import { IdempotencyConflictError } from "@/domains/audit/receipt";
 import { saveMessageAsIdea, saveMessageAsNote, messageIdeaTitle } from "@/domains/knowledge/save-message";
 import { getAuthContext, type AuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
+import { bindGuarded, type Result } from "@/lib/result";
 
 /*
  * Save a chat message as a note or an idea, from the message toolbar
@@ -36,8 +37,6 @@ const saveIdeaInput = z.object({
   idempotencyKey: z.string().uuid(),
 });
 
-type Result<T extends object> = ({ ok: true } & T) | { ok: false; error: string };
-
 async function authorize(): Promise<AuthContext> {
   const auth = await getAuthContext();
   requireRole(auth, "member");
@@ -49,19 +48,15 @@ async function authorize(): Promise<AuthContext> {
  * answer, a reused key on a different payload). Anything else is a bug and
  * stays an unhandled server error rather than a leaked message.
  */
-async function guarded<T extends object>(run: () => Promise<T>): Promise<Result<T>> {
-  try {
-    return { ok: true, ...(await run()) };
-  } catch (error) {
-    if (error instanceof IdempotencyConflictError) return { ok: false, error: error.message };
-    if (
-      error instanceof Error &&
-      (error.message === "There is no answer to save." || error.message.startsWith("There is already a note"))
-    )
-      return { ok: false, error: error.message };
-    throw error;
-  }
-}
+const guarded = bindGuarded({
+  domainErrors: [IdempotencyConflictError],
+  mapError: (error) => {
+    if (!(error instanceof Error)) return undefined;
+    if (error.message === "There is no answer to save." || error.message.startsWith("There is already a note"))
+      return error.message;
+    return undefined;
+  },
+});
 
 export async function saveMessageAsNoteAction(input: z.input<typeof saveNoteInput>): Promise<Result<{ id: string }>> {
   const parsed = saveNoteInput.safeParse(input);

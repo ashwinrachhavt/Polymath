@@ -105,19 +105,6 @@ describe("row-state rule", () => {
     }
   });
 
-  it("does not claim a trigger for tables whose trigger ignores that column", () => {
-    // The specific error this catches: runtime_signals' trigger freezes payload but
-    // not status, so claiming it guards the state machine would be false.
-    const runtimeSignals = GUARDED_WITHOUT_VERSION["agents.runtime_signals"];
-    const trigger = runtimeSignals.guards.find((g: Guard) => g.kind === "trigger-immutable");
-    expect(trigger).toBeDefined();
-    const body = triggerBody("src/db/migrations/0150_runtime_persistence.sql", "runtime_signals")!;
-    expect(
-      body.includes('"status"'),
-      "runtime_signals trigger unexpectedly guards status — revisit its app-cas declaration",
-    ).toBe(false);
-  });
-
   /*
    * A lease protects the writer, not the row. Nothing in the database stops a
    * second caller that never takes it, so it only counts as a guard while it is

@@ -17,10 +17,10 @@ type RowState = "versioned" | "append-only" | "mutable-unversioned";
 
 /*
  * A guard is one mechanism, not a table's whole story. Tables routinely have
- * several at once: runtime_signals increments `attempts` in-statement, guards the
- * `status` transition in the WHERE clause, and has a trigger freezing its payload.
- * Collapsing that to a single label overstates whichever mechanism got named and
- * lets someone delete the others believing the trigger covers them.
+ * several at once: a table may increment a counter in-statement, guard the
+ * `status` transition in the WHERE clause, and carry a trigger freezing its
+ * payload. Collapsing that to a single label overstates whichever mechanism got
+ * named and lets someone delete the others believing the trigger covers them.
  */
 type GuardKind = "atomic-counter" | "app-cas" | "trigger-immutable" | "lease" | "sole-writer";
 
@@ -63,8 +63,8 @@ export type Guard = {
  * A declaration without cited evidence is the mistake this module exists to
  * prevent: an earlier version recorded these from table *shape* alone, and two of
  * four were wrong. A similar error followed: reading "a trigger exists" as "the
- * trigger guards the state machine", when for runtime_signals it guards only
- * identity and payload. Quote the mechanism, name the columns it touches.
+ * trigger guards the state machine", when the trigger guarded only identity and
+ * payload. Quote the mechanism, name the columns it touches.
  */
 export type TableDeclaration = { guards: Guard[] };
 
@@ -86,48 +86,6 @@ export const GUARDED_WITHOUT_VERSION: Record<string, TableDeclaration> = {
         detail:
           "increment happens in the statement: SET reserved = reserved + EXCLUDED.reserved, with a guard clause in WHERE",
         evidence: "src/integrations/providers/quota.ts:91-113",
-      },
-    ],
-  },
-  "agents.runtime_signals": {
-    guards: [
-      {
-        kind: "atomic-counter",
-        detail: "attempts incremented in the same statement that advances status, so an attempt is never lost on crash",
-        evidence: "src/domains/agents/runtime-persistence.ts:301",
-        columns: ["attempts"],
-      },
-      {
-        kind: "app-cas",
-        detail:
-          "status transitions are compare-and-set in the WHERE clause: status in ('pending','failed','unknown'). The trigger does NOT constrain status, so this is the only thing preventing two senders.",
-        evidence: "src/domains/agents/runtime-persistence.ts:301",
-        columns: ["status"],
-      },
-      {
-        kind: "trigger-immutable",
-        detail:
-          "BEFORE UPDATE trigger freezes execution_id, signal_key, payload_revision and payload_hash; it does not touch status",
-        evidence: "src/db/migrations/0150_runtime_persistence.sql:145-160",
-        columns: ["execution_id", "signal_key", "payload_revision", "payload_hash"],
-      },
-    ],
-  },
-  "agents.tool_invocations": {
-    guards: [
-      {
-        kind: "trigger-immutable",
-        detail:
-          "BEFORE UPDATE trigger freezes request identity (run_id, invocation_id, tool_name, arguments_hash, effect_class) and refuses to reopen a terminal state, so the state machine is enforced by the database rather than by the writer",
-        evidence: "src/db/migrations/0150_runtime_persistence.sql:189-202",
-        columns: ["run_id", "invocation_id", "tool_name", "arguments_hash", "effect_class", "state"],
-      },
-      {
-        kind: "app-cas",
-        detail:
-          "belt and braces on the same transition: requested -> in_flight, then settle only where state not in ('succeeded','failed')",
-        evidence: "src/domains/agents/runtime-persistence.ts:374,383",
-        columns: ["state"],
       },
     ],
   },

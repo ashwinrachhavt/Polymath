@@ -107,7 +107,10 @@ export async function createInvitation(
   });
 }
 
-export async function revokeInvitation(auth: AuthContext, invitationId: string): Promise<{ revoked: boolean }> {
+export async function revokeInvitation(
+  auth: AuthContext,
+  invitationId: string,
+): Promise<{ revoked: boolean; email?: string }> {
   requireRole(auth, "admin"); // Spec D4: same rank as createInvitation.
   return withTransaction(async (tx) => {
     const rows = await tx
@@ -121,7 +124,7 @@ export async function revokeInvitation(auth: AuthContext, invitationId: string):
           isNull(invitations.revokedAt),
         ),
       )
-      .returning({ id: invitations.id });
+      .returning({ id: invitations.id, email: invitations.email });
     if (rows.length === 0) return { revoked: false };
     await recordAudit(
       auth,
@@ -133,7 +136,7 @@ export async function revokeInvitation(auth: AuthContext, invitationId: string):
       },
       tx,
     );
-    return { revoked: true };
+    return { revoked: true, email: rows[0].email };
   });
 }
 
@@ -235,7 +238,7 @@ export async function changeMembership(
     status?: "active" | "suspended" | "removed";
     role?: "owner" | "admin" | "member" | "viewer";
   },
-): Promise<{ membershipId: string; status: string; role: string }> {
+): Promise<{ membershipId: string; userId: string; status: string; role: string }> {
   if (!input.status && !input.role) {
     throw new MembershipLifecycleError("invitation_input", "Nothing to change.");
   }
@@ -293,7 +296,7 @@ export async function changeMembership(
       },
       tx,
     );
-    return { membershipId: target.id, status: nextStatus, role: nextRole };
+    return { membershipId: target.id, userId: target.userId, status: nextStatus, role: nextRole };
   });
 }
 

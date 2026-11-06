@@ -162,6 +162,14 @@ export function ChatSurface({
   // retried or removed.
   const [chips, setChips] = useState<ContextChip[]>([]);
   const [records, setRecords] = useState<RecordReference[] | null | undefined>(undefined);
+  // Diagram refine: a card asks for the composer prefilled and focused.
+  // The focus waits a frame so the state-driven draft lands in the textarea
+  // before the caret does.
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+  function refineDiagram(prefill: string) {
+    setDraft(prefill);
+    requestAnimationFrame(() => composerRef.current?.focus());
+  }
   // One picker serves both gestures: the plus button toggles menuOpen, and a
   // typed "@" forces it open with the token as the seeded query. One fetch
   // effect (below) runs for whichever gesture is live.
@@ -455,6 +463,7 @@ export function ChatSurface({
           retryable={chat.retryable}
           onRetry={chat.retry}
           onRunFailedRetry={onRunFailedRetry}
+          onRefineDiagram={refineDiagram}
         />
       </div>
 
@@ -510,6 +519,7 @@ export function ChatSurface({
             />
           </div>
           <Textarea
+            ref={composerRef}
             aria-label={composerLabel}
             className="composer-input max-h-48 min-h-[76px] resize-none rounded-none border-0 bg-transparent px-3.5 pt-3 pb-11 text-body leading-6 shadow-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent"
             placeholder={placeholder}

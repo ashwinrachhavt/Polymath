@@ -230,7 +230,6 @@ const TIER_1: Tier1Spec[] = [
     verbPhrase: "rejected a capture proposal",
     operation: "step",
   },
-  { action: "capture.zettels_requested", category: "knowledge", verbPhrase: "requested ideas from a capture" },
   {
     action: "capture.zettels_created",
     category: "knowledge",
@@ -239,19 +238,13 @@ const TIER_1: Tier1Spec[] = [
   },
   { action: "capture.transcribed", category: "knowledge", verbPhrase: "transcribed a voice capture" },
   // Ideas (direct creation: the triggering click is the permission, so the
-  // pass writes the card and the audit row together. Accepting is now just
-  // card creation, so zettel.accepted is gone; zettel.rejected survives only
-  // as the legacy review flow's reject record until that flow is removed).
+  // pass writes the card and the audit row together. Accept and reject were
+  // review decisions; both actions are gone with the proposal layer they
+  // decided).
   {
     action: "zettel.created",
     category: "knowledge",
     verbPhrase: "added an idea to the library",
-    operation: "step",
-  },
-  {
-    action: "zettel.rejected",
-    category: "knowledge",
-    verbPhrase: "rejected a proposed idea",
     operation: "step",
   },
   {

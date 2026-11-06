@@ -10,8 +10,8 @@ import type {
   SignalOutcome,
   StartOutcome,
   StartReconciliation,
-} from "./contracts";
-import { runIdentity } from "./contracts";
+} from "@/domains/agents/runtime/contracts";
+import { runIdentity } from "@/domains/agents/runtime/contracts";
 
 /*
  * The programmable fake runtime (RT02): an in-memory AgentRuntime that honest-

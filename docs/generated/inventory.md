@@ -27,36 +27,35 @@ dependent, so `inventory:check` behaves the same on a laptop and in CI.
 | `vitest` | ^5.0.5 |
 | `@playwright/test` | ^1.64.1 |
 
-Migrations: 111 files, highest `0284_audit_operation_id`.
+Migrations: 114 files, highest `0287_drop_zettel_proposals`.
 
 ## Tests
 
-557 `.test.ts` and 50 `.spec.ts` files (unit: 324, integration: 230, e2e: 50).
+563 `.test.ts` and 51 `.spec.ts` files (unit: 330, integration: 230, e2e: 51).
 ## Domains
 
-25 folders; 19 own tables.
+24 folders; 18 own tables.
 
 | Domain | Tables |
 | --- | ---: |
 | `actions` | 7 |
-| `agents` | 27 |
-| `applications` | 3 |
-| `audit` | 7 |
-| `calendar` | 6 |
+| `agents` | 20 |
+| `audit` | 6 |
+| `calendar` | 5 |
 | `capture` | 2 |
 | `crm` | 6 |
 | `daybook` | 1 |
 | `focus` | 2 |
-| `gamification` | 4 |
-| `identity` | 18 |
+| `gamification` | 3 |
+| `identity` | 16 |
 | `integrations` | 7 |
-| `knowledge` | 46 |
+| `knowledge` | 44 |
 | `learning` | 3 |
-| `opportunities` | 5 |
+| `opportunities` | 4 |
 | `skills` | 1 |
 | `spending` | 4 |
 | `superagent` | 12 |
-| `work` | 10 |
+| `work` | 7 |
 
 No tables: `conversations`, `diagrams`, `home`, `import`, `notifications`, `supervisor`.
 
@@ -72,39 +71,28 @@ No tables: `conversations`, `diagrams`, `home`, `import`, `notifications`, `supe
 | `actions` | `action_attempts` | append-only |
 | `actions` | `provider_observations` | append-only |
 | `agents` | `agent_profile_revisions` | append-only |
-| `agents` | `runtime_executions` | versioned |
-| `agents` | `runtime_signals` | atomic-counter + app-cas + trigger-immutable |
-| `agents` | `tool_invocations` | trigger-immutable + app-cas |
 | `agents` | `agent_profiles` | versioned |
 | `agents` | `agent_principals` | versioned |
 | `agents` | `agent_delegation_grants` | versioned (+ trigger-immutable) |
 | `agents` | `agent_authorization_decisions` | append-only |
 | `agents` | `threads` | versioned |
 | `agents` | `messages` | append-only |
-| `agents` | `thread_checkpoints` | append-only |
 | `agents` | `message_comments` | versioned |
 | `agents` | `agent_runs` | versioned (+ trigger-immutable) |
-| `agents` | `agent_steps` | append-only |
 | `agents` | `tool_calls` | append-only |
 | `agents` | `agent_questions` | versioned |
 | `agents` | `run_events` | append-only |
 | `agents` | `run_reviews` | versioned |
-| `agents` | `run_artifacts` | append-only |
 | `agents` | `context_manifests` | append-only |
 | `agents` | `context_manifest_items` | append-only |
 | `agents` | `repo_checkpoints` | append-only |
 | `agents` | `imported_agent_sessions` | versioned |
 | `agents` | `memory_items` | versioned |
 | `agents` | `memory_revisions` | append-only |
-| `agents` | `memory_reviews` | append-only |
 | `agents` | `onboarding_sessions` | versioned |
-| `applications` | `application_snapshots` | append-only |
-| `applications` | `application_preparations` | versioned |
-| `applications` | `application_materials` | versioned |
 | `audit` | `request_receipts` | append-only |
 | `audit` | `audit_events` | append-only |
 | `audit` | `outbox_events` | append-only |
-| `audit` | `webhook_inbox` | append-only |
 | `audit` | `blob_objects` | versioned |
 | `audit` | `jobs` | versioned |
 | `audit` | `job_attempts` | append-only |
@@ -113,7 +101,6 @@ No tables: `conversations`, `diagrams`, `home`, `import`, `notifications`, `supe
 | `calendar` | `event_attendees` | append-only |
 | `calendar` | `event_links` | append-only |
 | `calendar` | `scheduler_preferences` | versioned |
-| `calendar` | `schedule_proposals` | versioned |
 | `capture` | `captures` | versioned |
 | `capture` | `capture_proposals` | versioned |
 | `crm` | `companies` | versioned |
@@ -128,7 +115,6 @@ No tables: `conversations`, `diagrams`, `home`, `import`, `notifications`, `supe
 | `gamification` | `reward_definitions` | versioned |
 | `gamification` | `reward_ledger` | append-only |
 | `gamification` | `user_progress` | versioned |
-| `gamification` | `daily_snapshots` | append-only |
 | `identity` | `memberships` | versioned |
 | `identity` | `role_definitions` | versioned |
 | `identity` | `role_definition_revisions` | append-only |
@@ -140,9 +126,7 @@ No tables: `conversations`, `diagrams`, `home`, `import`, `notifications`, `supe
 | `identity` | `people` | versioned |
 | `identity` | `organizations` | versioned |
 | `identity` | `party_employment` | versioned |
-| `identity` | `party_relationships` | versioned |
 | `identity` | `contact_points` | versioned |
-| `identity` | `external_identities` | append-only |
 | `identity` | `account_person_links` | append-only |
 | `identity` | `invitations` | versioned |
 | `identity` | `users` | versioned |
@@ -177,7 +161,6 @@ No tables: `conversations`, `diagrams`, `home`, `import`, `notifications`, `supe
 | `knowledge` | `embeddings` | append-only |
 | `knowledge` | `notebooks` | versioned |
 | `knowledge` | `notebook_sources` | append-only |
-| `knowledge` | `notebook_questions` | versioned |
 | `knowledge` | `notebook_automations` | versioned |
 | `knowledge` | `notebook_memories` | versioned |
 | `knowledge` | `notebook_accounts` | app-cas |
@@ -188,7 +171,6 @@ No tables: `conversations`, `diagrams`, `home`, `import`, `notifications`, `supe
 | `knowledge` | `field_proposals` | versioned |
 | `knowledge` | `reviewed_assertions` | versioned |
 | `knowledge` | `document_obligations` | versioned |
-| `knowledge` | `zettel_proposals` | versioned |
 | `knowledge` | `document_enrichment` | lease |
 | `knowledge` | `wiki_pages` | versioned |
 | `knowledge` | `document_reading_events` | append-only |
@@ -205,7 +187,6 @@ No tables: `conversations`, `diagrams`, `home`, `import`, `notifications`, `supe
 | `learning` | `quiz_attempts` | append-only |
 | `opportunities` | `opportunities` | versioned |
 | `opportunities` | `opportunity_stage_history` | append-only |
-| `opportunities` | `opportunity_extensions` | versioned |
 | `opportunities` | `opportunity_links` | append-only |
 | `opportunities` | `opportunity_deadlines` | versioned |
 | `skills` | `skills` | versioned |
@@ -227,16 +208,13 @@ No tables: `conversations`, `diagrams`, `home`, `import`, `notifications`, `supe
 | `superagent` | `superagent_state` | sole-writer |
 | `work` | `spaces` | versioned |
 | `work` | `projects` | versioned |
-| `work` | `recurrence_templates` | versioned |
 | `work` | `tasks` | versioned |
 | `work` | `task_dependencies` | versioned |
 | `work` | `task_links` | append-only |
 | `work` | `boards` | versioned |
-| `work` | `board_columns` | versioned |
-| `work` | `saved_views` | versioned |
 | `work` | `briefing_seeds` | versioned |
 
-Totals: 100 versioned, 63 append-only, 8 versionless but guarded (each declared with its guard and its file in `scripts/lib/row-state.ts`).
+Totals: 89 versioned, 55 append-only, 6 versionless but guarded (each declared with its guard and its file in `scripts/lib/row-state.ts`).
 
 ## Route handlers
 
@@ -256,16 +234,13 @@ Totals: 100 versioned, 63 append-only, 8 versionless but guarded (each declared 
 - `/api/v1/dossiers/[[...path]]`
 - `/api/v1/drafts`
 - `/api/v1/drafts/[artifactId]/[decision]`
-- `/api/v1/exports/manifests/[manifestId]/packet`
 - `/api/v1/exports/packets/[packetId]`
 - `/api/v1/files`
 - `/api/v1/focus/blocklist`
-- `/api/v1/focus/blocklist/[blockId]`
 - `/api/v1/focus/live`
 - `/api/v1/projects`
 - `/api/v1/projects/[projectId]/generate`
 - `/api/v1/records/search`
-- `/api/v1/research/company`
 - `/api/v1/runs`
 - `/api/v1/runs/[runId]`
 - `/api/v1/runs/[runId]/cancel`

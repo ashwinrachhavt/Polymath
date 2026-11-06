@@ -21,6 +21,8 @@
  *    components.
  */
 
+import { DIAGRAM_TYPES, type DiagramType } from "@/domains/diagrams/types";
+
 /** One normalized frame the proxy writes to the browser. */
 export type ChatFrame =
   /** The reply so far, in full. Sent once at the head of a stream and after reconnect. */
@@ -577,6 +579,61 @@ export function decodeFrame(line: string): ChatFrame | null {
     if (typeof parsed.state !== "string" || typeof parsed.lastTurnFailed !== "boolean") return null;
   }
   return parsed as unknown as ChatFrame;
+}
+
+/*
+ * The `diagram` tool's settled frame payload (spec art_Yi8Fwsqn §3): the
+ * DiagramToolPayload the eve tool returns — ids, the version, the diagram
+ * type, and the guarded Mermaid source unless it was dropped to fit
+ * MAX_TOOL_PAYLOAD (`mermaidOmitted`). `renderMode` is deliberately absent on
+ * the wire: the client sets it after the conversion attempt.
+ */
+export type DecodedDiagramToolOutput = {
+  canvasId: string;
+  artifactId: string;
+  version: number;
+  diagramType: DiagramType;
+  /** The guarded Mermaid source; null when the payload omitted it (over the frame cap). */
+  mermaid: string | null;
+};
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Decode a `diagram` tool frame's result payload, or null.
+ *
+ * A card must never render a guess, so the whole shape is validated: only a
+ * success envelope (`ok: true`) with uuid ids, a positive integer version, a
+ * known diagram type, and an optional non-empty mermaid source decodes. An
+ * error envelope ({ok:false, error}), the capPayload truncated marker, and
+ * anything the protocol skew of a future version changes all return null —
+ * the card then renders its honest failure state, not a half-filled diagram.
+ */
+export function decodeDiagramToolOutput(output: unknown): DecodedDiagramToolOutput | null {
+  if (typeof output !== "object" || output === null) return null;
+  const candidate = output as Record<string, unknown>;
+  if (candidate.ok !== true) return null;
+  if (typeof candidate.canvasId !== "string" || !UUID_PATTERN.test(candidate.canvasId)) return null;
+  if (typeof candidate.artifactId !== "string" || !UUID_PATTERN.test(candidate.artifactId)) return null;
+  if (typeof candidate.version !== "number" || !Number.isInteger(candidate.version) || candidate.version < 1) {
+    return null;
+  }
+  if (
+    typeof candidate.diagramType !== "string" ||
+    !(DIAGRAM_TYPES as readonly string[]).includes(candidate.diagramType)
+  ) {
+    return null;
+  }
+  if (candidate.mermaid !== undefined && (typeof candidate.mermaid !== "string" || candidate.mermaid.length === 0)) {
+    return null;
+  }
+  return {
+    canvasId: candidate.canvasId,
+    artifactId: candidate.artifactId,
+    version: candidate.version,
+    diagramType: candidate.diagramType as DiagramType,
+    mermaid: typeof candidate.mermaid === "string" ? candidate.mermaid : null,
+  };
 }
 
 /** Split a buffer into complete lines plus the unterminated remainder. */

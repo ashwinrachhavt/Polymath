@@ -36,6 +36,7 @@ const TOOL_DESCRIPTIONS: Array<[RegExp, string]> = [
   [/web_search/i, "Searches the public web."],
   [/web_fetch/i, "Fetches and reads one web page."],
   [/drive|files_list|list_files/i, "Lists files in the owner's connected drive."],
+  [/^diagram$/i, "Generates or refines a Mermaid diagram as a versioned artifact."],
 ];
 
 export const toolDescription = (raw: string) => TOOL_DESCRIPTIONS.find(([re]) => re.test(raw))?.[1] ?? null;

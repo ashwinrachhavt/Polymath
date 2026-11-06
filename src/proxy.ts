@@ -11,7 +11,8 @@ import { isKnownRoute } from "@/lib/proxy-routing";
  * at the edge via auth.protect(). Workspace layouts still default-deny as a
  * second line of defense.
  *
- * Webhooks use HMAC (webhook_inbox), not Clerk sessions — they must stay public.
+ * Webhook endpoints stay public by design: provider callbacks authenticate by
+ * their own provider credentials, not Clerk sessions.
  *
  * createRouteMatcher is deprecated (path matching in middleware is drifting
  * away from how Next routes requests); these are plain pattern checks so the

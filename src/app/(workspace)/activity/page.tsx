@@ -1,30 +1,23 @@
 import { io } from "next/cache";
-import Link from "next/link";
 import { Suspense } from "react";
 import { EmptyState } from "@/components/empty-state";
 import { ListToolbar } from "@/components/list/list-toolbar";
 import { NoResults } from "@/components/list/no-results";
 import { PageHeader } from "@/components/page-header";
 import {
+  decodeActivityCursor,
   getActivityEvent,
   listActivityActors,
   listActivityEvents,
-  type ActivityEventRow,
 } from "@/domains/audit/queries";
-import { presentActivityEvents, type ActivityItem, type Destination } from "@/domains/audit/present";
-import { getPreferences } from "@/domains/identity/preferences";
+import { presentActivityEvents, type ActivityItem } from "@/domains/audit/present";
+import { cachedPreferences } from "@/lib/cached-shell-reads";
 import { getAuthContext } from "@/lib/auth";
-import { listHref, parseListParams, parsePageNumber } from "@/lib/list-params";
-import { timeAgoShort } from "@/lib/time";
+import { listHref, parseListParams } from "@/lib/list-params";
 import { DeepLinkFocus } from "./deep-link-focus";
-import {
-  ACTIVITY_CATEGORY_OPTIONS,
-  ACTIVITY_MAX_PAGES,
-  ACTIVITY_PAGE_SIZE,
-  buildEventFilters,
-  foldedStepTargets,
-  groupActivityByDay,
-} from "./present-view";
+import { ActivityEntry, ActivityFeed } from "./feed";
+import { groupActivityByDay } from "./day-groups";
+import { ACTIVITY_CATEGORY_OPTIONS, ACTIVITY_PAGE_SIZE, buildEventFilters, foldedStepTargets } from "./present-view";
 import { TechnicalToggle } from "./technical-toggle";
 
 export const metadata = { title: "Activity · Polymath" };
@@ -47,11 +40,23 @@ function first(value: string | string[] | undefined): string | undefined {
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** A `?cursor=` the read model will accept; anything else degrades to page 1. */
+function isAcceptableCursor(cursor: string): boolean {
+  try {
+    decodeActivityCursor(cursor);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /*
- * "Load more" stacks keyset pages: the server walks the cursor chain once
- * per page and renders the accumulated rows, so the button is a plain link
- * (no client fetching, deterministic in tests) while pagination itself stays
- * keyset. Five pages is the cap; beyond it the feed says so honestly.
+ * "Load more" is incremental (spec W3): the server renders page one — the
+ * single keyset query the view needs for first paint — and the feed island
+ * appends further pages through the loadActivityPage action, one cursor page
+ * per click. A `?cursor=` deep link renders the page at that keyset position
+ * (self-contained); a legacy `?pages=N` degrades to page 1. Five pages is
+ * still the cap; beyond it the feed says so honestly.
  */
 const CATEGORY_VALUES = ACTIVITY_CATEGORY_OPTIONS.map((option) => option.value);
 
@@ -72,7 +77,10 @@ async function ActivitySurface({ searchParams }: { searchParams: SearchParams })
     );
   }
   const auth = await getAuthContext();
-  const { timezone } = await getPreferences(auth);
+  // The actor filter's options are independent of every other read here, so
+  // they start immediately instead of running last (spec W3).
+  const actorsPromise = listActivityActors(auth);
+  const { timezone } = await cachedPreferences(auth);
   const list = parseListParams(query, { filters: { category: CATEGORY_VALUES } });
 
   const q = list.q;
@@ -80,21 +88,20 @@ async function ActivitySurface({ searchParams }: { searchParams: SearchParams })
   const actorParam = first(query.actor);
   const actorId = actorParam && UUID_PATTERN.test(actorParam) ? actorParam : undefined;
   const includeTechnical = first(query.technical) === "1";
-  const pages = Math.min(Math.max(parsePageNumber(query.pages), 1), ACTIVITY_MAX_PAGES);
   const eventParam = first(query.event);
   const requestedEventId = eventParam && UUID_PATTERN.test(eventParam) ? eventParam : undefined;
 
+  // `?cursor=` is a self-contained keyset position; a malformed cursor or the
+  // legacy `?pages=N` both degrade to page 1.
+  const cursorParam = first(query.cursor);
+  const startCursor = cursorParam && isAcceptableCursor(cursorParam) ? cursorParam : null;
+
   const filters = buildEventFilters({ category, q: q || undefined, actorId }, includeTechnical);
-  const rows: ActivityEventRow[] = [];
-  let cursor: string | null = null;
-  let hasMore = false;
-  for (let page = 0; page < pages; page += 1) {
-    const result = await listActivityEvents(auth, { limit: ACTIVITY_PAGE_SIZE, cursor, filters });
-    rows.push(...result.rows);
-    hasMore = result.nextCursor !== null;
-    cursor = result.nextCursor;
-    if (!cursor) break;
-  }
+  const { rows, nextCursor } = await listActivityEvents(auth, {
+    limit: ACTIVITY_PAGE_SIZE,
+    cursor: startCursor,
+    filters,
+  });
 
   const items = await presentActivityEvents(auth, rows);
   const groups = groupActivityByDay(items, timezone, new Date());
@@ -135,11 +142,10 @@ async function ActivitySurface({ searchParams }: { searchParams: SearchParams })
     actor: undefined,
     technical: undefined,
     pages: undefined,
+    cursor: undefined,
   });
-  const loadMoreHref =
-    hasMore && pages < ACTIVITY_MAX_PAGES ? listHref("/activity", query, { pages: pages + 1, event: undefined }) : null;
 
-  const actorOptions = await listActivityActors(auth);
+  const actorOptions = await actorsPromise;
 
   return (
     <>
@@ -148,7 +154,7 @@ async function ActivitySurface({ searchParams }: { searchParams: SearchParams })
         <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
           <ListToolbar
             searchPlaceholder="Search activity"
-            pageKeys={["page", "cpage", "rpage", "pages"]}
+            pageKeys={["page", "cpage", "rpage", "pages", "cursor"]}
             filters={[
               {
                 key: "category",
@@ -201,130 +207,19 @@ async function ActivitySurface({ searchParams }: { searchParams: SearchParams })
             </div>
           )
         ) : (
-          <div className="mt-2">
-            {groups.map((group, groupIndex) => (
-              <section key={group.key}>
-                <h2
-                  className={`readout text-muted-foreground pb-1 text-xs font-medium ${groupIndex > 0 ? "pt-5" : "pt-2"}`}
-                >
-                  {group.label}
-                </h2>
-                <ul className="space-y-0.5">
-                  {group.items.map((item) => (
-                    <ActivityEntry
-                      key={item.id}
-                      item={item}
-                      timeZone={timezone}
-                      highlighted={item.id === highlightId}
-                      stepsOpen={item.id === openedStepsOutcomeId}
-                    />
-                  ))}
-                </ul>
-              </section>
-            ))}
-          </div>
+          <ActivityFeed
+            key={`${q}|${category ?? ""}|${actorId ?? ""}|${includeTechnical ? "1" : "0"}|${startCursor ?? ""}`}
+            initialGroups={groups}
+            initialNextCursor={nextCursor}
+            filters={{ category, q: q || undefined, actorId, technical: includeTechnical }}
+            timezone={timezone}
+            highlightId={highlightId}
+            openedStepsOutcomeId={openedStepsOutcomeId}
+          />
         )}
-
-        {loadMoreHref ? (
-          <div className="pt-4">
-            <Link
-              href={loadMoreHref}
-              scroll={false}
-              className="border-border hover:bg-muted inline-flex h-8 items-center justify-center rounded-md border px-3 text-body-dense outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              Load more
-            </Link>
-          </div>
-        ) : hasMore ? (
-          <p className="readout text-muted-foreground pt-4 text-xs">
-            Showing the most recent {ACTIVITY_PAGE_SIZE * ACTIVITY_MAX_PAGES} events.
-          </p>
-        ) : null}
       </div>
       {highlightId ? <DeepLinkFocus targetId={highlightId} /> : null}
     </>
-  );
-}
-
-function DestinationChip({ destination }: { destination: Destination }) {
-  if ("state" in destination) {
-    // A checked miss is provably gone: honest text, never a dead href.
-    return (
-      <span className="text-muted-foreground inline-flex h-6 items-center rounded-full border border-dashed px-2.5 text-xs">
-        No longer available
-      </span>
-    );
-  }
-  return (
-    <Link
-      href={destination.href}
-      className="border-border hover:bg-muted inline-flex h-6 items-center rounded-full border px-2.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      {destination.label}
-    </Link>
-  );
-}
-
-function ActivityEntry({
-  item,
-  timeZone,
-  highlighted = false,
-  stepsOpen = false,
-}: {
-  item: ActivityItem;
-  timeZone: string;
-  highlighted?: boolean;
-  stepsOpen?: boolean;
-}) {
-  const destinations = [item.primary, ...item.related].filter(
-    (destination): destination is Destination => destination !== null,
-  );
-  return (
-    <li id={`event-${item.id}`} data-deep-linked={highlighted ? "true" : undefined} className="rounded-lg px-3 py-2.5">
-      <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
-        <p className="min-w-0 text-body-dense font-medium">{item.sentence}</p>
-        <time
-          className="readout text-muted-foreground shrink-0 text-xs"
-          dateTime={item.occurredAt.toISOString()}
-          title={item.occurredAt.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short", timeZone })}
-        >
-          {timeAgoShort(item.occurredAt)}
-        </time>
-      </div>
-      {item.title ? (
-        <details className="activity-title-toggle mt-0.5">
-          <summary className="text-muted-foreground cursor-pointer list-none text-body-dense [&::-webkit-details-marker]:hidden">
-            <span className="title-preview line-clamp-2">{item.title}</span>
-            <span className="title-collapse hidden">Show less</span>
-          </summary>
-          <span className="text-muted-foreground block text-body-dense">{item.title}</span>
-        </details>
-      ) : null}
-      {destinations.length > 0 ? (
-        <div className="mt-1.5 flex flex-wrap gap-1.5">
-          {destinations.map((destination, i) => (
-            <DestinationChip key={i} destination={destination} />
-          ))}
-        </div>
-      ) : null}
-      {item.steps.length > 0 ? (
-        <details open={stepsOpen} className="mt-1.5">
-          <summary className="text-muted-foreground cursor-pointer text-xs">
-            Show {item.steps.length} recorded {item.steps.length === 1 ? "step" : "steps"}
-          </summary>
-          <ul className="border-border mt-1.5 space-y-1 border-l pl-3">
-            {item.steps.map((step, i) => (
-              <li key={i} className="text-muted-foreground text-xs">
-                {step}
-              </li>
-            ))}
-          </ul>
-        </details>
-      ) : null}
-      <p className="readout text-muted-foreground/70 mt-1 text-data">
-        {item.technical.action} · {item.technical.subjectType}
-      </p>
-    </li>
   );
 }
 

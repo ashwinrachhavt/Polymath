@@ -210,7 +210,7 @@ function AgentSessionsPanel({ roots }: { roots?: AgentRootStatus[] }) {
                 <span className="ml-2 font-sans text-xs text-muted-foreground">present</span>
               ) : (
                 <span className="ml-2 font-sans text-xs text-destructive">
-                  not found — that agent may not be installed
+                  not found (that agent may not be installed)
                 </span>
               )}
             </dd>

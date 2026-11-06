@@ -34,8 +34,8 @@ vi.mock("@/integrations/object-store/object-store", () => ({
 
 import { extractDocument } from "@/domains/knowledge/extraction";
 import { createNote, setNoteTags } from "@/domains/knowledge/notes";
-import { acceptZettel, pageZettelCards, proposeZettels, rejectZettel } from "@/domains/knowledge/zettels";
-import { dismissSemanticLink } from "@/domains/knowledge/relations";
+import { createZettelsFromSource, pageZettelCards } from "@/domains/knowledge/zettels";
+import { relatedNotes } from "@/domains/knowledge/relations";
 import { artifactLinks } from "@/domains/knowledge/schema";
 import { db } from "@/lib/db";
 import type { ZettelExtractor } from "@/integrations/zettels/extractor";
@@ -104,26 +104,19 @@ async function seedDoc(auth: { workspaceId: string; userId: string; role: "owner
 }
 
 suite("zettel card views (real Postgres)", () => {
-  it("lists accepted cards with their source document, excerpt and tags", async () => {
+  it("lists created cards with their source document, excerpt and tags", async () => {
     const auth = await workspace();
     const doc = await seedDoc(auth);
-    const {
-      proposals: [p1, p2],
-    } = await proposeZettels(auth, {
+    const { created } = await createZettelsFromSource(auth, {
       documentId: doc.id,
-      extractor: extractor([
-        { title: "Monthly rent", content: "Rent is $1,200 a month.", quote: Q1 },
-        { title: "Deposit", content: "The landlord holds the deposit.", quote: Q2 },
-      ]),
+      extractor: extractor([{ title: "Monthly rent", content: "Rent is $1,200 a month.", quote: Q1 }]),
     });
-    const accepted = await acceptZettel(auth, { proposalId: p1.id });
-    await rejectZettel(auth, { proposalId: p2.id });
     await createNote(auth, { title: "Monthly rent note", idempotencyKey: crypto.randomUUID() });
 
     const page = await pageZettelCards(auth, { limit: 10, offset: 0 });
-    expect(page.total).toBe(1); // the rejected proposal and the plain note stay out
+    expect(page.total).toBe(1); // the plain note stays out
     const card = page.items[0];
-    expect(card.id).toBe(accepted.artifactId);
+    expect(card.id).toBe(created[0]!.artifactId);
     expect(card.title).toBe("Monthly rent");
     expect(card.excerpt).toContain("Rent is $1,200 a month.");
     expect(card.sourceDocumentId).toBe(doc.id);
@@ -134,19 +127,15 @@ suite("zettel card views (real Postgres)", () => {
   it("filters by query and by tag", async () => {
     const auth = await workspace();
     const doc = await seedDoc(auth);
-    const {
-      proposals: [p1, p2],
-    } = await proposeZettels(auth, {
+    const { created } = await createZettelsFromSource(auth, {
       documentId: doc.id,
       extractor: extractor([
         { title: "Monthly rent", content: "Rent is $1,200 a month.", quote: Q1 },
         { title: "Deposit", content: "The landlord holds the deposit.", quote: Q2 },
       ]),
     });
-    const a = await acceptZettel(auth, { proposalId: p1.id });
-    await acceptZettel(auth, { proposalId: p2.id });
     await setNoteTags(auth, {
-      artifactId: a.artifactId,
+      artifactId: created[0]!.artifactId,
       expectedVersion: 1,
       tags: ["Lease"],
       idempotencyKey: crypto.randomUUID(),
@@ -163,32 +152,29 @@ suite("zettel card views (real Postgres)", () => {
     expect(all.total).toBe(2);
   });
 
-  it("carries pending suggested links in the metadata projection, excluding dismissed", async () => {
+  it("semantic neighbours read through the merged-links path, not the card metadata projection", async () => {
     const auth = await workspace();
     const doc = await seedDoc(auth);
-    const {
-      proposals: [proposal],
-    } = await proposeZettels(auth, {
+    const { created } = await createZettelsFromSource(auth, {
       documentId: doc.id,
       extractor: extractor([{ title: "Linked card", content: "Cards relate.", quote: Q1 }]),
     });
-    const accepted = await acceptZettel(auth, { proposalId: proposal.id });
+    const cardId = created[0]!.artifactId;
     const other = await createNote(auth, { title: "Other card", idempotencyKey: crypto.randomUUID(), kind: "zettel" });
     await db.insert(artifactLinks).values([
       {
         workspaceId: auth.workspaceId,
-        artifactId: accepted.artifactId,
+        artifactId: cardId,
         targetType: "note",
         targetId: other.id,
         linkType: "semantic",
         label: "Other card",
       },
     ]);
+    // The card item carries no link projection; links render from the
+    // relations read (explicit + semantic merged) when the card opens.
     const page = await pageZettelCards(auth, { limit: 10, offset: 0 });
-    const card = page.items.find((c) => c.id === accepted.artifactId);
-    expect(card?.suggestedLinks).toEqual([{ targetId: other.id, targetTitle: "Other card" }]);
-    await dismissSemanticLink(auth, { artifactId: accepted.artifactId, targetId: other.id });
-    const after = await pageZettelCards(auth, { limit: 10, offset: 0 });
-    expect(after.items.find((c) => c.id === accepted.artifactId)?.suggestedLinks).toEqual([]);
+    expect(page.items.find((c) => c.id === cardId)).toBeDefined();
+    expect((await relatedNotes(auth, cardId)).map((r) => r.id)).toEqual([other.id]);
   });
 });

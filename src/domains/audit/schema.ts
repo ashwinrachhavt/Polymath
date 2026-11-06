@@ -4,7 +4,6 @@ import {
   check,
   foreignKey,
   unique,
-  boolean,
   index,
   integer,
   jsonb,
@@ -106,29 +105,6 @@ export const outboxEvents = pgTable(
  * A delivery id is unique per provider, so a replay is a no-op rather than a
  * second set of side effects.
  */
-export const webhookInbox = pgTable(
-  "webhook_inbox",
-  {
-    id: primaryId(),
-    /** Null until the delivery is resolved to a workspace. */
-    workspaceId: uuid("workspace_id"),
-    provider: text("provider").notNull(),
-    deliveryId: text("delivery_id").notNull(),
-    signatureVerified: boolean("signature_verified").notNull().default(false),
-    status: webhookStatus("status").notNull().default("received"),
-    eventType: text("event_type"),
-    payload: jsonb("payload").notNull(),
-    error: text("error"),
-    ...recorded,
-    processedAt: timestamp("processed_at", { withTimezone: true }),
-  },
-  (t) => [
-    uniqueIndex("webhook_inbox_provider_delivery_key").on(t.provider, t.deliveryId),
-    index("webhook_inbox_unprocessed_idx")
-      .on(t.createdAt)
-      .where(sql`status in ('received', 'processing')`),
-  ],
-);
 
 /*
  * Binaries live in object storage; this table is the only place Polymath records

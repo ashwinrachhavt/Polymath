@@ -18,7 +18,7 @@ import {
 import { DRAFT_TEMPLATES, DRAFT_TEMPLATE_LABEL, type DraftTemplate } from "@/domains/capture/draft-templates";
 import type { PriorWriting } from "@/domains/knowledge/prior-writing";
 import { Sparkles } from "lucide-react";
-import { CaptureBody } from "./capture-body";
+import dynamic from "next/dynamic";
 import { captureDetailHeading, captureKindLabel, captureStateLabel, captureTitle, type InboxRow } from "./inbox-list";
 import { generateZettelsAction } from "./zettel-actions";
 import { ZettelQueueWatch } from "./zettel-queue-watch";
@@ -31,6 +31,19 @@ import { ZettelQueueWatch } from "./zettel-queue-watch";
  * selection so keyboard and screen-reader users land in the pane they asked
  * for.
  */
+
+// Dynamic like every other editor surface (note-editor.tsx): tiptap is the
+// inbox route\u0027s heaviest dependency and only the detail pane uses it.
+const CaptureBody = dynamic(() => import("./capture-body").then((m) => m.CaptureBody), {
+  ssr: false,
+  loading: () => (
+    <div
+      role="status"
+      aria-label="Loading the capture body"
+      className="min-h-24 animate-pulse rounded-md border border-border bg-muted/30"
+    />
+  ),
+});
 
 const stamp = new Intl.DateTimeFormat("en", {
   month: "short",
@@ -659,7 +672,7 @@ function ExtensionMarkdownBlock({ extraction }: { extraction: ExtensionExtractio
   return (
     <section aria-label="Original formatting kept by the extension" className="mt-3">
       <p className="text-body-dense text-muted-foreground">
-        The extension kept the original formatting{qualityLabel ? ` (${qualityLabel} markdown)` : ""} —{" "}
+        The extension kept the original formatting{qualityLabel ? ` (${qualityLabel} markdown)` : ""}:{" "}
         <button
           type="button"
           className="font-medium text-primary underline-offset-4 hover:underline"

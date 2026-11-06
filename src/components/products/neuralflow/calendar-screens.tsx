@@ -238,7 +238,7 @@ function AgendaEvent({ event, compact }: { event: CalendarEvent; compact: boolea
     <li className="panel rounded-lg p-3">
       <div className="readout text-xs text-muted-foreground">
         {end.date !== event.date ? `${event.date} ` : ""}
-        {event.start}–{end.date !== event.date ? `${end.date} ` : ""}
+        {event.start} to {end.date !== event.date ? `${end.date} ` : ""}
         {end.time}
       </div>
       <p className="mt-1 text-body-dense font-medium">{event.title}</p>

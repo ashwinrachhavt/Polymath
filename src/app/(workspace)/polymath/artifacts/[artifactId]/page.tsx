@@ -27,7 +27,7 @@ async function WikiArtifactSurface({ params }: { params: Promise<{ artifactId: s
       {page ? (
         <article className="mx-auto w-full max-w-[var(--measure-prose)]">
           <p className="mb-4 text-xs text-muted-foreground">
-            Wiki page · version {page.versionNumber} · updated{" "}
+            Wiki page, version {page.versionNumber}, updated{" "}
             {page.updatedAt.toLocaleString("en", {
               month: "short",
               day: "numeric",

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { claimShard, createRewardDefinition } from "@/domains/gamification/commands";
 import { getAuthContext } from "@/lib/auth";
+import type { Result } from "@/lib/result";
 import { requireRole } from "@/lib/auth/guards";
 import { decideProposalAction } from "@/app/(workspace)/reviews/actions";
 
@@ -11,8 +12,6 @@ import { decideProposalAction } from "@/app/(workspace)/reviews/actions";
  * balances and awards nothing. The rules that call awardReward wait on the
  * owner's ASH-135 section 7 decisions.
  */
-
-type Result = { ok: true } | { ok: false; error: string };
 
 export async function createDefinitionAction(input: {
   key: string;

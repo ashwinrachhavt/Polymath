@@ -1,14 +1,10 @@
 "use server";
 
-import {
-  createApiClient,
-  listApiClients,
-  revokeApiClient,
-  type ApiClientView,
-} from "@/domains/identity/machine";
+import { createApiClient, listApiClients, revokeApiClient, type ApiClientView } from "@/domains/identity/machine";
 import { actionError } from "@/lib/action-error";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
+import type { Result } from "@/lib/result";
 
 /*
  * API key management for the Settings screen. Session-authenticated only:
@@ -20,14 +16,11 @@ import { requireRole } from "@/lib/auth/guards";
  * only secret material ever returned, and only at creation.
  */
 
-type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
-
 export type ApiKeyDto = Omit<ApiClientView, "pairedAt" | "lastSeenAt" | "expiresAt"> & {
   pairedAt: string;
   lastSeenAt: string | null;
   expiresAt: string | null;
 };
-
 
 function toDto(view: ApiClientView): ApiKeyDto {
   return {

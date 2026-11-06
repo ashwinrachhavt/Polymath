@@ -32,6 +32,7 @@ import { db } from "@/lib/db";
 import { linkDraftToRecord } from "@/app/(workspace)/projects-links";
 import { getAuthContext, type AuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
+import type { Result } from "@/lib/result";
 
 /*
  * Relationships mutations. Each action authenticates, parses, then delegates
@@ -98,8 +99,6 @@ const contactFields = {
   companyId: uuid.nullable().optional(),
 };
 
-type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
-
 function fail(error: unknown): { ok: false; error: string } {
   if (error instanceof ConflictError || error instanceof StaleWriteError || error instanceof NotFoundError) {
     return { ok: false, error: error.message };
@@ -107,8 +106,10 @@ function fail(error: unknown): { ok: false; error: string } {
   throw error;
 }
 
+const contactInput = z.object(contactFields);
+
 export async function createContactAction(input: unknown): Promise<Result> {
-  const parsed = z.object(contactFields).safeParse(input);
+  const parsed = contactInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Check the highlighted fields and try again." };
   const auth = await authorize();
   try {
@@ -120,10 +121,10 @@ export async function createContactAction(input: unknown): Promise<Result> {
   return { ok: true };
 }
 
+const updateContactInput = z.object({ contactId: uuid, expectedVersion: z.number().int().min(1), ...contactFields });
+
 export async function updateContactAction(input: unknown): Promise<Result> {
-  const parsed = z
-    .object({ contactId: uuid, expectedVersion: z.number().int().min(1), ...contactFields })
-    .safeParse(input);
+  const parsed = updateContactInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Check the highlighted fields and try again." };
   const auth = await authorize();
   try {
@@ -135,8 +136,10 @@ export async function updateContactAction(input: unknown): Promise<Result> {
   return { ok: true };
 }
 
+const archiveContactInput = z.object({ contactId: uuid, expectedVersion: z.number().int().min(1) });
+
 export async function archiveContactAction(input: unknown): Promise<Result> {
-  const parsed = z.object({ contactId: uuid, expectedVersion: z.number().int().min(1) }).safeParse(input);
+  const parsed = archiveContactInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "That contact could not be archived." };
   const auth = await authorize();
   try {
@@ -148,14 +151,14 @@ export async function archiveContactAction(input: unknown): Promise<Result> {
   return { ok: true };
 }
 
+const observationInput = z.object({
+  contactId: uuid,
+  body: z.string().trim().min(1).max(5_000),
+  source: z.enum(["stated", "document", "observed"]),
+});
+
 export async function addObservationAction(input: unknown): Promise<Result> {
-  const parsed = z
-    .object({
-      contactId: uuid,
-      body: z.string().trim().min(1).max(5_000),
-      source: z.enum(["stated", "document", "observed"]),
-    })
-    .safeParse(input);
+  const parsed = observationInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "An observation needs some text first." };
   const auth = await authorize();
   try {
@@ -167,14 +170,14 @@ export async function addObservationAction(input: unknown): Promise<Result> {
   return { ok: true };
 }
 
+const followUpInput = z.object({
+  contactId: uuid,
+  dueAt: z.string().date().optional(),
+  note: z.string().max(2_000).optional(),
+});
+
 export async function createFollowUpAction(input: unknown): Promise<Result> {
-  const parsed = z
-    .object({
-      contactId: uuid,
-      dueAt: z.string().date().optional(),
-      note: z.string().max(2_000).optional(),
-    })
-    .safeParse(input);
+  const parsed = followUpInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "That follow-up could not be saved." };
   const auth = await authorize();
   try {
@@ -192,14 +195,14 @@ export async function createFollowUpAction(input: unknown): Promise<Result> {
   return { ok: true };
 }
 
+const resolveFollowUpInput = z.object({
+  followUpId: uuid,
+  expectedVersion: z.number().int().min(1),
+  resolution: z.enum(["done", "cancelled"]),
+});
+
 export async function resolveFollowUpAction(input: unknown): Promise<Result> {
-  const parsed = z
-    .object({
-      followUpId: uuid,
-      expectedVersion: z.number().int().min(1),
-      resolution: z.enum(["done", "cancelled"]),
-    })
-    .safeParse(input);
+  const parsed = resolveFollowUpInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "That follow-up could not be updated." };
   const auth = await authorize();
   try {
@@ -211,14 +214,14 @@ export async function resolveFollowUpAction(input: unknown): Promise<Result> {
   return { ok: true };
 }
 
+const companyInput = z.object({
+  name: z.string().trim().min(1).max(300),
+  domain: z.string().trim().max(253).optional(),
+  description: z.string().max(2_000).optional(),
+});
+
 export async function createCompanyAction(input: unknown): Promise<Result> {
-  const parsed = z
-    .object({
-      name: z.string().trim().min(1).max(300),
-      domain: z.string().trim().max(253).optional(),
-      description: z.string().max(2_000).optional(),
-    })
-    .safeParse(input);
+  const parsed = companyInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "A company needs at least a name." };
   const auth = await authorize();
   try {
@@ -290,12 +293,14 @@ export async function requestSendApprovalAction(input: {
  * changed after approval is refused here, not sent. The outcome is returned
  * so the screen can say "sent", "failed" or "unknown - reconcile" truthfully.
  */
+const sendApprovedInput = z.object({ correspondenceId: z.uuid() });
+
 export async function sendApprovedCorrespondenceAction(input: {
   correspondenceId: string;
 }): Promise<Result<{ state: "sent" | "failed" | "unknown" }>> {
   const auth = await getAuthContext();
   requireRole(auth, "member");
-  const parsed = z.object({ correspondenceId: z.uuid() }).safeParse(input);
+  const parsed = sendApprovedInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Malformed send request." };
   try {
     const result = await sendApprovedCorrespondence(auth, {
@@ -315,9 +320,11 @@ export async function sendApprovedCorrespondenceAction(input: {
  * company, persisted as a Studio draft and linked back to the company record
  * so the workbench shows where it belongs.
  */
+const companyResearchInput = z.object({ companyId: z.uuid(), idempotencyKey: z.uuid() });
+
 export async function researchCompanyRecordAction(input: { companyId: string; idempotencyKey: string }) {
   const auth = await authorize();
-  const parsed = z.object({ companyId: z.uuid(), idempotencyKey: z.uuid() }).parse(input);
+  const parsed = companyResearchInput.parse(input);
   const [company] = await db
     .select({ id: companies.id, name: companies.name })
     .from(companies)
@@ -352,10 +359,12 @@ const mergeFields = {
   expectedTargetVersion: z.number().int().min(1),
 };
 
+const mergeInput = z.object(mergeFields);
+
 export async function mergeContactsAction(
   input: unknown,
 ): Promise<{ ok: true; merged: string; into: string } | { ok: false; error: string }> {
-  const parsed = z.object(mergeFields).safeParse(input);
+  const parsed = mergeInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "That merge could not be read. Reload and try again." };
   const auth = await authorize();
   try {
@@ -370,7 +379,7 @@ export async function mergeContactsAction(
 export async function mergeCompaniesAction(
   input: unknown,
 ): Promise<{ ok: true; merged: string; into: string } | { ok: false; error: string }> {
-  const parsed = z.object(mergeFields).safeParse(input);
+  const parsed = mergeInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "That merge could not be read. Reload and try again." };
   const auth = await authorize();
   try {
@@ -390,7 +399,7 @@ export async function mergeCompaniesAction(
  */
 export async function researchCompanyProfileAction(input: { companyId: string; idempotencyKey: string }) {
   const auth = await authorize();
-  const parsed = z.object({ companyId: z.uuid(), idempotencyKey: z.uuid() }).parse(input);
+  const parsed = companyResearchInput.parse(input);
   try {
     const result = await runCompanyProfileResearch(auth, parsed);
     revalidate();
@@ -407,15 +416,19 @@ export async function researchCompanyProfileAction(input: { companyId: string; i
   }
 }
 
+const contactProfileInput = z.object({
+  contactId: z.uuid(),
+  focus: z.enum(CONTACT_RESEARCH_FOCI).optional(),
+  idempotencyKey: z.uuid(),
+});
+
 export async function researchContactProfileAction(input: {
   contactId: string;
   focus?: string;
   idempotencyKey: string;
 }) {
   const auth = await authorize();
-  const parsed = z
-    .object({ contactId: z.uuid(), focus: z.enum(CONTACT_RESEARCH_FOCI).optional(), idempotencyKey: z.uuid() })
-    .parse(input);
+  const parsed = contactProfileInput.parse(input);
   try {
     const result = await runContactProfileResearch(auth, parsed);
     revalidate();

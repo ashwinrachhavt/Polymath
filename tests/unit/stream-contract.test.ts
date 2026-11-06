@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ChatAccumulator,
+  decodeDiagramToolOutput,
   decodeFrame,
   encodeFrame,
   frameOf,
@@ -550,5 +551,87 @@ describe("ChatAccumulator with a seeded transcript", () => {
       cursor: 9,
     });
     expect(acc.assistantText()).toBe("The full answer.");
+  });
+});
+
+describe("decodeDiagramToolOutput", () => {
+  // The diagram card renders whatever this function returns, so every
+  // assertion here protects an observable card state: a valid payload decodes
+  // with the source intact, and anything malformed — an error envelope, the
+  // capPayload truncated marker, junk fields — returns null so the card
+  // renders its honest failure state instead of a half-filled diagram.
+  const CANVAS = "22222222-2222-4222-8222-222222222222";
+  const ARTIFACT = "33333333-3333-4333-8333-333333333333";
+  const payload = {
+    ok: true,
+    canvasId: CANVAS,
+    artifactId: ARTIFACT,
+    version: 2,
+    diagramType: "flowchart",
+    mermaid: "flowchart TD\n  a --> b",
+  };
+
+  it("decodes a valid success payload with the source intact", () => {
+    expect(decodeDiagramToolOutput(payload)).toEqual({
+      canvasId: CANVAS,
+      artifactId: ARTIFACT,
+      version: 2,
+      diagramType: "flowchart",
+      mermaid: "flowchart TD\n  a --> b",
+    });
+  });
+
+  it("decodes the mermaidOmitted shape to a null source, not a failure", () => {
+    // diagramToolPayload drops the source when the whole result would exceed
+    // MAX_TOOL_PAYLOAD; the card must still render chrome and link the
+    // artifact — it just cannot render a preview.
+    const { mermaid: _source, ...lean } = payload;
+    expect(decodeDiagramToolOutput({ ...lean, mermaidOmitted: true })).toEqual({
+      canvasId: CANVAS,
+      artifactId: ARTIFACT,
+      version: 2,
+      diagramType: "flowchart",
+      mermaid: null,
+    });
+  });
+
+  it("accepts every diagram type the tool accepts", () => {
+    for (const diagramType of ["flowchart", "sequence", "class", "state", "er", "journey", "gantt", "mindmap"]) {
+      expect(decodeDiagramToolOutput({ ...payload, diagramType })?.diagramType).toBe(diagramType);
+    }
+  });
+
+  it("rejects the error envelope so a refused call never renders a diagram", () => {
+    expect(decodeDiagramToolOutput({ ok: false, error: "the diagram has about 80 nodes; the cap is 60." })).toBeNull();
+  });
+
+  it("rejects the capPayload truncated marker", () => {
+    expect(
+      decodeDiagramToolOutput({ truncated: true, reason: "Result over 8192 bytes; the full output stays in the run's recorded events." }),
+    ).toBeNull();
+  });
+
+  it("rejects null, non-objects, and arrays", () => {
+    expect(decodeDiagramToolOutput(null)).toBeNull();
+    expect(decodeDiagramToolOutput(undefined)).toBeNull();
+    expect(decodeDiagramToolOutput("flowchart TD")).toBeNull();
+    expect(decodeDiagramToolOutput([payload])).toBeNull();
+  });
+
+  it("rejects malformed ids, versions, and types", () => {
+    expect(decodeDiagramToolOutput({ ...payload, canvasId: "not-a-uuid" })).toBeNull();
+    expect(decodeDiagramToolOutput({ ...payload, artifactId: 42 })).toBeNull();
+    expect(decodeDiagramToolOutput({ ...payload, version: 0 })).toBeNull();
+    expect(decodeDiagramToolOutput({ ...payload, version: 1.5 })).toBeNull();
+    expect(decodeDiagramToolOutput({ ...payload, diagramType: "org-chart" })).toBeNull();
+  });
+
+  it("rejects an empty mermaid string (absent is allowed, empty is a lie)", () => {
+    expect(decodeDiagramToolOutput({ ...payload, mermaid: "" })).toBeNull();
+    expect(decodeDiagramToolOutput({ ...payload, mermaid: 7 })).toBeNull();
+  });
+
+  it("is forward-compatible: unknown extra fields do not block a decode", () => {
+    expect(decodeDiagramToolOutput({ ...payload, renderMode: "excalidraw", somethingNew: true })?.canvasId).toBe(CANVAS);
   });
 });

@@ -3,7 +3,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { auditEvents, outboxEvents } from "@/domains/audit/schema";
 import { captures } from "@/domains/capture/schema";
-import { documents, files, documentExtractions, zettelProposals } from "@/domains/knowledge/schema";
+import { artifacts, artifactVersions, documents, files, documentExtractions } from "@/domains/knowledge/schema";
 import { makeTestDb, seedWorkspace, ownerAuth } from "../helpers/test-workspace";
 
 /*
@@ -11,7 +11,7 @@ import { makeTestDb, seedWorkspace, ownerAuth } from "../helpers/test-workspace"
  * one intake path (Product Spec, Capture: the inbox owns the triggers that
  * create zettels from captured knowledge). The lineage edge lands in intake's
  * transaction, extraction reads the markdown bytes without a provider, and
- * the existing zettel pipeline proposes from the extracted text.
+ * the existing zettelization pipeline creates cards from the extracted text.
  */
 
 const handle = makeTestDb();
@@ -32,7 +32,7 @@ vi.mock("@/lib/db-transaction", () => ({
 import { convertCaptureToDocument, createCapture, ConflictError, StaleWriteError } from "@/domains/capture/commands";
 import { extractDocument } from "@/domains/knowledge/extraction";
 import { searchDocuments } from "@/domains/knowledge/search";
-import { proposeZettels } from "@/domains/knowledge/zettels";
+import { createZettelsFromSource } from "@/domains/knowledge/zettels";
 
 const BODY =
   "Atomic notes compound.\n\nA zettel carries one idea, verbatim evidence, and links to its neighbours. Writing them daily turns reading into thinking.";
@@ -165,7 +165,7 @@ suite("convertCaptureToDocument", () => {
     expect(inputTitled.title).toBe("Conversion title");
   });
 
-  it("feeds the existing pipeline: extraction succeeds from the bytes, zettel proposals quote it verbatim", async () => {
+  it("feeds the existing pipeline: extraction succeeds from the bytes, zettelize quotes it verbatim", async () => {
     const { userId, workspaceId } = await seedWorkspace(holder.db!, `c2d-pipe-${Date.now()}`);
     const auth = ownerAuth(userId, workspaceId);
     const capture = await addTextCapture(holder.db!, workspaceId, userId, BODY);
@@ -177,7 +177,7 @@ suite("convertCaptureToDocument", () => {
     const extraction = await extractDocument(auth, { documentId: documentId! });
     expect(extraction.ok).toBe(true);
 
-    const { proposals: created } = await proposeZettels(auth, {
+    const { created } = await createZettelsFromSource(auth, {
       documentId: documentId!,
       extractor: {
         name: "test-extractor",
@@ -192,17 +192,18 @@ suite("convertCaptureToDocument", () => {
       },
     });
     expect(created).toHaveLength(1); // the invented quote is dropped
-    expect(created[0].quote).toBe("A zettel carries one idea, verbatim evidence");
+    const [card] = await holder.db!.select().from(artifacts).where(eq(artifacts.id, created[0]!.artifactId));
+    const [version] = await holder
+      .db!.select()
+      .from(artifactVersions)
+      .where(eq(artifactVersions.id, card.currentVersionId!));
+    // The surviving card quotes the extraction verbatim as its evidence block.
+    expect(version.plainText).toContain("A zettel carries one idea, verbatim evidence");
     const [extractionRow] = await holder
       .db!.select()
       .from(documentExtractions)
       .where(and(eq(documentExtractions.documentId, documentId!), eq(documentExtractions.status, "succeeded")));
-    expect(created[0].extractionId).toBe(extractionRow.id);
-    const [proposal] = await holder
-      .db!.select()
-      .from(zettelProposals)
-      .where(eq(zettelProposals.documentId, documentId!));
-    expect(proposal.status).toBe("proposed");
+    expect(extractionRow.status).toBe("succeeded");
   });
 
   it("refuses a second conversion and a stale version", async () => {

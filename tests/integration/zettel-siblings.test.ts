@@ -6,17 +6,17 @@ import {
   artifactLinks,
   artifactVersions,
   artifacts,
+  documentExtractions,
   documents,
   files,
-  zettelProposals,
 } from "@/domains/knowledge/schema";
 import type { EmbeddingProvider } from "@/integrations/embeddings/provider";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
- * Sibling seeding at accept: accepting a proposal writes durable `related`
- * edges from the new card to every already-accepted sibling proposal of the
- * same source — inside acceptZettel's one transaction. The semantic pass
+ * Sibling seeding at creation: creating a card writes durable `related`
+ * edges from the new card to every already-created sibling card of the
+ * same source — inside the one creation transaction. The semantic pass
  * skips explicitly-linked pairs, so these edges survive re-embeds; the last
  * test proves the skip is real (an unlinked note with the same embedding
  * still gains a semantic edge; the explicitly-linked sibling pair does not).
@@ -39,7 +39,7 @@ vi.mock("@/lib/db-transaction", () => ({
 
 import { embedArtifact } from "@/domains/knowledge/embedding";
 import { materializeSemanticEdges } from "@/domains/knowledge/relations";
-import { acceptZettel } from "@/domains/knowledge/zettels";
+import { createZettelsFromSource } from "@/domains/knowledge/zettels";
 
 function vec(dims: number[]): number[] {
   const v = new Array(1536).fill(0);
@@ -70,6 +70,21 @@ const workspace = async (): Promise<Auth> => {
   return ownerAuth(seed.userId, seed.workspaceId);
 };
 
+const QUOTES = ["Rent is due monthly.", "The deposit is refundable.", "Pets need written consent."];
+// Filler grows the source past the small-capture band (capForSize allows 2
+// cards at <=2,000 chars) so every quoted candidate survives the pass cap.
+const FILLER = "The remaining lease terms are recorded in the following paragraphs for the extractor to read past. ";
+const SIBLING_TEXT = FILLER.repeat(14) + QUOTES.join(" ") + FILLER.repeat(14);
+const siblingExtractor = (count: number) => ({
+  name: "fake@1",
+  extract: async () =>
+    QUOTES.slice(0, count).map((quote, i) => ({
+      title: `Claim ${i + 1}`,
+      content: `Claim ${i + 1} statement.`,
+      quote,
+    })),
+});
+
 async function seedDoc(auth: Auth) {
   const db = holder.db!;
   const [blob] = await db
@@ -90,6 +105,14 @@ async function seedDoc(auth: Auth) {
     .insert(documents)
     .values({ workspaceId: auth.workspaceId, title: "lease", fileId: file.id, mimeType: "application/pdf" })
     .returning();
+  await db.insert(documentExtractions).values({
+    workspaceId: auth.workspaceId,
+    documentId: doc.id,
+    contentHash: crypto.randomUUID(),
+    status: "succeeded",
+    text: SIBLING_TEXT,
+    extractor: "fixture@1",
+  });
   return doc;
 }
 
@@ -99,27 +122,20 @@ async function seedSourceArtifact(auth: Auth, title = "Conversation") {
     .insert(artifacts)
     .values({ workspaceId: auth.workspaceId, kind: "note", title, createdBy: auth.userId, updatedBy: auth.userId })
     .returning({ id: artifacts.id });
-  return artifact;
-}
-
-async function seedProposal(auth: Auth, source: { documentId?: string; sourceArtifactId?: string }, i: number) {
-  const db = holder.db!;
-  const [row] = await db
-    .insert(zettelProposals)
+  const [version] = await db
+    .insert(artifactVersions)
     .values({
       workspaceId: auth.workspaceId,
-      documentId: source.documentId ?? null,
-      sourceArtifactId: source.sourceArtifactId ?? null,
-      title: `Claim ${i}`,
-      claim: `Claim ${i} statement.`,
-      quote: `Quote number ${i} verbatim.`,
-      spanStart: i * 100,
-      spanEnd: i * 100 + 20,
-      dedupeKey: crypto.randomUUID(),
-      proposer: "test@1",
+      artifactId: artifact.id,
+      versionNumber: 1,
+      content: { format: "markdown", text: SIBLING_TEXT },
+      plainText: SIBLING_TEXT,
+      reason: "created",
+      createdBy: auth.userId,
     })
-    .returning();
-  return row;
+    .returning({ id: artifactVersions.id });
+  await db.update(artifacts).set({ currentVersionId: version.id }).where(eq(artifacts.id, artifact.id));
+  return artifact;
 }
 
 const relatedEdges = async (workspaceId: string) =>
@@ -144,50 +160,49 @@ const byFromTo = (a: RelatedEdge, b: RelatedEdge) => a.from.localeCompare(b.from
 const expectRelated = async (workspaceId: string, expected: RelatedEdge[]) =>
   expect((await relatedEdges(workspaceId)).sort(byFromTo)).toEqual(expected.sort(byFromTo));
 
-suite("sibling seeding at accept (real Postgres)", () => {
-  it("joins accepted cards of one document as each accept lands", async () => {
+suite("sibling seeding at creation (real Postgres)", () => {
+  it("joins cards of one document as each creation lands", async () => {
     const auth = await workspace();
     const doc = await seedDoc(auth);
-    const p1 = await seedProposal(auth, { documentId: doc.id }, 1);
-    const p2 = await seedProposal(auth, { documentId: doc.id }, 2);
-    const p3 = await seedProposal(auth, { documentId: doc.id }, 3);
 
-    const a1 = await acceptZettel(auth, { proposalId: p1.id });
-    await expectRelated(auth.workspaceId, []);
+    const { created } = await createZettelsFromSource(auth, {
+      documentId: doc.id,
+      extractor: siblingExtractor(3),
+    });
+    expect(created).toHaveLength(3);
+    const [a1, a2, a3] = created.map((c) => c.artifactId);
 
-    const a2 = await acceptZettel(auth, { proposalId: p2.id });
     await expectRelated(auth.workspaceId, [
-      { from: a2.artifactId, to: a1.artifactId, toType: "zettel", label: "Claim 1", context: "From the same source" },
-    ]);
-
-    const a3 = await acceptZettel(auth, { proposalId: p3.id });
-    await expectRelated(auth.workspaceId, [
-      { from: a2.artifactId, to: a1.artifactId, toType: "zettel", label: "Claim 1", context: "From the same source" },
-      { from: a3.artifactId, to: a1.artifactId, toType: "zettel", label: "Claim 1", context: "From the same source" },
-      { from: a3.artifactId, to: a2.artifactId, toType: "zettel", label: "Claim 2", context: "From the same source" },
+      { from: a2, to: a1, toType: "zettel", label: "Claim 1", context: "From the same source" },
+      { from: a3, to: a1, toType: "zettel", label: "Claim 1", context: "From the same source" },
+      { from: a3, to: a2, toType: "zettel", label: "Claim 2", context: "From the same source" },
     ]);
   });
 
-  it("joins accepted cards of one source artifact (the chat/thread path)", async () => {
+  it("joins cards of one source artifact (the chat/thread path)", async () => {
     const auth = await workspace();
     const source = await seedSourceArtifact(auth);
-    const p1 = await seedProposal(auth, { sourceArtifactId: source.id }, 1);
-    const p2 = await seedProposal(auth, { sourceArtifactId: source.id }, 2);
 
-    const a1 = await acceptZettel(auth, { proposalId: p1.id });
-    const a2 = await acceptZettel(auth, { proposalId: p2.id });
+    const { created } = await createZettelsFromSource(auth, {
+      sourceArtifactId: source.id,
+      extractor: siblingExtractor(2),
+    });
+    expect(created).toHaveLength(2);
+    const [a1, a2] = created.map((c) => c.artifactId);
+
     await expectRelated(auth.workspaceId, [
-      { from: a2.artifactId, to: a1.artifactId, toType: "zettel", label: "Claim 1", context: "From the same source" },
+      { from: a2, to: a1, toType: "zettel", label: "Claim 1", context: "From the same source" },
     ]);
   });
 
   it("the semantic pass skips the explicit pair but still joins unlinked cards", async () => {
     const auth = await workspace();
     const doc = await seedDoc(auth);
-    const p1 = await seedProposal(auth, { documentId: doc.id }, 1);
-    const p2 = await seedProposal(auth, { documentId: doc.id }, 2);
-    const a1 = await acceptZettel(auth, { proposalId: p1.id });
-    const a2 = await acceptZettel(auth, { proposalId: p2.id });
+    const { created } = await createZettelsFromSource(auth, {
+      documentId: doc.id,
+      extractor: siblingExtractor(2),
+    });
+    const [a1, a2] = created.map((c) => c.artifactId);
 
     // An unlinked neighbor: a plain note that embeds to the same direction.
     const db = holder.db!;
@@ -215,17 +230,17 @@ suite("sibling seeding at accept (real Postgres)", () => {
       .returning({ id: artifactVersions.id });
     await db.update(artifacts).set({ currentVersionId: version.id }).where(eq(artifacts.id, note.id));
 
-    for (const id of [a1.artifactId, a2.artifactId, note.id]) {
+    for (const id of [a1, a2, note.id]) {
       const result = await embedArtifact(auth, { artifactId: id, provider: fakeProvider() });
       expect(result.status).toBe("succeeded");
     }
-    await materializeSemanticEdges(auth, a1.artifactId);
+    await materializeSemanticEdges(auth, a1);
 
     const pairs = await semanticPairs(auth.workspaceId);
     // The unlinked note joined: the pass itself works.
-    expect(pairs).toContain([a1.artifactId, note.id].sort().join("|"));
+    expect(pairs).toContain([a1, note.id].sort().join("|"));
     // The explicit sibling pair did not: the related edge keeps the semantic
     // pass off it, so the edge survives re-embeds.
-    expect(pairs).not.toContain([a1.artifactId, a2.artifactId].sort().join("|"));
+    expect(pairs).not.toContain([a1, a2].sort().join("|"));
   });
 });

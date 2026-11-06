@@ -2,14 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { blobObjects } from "@/domains/audit/schema";
-import {
-  documentEnrichment,
-  documents,
-  files,
-  artifactLinks,
-  artifacts,
-  zettelProposals,
-} from "@/domains/knowledge/schema";
+import { documentEnrichment, documents, files, artifactLinks, artifacts } from "@/domains/knowledge/schema";
 import type { ExtractionResult } from "@/integrations/extraction/provider";
 import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
 
@@ -169,11 +162,6 @@ suite("document enrichment state machine (real Postgres)", () => {
     const cards = await docCards(doc.id);
     expect(cards).toHaveLength(1);
     expect(cards[0].title).toBe("Monthly rent");
-    const proposals = await holder
-      .db!.select({ id: zettelProposals.id })
-      .from(zettelProposals)
-      .where(eq(zettelProposals.documentId, doc.id));
-    expect(proposals).toHaveLength(0);
 
     // A second advance is a no-op: no new cards, no new attempts on succeeded
     // stages (the link stage re-embeds; embedArtifact is idempotent per card).

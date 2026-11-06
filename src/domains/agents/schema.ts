@@ -23,7 +23,6 @@ import { memberships } from "../identity/schema";
 // re-export of tables — importing users from there resolves to undefined and
 // any table referencing users.id fails at module load.
 import { users } from "../identity/tables";
-import { artifacts } from "../knowledge/schema";
 
 /*
  * Alfred is one agent with one profile in v1; the schema is shaped for many
@@ -43,7 +42,6 @@ export const runState = pgEnum("run_state", [
   "failed",
   "cancelled",
 ]);
-export const stepKind = pgEnum("step_kind", ["model", "tool", "question", "proposal", "artifact", "note"]);
 export const questionState = pgEnum("question_state", ["open", "answered", "dismissed"]);
 export const messageRole = pgEnum("message_role", ["user", "assistant", "system", "tool"]);
 export const memoryStatus = pgEnum("memory_status", ["proposed", "accepted", "rejected", "retired"]);
@@ -330,22 +328,6 @@ export const messages = pgTable(
   (t) => [index("messages_thread_idx").on(t.threadId, t.createdAt)],
 );
 
-export const threadCheckpoints = pgTable(
-  "thread_checkpoints",
-  {
-    id: primaryId(),
-    workspaceId: tenantId(),
-    threadId: uuid("thread_id")
-      .notNull()
-      .references(() => threads.id, { onDelete: "cascade" }),
-    /** Message id the thread can be rewound to and branched from. */
-    messageId: uuid("message_id"),
-    label: text("label"),
-    summary: text("summary"),
-    ...recordedBy,
-  },
-  (t) => [index("thread_checkpoints_thread_idx").on(t.threadId, t.createdAt)],
-);
 
 /*
  * Margin comments on a stored message (chat-actions PR B). A comment belongs
@@ -433,23 +415,6 @@ export const agentRuns = pgTable(
   ],
 );
 
-export const agentSteps = pgTable(
-  "agent_steps",
-  {
-    id: primaryId(),
-    workspaceId: tenantId(),
-    runId: uuid("run_id")
-      .notNull()
-      .references(() => agentRuns.id, { onDelete: "cascade" }),
-    sequence: integer("sequence").notNull(),
-    kind: stepKind("kind").notNull(),
-    summary: text("summary"),
-    payload: jsonb("payload"),
-    durationMs: integer("duration_ms"),
-    ...recorded,
-  },
-  (t) => [uniqueIndex("agent_steps_run_sequence_key").on(t.runId, t.sequence)],
-);
 
 /** Append-only tool results: a step's output is never edited, only superseded by a new step. */
 export const toolCalls = pgTable(
@@ -460,7 +425,8 @@ export const toolCalls = pgTable(
     runId: uuid("run_id")
       .notNull()
       .references(() => agentRuns.id, { onDelete: "cascade" }),
-    stepId: uuid("step_id").references(() => agentSteps.id, { onDelete: "set null" }),
+    /** Legacy column: its agent_steps FK was dropped with that dead table. Nothing writes it. */
+    stepId: uuid("step_id"),
     toolName: text("tool_name").notNull(),
     /** Which connected account was used, by alias. */
     accountAlias: text("account_alias"),
@@ -583,25 +549,6 @@ export const runReviews = pgTable(
   ],
 );
 
-export const runArtifacts = pgTable(
-  "run_artifacts",
-  {
-    id: primaryId(),
-    workspaceId: tenantId(),
-    runId: uuid("run_id")
-      .notNull()
-      .references(() => agentRuns.id, { onDelete: "cascade" }),
-    artifactId: uuid("artifact_id")
-      .notNull()
-      .references(() => artifacts.id, { onDelete: "cascade" }),
-    label: text("label"),
-    ...recorded,
-  },
-  (t) => [
-    uniqueIndex("run_artifacts_key").on(t.runId, t.artifactId),
-    index("run_artifacts_artifact_idx").on(t.artifactId),
-  ],
-);
 
 /*
  * A context manifest is the inspectable record of exactly what a run's
@@ -791,22 +738,6 @@ export const memoryRevisions = pgTable(
   (t) => [index("memory_revisions_item_idx").on(t.memoryItemId, t.createdAt)],
 );
 
-export const memoryReviews = pgTable(
-  "memory_reviews",
-  {
-    id: primaryId(),
-    workspaceId: tenantId(),
-    memoryItemId: uuid("memory_item_id")
-      .notNull()
-      .references(() => memoryItems.id, { onDelete: "cascade" }),
-    /** accepted | rejected | retired — the decision on the proposed memory. */
-    decision: text("decision").notNull(),
-    note: text("note"),
-    decidedBy: uuid("decided_by"),
-    ...recorded,
-  },
-  (t) => [index("memory_reviews_item_idx").on(t.memoryItemId, t.createdAt)],
-);
 
 /*
  * Onboarding: one interview that shapes the workspace's supervisor agent.

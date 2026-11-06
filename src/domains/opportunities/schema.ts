@@ -106,21 +106,6 @@ export const opportunityStageHistory = pgTable(
  * the fields that only that kind needs. Typed JSONB plus a check on `kind` —
  * not a table per kind, and not a column set that is null for most rows.
  */
-export const opportunityExtensions = pgTable(
-  "opportunity_extensions",
-  {
-    id: primaryId(),
-    workspaceId: tenantId(),
-    opportunityId: uuid("opportunity_id")
-      .notNull()
-      .references(() => opportunities.id, { onDelete: "cascade" }),
-    kind: extensionKind("kind").notNull(),
-    /** JobApplication: { roleTitle, location, workMode, compensation, requisitionId } */
-    fields: jsonb("fields").notNull().default({}),
-    ...mutable,
-  },
-  (t) => [uniqueIndex("opportunity_extensions_kind_key").on(t.opportunityId, t.kind)],
-);
 
 /** Links to people, companies, materials, meetings, and research — typed targets, no polymorphic FK. */
 export const opportunityLinks = pgTable(

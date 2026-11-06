@@ -165,21 +165,3 @@ export const schedulerPreferences = pgTable(
  * provider without going through Reviews. The scheduler proposes; it does not
  * silently rewrite time.
  */
-export const scheduleProposals = pgTable(
-  "schedule_proposals",
-  {
-    id: primaryId(),
-    workspaceId: tenantId(),
-    targetType: text("target_type").notNull(),
-    targetId: uuid("target_id"),
-    proposedStartAt: timestamp("proposed_start_at", { withTimezone: true }).notNull(),
-    proposedEndAt: timestamp("proposed_end_at", { withTimezone: true }).notNull(),
-    /** Why this slot: conflicts, buffers, and deadline pressure, stated plainly. */
-    rationale: text("rationale"),
-    conflicts: jsonb("conflicts").notNull().default([]),
-    status: scheduleProposalStatus("status").notNull().default("proposed"),
-    expiresAt: timestamp("expires_at", { withTimezone: true }),
-    ...mutable,
-  },
-  (t) => [index("schedule_proposals_pending_idx").on(t.workspaceId, t.status, t.proposedStartAt)],
-);
