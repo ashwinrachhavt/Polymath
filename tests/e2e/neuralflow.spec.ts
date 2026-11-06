@@ -178,8 +178,8 @@ test("a focus session starts from the task's Focus action on Work, and no stone 
   // balance: the dev database's ledger is shared with the parallel suite, so
   // any worker finishing a task between a before-read and an after-read
   // moved the global number without this flow doing anything - the flake a
-  // whole-balance equality baked in. Read this flow's own subjects instead:
-  // the session it ran and the task it ran against must hold no ledger rows.
+  // whole-balance equality baked in. Read the Quartz rule's own subject
+  // instead: this flow's task must hold no task-completion award row.
   try {
     // Both ids are proven present before the zero-row read, so an empty
     // result is the rule holding, not a lookup that found nothing to check:
@@ -190,10 +190,16 @@ test("a focus session starts from the task's Focus action on Work, and no stone 
     const [session] = await client!<{ id: string }[]>`
       select id from focus_sessions where task_id = ${taskId} order by started_at desc limit 1`;
     expect(session, "the finished focus session is recorded against the task").toBeTruthy();
+    // Only the task-completion (Quartz) write is under test: its row carries
+    // subjectType "task" + the task id (gamification/commands.ts). The
+    // session's own focus_completed points row (subjectType "focus_session")
+    // is legitimate pay for banked seconds and must NOT fail this test -
+    // whether a fast run banks a whole second is exactly the remaining flake
+    // the subject pair baked in (CI run 42174835562 attempt 1 vs retry).
     const awarded = await client!<{ id: string }[]>`
       select id from reward_ledger
-      where subject_id in (${taskId}, ${session.id})`;
-    expect(awarded, "a focus session with an open task earns no ledger rows").toHaveLength(0);
+      where subject_type = 'task' and subject_id = ${taskId}`;
+    expect(awarded, "a focus session with an open task earns no task-completion award").toHaveLength(0);
   } finally {
     await client!.end();
   }

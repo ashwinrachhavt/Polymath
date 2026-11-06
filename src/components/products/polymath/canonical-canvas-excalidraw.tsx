@@ -10,7 +10,7 @@ import {
 import "@excalidraw/excalidraw/index.css";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import type { ExcalidrawElementSkeleton } from "@excalidraw/excalidraw/data/transform";
-import type { RefObject } from "react";
+import { useRef, type RefObject } from "react";
 import type { ExcalidrawScenePayload } from "@/domains/diagrams/types";
 
 /*
@@ -38,18 +38,30 @@ export default function CanonicalCanvasExcalidraw({
   onSceneChange: () => void;
   sceneApiRef: RefObject<{ scene: () => ExcalidrawScenePayload } | null>;
 }) {
-  // Dirty tracking compares against the elements as mounted, not against
-  // any onChange: Excalidraw fires onChange when it applies initialData (and
-  // again while fonts and bindings settle), so a freshly loaded scene must
-  // not read as edited. The parent remounts this component per version and
-  // per save, which re-arms the baseline.
+  // Dirty tracking: Excalidraw fires onChange when it applies initialData
+  // and again while fonts and bindings settle — and the settled elements can
+  // differ from the converter output — so no onChange means "edited" by
+  // itself. Until the user's first pointer/keyboard gesture on the canvas,
+  // every onChange just re-arms the baseline; after that gesture, a change
+  // whose elements differ from the settled baseline is a real edit. The
+  // parent remounts this component per version and per save, which resets
+  // both refs.
+  const armedRef = useRef(false);
+  const baselineRef = useRef<string | null>(null);
   const mountedElements = (
     convertSkeletons ? convertToExcalidrawElements(initial.elements as ExcalidrawElementSkeleton[]) : initial.elements
   ) as never;
-  const baselineKey = JSON.stringify(mountedElements);
 
   return (
-    <div className="panel relative h-[600px] min-h-96 overflow-hidden rounded-xl">
+    <div
+      className="panel relative h-[600px] min-h-96 overflow-hidden rounded-xl"
+      onPointerDownCapture={() => {
+        armedRef.current = true;
+      }}
+      onKeyDownCapture={() => {
+        armedRef.current = true;
+      }}
+    >
       <div className="h-full min-h-0">
         <Excalidraw
           excalidrawAPI={(instance: ExcalidrawImperativeAPI) => {
@@ -71,7 +83,12 @@ export default function CanonicalCanvasExcalidraw({
             scrollToContent: true,
           }}
           onChange={(elements) => {
-            if (JSON.stringify(elements) !== baselineKey) onSceneChange();
+            const key = JSON.stringify(elements);
+            if (!armedRef.current) {
+              baselineRef.current = key;
+              return;
+            }
+            if (key !== baselineRef.current) onSceneChange();
           }}
           isCollaborating={false}
           aiEnabled={false}
