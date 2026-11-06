@@ -42,8 +42,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 async function Inbox({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const query = await searchParams;
   const list = parseListParams(query, { filters: { kind: CAPTURE_KINDS } });
-  const raw = typeof query.filter === "string" ? query.filter : "unprocessed";
-  const filter: InboxFilter = filters.some((f) => f.value === raw) ? (raw as InboxFilter) : "unprocessed";
+  const raw = typeof query.filter === "string" ? query.filter : "all";
+  const filter: InboxFilter = filters.some((f) => f.value === raw) ? (raw as InboxFilter) : "all";
   // A malformed id (or a non-uuid string) would make Postgres reject the
   // uuid comparison with 22P02 and crash the screen; treat it as no
   // selection, matching the valid-but-unknown id path.
