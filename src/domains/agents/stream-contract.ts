@@ -98,6 +98,9 @@ export type ChatCitation = {
   title: string;
   text: string;
   span: { start: number; end: number; page: number | null };
+  /** Passage lineage; absent on tool outputs persisted before issue #533. */
+  extractionId?: string;
+  chunkIndex?: number;
 };
 
 export type ChatBlock = {
@@ -173,6 +176,8 @@ export function citationsFromToolOutput(output: unknown): ChatCitation[] {
       title: candidate.title,
       text: candidate.text,
       span: { start, end: candidate.span?.end ?? start, page: candidate.span?.page ?? null },
+      ...(typeof candidate.extractionId === "string" ? { extractionId: candidate.extractionId } : {}),
+      ...(typeof candidate.chunkIndex === "number" ? { chunkIndex: candidate.chunkIndex } : {}),
     });
   }
   return out;

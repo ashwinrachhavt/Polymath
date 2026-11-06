@@ -34,7 +34,9 @@
     "inventory": "tsx scripts/tech-spec-inventory.ts",
     "inventory:check": "tsx scripts/tech-spec-inventory.ts --check",
     "knip": "DATABASE_URL='postgresql://knip:unused@127.0.0.1:9/knip_never_connects' knip",
-    "test:ci": "sh scripts/reset-test-db.sh && vitest run"
+    "test:ci": "sh scripts/reset-test-db.sh && vitest run",
+    "eval:retrieval": "tsx evals/retrieval/run.ts",
+    "sandbox:trial": "tsx scripts/sandbox-trial.ts"
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.108",
