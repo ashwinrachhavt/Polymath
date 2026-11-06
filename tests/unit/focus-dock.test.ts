@@ -174,8 +174,13 @@ describe("FocusDock", () => {
       expect(fetchSpy).toHaveBeenCalledTimes(2);
 
       // The recovery attempt is never dropped: the next focus event hits the
-      // network again, and a good read clears the mark.
+      // network again, and a good read clears the mark. Simultaneous events
+      // (focus landing on visibilitychange) join the one in-flight retry -
+      // the count moves by one, so a failing endpoint is never retried in
+      // parallel storms of its own.
       window.dispatchEvent(new Event("focus"));
+      window.dispatchEvent(new Event("focus"));
+      document.dispatchEvent(new Event("visibilitychange"));
       await waitFor(() => expect(screen.getByLabelText("Focus session").textContent).not.toContain("last known"));
       expect(fetchSpy).toHaveBeenCalledTimes(3);
     } finally {

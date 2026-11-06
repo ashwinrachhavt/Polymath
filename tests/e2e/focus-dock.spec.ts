@@ -69,40 +69,54 @@ test("the dock follows a real session across pages, marks a failed read stale, a
     expect(dockBox!.y + dockBox!.height).toBeLessThanOrEqual(navBox!.y + 1);
     await page.screenshot({ path: "test-results/feature-pixels/focus-dock-mobile.png" });
 
-    // The request-storm regression (2026-11-06): routine refocus events of
-    // an open tab each fired a forced /api/v1/focus/live read that bypassed
-    // the revalidate window. A verified fresh cache serves focus events
-    // exactly like navigation mounts - no request at all.
+    // The request-storm regression (2026-11-06): every refocus of an open
+    // tab fired a forced /api/v1/focus/live read that bypassed the revalidate
+    // window. A verified fresh cache serves focus events exactly like
+    // navigation mounts - no request at all. The transitions here are REAL:
+    // a second tab cycling foreground/background fires the browser's own
+    // visibilitychange and focus events, not synthetic dispatches.
+    const otherTab = await page.context().newPage();
+    const refocus = async () => {
+      await otherTab.bringToFront();
+      await page.bringToFront();
+    };
     let liveReads = 0;
     const countLive = (request: import("@playwright/test").Request) => {
       if (request.url().includes("/api/v1/focus/live")) liveReads += 1;
     };
     page.on("request", countLive);
-    for (let i = 0; i < 5; i++) await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    for (let i = 0; i < 5; i++) await refocus();
     await page.waitForTimeout(250);
     expect(liveReads).toBe(0);
-    page.removeListener("request", countLive);
+    await expect(dock).toContainText("Focus running");
+    await expect(dock).not.toContainText("last known");
 
     // A failed read keeps the last known session, marked stale - it never
     // claims the session ended, and never presents it as verified. The stale
     // state lives in the mounted component, so the failed read must happen
-    // through the dock's own refetch (window focus, once the window has
+    // through the dock's own refetch (a real refocus once the window has
     // expired), not a page reload that remounts it with nothing.
     await page.route("**/api/v1/focus/live", (route) => route.abort());
     await bendClock(31_000);
-    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await refocus();
     await expect(dock).toContainText("last known");
     await expect(dock).toContainText("status may be out of date");
     await page.screenshot({ path: "test-results/feature-pixels/focus-dock-mobile-stale.png" });
     await page.setViewportSize({ width: 1280, height: 800 });
 
-    // The focus event is the failed read's recovery path - the next one
-    // attempts the network again - and a successful read clears the mark.
+    // The focus event is the failed read's recovery path - the next real
+    // refocus attempts the network again (concurrent events join the one
+    // in-flight read; the count moves by one, not two) - and a successful
+    // read clears the mark.
     await page.unroute("**/api/v1/focus/live");
     await bendClock(31_000);
-    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    const readsBeforeRecovery = liveReads;
+    await refocus();
     await expect(dock).toContainText("Focus running");
     await expect(dock).not.toContainText("last known");
+    expect(liveReads - readsBeforeRecovery).toBe(1);
+    page.removeListener("request", countLive);
+    await otherTab.close();
 
     // Return to the session, finish it, and the dock is gone everywhere.
     await dock.getByRole("link").click();
