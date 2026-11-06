@@ -68,7 +68,10 @@ export function runInLocalSandbox(spec: SandboxSpec): Promise<SandboxResult> {
     try {
       // detached: the timeout kills the whole process group, so a runaway
       // that forked children cannot outlive its budget.
-      child = spawn(binary, args, { env, detached: true });
+      // The scrubbed env deliberately carries only the allowlist; the repo's
+      // global types require NODE_ENV on ProcessEnv, and this object is
+      // precisely not the host process env.
+      child = spawn(binary, args, { env: env as NodeJS.ProcessEnv, detached: true });
     } catch (cause) {
       resolve({
         ok: false,
