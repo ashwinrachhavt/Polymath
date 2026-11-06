@@ -151,18 +151,22 @@
   $("#btn-save-note").addEventListener("click", async () => {
     let text = $("#note-input").value.trim();
     const btn = $("#btn-save-note");
+    // Start reading while the popup click still carries transient user
+    // activation; clipboard.read() can be revoked after unrelated awaits.
+    const clipboardPromise = text ? Promise.resolve({ text: "", image: null }) : AlfredAPI.readClipboardPayload();
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
-    // If textarea is empty, try clipboard
-    if (!text) {
-      try {
-        const clip = await navigator.clipboard.readText();
-        if (clip && clip.trim()) text = clip.trim();
-      } catch {}
+    let clipboard = { text: "", image: null };
+    try {
+      clipboard = await clipboardPromise;
+    } catch (error) {
+      flashStatus($("#quick-note"), `Error: ${error.message}`, "error");
+      return;
     }
+    if (!text) text = clipboard.text;
 
     // Still empty? Capture the full page via content script extractor
-    if (!text) {
+    if (!text && !clipboard.image) {
       btn.disabled = true;
       btn.textContent = "Capturing page...";
       try {
@@ -179,15 +183,26 @@
     // Save the text (from textarea or clipboard)
     btn.disabled = true;
     try {
-      const result = await AlfredAPI.captureSelection({
-        url: tab?.url || "",
-        title: tab?.title || "",
-        selectedText: text,
-        history: { title: text.slice(0, 80), url: tab?.url || "", type: "quick-note" },
-      });
+      const result = clipboard.image
+        ? await AlfredAPI.captureClipboard({
+            text,
+            image: clipboard.image,
+            title: tab?.title || clipboard.image.filename,
+            history: {
+              title: text.slice(0, 80) || clipboard.image.filename,
+              url: tab?.url || "",
+              type: "clipboard",
+            },
+          })
+        : await AlfredAPI.captureSelection({
+            url: tab?.url || "",
+            title: tab?.title || "",
+            selectedText: text,
+            history: { title: text.slice(0, 80), url: tab?.url || "", type: "quick-note" },
+          });
       let message;
       if (result.delivered) {
-        message = "Note saved!";
+        message = clipboard.image ? "Clipboard capture saved!" : "Note saved!";
       } else if (result.unconfirmed) {
         message = "On this device. This browser could not confirm Polymath received it yet.";
       } else {

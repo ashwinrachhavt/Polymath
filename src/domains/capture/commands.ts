@@ -222,8 +222,13 @@ export async function createCapture(
  * deployment opted into OCR, so storage never waits on a provider.
  */
 /** The receipt payload for a file capture - one shape so every replay and conflict check hashes the same bytes. */
-export function fileCaptureReceiptRequest(contentHash: string, filename: string) {
-  return { op: "createFileCapture", contentHash, filename };
+export function fileCaptureReceiptRequest(contentHash: string, filename: string, textHash?: string) {
+  return {
+    op: "createFileCapture",
+    contentHash,
+    filename,
+    ...(textHash ? { textHash } : {}),
+  };
 }
 
 export async function createFileCapture(
@@ -236,6 +241,11 @@ export async function createFileCapture(
     verdict: FileValidationResult;
     /** sha256 hex of the bytes when the caller already has it. */
     contentHash?: string;
+    /** Text copied alongside an image, kept as the capture's searchable body. */
+    text?: string;
+    /** Digest of the copied text, included in the idempotency receipt when present. */
+    textHash?: string;
+    textSource?: "clipboard";
     source?: (typeof captureSource.enumValues)[number];
     /**
      * First-party idempotency key. The ROUTE checks the receipt before the
@@ -273,7 +283,7 @@ export async function createFileCapture(
         tx,
         auth,
         input.idempotencyKey,
-        fileCaptureReceiptRequest(contentHash, filename),
+        fileCaptureReceiptRequest(contentHash, filename, input.textHash),
         async () => {
           const blobRow =
             (
@@ -315,8 +325,9 @@ export async function createFileCapture(
                 sizeBytes: input.bytes.byteLength,
                 contentHash,
                 ...(input.verdict.ok ? {} : { quarantined: true }),
+                ...(input.textSource ? { textSource: input.textSource } : {}),
               },
-              text: null,
+              text: input.text?.trim() || null,
               blobId: blobRow.id,
               createdBy: auth.userId,
               updatedBy: auth.userId,

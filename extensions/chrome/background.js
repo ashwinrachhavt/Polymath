@@ -131,16 +131,31 @@ async function deliver(entry) {
     const base = await AlfredAPI.base();
     const token = await AlfredAPI.token();
     const headers = {
-      "Content-Type": "application/json",
       // Minted once at enqueue; the server's request_receipts make every retry
       // of this key exactly-once.
       "Idempotency-Key": entry.id,
     };
     if (token) headers.Authorization = `Bearer ${token}`;
-    const resp = await fetch(`${base}/api/v1/captures`, {
+    let endpoint = `${base}/api/v1/captures`;
+    let body;
+    if (entry.image) {
+      const bytes = Uint8Array.from(atob(entry.image.base64), (char) => char.charCodeAt(0));
+      const form = new FormData();
+      form.set("file", new Blob([bytes], { type: entry.image.mimeType }), entry.image.filename);
+      if (entry.text) {
+        form.set("text", entry.text);
+        form.set("textSource", "clipboard");
+      }
+      endpoint = `${base}/api/v1/captures/file`;
+      body = form;
+    } else {
+      headers["Content-Type"] = "application/json";
+      body = JSON.stringify(Outbox.deliveryBody(entry));
+    }
+    const resp = await fetch(endpoint, {
       method: "POST",
       headers,
-      body: JSON.stringify(Outbox.deliveryBody(entry)),
+      body,
       signal: AbortSignal.timeout(DELIVERY_TIMEOUT_MS),
     });
     let errorText = null;
@@ -285,17 +300,34 @@ async function recordHistoryPending(entry) {
 
 /** Capture text may not be empty; a URL alone is a valid capture. */
 function validPayload(msg) {
-  return Boolean((msg.text || "").trim() || (msg.url || "").trim());
+  return Boolean((msg.text || "").trim() || (msg.url || "").trim() || validClipboardImage(msg.image));
+}
+
+function validClipboardImage(image) {
+  return Boolean(
+    image &&
+    typeof image.base64 === "string" &&
+    image.base64.length > 0 &&
+    image.base64.length <= 5_600_000 &&
+    /^[A-Za-z0-9+/]+={0,2}$/.test(image.base64) &&
+    typeof image.filename === "string" &&
+    image.filename.length <= 500 &&
+    ["image/png", "image/jpeg", "image/webp"].includes(image.mimeType),
+  );
 }
 
 async function enqueueCapture(msg) {
+  if (msg.image && !validClipboardImage(msg.image)) {
+    return { ok: false, error: "The copied image could not be saved. Copy it as PNG, JPEG, or WebP and try again." };
+  }
   if (!validPayload(msg)) {
-    return { ok: false, error: "Nothing to save — send text, a URL, or both." };
+    return { ok: false, error: "Nothing to save — send text, a URL, or an image." };
   }
   var entry = Outbox.makeEntry(
     {
       id: crypto.randomUUID(),
       text: (msg.text || "").trim(),
+      image: validClipboardImage(msg.image) ? msg.image : null,
       url: (msg.url || "").trim(),
       title: (msg.title || "").trim(),
       mode: msg.mode || null,

@@ -26,7 +26,11 @@ const holder: {
   auth: { userId: string; workspaceId: string; role: "owner" } | undefined;
 } = { db: undefined, auth: undefined };
 
-vi.mock("@/lib/db", () => ({ get db() { return holder.db; } }));
+vi.mock("@/lib/db", () => ({
+  get db() {
+    return holder.db;
+  },
+}));
 vi.mock("@/lib/db-transaction", () => ({
   get withTransaction() {
     return (fn: Parameters<typeof import("@/lib/db-transaction").withTransaction>[0]) =>
@@ -87,9 +91,13 @@ const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00
 // Neither a known signature nor printable text: the quarantine path.
 const UNIDENTIFIABLE = new Uint8Array([0x00, 0x01, 0x02, 0x03, 0x04, 0x05]);
 
-function uploadRequest(bytes: Uint8Array, filename: string, idempotencyKey?: string) {
+function uploadRequest(bytes: Uint8Array, filename: string, idempotencyKey?: string, text?: string) {
   const form = new FormData();
   form.set("file", new File([new Uint8Array(bytes)], filename));
+  if (text) {
+    form.set("text", text);
+    form.set("textSource", "clipboard");
+  }
   const headers = new Headers();
   if (idempotencyKey) headers.set("idempotency-key", idempotencyKey);
   return new Request("https://axiom.dev/api/v1/captures/file", { method: "POST", headers, body: form });
@@ -136,6 +144,23 @@ suite("capture file intake", () => {
       .from(auditEvents)
       .where(and(eq(auditEvents.workspaceId, workspaceId), eq(auditEvents.action, "capture.created")));
     expect(audits.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("keeps clipboard text with its image in one searchable capture", async () => {
+    const { db, workspaceId } = await seed("capture-file-clipboard");
+    const key = crypto.randomUUID();
+    const text = "Copied headline\n\nCopied paragraph.";
+    const response = await POST(uploadRequest(PNG, "clipboard.png", key, text), undefined);
+    const body = (await response.json()) as { captureId: string };
+
+    expect(response.status, JSON.stringify(body)).toBe(201);
+    const [capture] = await db.select().from(captures).where(eq(captures.id, body.captureId));
+    expect(capture.workspaceId).toBe(workspaceId);
+    expect(capture.text).toBe(text);
+    expect((capture.rawPayload as Record<string, unknown>).textSource).toBe("clipboard");
+
+    const differentText = await POST(uploadRequest(PNG, "clipboard.png", key, "Changed text"), undefined);
+    expect(differentText.status).toBe(422);
   });
 
   it("a replay with the same idempotency key returns the same capture and writes nothing twice", async () => {
@@ -267,7 +292,10 @@ suite("capture file intake", () => {
 
     const { convertCaptureToTask } = await import("@/domains/capture/commands");
     const [before] = await db.select().from(captures).where(eq(captures.id, body.captureId));
-    const { task } = await convertCaptureToTask(holder.auth!, { captureId: body.captureId, expectedVersion: before.version });
+    const { task } = await convertCaptureToTask(holder.auth!, {
+      captureId: body.captureId,
+      expectedVersion: before.version,
+    });
 
     const { tasks } = await import("@/domains/work/schema");
     const [row] = await db.select().from(tasks).where(eq(tasks.id, task.id));

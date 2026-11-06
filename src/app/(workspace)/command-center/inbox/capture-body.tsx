@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
+import Image from "@tiptap/extension-image";
 import Placeholder from "@tiptap/extension-placeholder";
 import { Markdown } from "@tiptap/markdown";
 import { Button } from "@/components/ui/button";
@@ -52,6 +53,12 @@ export function CaptureBody({
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ link: { openOnClick: false } }),
+      Image.configure({
+        allowBase64: false,
+        HTMLAttributes: {
+          class: "my-3 max-h-[70vh] max-w-full rounded-xl border border-border bg-muted/30 object-contain shadow-sm",
+        },
+      }),
       Placeholder.configure({ placeholder: "" }),
       Markdown,
     ],
@@ -91,7 +98,7 @@ export function CaptureBody({
           editor
             ?.chain()
             .focus()
-            .insertContent(`[${image.name || "captured image"}](/api/v1/captures/${result.captureId}/file)`, {
+            .insertContent(`![${image.name || "captured image"}](/api/v1/captures/${result.captureId}/file)`, {
               contentType: "markdown",
             })
             .run();
