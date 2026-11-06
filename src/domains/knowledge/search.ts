@@ -3,6 +3,8 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { embeddingProvider, type EmbeddingProvider } from "@/integrations/embeddings/provider";
 import { EMBEDDING_OWNER_TYPE, vectorLiteral } from "./embedding";
+import { chunkText } from "./chunking";
+import { deriveCoverage, type EmbeddingCoverage } from "./coverage";
 import { currentExtractionSql } from "./versions";
 import { documents, documentExtractions, embeddings, files, reviewedAssertions } from "./schema";
 
@@ -167,7 +169,80 @@ export type ChunkHit = {
   span: { start: number; end: number; page: number | null };
   /** Cosine distance: 0 is identical, 2 is opposite. Lower is closer. */
   distance: number;
+  /** Derived embedding coverage of the cited extraction (issue #533 finding
+   * 5): "partial" is PROVEN cap truncation, "complete" is PROVEN full
+   * coverage, and everything the evidence cannot establish is "unknown" -
+   * never a falsely reassuring "complete". See coverage.ts. */
+  coverage?: EmbeddingCoverage;
 };
+
+/*
+ * One bounded aggregate query derives coverage for a candidate set: chunk
+ * count, index range and span range per (extraction, model), joined in code
+ * against each extraction's recorded embedModel/embedError/text shape. No
+ * N+1, no text transfer (lengths come from the queries that already fetch
+ * the rows).
+ */
+async function coverageFor(
+  extractions: {
+    id: string;
+    embedModel: string | null;
+    embedError: string | null;
+    textLength: number;
+    leadingWhitespace: number;
+  }[],
+  workspaceId: string,
+): Promise<Map<string, EmbeddingCoverage>> {
+  const out = new Map<string, EmbeddingCoverage>();
+  const unique = [...new Map(extractions.map((e) => [e.id, e])).values()];
+  if (unique.length === 0) return out;
+  const rows = await db
+    .select({
+      ownerId: embeddings.ownerId,
+      model: embeddings.model,
+      count: sql<number>`count(*)::int`,
+      minIndex: sql<number | null>`min(${embeddings.chunkIndex})`,
+      maxIndex: sql<number | null>`max(${embeddings.chunkIndex})`,
+      minStart: sql<number | null>`min(${embeddings.spanStart})`,
+      maxEnd: sql<number | null>`max(${embeddings.spanEnd})`,
+    })
+    .from(embeddings)
+    .where(
+      and(
+        eq(embeddings.workspaceId, workspaceId),
+        eq(embeddings.ownerType, EMBEDDING_OWNER_TYPE),
+        inArray(embeddings.ownerId, unique.map((e) => e.id)),
+      ),
+    )
+    .groupBy(embeddings.ownerId, embeddings.model);
+  const byKey = new Map(rows.map((r) => [`${r.ownerId}${r.model}`, r]));
+  for (const e of unique) {
+    const agg = e.embedModel ? byKey.get(`${e.id}${e.embedModel}`) : undefined;
+    out.set(
+      e.id,
+      deriveCoverage({
+        embedModel: e.embedModel,
+        embedError: e.embedError,
+        textLength: e.textLength,
+        leadingWhitespace: e.leadingWhitespace,
+        chunks: {
+          count: Number(agg?.count ?? 0),
+          minIndex: agg?.minIndex == null ? null : Number(agg.minIndex),
+          maxIndex: agg?.maxIndex == null ? null : Number(agg.maxIndex),
+          minSpanStart: agg?.minStart == null ? null : Number(agg.minStart),
+          maxSpanEnd: agg?.maxEnd == null ? null : Number(agg.maxEnd),
+        },
+      }),
+    );
+  }
+  return out;
+}
+
+/** Trimmed length server-side: chunk spans index the untrimmed text, and trailing whitespace must not flip coverage to "partial". */
+const trimmedTextLength = sql<number>`char_length(regexp_replace(coalesce(${documentExtractions.text}, ''), '\\s+$', ''))`;
+
+/** Leading whitespace server-side: chunk 0 starts at the first non-blank, so coverage of the head is "first span start <= leading whitespace". */
+const leadingWhitespace = sql<number>`char_length(coalesce(${documentExtractions.text}, '')) - char_length(regexp_replace(coalesce(${documentExtractions.text}, ''), '^\\s+', ''))`;
 
 /*
  * Nearest chunks to a question, inside one workspace. Three scopes apply to
@@ -201,6 +276,10 @@ export async function searchChunks(
       start: embeddings.spanStart,
       end: embeddings.spanEnd,
       page: embeddings.page,
+      embedModel: documentExtractions.embedModel,
+      embedError: documentExtractions.embedError,
+      textLength: trimmedTextLength,
+      leadingWhitespace,
       distance,
     })
     .from(embeddings)
@@ -224,6 +303,16 @@ export async function searchChunks(
     .orderBy(distance)
     .limit(limit);
 
+  const coverage = await coverageFor(
+    rows.map((r) => ({
+      id: r.extractionId,
+      embedModel: r.embedModel,
+      embedError: r.embedError,
+      textLength: Number(r.textLength),
+      leadingWhitespace: Number(r.leadingWhitespace),
+    })),
+    auth.workspaceId,
+  );
   return rows.map((r) => ({
     documentId: r.documentId,
     title: r.title,
@@ -232,6 +321,7 @@ export async function searchChunks(
     text: r.text,
     span: { start: r.start ?? 0, end: r.end ?? r.text.length, page: r.page },
     distance: Number(r.distance),
+    coverage: coverage.get(r.extractionId),
   }));
 }
 
@@ -264,6 +354,9 @@ export async function searchChunksFts(
       title: documents.title,
       extractionId: documentExtractions.id,
       text: documentExtractions.text,
+      spans: documentExtractions.spans,
+      embedModel: documentExtractions.embedModel,
+      embedError: documentExtractions.embedError,
       rank,
     })
     .from(documentExtractions)
@@ -283,22 +376,102 @@ export async function searchChunksFts(
     .orderBy(desc(rank))
     .limit(limit);
 
+  /*
+   * Canonical passage units (issue #533 finding 2). The FTS leg must speak
+   * the SAME (extractionId, chunkIndex) identities the vector leg returns,
+   * or fusion either collides unrelated windows or fails to align equivalent
+   * evidence. Identity is established two ways, in order:
+   *
+   * 1. EXACT: when the embedding pass already wrote chunk rows for the
+   *    extraction, reuse those rows verbatim (same text, span, page and
+   *    chunkIndex). Nothing is recomputed, so no chunker drift can break
+   *    identity for embedded documents. When several models embedded the
+   *    extraction, the extraction's own embedModel wins - it names the
+   *    latest successful pass.
+   * 2. DETERMINISTIC: with no stored chunks (embedding not run, or failed)
+   *    the extraction is re-chunked with the same pure chunker the embedding
+   *    pass calls, on the same text and spans. chunkText is deterministic
+   *    for a fixed input, and a determinism test locks its output so a
+   *    chunker config change fails loudly instead of silently shifting
+   *    identities. Lexical retrieval keeps working without any embedding.
+   */
+  const extractionIds = rows.map((r) => r.extractionId);
+  const stored = extractionIds.length
+    ? await db
+        .select({
+          ownerId: embeddings.ownerId,
+          model: embeddings.model,
+          chunkIndex: embeddings.chunkIndex,
+          content: embeddings.content,
+          spanStart: embeddings.spanStart,
+          spanEnd: embeddings.spanEnd,
+          page: embeddings.page,
+        })
+        .from(embeddings)
+        .where(
+          and(
+            eq(embeddings.workspaceId, auth.workspaceId),
+            eq(embeddings.ownerType, EMBEDDING_OWNER_TYPE),
+            inArray(embeddings.ownerId, extractionIds),
+          ),
+        )
+    : [];
+  const storedByExtraction = new Map<string, typeof stored>();
+  for (const row of stored) {
+    const list = storedByExtraction.get(row.ownerId) ?? [];
+    list.push(row);
+    storedByExtraction.set(row.ownerId, list);
+  }
+
+  const coverage = await coverageFor(
+    rows.map((r) => ({
+      id: r.extractionId,
+      embedModel: r.embedModel,
+      embedError: r.embedError,
+      textLength: (r.text ?? "").trimEnd().length,
+      leadingWhitespace: (r.text ?? "").length - (r.text ?? "").trimStart().length,
+    })),
+    auth.workspaceId,
+  );
   return rows.flatMap((r) => {
     const text = r.text ?? "";
     if (!text) return [];
-    const { start, end } = passageWindow(text, query);
-    return [
-      {
+    const cov = coverage.get(r.extractionId);
+    const window = passageWindow(text, query);
+    // ts_rank is higher-is-better; ChunkHit.distance is lower-is-closer.
+    const distance = 1 / (1 + Number(r.rank));
+    const storedChunks = storedByExtraction.get(r.extractionId);
+    if (storedChunks && storedChunks.length > 0) {
+      const preferred =
+        r.embedModel && storedChunks.some((c) => c.model === r.embedModel)
+          ? storedChunks.filter((c) => c.model === r.embedModel)
+          : storedChunks;
+      return preferred
+        .filter((c) => (c.spanEnd ?? 0) > window.start && (c.spanStart ?? 0) < window.end)
+        .map((c) => ({
+          documentId: r.documentId,
+          title: r.title,
+          extractionId: r.extractionId,
+          chunkIndex: c.chunkIndex,
+          text: c.content,
+          span: { start: c.spanStart ?? 0, end: c.spanEnd ?? c.content.length, page: c.page },
+          distance,
+          coverage: cov,
+        }));
+    }
+    const spans = (r.spans ?? []) as { page: number; start: number; end: number }[];
+    return chunkText(text, spans)
+      .filter((c) => c.end > window.start && c.start < window.end)
+      .map((chunk) => ({
         documentId: r.documentId,
         title: r.title,
         extractionId: r.extractionId,
-        chunkIndex: 0,
-        text: text.slice(start, end),
-        span: { start, end, page: null },
-        // ts_rank is higher-is-better; ChunkHit.distance is lower-is-closer.
-        distance: 1 / (1 + Number(r.rank)),
-      },
-    ];
+        chunkIndex: chunk.index,
+        text: chunk.text,
+        span: { start: chunk.start, end: chunk.end, page: chunk.page },
+        distance,
+        coverage: cov,
+      }));
   });
 }
 

@@ -11,8 +11,8 @@ export type Chunk = { index: number; text: string; start: number; end: number; p
 
 const CHUNK_TARGET_CHARS = 1200;
 const CHUNK_OVERLAP_CHARS = 150;
-/** A 4 MB upload cannot become an unbounded bill: past this many chunks the rest is not embedded. */
-const MAX_CHUNKS = 400;
+/** A 4 MB upload cannot become an unbounded bill: past this many chunks the rest is not embedded. Exported for the read-time coverage derivation (coverage.ts). */
+export const MAX_CHUNKS = 400;
 
 /** Prefer to end a chunk at a paragraph break, then a sentence, then a space. */
 function breakPoint(text: string, from: number, hardEnd: number): number {

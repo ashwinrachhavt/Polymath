@@ -206,9 +206,17 @@ suite("documents.search for the agent (real Postgres + pgvector)", () => {
     expect(await searchDocumentsForAgent(a, { query: "rent" })).toEqual({
       ok: true,
       query: "rent",
+      // The unconfigured embedding key now also marks the search degraded
+      // (issue #533 finding 4): the model must say retrieval ran partial.
+      degraded: "vector_leg_failed",
       mode: "text",
       results: [],
     });
+    // A broken provider no longer fails the whole search: the FTS leg still
+    // answers and the result is labelled degraded, so the model can say the
+    // search ran partial. A both-legs-fail fixed message lives in the unit
+    // suite (agent-search-retrieval-repairs.test.ts) where both legs are
+    // injected failures.
     const broken: EmbeddingProvider = {
       model: "m",
       embed: async () => {
@@ -216,7 +224,7 @@ suite("documents.search for the agent (real Postgres + pgvector)", () => {
       },
     };
     const res = await searchDocumentsForAgent(a, { query: "rent", provider: broken });
-    expect(res).toEqual({ ok: false, error: "document search failed, try again" });
+    expect(res).toEqual({ ok: true, query: "rent", degraded: "vector_leg_failed", mode: "text", results: [] });
   });
 
   it("falls back to full-text search over current extractions when no embedding key is configured", async () => {
@@ -252,7 +260,7 @@ suite("documents.search for the agent (real Postgres + pgvector)", () => {
     expect(empty).toEqual({ ok: false, error: "project not found" });
     await holder.db!.update(documents).set({ archivedAt: new Date() }).where(eq(documents.id, lease.id));
     const res = await searchDocumentsForAgent(a, { query: "rent" });
-    expect(res).toEqual({ ok: true, query: "rent", mode: "text", results: [] });
+    expect(res).toEqual({ ok: true, query: "rent", mode: "text", degraded: "vector_leg_failed", results: [] });
   });
 
   it("the default profile grants the read and internal tools, and an older profile gains only those", async () => {

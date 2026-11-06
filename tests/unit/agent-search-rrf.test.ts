@@ -22,6 +22,17 @@ describe("rrfMerge", () => {
     expect(merged.map((h) => h.documentId)).toEqual(["b", "a", "d", "c"]);
   });
 
+  it("coverage merge stays conservative: proven partial is never hidden by unknown", () => {
+    // Same extraction cited by both legs with disagreeing derivations.
+    const pair = (a: ChunkHit["coverage"], b: ChunkHit["coverage"]) =>
+      rrfMerge([hit("x", { coverage: a })], [hit("x", { coverage: b })], 10)[0].coverage;
+    expect(pair("partial", "unknown")).toBe("partial");
+    expect(pair("unknown", "partial")).toBe("partial");
+    expect(pair("complete", "unknown")).toBe("unknown");
+    expect(pair("complete", "partial")).toBe("partial");
+    expect(pair("complete", "complete")).toBe("complete");
+  });
+
   it("a hit seen by only one side still appears (never drops to zero)", () => {
     const merged = rrfMerge([hit("only-fts")], [], 10);
     expect(merged.map((h) => h.documentId)).toEqual(["only-fts"]);
