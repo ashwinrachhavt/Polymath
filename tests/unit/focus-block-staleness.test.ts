@@ -32,6 +32,22 @@ describe("focus poll staleness fail-safe", () => {
   });
 });
 
+describe("poll failure decision", () => {
+  it("a 403 is forbidden immediately — a key without focus:read never recovers by retrying", () => {
+    expect(Focus.pollFailureDecision(403, { lastOkAt: T0 }, T0 + 1)).toBe("forbidden");
+    // Even a fresh successful-poll cache does not ride the stale window.
+    expect(Focus.pollFailureDecision(403, { lastOkAt: T0 }, T0)).toBe("forbidden");
+    // Nor does an absent cache (the never-worked case: blocking silently off).
+    expect(Focus.pollFailureDecision(403, null, T0)).toBe("forbidden");
+  });
+
+  it("non-403 failures fall through to the stale fail-safe", () => {
+    expect(Focus.pollFailureDecision(undefined, { lastOkAt: T0 }, T0 + 1)).toBe("keep");
+    expect(Focus.pollFailureDecision(500, { lastOkAt: T0 }, T0 + Focus.STALE_AFTER_MS + 1)).toBe("clear");
+    expect(Focus.pollFailureDecision(0, null, T0)).toBe("clear");
+  });
+});
+
 describe("focus remaining-minutes display", () => {
   it("rounds up so a session never shows zero while it still holds", () => {
     expect(Focus.remainingMinutes(3599)).toBe(60);

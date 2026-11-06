@@ -27,14 +27,14 @@ dependent, so `inventory:check` behaves the same on a laptop and in CI.
 | `vitest` | 5.0.5 |
 | `@playwright/test` | ^1.64.1 |
 
-Migrations: 115 files, highest `0288_drop_capture_proposals`.
+Migrations: 116 files, highest `0289_poll_fact_suggestions`.
 
 ## Tests
 
-565 `.test.ts` and 52 `.spec.ts` files (unit: 332, integration: 230, e2e: 52).
+567 `.test.ts` and 52 `.spec.ts` files (unit: 334, integration: 230, e2e: 52).
 ## Domains
 
-24 folders; 18 own tables.
+25 folders; 19 own tables.
 
 | Domain | Tables |
 | --- | ---: |
@@ -45,6 +45,7 @@ Migrations: 115 files, highest `0288_drop_capture_proposals`.
 | `capture` | 1 |
 | `crm` | 6 |
 | `daybook` | 1 |
+| `facts` | 1 |
 | `focus` | 2 |
 | `gamification` | 3 |
 | `identity` | 16 |
@@ -109,6 +110,7 @@ No tables: `conversations`, `diagrams`, `home`, `import`, `notifications`, `supe
 | `crm` | `correspondence` | versioned |
 | `crm` | `follow_ups` | versioned |
 | `daybook` | `day_artifact_pins` | append-only |
+| `facts` | `poll_fact_suggestions` | append-only |
 | `focus` | `focus_sessions` | versioned |
 | `focus` | `focus_blocklist` | versioned |
 | `gamification` | `reward_definitions` | versioned |
@@ -213,7 +215,7 @@ No tables: `conversations`, `diagrams`, `home`, `import`, `notifications`, `supe
 | `work` | `boards` | versioned |
 | `work` | `briefing_seeds` | versioned |
 
-Totals: 88 versioned, 55 append-only, 6 versionless but guarded (each declared with its guard and its file in `scripts/lib/row-state.ts`).
+Totals: 88 versioned, 56 append-only, 6 versionless but guarded (each declared with its guard and its file in `scripts/lib/row-state.ts`).
 
 ## Route handlers
 
@@ -234,6 +236,7 @@ Totals: 88 versioned, 55 append-only, 6 versionless but guarded (each declared w
 - `/api/v1/drafts`
 - `/api/v1/drafts/[artifactId]/[decision]`
 - `/api/v1/exports/packets/[packetId]`
+- `/api/v1/facts/suggestions`
 - `/api/v1/files`
 - `/api/v1/focus/blocklist`
 - `/api/v1/focus/live`
@@ -294,7 +297,7 @@ Totals: 88 versioned, 55 append-only, 6 versionless but guarded (each declared w
 
 ## Outbox
 
-Emitted topics: 25. Registered handlers: 11. Declared audit-only: 14.
+Emitted topics: 26. Registered handlers: 12. Declared audit-only: 14.
 
 Topics with no handler and no declaration (a defect if non-empty):
 

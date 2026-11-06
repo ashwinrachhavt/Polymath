@@ -5,12 +5,7 @@ import { RELATIONSHIP_STATUSES, type RelationshipStatus } from "@/domains/crm/st
 import type { AuthContext } from "./resolve";
 import { db } from "@/lib/db";
 import { escapeLike } from "@/lib/list-params";
-import {
-  contactPoints,
-  organizations,
-  partyEmployment,
-  people,
-} from "./schema";
+import { contactPoints, organizations, partyEmployment, people } from "./schema";
 
 /*
  * Read queries for the People and Companies tables. These are identity-domain
@@ -185,6 +180,117 @@ export async function pageOrganizations(
     db.select({ total: count() }).from(organizations).where(where),
   ]);
   return { items, total: totalRow?.total ?? 0 };
+}
+
+/*
+ * The @-mention context readers. The picker hands an identity id (the tables
+ * the LinkedIn CSV import writes); these resolve it inside the workspace and
+ * return the JSON shape the composer serializes for the model. Read-only —
+ * a mention loads context, it never writes anything.
+ */
+
+export type PersonMentionContext = {
+  id: string;
+  name: string;
+  email: string | null;
+  title: string | null;
+  companies: { name: string; title: string | null; isCurrent: boolean }[];
+};
+
+export async function getPersonMentionContext(
+  auth: AuthContext,
+  input: { personId: string },
+): Promise<PersonMentionContext | null> {
+  const [person] = await db
+    .select({ id: people.id, displayName: people.displayName, title: people.title })
+    .from(people)
+    .where(and(eq(people.id, input.personId), eq(people.workspaceId, auth.workspaceId), isNull(people.archivedAt)))
+    .limit(1);
+  if (!person) return null;
+
+  const [emailRows, orgRows] = await Promise.all([
+    db
+      .select({ value: contactPoints.value, isPrimary: contactPoints.isPrimary })
+      .from(contactPoints)
+      .where(
+        and(
+          eq(contactPoints.workspaceId, auth.workspaceId),
+          eq(contactPoints.kind, "email"),
+          eq(contactPoints.personId, person.id),
+          isNull(contactPoints.archivedAt),
+        ),
+      )
+      .orderBy(desc(contactPoints.isPrimary), asc(contactPoints.value)),
+    db
+      .select({ name: organizations.name, title: partyEmployment.title, isCurrent: sql<boolean>`true` })
+      .from(partyEmployment)
+      .innerJoin(organizations, eq(organizations.id, partyEmployment.organizationId))
+      .where(
+        and(
+          eq(partyEmployment.workspaceId, auth.workspaceId),
+          eq(partyEmployment.personId, person.id),
+          isNull(partyEmployment.endedAt),
+        ),
+      )
+      .orderBy(desc(partyEmployment.createdAt)),
+  ]);
+
+  // Primary first, so the first row seen for a person is the one shown.
+  const email = emailRows.find((row) => row.value)?.value ?? null;
+  return {
+    id: person.id,
+    name: person.displayName,
+    email,
+    title: person.title,
+    companies: orgRows.map((row) => ({ name: row.name, title: row.title, isCurrent: row.isCurrent })),
+  };
+}
+
+export type OrganizationMentionContext = {
+  id: string;
+  name: string;
+  domain: string | null;
+  people: { name: string; title: string | null; isCurrent: boolean }[];
+};
+
+export async function getOrganizationMentionContext(
+  auth: AuthContext,
+  input: { organizationId: string },
+): Promise<OrganizationMentionContext | null> {
+  const [organization] = await db
+    .select({ id: organizations.id, name: organizations.name, domain: organizations.domain })
+    .from(organizations)
+    .where(
+      and(
+        eq(organizations.id, input.organizationId),
+        eq(organizations.workspaceId, auth.workspaceId),
+        isNull(organizations.archivedAt),
+      ),
+    )
+    .limit(1);
+  if (!organization) return null;
+
+  const peopleRows = await db
+    .select({ displayName: people.displayName, title: partyEmployment.title })
+    .from(partyEmployment)
+    .innerJoin(people, eq(people.id, partyEmployment.personId))
+    .where(
+      and(
+        eq(partyEmployment.workspaceId, auth.workspaceId),
+        eq(partyEmployment.organizationId, organization.id),
+        isNull(partyEmployment.endedAt),
+        isNull(people.archivedAt),
+      ),
+    )
+    .orderBy(asc(people.displayName))
+    .limit(10);
+
+  return {
+    id: organization.id,
+    name: organization.name,
+    domain: organization.domain,
+    people: peopleRows.map((row) => ({ name: row.displayName, title: row.title, isCurrent: true })),
+  };
 }
 
 /*

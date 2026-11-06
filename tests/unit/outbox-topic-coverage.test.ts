@@ -29,7 +29,10 @@ function emittedTopics(): Set<string> {
   const topics = new Set<string>();
   for (const file of walk(src)) {
     const text = readFileSync(file, "utf8");
-    for (const m of text.matchAll(/topic:\s*"([a-z0-9_.:]+)"/g)) topics.add(m[1]);
+    // A dot is part of every topic name the repo writes ("crawl.requested"),
+    // and requiring it keeps the scan off plain object keys that merely share
+    // the word - the fact deck's `topic: "science"` tags, for one.
+    for (const m of text.matchAll(/topic:\s*"([a-z0-9_.]+\.[a-z0-9_.:]+)"/g)) topics.add(m[1]);
     // Topic constants: `const X_TOPIC = "a.b";` then `[X_TOPIC]:` in a map.
     for (const m of text.matchAll(/const\s+[A-Z0-9_]*TOPIC\s*(?::[^=]+)?=\s*"([a-z0-9_.]+)"/g)) {
       topics.add(m[1]);

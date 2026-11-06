@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowUpRight, Check, Copy, Loader2, TriangleAlert, Wand2 } from "lucide-react";
+import { ArrowUpRight, Check, Copy, TriangleAlert, Wand2 } from "lucide-react";
+import { FactPoll } from "@/components/fact-poll";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -114,12 +115,11 @@ export default function DiagramCard({
   if (card.state === "rendering") {
     return (
       <div className="panel rounded-xl p-4" data-diagram-card="rendering">
-        <div className="flex items-center gap-2">
-          <Loader2 aria-hidden className="text-muted-foreground size-3.5 animate-spin" />
-          <p className="text-body-dense text-muted-foreground">
-            Rendering diagram{card.title ? `: ${card.title}` : "…"}
-          </p>
-        </div>
+        <FactPoll
+          label={`Rendering diagram${card.title ? `: ${card.title}` : "…"}`}
+          compact
+          topics={["diagram", "rendering", "motion", "light"]}
+        />
         <Skeleton className="mt-3 h-40 w-full rounded-md" />
       </div>
     );
@@ -210,9 +210,7 @@ export default function DiagramCard({
       <div className="space-y-2" data-diagram-card="preview-loading">
         <Skeleton className="h-40 w-full rounded-md" />
         {isRendering(outcome, tab, Boolean(mermaid)) ? (
-          <p role="status" className="text-muted-foreground flex items-center gap-2 text-body-dense">
-            <Loader2 aria-hidden className="size-3.5 animate-spin" /> Rendering the diagram…
-          </p>
+          <FactPoll label="Rendering the diagram…" compact topics={["diagram", "rendering", "motion", "light"]} />
         ) : null}
       </div>
     );

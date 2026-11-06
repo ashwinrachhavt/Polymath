@@ -18,13 +18,13 @@ import { interviewModelGate } from "@/app/(workspace)/onboarding/model-gate";
  * that before this gate runs.
  */
 
-const KEYED = { GEMINI_API_KEY: "test-key" } as Record<string, string | undefined>;
+const KEYED = { GROQ_API_KEY: "test-key" } as Record<string, string | undefined>;
 
 describe("interviewModelGate", () => {
   it("blocks when the default model's key is absent", () => {
     const gate = interviewModelGate(null, {});
     expect(gate.ok).toBe(false);
-    if (!gate.ok) expect(gate.message).toContain("GEMINI_API_KEY");
+    if (!gate.ok) expect(gate.message).toContain("GROQ_API_KEY");
   });
 
   it("passes when the default model's key is present", () => {
@@ -45,11 +45,11 @@ describe("interviewModelGate", () => {
   it("resolves an unrecognized pin to the default's key, mirroring the runtime", () => {
     const gate = interviewModelGate({ primary: "not-a-real-model" }, {});
     expect(gate.ok).toBe(false);
-    if (!gate.ok) expect(gate.message).toContain("GEMINI_API_KEY");
+    if (!gate.ok) expect(gate.message).toContain("GROQ_API_KEY");
   });
 
   it("treats a whitespace-only key as absent", () => {
-    const gate = interviewModelGate(null, { GEMINI_API_KEY: "   " });
+    const gate = interviewModelGate(null, { GROQ_API_KEY: "   " });
     expect(gate.ok).toBe(false);
   });
 
