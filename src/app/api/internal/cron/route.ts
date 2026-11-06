@@ -4,6 +4,7 @@ import { reconcileUnknownAttempts } from "@/domains/actions/reconciliation";
 import { dispatchPendingOutbox, recoverStrandedOutbox } from "@/domains/audit/outbox";
 import { outboxHandlers } from "@/domains/audit/outbox-handlers";
 import { syncAllGmailSenders } from "@/domains/crm/sender-sync";
+import { scheduleMonthlyFactRefresh } from "@/domains/facts/schedule";
 import { InstantTools } from "@/domains/integrations/instant-tools";
 import { composioTransport } from "@/domains/integrations/transport";
 import { runSuperagentDispatch } from "@/domains/superagent/effects";
@@ -103,6 +104,15 @@ async function drain(): Promise<Response> {
     } catch (cause) {
       quotaReap = { error: cause instanceof Error ? cause.message : "unknown error" };
     }
+    // The polling fact deck refreshes monthly: one dispatch key per month makes
+    // every pass after the first a no-op, and the handler's uniqueness absorbs
+    // a redelivery. A failure must not break the rest of the pass.
+    let factRefresh: { enqueued: boolean } | { error: string };
+    try {
+      factRefresh = await scheduleMonthlyFactRefresh();
+    } catch (cause) {
+      factRefresh = { error: cause instanceof Error ? cause.message : "unknown error" };
+    }
     return Response.json({
       recovered: recovered.length,
       ...result,
@@ -111,6 +121,7 @@ async function drain(): Promise<Response> {
       instantSync,
       senderSync,
       quotaReap,
+      factRefresh,
     });
   } finally {
     await client.end({ timeout: 5 });

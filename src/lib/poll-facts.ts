@@ -185,11 +185,14 @@ export const pollFacts: PollFact[] = [
 /**
  * Facts tagged into the wait's topics are the preferred pool, but only when
  * the intersection is deep enough to feel varied; a shallow match would
- * repeat itself inside a minute, so it falls back to the whole deck.
+ * repeat itself inside a minute, so it falls back to the whole deck. Extra
+ * suggestions (the job-drafted facts) join the deck wherever it is used; ones
+ * tagged into the topics widen the preferred pool too.
  */
-export function selectFactPool(topics: string[]): PollFact[] {
-  const preferred = pollFacts.filter((fact) => fact.tags.some((tag) => topics.includes(tag)));
-  return preferred.length >= 3 ? preferred : pollFacts;
+export function selectFactPool(topics: string[], extra?: PollFact[]): PollFact[] {
+  const deck = extra?.length ? [...pollFacts, ...extra] : pollFacts;
+  const preferred = deck.filter((fact) => fact.tags.some((tag) => topics.includes(tag)));
+  return preferred.length >= 3 ? preferred : deck;
 }
 
 /** A shuffled copy of the pool; the walk never repeats until it is exhausted. */
