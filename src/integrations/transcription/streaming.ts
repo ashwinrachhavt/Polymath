@@ -11,11 +11,12 @@
  * answers "unconfigured" - a paid streaming session never activates itself
  * by detecting a key, and there is no silent paid fallback. The fixture is
  * selectable only by the same explicit choice, so no deployment drifts into
- * invented transcripts. Deepgram streaming lands with the credits trial
- * (the issue's $200 pilot credit; balance/expiry confirmation and spend are
- * the owner's gate) - until then naming "deepgram" fails loudly.
+ * invented transcripts. The Deepgram adapter is real; selecting it requires
+ * DEEPGRAM_API_KEY in the environment, and the first live call is the
+ * credits trial the owner gates (the issue's $200 pilot credit).
  */
 
+import { deepgramStreamingTranscriptionProvider } from "./deepgram";
 import { fixtureStreamingTranscriptionProvider } from "./streaming-fixture";
 
 /** One committed segment of the session: the words that will not change again. */
@@ -33,6 +34,8 @@ export type StreamingSessionEvents = {
 };
 
 export interface StreamingTranscriptionSession {
+  /** One chunk of encoded audio. Server-side sessions are fed here; the transport owns the wire format. */
+  sendAudio(chunk: Uint8Array): void;
   /** Stop admitting new audio and flush: every recognized word still lands as a final (trailing) segment. */
   stop(): Promise<void>;
   /** Abandon the session: uncommitted interim is discarded and nothing further is delivered. */
@@ -60,10 +63,6 @@ export function streamingTranscriptionProvider(): StreamingTranscriptionProvider
   const selector = process.env.TRANSCRIPTION_STREAMING_PROVIDER?.trim();
   if (!selector) throw new StreamingTranscriptionUnconfiguredError();
   if (selector === "fixture") return fixtureStreamingTranscriptionProvider();
-  if (selector === "deepgram") {
-    throw new Error(
-      "TRANSCRIPTION_STREAMING_PROVIDER=deepgram is not enabled yet: the Deepgram streaming adapter lands with the credits trial (issue #532). Confirm the credit balance and expiry first.",
-    );
-  }
+  if (selector === "deepgram") return deepgramStreamingTranscriptionProvider();
   throw new Error(`TRANSCRIPTION_STREAMING_PROVIDER must be fixture or deepgram; got "${selector}".`);
 }

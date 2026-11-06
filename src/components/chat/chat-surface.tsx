@@ -23,6 +23,7 @@ import {
   type MentionEntity,
 } from "./mention-context";
 import { ContextChips } from "./context-chips";
+import { DictationMicButton, useComposerFieldAdapter } from "./dictation-mic";
 import { eventFile, uploadCaptureFile } from "@/lib/capture-upload";
 import { citedIndices } from "@/domains/knowledge/inline-citations";
 
@@ -167,6 +168,7 @@ export function ChatSurface({
   // The focus waits a frame so the state-driven draft lands in the textarea
   // before the caret does.
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  const dictationField = useComposerFieldAdapter(composerRef, setDraft);
   function refineDiagram(prefill: string) {
     setDraft(prefill);
     requestAnimationFrame(() => composerRef.current?.focus());
@@ -553,6 +555,8 @@ export function ChatSurface({
               />
               <span className="px-1 truncate text-data text-muted-foreground">{attachNote}</span>
             </div>
+            <div className="flex shrink-0 items-center gap-1">
+              <DictationMicButton field={dictationField} />
             <Button
               type="submit"
               size="icon"
@@ -570,6 +574,7 @@ export function ChatSurface({
             >
               <ArrowUp aria-hidden className="size-4" />
             </Button>
+            </div>
           </div>
         </form>
       )}

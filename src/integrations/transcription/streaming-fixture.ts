@@ -36,6 +36,9 @@ export function fixtureStreamingTranscriptionProvider(): StreamingTranscriptionP
         at += 5;
       }
       return {
+        sendAudio() {
+          // The fixture speaks on its own schedule; the audio is ignored.
+        },
         stop() {
           for (const timer of timers) clearTimeout(timer);
           if (!cancelled) events.onFinal?.({ text: "", trailing: true });

@@ -3,9 +3,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   streamingTranscriptionProvider,
   StreamingTranscriptionUnconfiguredError,
-  type StreamingSessionEvents,
-  type StreamingTranscriptionProvider,
 } from "@/integrations/transcription/streaming";
+import type {
+  ClientDictationEvents,
+  ClientDictationProvider,
+} from "@/lib/speech/client-dictation";
 import {
   FIXTURE_STREAMING_SEGMENTS,
   fixtureStreamingTranscriptionProvider,
@@ -37,10 +39,9 @@ function fakeMedia(stream: MediaStream) {
 
 /* A scripted session: emits steps on demand so tests drive the sequence deterministically. */
 function scriptedProvider(script: Array<() => void>) {
-  let events: StreamingSessionEvents | null = null;
-  const provider: StreamingTranscriptionProvider = {
+  let events: ClientDictationEvents | null = null;
+  const provider: ClientDictationProvider = {
     name: "test:scripted",
-    registryId: "test",
     async startSession(e) {
       events = e;
       return {
@@ -73,9 +74,10 @@ describe("streaming provider selection (issue #532)", () => {
     expect(streamingTranscriptionProvider().registryId).toBe("fixture");
   });
 
-  it("fails loudly for deepgram until the credits trial lands the adapter", () => {
+  it("requires DEEPGRAM_API_KEY before the deepgram adapter can be selected", () => {
     vi.stubEnv("TRANSCRIPTION_STREAMING_PROVIDER", "deepgram");
-    expect(() => streamingTranscriptionProvider()).toThrow(/not enabled yet/);
+    vi.stubEnv("DEEPGRAM_API_KEY", "");
+    expect(() => streamingTranscriptionProvider()).toThrow(/DEEPGRAM_API_KEY/);
   });
 
   it("rejects unknown selectors", () => {
@@ -193,8 +195,12 @@ describe("dictation controller", () => {
   it("surfaces mic permission denial as an error state, never stuck listening", async () => {
     const field = fakeField();
     const denied = new DOMException("Permission denied", "NotAllowedError");
+    const noopClientProvider: ClientDictationProvider = {
+      name: "test:noop",
+      startSession: async () => ({ async stop() {}, cancel() {} }),
+    };
     const controller = createDictationController({
-      provider: fixtureStreamingTranscriptionProvider(),
+      provider: noopClientProvider,
       field: field.adapter,
       getUserMedia: async () => {
         throw denied;

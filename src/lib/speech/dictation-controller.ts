@@ -1,4 +1,4 @@
-import type { StreamingSessionEvents, StreamingTranscriptionProvider } from "@/integrations/transcription/streaming";
+import type { ClientDictationEvents, ClientDictationProvider } from "./client-dictation";
 
 /*
  * Framework-free dictation controller (issue #532): the per-prompt voice
@@ -30,7 +30,7 @@ export interface FieldAdapter {
 export type DictationState = "idle" | "requesting-mic" | "listening" | "error";
 
 export type DictationControllerOptions = {
-  provider: StreamingTranscriptionProvider;
+  provider: ClientDictationProvider;
   field: FieldAdapter;
   /** Injected for tests; production passes navigator.mediaDevices.getUserMedia.bind(...). */
   getUserMedia: (constraints: { audio: true }) => Promise<MediaStream>;
@@ -90,7 +90,7 @@ export function createDictationController(options: DictationControllerOptions): 
     committed.push({ start: from, end: anchor });
   };
 
-  const events: StreamingSessionEvents = {
+  const events: ClientDictationEvents = {
     onInterim: (text) => {
       if (!cancelled) applyInterim(text);
     },
@@ -114,7 +114,7 @@ export function createDictationController(options: DictationControllerOptions): 
       setState("requesting-mic");
       try {
         stream = await options.getUserMedia({ audio: true });
-        session = await options.provider.startSession(events);
+        session = await options.provider.startSession(events, stream);
         setState("listening");
       } catch (error) {
         releaseMic();
