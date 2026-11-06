@@ -72,7 +72,7 @@ export const urlContentRequestedHandler: OutboxHandler = async (event: ClaimedOu
   if (!token) return;
   try {
     const videoId = parseVideoIdLoose(url);
-    const fetched = videoId ? await fetchTranscriptText(url) : await scrapePage(url);
+    const fetched = videoId ? await fetchTranscriptText(url) : await companionOrScrape(capture, url);
 
     if (fetched.outcome !== "acquired") {
       await ownedUpdate(token, captureId, {
@@ -124,6 +124,32 @@ async function fetchTranscriptText(url: string): Promise<FetchedContent> {
     return { outcome, reason: result.error };
   }
   return { outcome: "acquired", text: result.text };
+}
+
+/**
+ * The companion (browser extension) already extracted the page with
+ * Readability→Turndown and delivered it as raw_markdown provenance. When that
+ * markdown is present it becomes the fetched reading directly: the capture is
+ * instant, and a paywalled or rate-limited page never blocks on Firecrawl. A
+ * capture without the markdown (web app paste, older companion) still scrapes.
+ * The assertPublicUrl check applies to the companion text too — a pasted
+ * internal address must not become readable content.
+ */
+async function companionOrScrape(capture: typeof captures.$inferSelect, url: string): Promise<FetchedContent> {
+  const rawPayload = (capture.rawPayload ?? {}) as { raw_markdown?: unknown };
+  const companionMarkdown =
+    typeof rawPayload.raw_markdown === "string" && rawPayload.raw_markdown.trim().length > 0
+      ? rawPayload.raw_markdown
+      : null;
+  if (!companionMarkdown) return scrapePage(url);
+  if (!assertPublicUrl(url)) {
+    return { outcome: "access-denied", reason: "That address could not be read: it is not a public web address." };
+  }
+  const { outcome, text } = classifyFetchOutcome({ markdown: companionMarkdown, statusCode: 200, error: null });
+  if (outcome === "acquired" && text !== null) return { outcome: "acquired", text };
+  // Companion text that judges empty falls through to a real scrape, the same
+  // ladder a web-app paste takes.
+  return scrapePage(url);
 }
 
 async function scrapePage(url: string): Promise<FetchedContent> {
