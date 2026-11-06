@@ -62,12 +62,13 @@ export function runInLocalSandbox(spec: SandboxSpec): Promise<SandboxResult> {
   }
   Object.assign(env, spec.env ?? {});
 
+  const [binary, ...args] = spec.command;
   return new Promise((resolve) => {
-    let child;
+    let child: ReturnType<typeof spawn>;
     try {
       // detached: the timeout kills the whole process group, so a runaway
       // that forked children cannot outlive its budget.
-      child = spawn(spec.command[0], spec.command.slice(1), { env, detached: true });
+      child = spawn(binary, args, { env, detached: true });
     } catch (cause) {
       resolve({
         ok: false,

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createSandboxBudget, runInSandbox } from "@/integrations/sandbox/runner";
 
 /*
@@ -93,25 +93,21 @@ describe("runInSandbox (local adapter)", () => {
   });
 
   it("refuses to be the production runner without an explicit operator opt-in", async () => {
-    const savedEnv = process.env.NODE_ENV;
-    process.env.NODE_ENV = "production";
+    vi.stubEnv("NODE_ENV", "production");
     try {
       const refused = await runInSandbox({ command: [NODE, "-e", ""], timeoutSeconds: 5, label: "t" });
       expect(refused.ok).toBe(false);
       expect(refused.failure).toBe("provider");
       expect(refused.message).toContain("not isolation");
-      process.env.SANDBOX_LOCAL_PRODUCTION_OPT_IN = "true";
+      vi.stubEnv("SANDBOX_LOCAL_PRODUCTION_OPT_IN", "true");
       const allowed = await runInSandbox({
         command: [NODE, "-e", "console.log('opt-in')"],
         timeoutSeconds: 5,
         label: "t",
       });
       expect(allowed.ok).toBe(true);
-      delete process.env.SANDBOX_LOCAL_PRODUCTION_OPT_IN;
     } finally {
-      if (savedEnv === undefined) delete process.env.NODE_ENV;
-      else process.env.NODE_ENV = savedEnv;
-      delete process.env.SANDBOX_LOCAL_PRODUCTION_OPT_IN;
+      vi.unstubAllEnvs();
     }
   });
 
