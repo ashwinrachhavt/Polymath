@@ -2,6 +2,7 @@
 
 import { useRef, useState, useTransition, type DragEvent } from "react";
 import { FileUp } from "lucide-react";
+import { FactPoll } from "@/components/fact-poll";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -114,9 +115,7 @@ export function ImportDialog({ children }: { children: React.ReactNode }) {
         </div>
 
         {fileName && pending ? (
-          <p className="text-muted-foreground text-body-dense" role="status">
-            Reading {fileName}…
-          </p>
+          <FactPoll label={`Reading ${fileName}…`} compact topics={["import", "data", "people", "scale"]} />
         ) : null}
 
         {summary ? (

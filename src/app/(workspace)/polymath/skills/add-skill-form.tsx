@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import { FactPoll } from "@/components/fact-poll";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { inspectSkillAction, installSkillAction } from "./actions";
@@ -100,6 +101,9 @@ export function AddSkillForm() {
           ) : null}
         </div>
       </form>
+
+      {inspecting ? <FactPoll label="Inspecting…" compact topics={["github", "install", "code"]} /> : null}
+      {installing ? <FactPoll label="Installing…" compact topics={["install"]} /> : null}
 
       {error ? (
         <p role="alert" className="text-destructive text-body-dense">
