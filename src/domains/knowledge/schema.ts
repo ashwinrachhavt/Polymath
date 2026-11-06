@@ -451,6 +451,14 @@ export const documentExtractions = pgTable(
     embeddedAt: timestamp("embedded_at", { withTimezone: true }),
     embedModel: text("embed_model"),
     embedError: text("embed_error"),
+    /*
+     * Embedding coverage (issue #533 finding 5): the chunker caps how many
+     * chunks one extraction embeds, so a long extraction can be "successfully"
+     * embedded while its tail is invisible to vector search. "partial" says
+     * the cap cut content off; "complete" says every chunk was embedded;
+     * null means no successful pass has recorded coverage yet.
+     */
+    embedCoverage: text("embed_coverage"),
     ...recorded,
   },
   (t) => [

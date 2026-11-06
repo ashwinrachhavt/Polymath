@@ -1,7 +1,8 @@
+import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { blobObjects } from "@/domains/audit/schema";
-import { documents, files } from "@/domains/knowledge/schema";
+import { documents, embeddings, files } from "@/domains/knowledge/schema";
 import { EMBEDDING_DIMENSIONS, type EmbeddingProvider } from "@/integrations/embeddings/provider";
 import type { ExtractionResult } from "@/integrations/extraction/provider";
 import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
@@ -197,6 +198,19 @@ suite("hybrid agent search (real Postgres + pgvector)", () => {
     // chunkIndex 0 and collided with the vector leg's real chunk 0.
     const vectorKeys = new Set(vectorHits.map((h) => `${h.extractionId}:${h.chunkIndex}`));
     expect(ftsHits.some((h) => vectorKeys.has(`${h.extractionId}:${h.chunkIndex}`))).toBe(true);
+    // Identity is EXACT for embedded extractions: the FTS leg reuses the
+    // stored chunk rows verbatim, so text, span and page are the same tuple
+    // the vector leg returned - no recomputation that could drift.
+    const stored = await holder.db!
+      .select()
+      .from(embeddings)
+      .where(eq(embeddings.ownerId, vectorHits[0]!.extractionId));
+    for (const h of ftsHits) {
+      const row = stored.find((r) => r.chunkIndex === h.chunkIndex);
+      expect(row, `stored chunk ${h.chunkIndex}`).toBeTruthy();
+      expect(h.text).toBe(row!.content);
+      expect(h.span).toEqual({ start: row!.spanStart, end: row!.spanEnd, page: row!.page });
+    }
     // And the fused result records both legs on that passage.
     const res = await searchDocumentsForAgent(a, { query, limit: 5, provider });
     expect(res.ok).toBe(true);

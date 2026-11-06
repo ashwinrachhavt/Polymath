@@ -71,6 +71,23 @@ describe("finding 3: rank provenance, not the fused score, decides evidence", ()
     expect(isEvidence(scored(["vector"], { vector: AGENT_SEARCH_SINGLE_LEG_MAX_RANK }))).toBe(true);
   });
 
+  it("counterexample: rank provenance can override score ordering", () => {
+    // A single-leg hit at rank 3 OUTSCORES a dual-leg hit both legs placed
+    // at rank 100 (30/63 > 2 * 30/160), yet admission flips: the dual-leg
+    // hit is evidence (two independent retrievers agree) and the single-leg
+    // hit is not. Score ordering and evidence admission are separate
+    // decisions - this is the case the old fused-score floor got backwards.
+    const deep = rrfMerge([hit("both", { chunkIndex: 7 })], [hit("both", { chunkIndex: 7 })], 10, { legsRun: 2 });
+    // Manufacture the deep-rank provenance directly: rrfMerge of rank-0
+    // lists cannot place a hit at rank 100, so assert the rule itself.
+    const deepDual: ScoredHit = { ...hit("both", { chunkIndex: 7 }), fusedScore: 2 * (60 / 2 / (60 + 100)), legs: ["fts", "vector"], bestRank: { fts: 100, vector: 100 } };
+    const shallowSingle: ScoredHit = { ...hit("solo"), fusedScore: 60 / 1 / (60 + 3), legs: ["fts"], bestRank: { fts: 3 } };
+    expect(shallowSingle.fusedScore).toBeGreaterThan(deepDual.fusedScore);
+    expect(isEvidence(deepDual)).toBe(true);
+    expect(isEvidence(shallowSingle)).toBe(false);
+    expect(deep.length).toBe(1);
+  });
+
   it("drops a single-leg hit past the provisional rank bound", () => {
     expect(isEvidence(scored(["fts"], { fts: AGENT_SEARCH_SINGLE_LEG_MAX_RANK + 1 }))).toBe(false);
   });
@@ -125,13 +142,15 @@ describe("finding 4: legs fail independently", () => {
   it("citations carry passage lineage (finding 6)", async () => {
     const { searchChunks, searchChunksFts } = await import("@/domains/knowledge/search");
     const { searchDocumentsForAgent } = await import("@/domains/knowledge/agent-search");
-    vi.mocked(searchChunks).mockResolvedValueOnce([hit("doc", { extractionId: "ex-9", chunkIndex: 4 })]);
+    vi.mocked(searchChunks).mockResolvedValueOnce([{ ...hit("doc", { extractionId: "ex-9", chunkIndex: 4 }), coverage: "partial" }]);
     vi.mocked(searchChunksFts).mockResolvedValueOnce([hit("doc", { extractionId: "ex-9", chunkIndex: 4 })]);
     const result = await searchDocumentsForAgent(auth, { query: "roadmap" });
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.results[0]?.extractionId).toBe("ex-9");
       expect(result.results[0]?.chunkIndex).toBe(4);
+      // Coverage rides the citation (finding 5): a partial index must be visible.
+      expect(result.results[0]?.coverage).toBe("partial");
     }
   });
 });

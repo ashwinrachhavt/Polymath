@@ -12,7 +12,18 @@ export type Chunk = { index: number; text: string; start: number; end: number; p
 const CHUNK_TARGET_CHARS = 1200;
 const CHUNK_OVERLAP_CHARS = 150;
 /** A 4 MB upload cannot become an unbounded bill: past this many chunks the rest is not embedded. */
-const MAX_CHUNKS = 400;
+export const MAX_CHUNKS = 400;
+
+/**
+ * Did the cap cut content off (issue #533 finding 5)? True when chunking
+ * stopped at the cap with text left over, so the embedding pass can record
+ * "partial" coverage instead of reporting a silently truncated success.
+ */
+export function isCapped(chunks: Chunk[], text: string, max: number = MAX_CHUNKS): boolean {
+  if (chunks.length < max) return false;
+  const last = chunks[chunks.length - 1];
+  return last !== undefined && last.end < text.trimEnd().length;
+}
 
 /** Prefer to end a chunk at a paragraph break, then a sentence, then a space. */
 function breakPoint(text: string, from: number, hardEnd: number): number {

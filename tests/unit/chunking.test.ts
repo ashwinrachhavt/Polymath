@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chunkText } from "@/domains/knowledge/chunking";
+import { chunkText, isCapped } from "@/domains/knowledge/chunking";
 
 const sentence = "The tenant pays rent on the first of every month. ";
 
@@ -52,5 +52,28 @@ describe("chunkText", () => {
 
   it("caps the number of chunks", () => {
     expect(chunkText(sentence.repeat(500), [], { target: 200, overlap: 20, max: 7 })).toHaveLength(7);
+  });
+
+  it("determinism lock: default-config output is byte-stable (issue #533 finding 2)", () => {
+    // The FTS leg re-chunks extraction text at query time when no stored
+    // chunks exist; fusion trusts that this produces the SAME
+    // (chunkIndex, span) identities the embedding pass wrote. A chunker
+    // change must therefore fail this test loudly - silently shifting
+    // identities would break fusion alignment for un-embedded documents.
+    const text = `${sentence.repeat(30)}\n\n${"Final ruling on costs. ".repeat(20)}`;
+    const spans = [{ page: 1, start: 0, end: Math.floor(text.length / 2) }, { page: 2, start: Math.floor(text.length / 2), end: text.length }];
+    const again = chunkText(text, spans);
+    expect(chunkText(text, spans)).toEqual(again);
+    expect(again.map((c) => [c.index, c.start, c.end, c.page])).toEqual([
+      [0, 0, 1199, 1],
+      [1, 1050, 1961, 2],
+    ]);
+  });
+
+  it("isCapped: true only when the cap cut text off (issue #533 finding 5)", () => {
+    const text = sentence.repeat(40);
+    expect(isCapped(chunkText(text, [], { target: 500, overlap: 100, max: 2 }), text, 2)).toBe(true);
+    expect(isCapped(chunkText(text, [], { target: 500, overlap: 100 }), text)).toBe(false);
+    expect(isCapped([], "")).toBe(false);
   });
 });

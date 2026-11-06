@@ -168,6 +168,10 @@ export type ChunkHit = {
   span: { start: number; end: number; page: number | null };
   /** Cosine distance: 0 is identical, 2 is opposite. Lower is closer. */
   distance: number;
+  /** Embedding coverage of the extraction ("complete" | "partial" | null when
+   * no successful pass recorded it) - the model must know a hit's document
+   * may be only partly indexed (issue #533 finding 5). */
+  coverage?: string | null;
 };
 
 /*
@@ -202,6 +206,7 @@ export async function searchChunks(
       start: embeddings.spanStart,
       end: embeddings.spanEnd,
       page: embeddings.page,
+      coverage: documentExtractions.embedCoverage,
       distance,
     })
     .from(embeddings)
@@ -233,6 +238,7 @@ export async function searchChunks(
     text: r.text,
     span: { start: r.start ?? 0, end: r.end ?? r.text.length, page: r.page },
     distance: Number(r.distance),
+    coverage: r.coverage,
   }));
 }
 
@@ -265,6 +271,9 @@ export async function searchChunksFts(
       title: documents.title,
       extractionId: documentExtractions.id,
       text: documentExtractions.text,
+      spans: documentExtractions.spans,
+      embedModel: documentExtractions.embedModel,
+      coverage: documentExtractions.embedCoverage,
       rank,
     })
     .from(documentExtractions)
@@ -284,29 +293,91 @@ export async function searchChunksFts(
     .orderBy(desc(rank))
     .limit(limit);
 
-  // Canonical passage units (issue #533 finding 2): the FTS leg re-chunks
-  // the extraction with the same deterministic chunker the embedding
-  // pipeline used, so its hits carry the SAME chunkIndex the vector leg
-  // returns - fusion aligns equivalent evidence instead of colliding on a
-  // query-dependent window mislabeled chunk 0. The passage window picks
-  // which canonical chunks carry the match; chunking is pure and costs no
-  // query. Chunks past the embedding cap still fuse as single-leg hits.
+  /*
+   * Canonical passage units (issue #533 finding 2). The FTS leg must speak
+   * the SAME (extractionId, chunkIndex) identities the vector leg returns,
+   * or fusion either collides unrelated windows or fails to align equivalent
+   * evidence. Identity is established two ways, in order:
+   *
+   * 1. EXACT: when the embedding pass already wrote chunk rows for the
+   *    extraction, reuse those rows verbatim (same text, span, page and
+   *    chunkIndex). Nothing is recomputed, so no chunker drift can break
+   *    identity for embedded documents. When several models embedded the
+   *    extraction, the extraction's own embedModel wins - it names the
+   *    latest successful pass.
+   * 2. DETERMINISTIC: with no stored chunks (embedding not run, or failed)
+   *    the extraction is re-chunked with the same pure chunker the embedding
+   *    pass calls, on the same text and spans. chunkText is deterministic
+   *    for a fixed input, and a determinism test locks its output so a
+   *    chunker config change fails loudly instead of silently shifting
+   *    identities. Lexical retrieval keeps working without any embedding.
+   */
+  const extractionIds = rows.map((r) => r.extractionId);
+  const stored = extractionIds.length
+    ? await db
+        .select({
+          ownerId: embeddings.ownerId,
+          model: embeddings.model,
+          chunkIndex: embeddings.chunkIndex,
+          content: embeddings.content,
+          spanStart: embeddings.spanStart,
+          spanEnd: embeddings.spanEnd,
+          page: embeddings.page,
+        })
+        .from(embeddings)
+        .where(
+          and(
+            eq(embeddings.workspaceId, auth.workspaceId),
+            eq(embeddings.ownerType, EMBEDDING_OWNER_TYPE),
+            inArray(embeddings.ownerId, extractionIds),
+          ),
+        )
+    : [];
+  const storedByExtraction = new Map<string, typeof stored>();
+  for (const row of stored) {
+    const list = storedByExtraction.get(row.ownerId) ?? [];
+    list.push(row);
+    storedByExtraction.set(row.ownerId, list);
+  }
+
   return rows.flatMap((r) => {
     const text = r.text ?? "";
     if (!text) return [];
     const window = passageWindow(text, query);
-    const carrying = chunkText(text).filter((c) => c.end > window.start && c.start < window.end);
     // ts_rank is higher-is-better; ChunkHit.distance is lower-is-closer.
     const distance = 1 / (1 + Number(r.rank));
-    return carrying.map((chunk) => ({
-      documentId: r.documentId,
-      title: r.title,
-      extractionId: r.extractionId,
-      chunkIndex: chunk.index,
-      text: chunk.text,
-      span: { start: chunk.start, end: chunk.end, page: chunk.page },
-      distance,
-    }));
+    const storedChunks = storedByExtraction.get(r.extractionId);
+    if (storedChunks && storedChunks.length > 0) {
+      const preferred =
+        r.embedModel && storedChunks.some((c) => c.model === r.embedModel)
+          ? storedChunks.filter((c) => c.model === r.embedModel)
+          : storedChunks;
+      return preferred
+        .filter((c) => (c.spanEnd ?? 0) > window.start && (c.spanStart ?? 0) < window.end)
+        .map((c) => ({
+          documentId: r.documentId,
+          title: r.title,
+          extractionId: r.extractionId,
+          chunkIndex: c.chunkIndex,
+          text: c.content,
+          span: { start: c.spanStart ?? 0, end: c.spanEnd ?? c.content.length, page: c.page },
+          distance,
+          coverage: r.coverage,
+        }));
+    }
+    const spans = (r.spans ?? []) as { page: number; start: number; end: number }[];
+    return chunkText(text, spans)
+      .filter((c) => c.end > window.start && c.start < window.end)
+      .map((chunk) => ({
+        documentId: r.documentId,
+        title: r.title,
+        extractionId: r.extractionId,
+        chunkIndex: chunk.index,
+        text: chunk.text,
+        span: { start: chunk.start, end: chunk.end, page: chunk.page },
+        distance,
+        coverage: r.coverage,
+      }));
   });
 }
 

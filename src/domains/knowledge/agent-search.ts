@@ -48,6 +48,11 @@ export type DocumentCitation = {
    * answers predate the lineage. */
   extractionId?: string;
   chunkIndex?: number;
+  /** Embedding coverage of the cited extraction: "partial" means a long
+   * document's tail is not vector-searchable, so an empty or thin result for
+   * it must not be read as "the document says nothing about this" (issue
+   * #533 finding 5). */
+  coverage?: string | null;
 };
 
 export type AgentSearchResult =
@@ -138,8 +143,12 @@ export function rrfMerge(
         entry.bestRank[leg] = seen === undefined ? i : Math.min(seen, i);
         // First side keeps its passage text, but an FTS passage has no page -
         // backfill it from the same passage's vector hit when one saw it.
+        // Coverage backfills the same way: either leg may carry it.
         if (entry.hit.span.page == null && hit.span.page != null) {
           entry.hit = { ...entry.hit, span: { ...entry.hit.span, page: hit.span.page } };
+        }
+        if (entry.hit.coverage == null && hit.coverage != null) {
+          entry.hit = { ...entry.hit, coverage: hit.coverage };
         }
       } else {
         scores.set(key, { hit, score: rrf(i), legs: new Set([leg]), bestRank: { [leg]: i } });
@@ -242,6 +251,7 @@ export async function searchDocumentsForAgent(
         span: h.span,
         extractionId: h.extractionId,
         chunkIndex: h.chunkIndex,
+        coverage: h.coverage,
       })),
     };
   } catch (cause) {

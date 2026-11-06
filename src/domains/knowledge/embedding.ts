@@ -11,7 +11,7 @@ import {
 import { db } from "@/lib/db";
 import { materializeSemanticEdges } from "./relations";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
-import { chunkText } from "./chunking";
+import { chunkText, isCapped } from "./chunking";
 import { artifacts, artifactVersions, documentExtractions, embeddings } from "./schema";
 
 /*
@@ -230,9 +230,13 @@ export async function embedExtraction(
         })),
       );
     }
+    // Coverage is recorded with the success (issue #533 finding 5): a capped
+    // pass is "partial", so retrieval and the UI can say the tail of a long
+    // extraction is not vector-searchable instead of implying full indexing.
+    const coverage = isCapped(chunks, text) ? "partial" : "complete";
     await tx
       .update(documentExtractions)
-      .set({ embeddedAt: new Date(), embedModel: provider.model, embedError: null })
+      .set({ embeddedAt: new Date(), embedModel: provider.model, embedError: null, embedCoverage: coverage })
       .where(and(eq(documentExtractions.id, extraction.id), eq(documentExtractions.workspaceId, auth.workspaceId)));
   });
   return { status: "succeeded", chunks: chunks.length };
