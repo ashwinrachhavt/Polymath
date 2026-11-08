@@ -1,18 +1,59 @@
-# Local mode: the same Postgres 17 engine and extension set as prod Neon
-# (vector, pg_trgm, citext, pgcrypto — see src/db/migrations/0000_extensions.sql),
-# plus docling-serve for document extraction. Plain TCP, which is what
-# src/lib/db.ts speaks; no Neon-specific protocol anywhere in the code.
+# Local development stack. One command:
 #
-#   docker compose up -d
-#   pnpm db:migrate
+#   make up
 #
-# The axiom_test database is created on first boot for the integration suites
+# `make up` starts infra (Postgres, docling, search, Langfuse), runs pending
+# migrations, and starts the Next.js web app plus the outbox worker in Docker.
+# No separate commands for queue, dev, or stack.
+#
+# The same Postgres 17 engine and extension set as prod Neon is used
+# (vector, pg_trgm, citext, pgcrypto — see src/db/migrations/0000_extensions.sql).
+#
+# The axiom_test database is created on first boot for integration suites
 # (TEST_DATABASE_URL). The suite truncates it before running — never point
 # TEST_DATABASE_URL at the app database.
 #
-# Docling: the extraction provider for development (D2 plan). The deployed
-# Vercel app cannot reach this container; there, LLAMAPARSE_API_KEY picks the
-# hosted adapter instead. First-run pulls ~2GB of models.
+# Docling: the extraction provider for development. First run pulls ~2GB of
+# models. The deployed Vercel app cannot reach this container.
+
+x-app-env: &app-env # In-container service discovery (overrides localhost values from env files).
+  DATABASE_URL: postgresql://axiom:axiom@db:5432/axiom
+  DOCLING_SERVE_URL: http://docling:5001
+  HEADROOM_BASE_URL: http://headroom:8787
+  SEARXNG_URL: http://searxng:8080
+  FIRECRAWL_API_URL: http://firecrawl:3002
+  # Langfuse runs as the companion compose project (make up starts it). From
+  # containers on the default bridge, reach the host-published Langfuse port.
+  LANGFUSE_BASE_URL: ${LANGFUSE_BASE_URL:-http://host.docker.internal:3100}
+  LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-polymath-local}
+  LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-polymath-local}
+  POLYMATH_GATEWAY_URL: ${POLYMATH_GATEWAY_URL:-http://web:3000}
+  NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+  # Reliable file watching on macOS bind mounts.
+  WATCHPACK_POLLING: "true"
+  CHOKIDAR_USEPOLLING: "true"
+
+x-app-service: &app-service
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: axiom-dev:local
+  working_dir: /app
+  entrypoint: ["/bin/sh", "/app/docker/entrypoint.sh"]
+  env_file:
+    - path: .env
+      required: false
+    - path: .env.local
+      required: false
+  volumes:
+    - .:/app
+    - app_node_modules:/app/node_modules
+    - app_next:/app/.next
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  networks:
+    - default
+    - search
 
 services:
   db:
@@ -33,21 +74,54 @@ services:
       retries: 10
     restart: unless-stopped
 
+  migrate:
+    <<: *app-service
+    environment:
+      <<: *app-env
+    command: ["pnpm", "db:migrate"]
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  web:
+    <<: *app-service
+    environment:
+      <<: *app-env
+      HOSTNAME: "0.0.0.0"
+      PORT: "3000"
+    command: ["pnpm", "dev", "--hostname", "0.0.0.0", "--port", "3000"]
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      docling:
+        condition: service_started
+    restart: unless-stopped
+
+  worker:
+    <<: *app-service
+    environment:
+      <<: *app-env
+    command: ["pnpm", "exec", "tsx", "scripts/outbox-worker.ts"]
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
   docling:
     image: quay.io/docling-project/docling-serve
     ports:
       - "127.0.0.1:5001:5001"
     restart: unless-stopped
 
-  # Headroom: compresses the LLM calls' context (fresh tool output and new
-  # turns — never conversation history) before it leaves this machine, for
-  # the product-runtime wiring in src/integrations/headroom/client.ts and the
-  # story in docs/headroom.md. The deployed Vercel app cannot reach this
-  # container; there, HEADROOM_BASE_URL stays unset and the app runs its
-  # fail-open passthrough until a hosted proxy is provisioned. Entrypoint is
-  # `headroom proxy`; the image refuses a non-loopback bind without the
-  # unauthenticated-bind acknowledgement below (its docker docs pair exactly
-  # these three: 0.0.0.0 bind, loopback publication, acknowledgement).
+  # Headroom: compresses LLM context before it leaves this machine. The deployed
+  # Vercel app cannot reach this container.
   headroom:
     image: ghcr.io/headroomlabs-ai/headroom
     container_name: axiom-headroom
@@ -64,10 +138,7 @@ services:
       start_period: 30s
     restart: unless-stopped
 
-  # Private metasearch for the agents' web.search tool and Firecrawl. No key,
-  # no account, query leaves this machine only as the individual engines it
-  # fans out to. JSON results are what the adapter and Firecrawl read.
-
+  # Private metasearch for the agents' web.search tool and Firecrawl.
   searxng:
     image: searxng/searxng:latest
     container_name: axiom-searxng
@@ -90,7 +161,6 @@ services:
     networks:
       - search
 
-  # Firecrawl's own rate limiter cache. Separate from anything Polymath stores.
   redis-search:
     image: redis:alpine
     container_name: axiom-redis-search
@@ -104,10 +174,6 @@ services:
     networks:
       - search
 
-  # Self-hosted Firecrawl. Search is the local SearXNG above, not a hosted
-  # engine, so the whole research loop — search, crawl, extract markdown — runs
-  # on this machine. The API is unauthenticated locally and bound to loopback;
-  # that is the local-dev stance (same as the app's own DOCLING_SERVE_URL).
   firecrawl:
     image: ghcr.io/firecrawl/firecrawl:latest
     container_name: axiom-firecrawl
@@ -128,9 +194,6 @@ services:
       USE_DB_AUTHENTICATION: "false"
       NUQ_RABBITMQ_URL: amqp://firecrawl-rabbitmq:5672
       SEARXNG_ENDPOINT: http://searxng:8080
-      # Google was removed 2026-10-19: it answers "Suspended: access denied",
-      # and Firecrawl's search inherits this list, so leaving it in degraded
-      # both the agent's search and the crawler's. duckduckgo and brave carry it.
       SEARXNG_ENGINES: duckduckgo,brave
       SEARXNG_CATEGORIES: general
       NUM_WORKERS_PER_QUEUE: "4"
@@ -173,9 +236,6 @@ services:
       - search
 
   firecrawl-postgres:
-    # The image's initdb script creates pg_cron, which Postgres only allows in a
-    # database named `postgres`; any other POSTGRES_DB aborts init before the
-    # nuq tables exist. Keep these at the image defaults.
     image: ghcr.io/firecrawl/nuq-postgres:latest
     container_name: axiom-firecrawl-postgres
     environment:
@@ -206,9 +266,8 @@ services:
     networks:
       - search
 
-  # Dozzle: real-time Docker log viewer (localhost only).
-  # Shows logs for all containers on this Docker host, including the
-  # langfuse compose project if it's running.
+  # Real-time Docker log viewer (localhost only). Shows all containers,
+  # including the Langfuse compose project when it is running.
   dozzle:
     image: amir20/dozzle:latest
     container_name: axiom-dozzle
@@ -218,26 +277,6 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     restart: unless-stopped
 
-  # Mirrors host `pnpm dev` output into Docker stdout so Dozzle can show it.
-  # The actual Next.js app runs on the host (not containerized).
-  web-logs:
-    image: alpine:3.20
-    container_name: axiom-web-logs
-    command: ["sh", "-c", "tail -n 200 -F /logs/next-dev.log"]
-    volumes:
-      - /tmp/axiom-next-dev.log:/logs/next-dev.log:ro
-    restart: unless-stopped
-
-  # Mirrors host outbox worker output into Docker stdout for Dozzle.
-  # The worker itself runs on the host (`make queue-up` / scripts/outbox-worker.ts).
-  outbox-worker-logs:
-    image: alpine:3.20
-    container_name: axiom-outbox-worker-logs
-    command: ["sh", "-c", "tail -n 200 -F /logs/outbox-worker.log"]
-    volumes:
-      - /Users/ashwin/Projects/axiom/.run/outbox-worker.log:/logs/outbox-worker.log:ro
-    restart: unless-stopped
-
 networks:
   search:
     driver: bridge
@@ -245,3 +284,5 @@ networks:
 volumes:
   axiom-pgdata:
   axiom-firecrawl-pgdata:
+  app_node_modules:
+  app_next:
