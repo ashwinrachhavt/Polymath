@@ -1,43 +1,84 @@
+# git
 .git
 .gitignore
-.next
-node_modules
-.pnpm-store
-.run
-.output
-.claude
-.agents
-.hallmark
-.taste-skill
-.cache
-coverage
-test-results
-playwright-report
-blob-report
-.playwright
+
+# dependencies (at any level — eve/*/node_modules alone is ~5 GB)
+node_modules/
+**/node_modules/
+.pnpm-store/
+**/.pnpm-store/
+
+# next.js
+.next/
+out/
+build/
+
+# testing
+coverage/
+test-results/
+playwright-report/
+blob-report/
+.playwright/
+
+# vercel
+.vercel
+
+# typescript
 *.tsbuildinfo
+next-env.d.ts
+
+# misc
+.DS_Store
+*.pem
+npm-debug.log*
+/core
+/core.[0-9]*
+
+# caches & local artifacts (never ship into the image)
+.cache/
+.eve/
+.gstack/
+.run/
+.playwright-mcp/
+.taste-skill/
+.graphify-out/
+
+# private / personal
 .env
 .env.*
 !.env.example
 !.env.docker.example
-npm-debug.log*
-.DS_Store
-*.pem
+opencode.json
+outreach/
+mockups/
+.superpowers/
+.claude/worktrees/
+
+# agent skill tooling (installed versions recorded in skills-lock.json)
+/.agents/*
+!/.agents/README.md
+!/.agents/BRIEF.md
+!/.agents/FACTORY.md
+!/.agents/conventions/
+!/.agents/templates/
+/agent/
+.claude/skills/
+.hallmark/
+
+# drizzle snapshots: exactly one is tracked (see scripts/check-snapshot-invariant.ts)
+src/db/migrations/meta/*_snapshot.json
+!src/db/migrations/meta/0289_snapshot.json
+
+# graphify knowledge graph (local build artifacts)
+graphify-out/
+
+# retrieval eval run outputs (local scratch DB)
+evals/retrieval/results/
+
+# compose / build definition files are not runtime assets
 compose*.yaml
 compose*.yml
 Dockerfile*
 .dockerignore
 Makefile
-README.md
-docs
-outreach
-bun.lock
-core
-core.[0-9]*
-opencode.json
-.eve
-.vercel
-out
-build
-tmp
-scripts/local-search/searxng/settings.yml
+

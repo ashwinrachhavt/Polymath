@@ -12,12 +12,11 @@ RUN corepack enable && corepack prepare pnpm@12.10.1 --activate
 
 WORKDIR /app
 
-# Copy only manifests first for a warm dependency layer when building an image;
-# bind-mounted dev runs install via docker/entrypoint.sh against the live tree.
-# Hooks are irrelevant in the image build and `git` is not installed here.
-COPY package.json pnpm-lock.yaml* ./
-RUN pnpm install --frozen-lockfile=false --ignore-scripts
-
+# Source is bind-mounted at runtime and node_modules lives in a named volume
+# (native deps match this container). Dependencies are installed by
+# docker/entrypoint.sh on first boot / when the lockfile changes, so there is
+# no install layer to bake into this dev image — that would only duplicate work
+# and add a ~1 GB node_modules layer that the volume immediately shadows.
 COPY . .
 
 EXPOSE 3000
