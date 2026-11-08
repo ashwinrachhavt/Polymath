@@ -121,13 +121,13 @@ services:
     restart: unless-stopped
 
   # Headroom: compresses LLM context before it leaves this machine. The deployed
-  # Vercel app cannot reach this container.
+  # Vercel app cannot reach this container. No host port is published: the
+  # dockerized app reaches it at http://headroom:8787 on the compose network,
+  # avoiding conflicts with any local process already using 8787.
   headroom:
     image: ghcr.io/headroomlabs-ai/headroom
     container_name: axiom-headroom
     command: ["--host", "0.0.0.0", "--port", "8787"]
-    ports:
-      - "127.0.0.1:8787:8787"
     environment:
       HEADROOM_ALLOW_UNAUTHENTICATED_BIND: "1"
     healthcheck:
