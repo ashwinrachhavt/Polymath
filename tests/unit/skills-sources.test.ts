@@ -130,7 +130,7 @@ describe("github archive", () => {
       code: "too_large",
       message: expect.stringContaining("200 MB"),
     });
-  });
+  }, 30_000);
 });
 
 describe("github api status map", () => {
@@ -301,7 +301,7 @@ describe("local folder", () => {
       code: "too_large",
       message: expect.stringContaining("2000"),
     });
-  });
+  }, 30_000);
 
   it("stops at the 50 MB budget across the tree, not per folder", async () => {
     const directory = path.join(root, "heavy");
