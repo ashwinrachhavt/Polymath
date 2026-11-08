@@ -206,6 +206,38 @@ services:
     networks:
       - search
 
+  # Dozzle: real-time Docker log viewer (localhost only).
+  # Shows logs for all containers on this Docker host, including the
+  # langfuse compose project if it's running.
+  dozzle:
+    image: amir20/dozzle:latest
+    container_name: axiom-dozzle
+    ports:
+      - "127.0.0.1:9999:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    restart: unless-stopped
+
+  # Mirrors host `pnpm dev` output into Docker stdout so Dozzle can show it.
+  # The actual Next.js app runs on the host (not containerized).
+  web-logs:
+    image: alpine:3.20
+    container_name: axiom-web-logs
+    command: ["sh", "-c", "tail -n 200 -F /logs/next-dev.log"]
+    volumes:
+      - /tmp/axiom-next-dev.log:/logs/next-dev.log:ro
+    restart: unless-stopped
+
+  # Mirrors host outbox worker output into Docker stdout for Dozzle.
+  # The worker itself runs on the host (`make queue-up` / scripts/outbox-worker.ts).
+  outbox-worker-logs:
+    image: alpine:3.20
+    container_name: axiom-outbox-worker-logs
+    command: ["sh", "-c", "tail -n 200 -F /logs/outbox-worker.log"]
+    volumes:
+      - /Users/ashwin/Projects/axiom/.run/outbox-worker.log:/logs/outbox-worker.log:ro
+    restart: unless-stopped
+
 networks:
   search:
     driver: bridge

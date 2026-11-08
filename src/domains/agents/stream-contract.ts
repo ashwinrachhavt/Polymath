@@ -574,7 +574,9 @@ export function decodeFrame(line: string): ChatFrame | null {
   if (trimmed.length === 0) return null;
   let parsed: Record<string, unknown>;
   try {
-    parsed = JSON.parse(trimmed) as Record<string, unknown>;
+    const value: unknown = JSON.parse(trimmed);
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+    parsed = value as Record<string, unknown>;
   } catch {
     return null;
   }

@@ -77,7 +77,12 @@ mockups/
 # Anchored to the repo root: unanchored, the pattern also matched
 # eve/polymath/agent/ — where all 36 files are tracked — and silently
 # ignored every NEW eve tool module added there.
-.agents/
+/.agents/*
+!/.agents/README.md
+!/.agents/BRIEF.md
+!/.agents/FACTORY.md
+!/.agents/conventions/
+!/.agents/templates/
 /agent/
 .claude/skills/
 # Hallmark run output: before/after screenshots and wiring records. Evidence

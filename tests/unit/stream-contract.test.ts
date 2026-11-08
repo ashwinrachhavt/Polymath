@@ -444,6 +444,12 @@ describe("ChatAccumulator", () => {
 });
 
 describe("wire framing", () => {
+  it("ignores valid JSON that is not a frame object", () => {
+    for (const line of ["null", "true", "42", '"hello"', "[]"]) {
+      expect(decodeFrame(line)).toBeNull();
+    }
+  });
+
   it("round-trips a frame through one NDJSON line", () => {
     const frame: ChatFrame = { type: "delta", runId: RUN, blockId: "assistant:t:0", text: "a\nb", cursor: 1 };
     const encoded = encodeFrame(frame);

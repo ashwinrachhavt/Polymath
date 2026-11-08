@@ -137,6 +137,39 @@ describe("useChatStream recoverable turn failure (no terminal end frame)", () =>
   });
 });
 
+describe("useChatStream stream exit reliability", () => {
+  it("publishes final text even when animation frames never fire", async () => {
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn(() => 1),
+    );
+    mockStreamOnce([
+      {
+        type: "block",
+        runId: RUN,
+        blockId: "assistant:t:0",
+        text: "Complete answer.",
+        finishReason: "stop",
+        cursor: 2,
+      },
+      { type: "end", runId: RUN, state: "succeeded", cursor: 3 },
+    ]);
+    const { result } = renderHook(() => useChatStream(RUN));
+    await waitFor(() => expect(result.current.connection).toBe("done"));
+    expect(result.current.blocks.map((block) => block.text)).toEqual(["Complete answer."]);
+  });
+
+  it("parks a failed turn without reconnecting its ended stream", async () => {
+    mockStreamOnce([{ type: "turn", runId: RUN, state: "failed", cursor: 2 }]);
+    const { result } = renderHook(() => useChatStream(RUN));
+    await waitFor(() => expect(result.current.lastFailedTurn).toBe(true));
+    expect(result.current.connection).toBe("waiting");
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(result.current.connection).toBe("waiting");
+  });
+});
+
 describe("useChatStream parked session", () => {
   it("stays waiting after a completed turn closes its stream", async () => {
     mockStreamOnce([

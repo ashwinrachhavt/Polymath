@@ -1,0 +1,12 @@
+[mcp_servers.serena]
+command = "/Users/ashwin/.local/bin/serena"
+args = [
+    "start-mcp-server",
+    "--context",
+    "claude-code",
+    "--project",
+    "/Users/ashwin/Projects/axiom",
+]
+
+[mcp_servers.serena.env]
+MCP_TIMEOUT = "60000"
