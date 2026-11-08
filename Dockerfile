@@ -7,14 +7,16 @@ ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 
+RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
 RUN corepack enable && corepack prepare pnpm@12.10.1 --activate
 
 WORKDIR /app
 
 # Copy only manifests first for a warm dependency layer when building an image;
 # bind-mounted dev runs install via docker/entrypoint.sh against the live tree.
+# Hooks are irrelevant in the image build and `git` is not installed here.
 COPY package.json pnpm-lock.yaml* ./
-RUN pnpm install --frozen-lockfile=false
+RUN pnpm install --frozen-lockfile=false --ignore-scripts
 
 COPY . .
 

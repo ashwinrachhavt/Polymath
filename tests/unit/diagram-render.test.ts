@@ -21,17 +21,17 @@ const mocks = vi.hoisted(() => ({
   initialize: vi.fn(),
   parse: vi.fn(),
   render: vi.fn(),
-  parseMermaid: vi.fn(),
+  parseDiagram: vi.fn(),
   graphToExcalidraw: vi.fn(),
 }));
 
 vi.mock("mermaid", () => ({
   default: { initialize: mocks.initialize, parse: mocks.parse, render: mocks.render },
 }));
-// The pipeline imports the 2.2.2 subpath modules (the index only exports the
-// combined parseMermaidToExcalidraw), so the mocks target those specifiers.
-vi.mock("@excalidraw/mermaid-to-excalidraw/dist/parseMermaid.js", () => ({
-  parseMermaid: mocks.parseMermaid,
+// The pipeline uses the two-step mermaid-to-excalidraw surface so it can detect
+// a GraphImage (raster) result before conversion; mock those subpath modules.
+vi.mock("@excalidraw/mermaid-to-excalidraw/dist/parseDiagram.js", () => ({
+  parseDiagram: mocks.parseDiagram,
 }));
 vi.mock("@excalidraw/mermaid-to-excalidraw/dist/graphToExcalidraw.js", () => ({
   graphToExcalidraw: mocks.graphToExcalidraw,
@@ -72,7 +72,7 @@ describe("rung 1 — parse failure", () => {
     mocks.parse.mockRejectedValue(new Error("bad source"));
     await expect(renderDiagram(FLOWCHART, "flowchart")).rejects.toBeInstanceOf(DiagramParseError);
     expect(mocks.render).not.toHaveBeenCalled();
-    expect(mocks.parseMermaid).not.toHaveBeenCalled();
+    expect(mocks.parseDiagram).not.toHaveBeenCalled();
   });
 
   it("includes the parser message in the outer error text", async () => {
@@ -92,7 +92,7 @@ describe("rung 2 — non-editable diagram types", () => {
         expect(result.fallbackReason).toContain("image");
         expect(result.fallbackReason).toContain(DIAGRAM_TYPE_LABELS[diagramType]);
       }
-      expect(mocks.parseMermaid).not.toHaveBeenCalled();
+      expect(mocks.parseDiagram).not.toHaveBeenCalled();
       expect(mocks.graphToExcalidraw).not.toHaveBeenCalled();
     },
   );
@@ -100,7 +100,7 @@ describe("rung 2 — non-editable diagram types", () => {
 
 describe("rung 3 — conversion runtime error on a supported type", () => {
   it("falls back to the SVG with a logged error when conversion throws", async () => {
-    mocks.parseMermaid.mockRejectedValue(new Error("layout engine exploded"));
+    mocks.parseDiagram.mockRejectedValue(new Error("layout engine exploded"));
     const result = await renderDiagram(FLOWCHART, "flowchart");
     expect(result.renderMode).toBe("image-fallback");
     if (result.renderMode === "image-fallback") {
@@ -113,14 +113,16 @@ describe("rung 3 — conversion runtime error on a supported type", () => {
   it("falls back when the parsed graph degrades to a GraphImage", async () => {
     // The converter signals "this is not element-editable" by returning a
     // raster; the pipeline must believe the graph over the declared type.
-    mocks.parseMermaid.mockResolvedValue({ type: "graphImage", dataURL: "data:image/png;base64,x" });
+    mocks.parseDiagram.mockResolvedValue({ type: "graphImage", dataURL: "data:image/png;base64,x" });
     const result = await renderDiagram(FLOWCHART, "sequence");
     expect(result.renderMode).toBe("image-fallback");
     expect(mocks.graphToExcalidraw).not.toHaveBeenCalled();
   });
 
   it("does not fake editable elements on the fallback path", async () => {
-    mocks.graphToExcalidraw.mockRejectedValue(new Error("boom"));
+    mocks.graphToExcalidraw.mockImplementation(() => {
+      throw new Error("boom");
+    });
     const result: DiagramRenderResult = await renderDiagram(FLOWCHART, "flowchart");
     expect(result).not.toHaveProperty("elements");
   });
@@ -128,8 +130,8 @@ describe("rung 3 — conversion runtime error on a supported type", () => {
 
 describe("success path", () => {
   it("returns an editable scene for a flowchart", async () => {
-    mocks.parseMermaid.mockResolvedValue({ type: "flowchart" });
-    mocks.graphToExcalidraw.mockResolvedValue({ elements: [{ type: "rectangle", id: "a" }] });
+    mocks.parseDiagram.mockResolvedValue({ type: "flowchart" });
+    mocks.graphToExcalidraw.mockReturnValue({ elements: [{ type: "rectangle", id: "a" }] });
     const result = await renderDiagram(FLOWCHART, "flowchart");
     expect(result).toStrictEqual({
       renderMode: "excalidraw",
@@ -140,12 +142,12 @@ describe("success path", () => {
   });
 
   it("returns an editable scene for a sequence diagram", async () => {
-    mocks.parseMermaid.mockResolvedValue({ type: "sequence" });
-    mocks.graphToExcalidraw.mockResolvedValue({ elements: [{ type: "arrow", id: "b" }], files: {} });
+    mocks.parseDiagram.mockResolvedValue({ type: "sequence" });
+    mocks.graphToExcalidraw.mockReturnValue({ elements: [{ type: "arrow", id: "b" }], files: {} });
     const result = await renderDiagram("sequenceDiagram\n  A->>B: hi", "sequence");
     expect(result.renderMode).toBe("excalidraw");
     if (result.renderMode === "excalidraw") expect(result.files).toStrictEqual({});
-    expect(mocks.parseMermaid).toHaveBeenCalledWith("sequenceDiagram\n  A->>B: hi", { startOnLoad: false });
+    expect(mocks.parseDiagram).toHaveBeenCalledWith("sequenceDiagram\n  A->>B: hi");
   });
 
   it("initializes mermaid with startOnLoad disabled", async () => {
@@ -256,7 +258,7 @@ describe("bundle hygiene — heavy libs are dynamically imported only", () => {
   it("the render module keeps both heavy loads behind dynamic import()", () => {
     const source = readFileSync("src/domains/diagrams/render.ts", "utf8");
     expect(source).toContain('import("mermaid")');
-    // The 2.2.2 two-step surface lives in subpath modules (see render.ts).
+    // The two-step conversion surface lives in subpath modules (see render.ts).
     expect(source).toContain('import("@excalidraw/mermaid-to-excalidraw/dist/');
   });
 });

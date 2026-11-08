@@ -35,10 +35,9 @@ export const DIAGRAM_TYPE_LABELS: Record<DiagramType, string> = {
  * renders as an image fallback and the UI must say so — never silently claim
  * editability.
  *
- * Implementation note: the installed @excalidraw/mermaid-to-excalidraw 2.2.2
- * also parses class/state/er graphs, but the spec pins the editable set to
- * flowchart + sequence; widening it is a deliberate spec change, not a
- * drive-by.
+ * Implementation note: the installed mermaid-to-excalidraw may parse more graph
+ * kinds, but the spec pins the editable set to flowchart + sequence; widening
+ * it is a deliberate spec change, not a drive-by.
  */
 export const EDITABLE_DIAGRAM_TYPES = ["flowchart", "sequence"] as const satisfies readonly DiagramType[];
 
