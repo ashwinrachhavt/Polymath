@@ -235,7 +235,7 @@ export function useChatStream(runId: string | null, options: UseChatStreamOption
               }));
             }
             if (frame.type === "turn") {
-              if (frame.state === "waiting") turnWaiting = true;
+              if (frame.state === "waiting" || frame.state === "failed") turnWaiting = true;
               setState((prev) => ({ ...prev, connection: frame.state === "waiting" ? "waiting" : prev.connection }));
               // A failed turn surfaces the failure but does NOT end the
               // conversation: the bridge parks the run at waiting_input and
@@ -321,6 +321,10 @@ export function useChatStream(runId: string | null, options: UseChatStreamOption
           return;
         }
         schedule(failure.message);
+      } finally {
+        // rAF pauses in background tabs; publish the final buffered text on
+        // every exit, including terminal frames, parked turns, and drops.
+        if (!cancelled) flush();
       }
     };
 
@@ -353,7 +357,7 @@ export function useChatStream(runId: string | null, options: UseChatStreamOption
       controller?.abort();
     };
     // runId and enabled are the identity of a stream; options.initial is mount-time.
-  }, [runId, options.enabled, scheduleFlush, retryKey]);
+  }, [runId, options.enabled, scheduleFlush, flush, retryKey]);
 
   return { ...state, retry };
 }

@@ -1,3 +1,7 @@
+## Polymath engineering instructions
+
+For coding tasks, read [.agents/README.md](.agents/README.md) and follow its task-specific pointers. It defines the project brief, Software Factory workflow, and engineering conventions. Existing skills remain under `.agents/skills/`.
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 ## This is NOT the Next.js you know

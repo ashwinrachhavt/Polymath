@@ -17,11 +17,10 @@
  * must itself mount behind next/dynamic with ssr: false, per the
  * canvas.tsx/note-editor.tsx house pattern.
  *
- * The installed @excalidraw/mermaid-to-excalidraw 2.2.2 exposes the
- * two-step API — parseMermaid(definition) → graph, graphToExcalidraw(graph)
- * → { elements } — via subpath modules rather than a single
- * convertMermaidToExcalidraw call (the spec §5 pseudocode's name; behavior
- * is the same contract).
+ * mermaid-to-excalidraw exposes a two-step API: parse the Mermaid definition
+ * into a graph, then convert that graph to an Excalidraw scene. Keeping the
+ * steps separate lets the pipeline detect a GraphImage (raster) result before
+ * conversion so the UI stays honest about editability.
  */
 
 import { DIAGRAM_TYPE_LABELS, supportsElementEdit, type DiagramRenderResult, type DiagramType } from "./types";
@@ -97,14 +96,13 @@ export async function renderDiagram(
   // same fallback (spec §5): the SVG preview survives, the error is logged,
   // and the UI never claims an editable scene that does not exist.
   try {
-    // The 2.2.2 index exports only the combined parseMermaidToExcalidraw;
-    // the two-step surface lives in subpath modules and is what lets the
-    // pipeline intercept a GraphImage (raster) result before conversion.
-    const [{ parseMermaid }, { graphToExcalidraw }] = await Promise.all([
-      import("@excalidraw/mermaid-to-excalidraw/dist/parseMermaid.js"),
+    // Two-step conversion: parse first so a GraphImage (raster) result can be
+    // detected before turning it into a misleading "editable" scene.
+    const [{ parseDiagram }, { graphToExcalidraw }] = await Promise.all([
+      import("@excalidraw/mermaid-to-excalidraw/dist/parseDiagram.js"),
       import("@excalidraw/mermaid-to-excalidraw/dist/graphToExcalidraw.js"),
     ]);
-    const graph = await parseMermaid(mermaidSrc, { startOnLoad: false });
+    const graph = await parseDiagram(mermaidSrc);
     // Mermaid types the converter cannot element-edit come back as a
     // GraphImage (a raster of the diagram). If the declared type said
     // flowchart/sequence but the graph degraded to an image, be honest about
@@ -116,7 +114,7 @@ export async function renderDiagram(
         fallbackReason: "This diagram converted as an image, not an editable scene.",
       };
     }
-    const { elements, files } = await graphToExcalidraw(graph);
+    const { elements, files } = graphToExcalidraw(graph);
     return { renderMode: "excalidraw", svg, elements, files };
   } catch (error) {
     console.error("[diagrams] mermaid-to-excalidraw conversion failed; falling back to image", error);
