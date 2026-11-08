@@ -93,9 +93,30 @@ export function handedOff(run: TicketRun): boolean {
   return report.state === "waiting" || report.state === "ready" || report.state === "dropped";
 }
 
+/**
+ * Whether a running run is parked: its worker gave a settled report (`waiting`
+ * the same idle rule `interrupted` uses, or a terminal `ready`/`blocked`/
+ * `failed`) and nothing reached its session after that report. A parked run
+ * keeps its `running` state — the session survives for a person's reply — but
+ * no worker is executing it, so it does not hold a worker slot. Without this,
+ * a crashed provider turn left zombie slots that deferred every launch with
+ * "worker slots are full" until the effect queue drowned in retries.
+ */
+function parkedRun(ticket: Ticket): TicketRun | undefined {
+  const run = runningTicketRun(ticket);
+  if (!run) return undefined;
+  const busy = !!run.deliveredAt && !!run.report && run.deliveredAt >= run.report.at;
+  const settledReport = !!run.report && ["waiting", "ready", "blocked", "failed"].includes(run.report.state);
+  if (settledReport && !busy) return run;
+  return undefined;
+}
+
 /** The workspace's currently executing ticket runs, from the domain state itself. */
 function countRunning(host: ExecutorHost): number {
-  return host.repos.tickets.active().filter((ticket) => runningTicketRun(ticket) !== undefined).length;
+  return host.repos.tickets.active().filter((ticket) => {
+    const running = runningTicketRun(ticket);
+    return running !== undefined && parkedRun(ticket) === undefined;
+  }).length;
 }
 
 /** A benign race only: the ticket ended while this work was in flight. */

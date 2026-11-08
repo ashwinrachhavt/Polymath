@@ -40,6 +40,7 @@ type ModelProviderId =
   | "ovh"
   | "zai"
   | "mercury"
+  | "thehive"
   | "openrouter-free";
 
 export type ModelOption = {
@@ -212,6 +213,24 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     keyEnv: "MERCURY_API_KEY",
     probe:
       "listing 2026-11-02 (docs.inceptionlabs.ai models page); absent from this account's live GET /v1/models on 2026-11-02 — never a default, remove on first failed probe",
+  },
+  {
+    id: "zai-org/glm-5.3-flash",
+    provider: "thehive",
+    label: "GLM 5.3 Flash (TheHive)",
+    note: "Zhipu's reasoning model on TheHive's hosted inference.",
+    baseUrl: "https://api-cdn.thehive.ai/api/v3",
+    keyEnv: "THEHIVEAI_API_KEY",
+    probe: "live 2026-11-07 (chat, streaming, json_schema structured output, tool calling verified)",
+  },
+  {
+    id: "deepseek-ai/deepseek-v4.1-flash-1017",
+    provider: "thehive",
+    label: "DeepSeek V4.1 Flash (TheHive)",
+    note: "DeepSeek's fast reasoning model on TheHive's hosted inference.",
+    baseUrl: "https://api-cdn.thehive.ai/api/v3",
+    keyEnv: "THEHIVEAI_API_KEY",
+    probe: "live 2026-11-07 (chat, streaming, json_schema structured output, tool calling verified)",
   },
   {
     id: "deepseek/deepseek-chat",
