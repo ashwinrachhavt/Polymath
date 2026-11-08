@@ -1,6 +1,6 @@
 import { and, eq, inArray, notExists, sql } from "drizzle-orm";
 import { listRecentRuns } from "@/domains/agents/queries";
-import { getOpenQuestion } from "@/domains/agents/run-context";
+import { listOpenQuestions } from "@/domains/agents/run-context";
 import { listHomeQueue } from "@/domains/home/queue";
 import { db } from "@/lib/db";
 import { agentQuestions, agentRuns } from "@/domains/agents/schema";
@@ -122,13 +122,19 @@ export async function listTriageFeed(
   // per-run getter the run page reads, so the panel and the page can never
   // disagree about whether a question is still open.
   const waiting = runs.filter((run) => run.state === "waiting_input");
-  const openQuestions = new Map<string, NonNullable<Awaited<ReturnType<typeof getOpenQuestion>>>>();
-  await Promise.all(
-    waiting.map(async (run) => {
-      const question = await getOpenQuestion(auth.workspaceId, run.id);
-      if (question) openQuestions.set(run.id, question);
-    }),
-  );
+  const openQuestions = new Map<
+    string,
+    { id: string; question: string; context: string | null; askedAt: Date; options: string[] }
+  >();
+  if (waiting.length > 0) {
+    // One query for all waiting runs instead of one getOpenQuestion per run.
+    for (const { runId, ...question } of await listOpenQuestions(
+      auth.workspaceId,
+      waiting.map((run) => run.id),
+    )) {
+      openQuestions.set(runId, question);
+    }
+  }
 
   const questionItems: Extract<TriageItem, { kind: "question" }>[] = waiting.flatMap((run) => {
     const question = openQuestions.get(run.id);

@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { agentProfiles, agentQuestions, agentRuns } from "./schema";
 import { actionProposals, actionRevisions } from "@/domains/actions/schema";
@@ -88,32 +88,49 @@ export async function getRunAgent(workspaceId: string, runId: string): Promise<R
 
 /** The run's oldest unanswered question, if it is waiting on one. */
 export async function getOpenQuestion(workspaceId: string, runId: string) {
-  const [row] = await db
+  const [row] = await listOpenQuestions(workspaceId, [runId]);
+  return row ?? null;
+}
+
+/** The newest open question for each of the given runs — one query instead of one per run. */
+export async function listOpenQuestions(
+  workspaceId: string,
+  runIds: string[],
+): Promise<
+  Array<{ runId: string; id: string; question: string; context: string | null; askedAt: Date; options: string[] }>
+> {
+  if (runIds.length === 0) return [];
+  const rows = await db
     .select({
       id: agentQuestions.id,
       question: agentQuestions.question,
       context: agentQuestions.context,
       askedAt: agentQuestions.createdAt,
       options: agentQuestions.options,
+      runId: agentQuestions.runId,
     })
     .from(agentQuestions)
     .where(
       and(
         eq(agentQuestions.workspaceId, workspaceId),
-        eq(agentQuestions.runId, runId),
+        inArray(agentQuestions.runId, runIds),
         eq(agentQuestions.state, "open"),
       ),
     )
-    .orderBy(desc(agentQuestions.createdAt))
-    .limit(1);
-  if (!row) return null;
-  return {
+    .orderBy(agentQuestions.runId, desc(agentQuestions.createdAt));
+  // One row per run — the newest open question (desc createdAt, first wins).
+  const byRun = new Map<string, (typeof rows)[number]>();
+  for (const row of rows) {
+    if (!byRun.has(row.runId)) byRun.set(row.runId, row);
+  }
+  return [...byRun.entries()].map(([runId, row]) => ({
+    runId,
     id: row.id,
     question: row.question,
     context: row.context,
     askedAt: row.askedAt,
     options: Array.isArray(row.options) ? row.options.filter((o): o is string => typeof o === "string") : [],
-  };
+  }));
 }
 
 /**
