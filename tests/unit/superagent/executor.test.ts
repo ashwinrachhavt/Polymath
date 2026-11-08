@@ -100,6 +100,25 @@ describe("worker slots", () => {
     expect(spareEligible(plain, triggerOf)).toBe(false);
   });
 
+  // Regression: ISSUE-001 — a run whose worker reported failed stays `running`
+  // (its session parks for a person's reply) but no longer executes, yet
+  // countRunning still counted it as a busy slot. Every chat launch then
+  // deferred with "worker slots are full" until the queue filled with retries.
+  // Found by /qa on 2026-11-08.
+  it("a parked run (settled report, no delivery after) does not hold a worker slot", async () => {
+    const h = harness();
+    const stalled = h.seedTicket("z", {
+      running: true,
+      botOrigin: true,
+      report: { state: "failed", summary: "model call failed", at: "2026-09-23T00:00:00.000Z" },
+    });
+    expect(h.ticket(stalled.id).runs[0].state).toBe("running");
+    // The parked run frees both slots: a bot-origin launch admits again.
+    const next = h.seedTicket("n", { botOrigin: true });
+    await h.executor.handleLaunch({ ticketId: next.id, runId: next.runs[0].id });
+    expect(h.eve.starts.map((start) => start.ticketId)).toContain(next.id);
+  });
+
   it("config: at least two slots, integral, and a decimal estimate", () => {
     expect(() => parseExecutorConfig({ POLYMATH_SUPERAGENT_MAX_RUNNING: "1" })).toThrow(/at least 2/);
     expect(() => parseExecutorConfig({ POLYMATH_SUPERAGENT_MAX_RUNNING: "2.5" })).toThrow(/integer/);
