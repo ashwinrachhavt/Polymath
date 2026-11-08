@@ -33,7 +33,12 @@ import type { ToolStubOutcome } from "eve/evals";
  * does not. `quietStubs()` is what keeps tools from reaching real providers;
  * `tests/unit/eval-stub-coverage.test.ts` holds that line.
  */
-export const ALLOWED_EVAL_ENV = ["GEMINI_API_KEY", "GEMINI_AGENT_MODEL", "OPENAI_API_KEY"] as const;
+export const ALLOWED_EVAL_ENV = [
+  "GEMINI_API_KEY",
+  "GEMINI_AGENT_MODEL",
+  "OPENAI_API_KEY",
+  "THEHIVEAI_API_KEY",
+] as const;
 
 function isCredentialShaped(key: string): boolean {
   return (
