@@ -356,27 +356,35 @@ export function WorkList({
                         {row.title}
                       </Link>
                     )}
-                    <span className={`${statusPill[row.status]} ${addToToday ? "" : "lg:hidden"}`}>
-                      {statusLabel[row.status]}
-                    </span>
+                    <span
+                      role="img"
+                      aria-label={`Status: ${statusLabel[row.status]}`}
+                      data-label={statusLabel[row.status]}
+                      className={`${statusPill[row.status]} ${addToToday ? "" : "lg:hidden"} after:content-[attr(data-label)]`}
+                    />
                     {row.projectName ? (
                       <span
-                        className={`inline-flex max-w-40 truncate rounded-md border border-border/70 bg-muted/50 px-2 py-0.5 text-data text-muted-foreground ${addToToday ? "" : "lg:hidden"}`}
-                      >
-                        {row.projectName}
-                      </span>
+                        role="img"
+                        aria-label={`Project: ${row.projectName}`}
+                        data-label={row.projectName}
+                        className={`inline-flex max-w-40 truncate rounded-md border border-border/70 bg-muted/50 px-2 py-0.5 text-data text-muted-foreground ${addToToday ? "" : "lg:hidden"} after:content-[attr(data-label)]`}
+                      />
                     ) : null}
                     {row.priority !== "none" ? (
-                      <span className={`text-data text-muted-foreground ${addToToday ? "" : "lg:hidden"}`}>
-                        {row.priority}
-                      </span>
+                      <span
+                        role="img"
+                        aria-label={`Priority: ${row.priority}`}
+                        data-label={row.priority}
+                        className={`text-data text-muted-foreground ${addToToday ? "" : "lg:hidden"} after:content-[attr(data-label)]`}
+                      />
                     ) : null}
                     {due ? (
                       <span
-                        className={`readout text-data ${due.today ? "text-primary" : "text-muted-foreground"} ${addToToday ? "" : "lg:hidden"}`}
-                      >
-                        {due.text}
-                      </span>
+                        role="img"
+                        aria-label={`Due: ${due.text}`}
+                        data-label={due.text}
+                        className={`readout text-data ${due.today ? "text-primary" : "text-muted-foreground"} ${addToToday ? "" : "lg:hidden"} after:content-[attr(data-label)]`}
+                      />
                     ) : null}
                     {row.subtaskCount > 0 ? (
                       <span className="readout text-data text-muted-foreground">
