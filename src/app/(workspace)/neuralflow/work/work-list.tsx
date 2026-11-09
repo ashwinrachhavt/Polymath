@@ -357,34 +357,42 @@ export function WorkList({
                       </Link>
                     )}
                     <span
-                      role="img"
-                      aria-label={`Status: ${statusLabel[row.status]}`}
+                      role={addToToday ? undefined : "img"}
+                      aria-label={addToToday ? undefined : `Status: ${statusLabel[row.status]}`}
                       data-label={statusLabel[row.status]}
-                      className={`${statusPill[row.status]} ${addToToday ? "" : "lg:hidden"} after:content-[attr(data-label)]`}
-                    />
+                      className={`${statusPill[row.status]} ${addToToday ? "" : "lg:hidden after:content-[attr(data-label)]"}`}
+                    >
+                      {addToToday ? statusLabel[row.status] : null}
+                    </span>
                     {row.projectName ? (
                       <span
-                        role="img"
-                        aria-label={`Project: ${row.projectName}`}
+                        role={addToToday ? undefined : "img"}
+                        aria-label={addToToday ? undefined : `Project: ${row.projectName}`}
                         data-label={row.projectName}
-                        className={`inline-flex max-w-40 truncate rounded-md border border-border/70 bg-muted/50 px-2 py-0.5 text-data text-muted-foreground ${addToToday ? "" : "lg:hidden"} after:content-[attr(data-label)]`}
-                      />
+                        className={`inline-flex max-w-40 truncate rounded-md border border-border/70 bg-muted/50 px-2 py-0.5 text-data text-muted-foreground ${addToToday ? "" : "lg:hidden after:content-[attr(data-label)]"}`}
+                      >
+                        {addToToday ? row.projectName : null}
+                      </span>
                     ) : null}
                     {row.priority !== "none" ? (
                       <span
-                        role="img"
-                        aria-label={`Priority: ${row.priority}`}
+                        role={addToToday ? undefined : "img"}
+                        aria-label={addToToday ? undefined : `Priority: ${row.priority}`}
                         data-label={row.priority}
-                        className={`text-data text-muted-foreground ${addToToday ? "" : "lg:hidden"} after:content-[attr(data-label)]`}
-                      />
+                        className={`text-data text-muted-foreground ${addToToday ? "" : "lg:hidden after:content-[attr(data-label)]"}`}
+                      >
+                        {addToToday ? row.priority : null}
+                      </span>
                     ) : null}
                     {due ? (
                       <span
-                        role="img"
-                        aria-label={`Due: ${due.text}`}
+                        role={addToToday ? undefined : "img"}
+                        aria-label={addToToday ? undefined : `Due: ${due.text}`}
                         data-label={due.text}
-                        className={`readout text-data ${due.today ? "text-primary" : "text-muted-foreground"} ${addToToday ? "" : "lg:hidden"} after:content-[attr(data-label)]`}
-                      />
+                        className={`readout text-data ${due.today ? "text-primary" : "text-muted-foreground"} ${addToToday ? "" : "lg:hidden after:content-[attr(data-label)]"}`}
+                      >
+                        {addToToday ? due.text : null}
+                      </span>
                     ) : null}
                     {row.subtaskCount > 0 ? (
                       <span className="readout text-data text-muted-foreground">
