@@ -7,6 +7,7 @@ import { cachedSessionVerifiedEmail } from "@/app/(workspace)/invitations/[token
 import { ClerkAuthProvider } from "@/components/auth/clerk-auth-provider";
 import { AppShell } from "@/components/shell/app-shell";
 import type { WorkspaceSwitcherData } from "@/components/shell/workspace-switcher";
+import type { ShellPreferenceSnapshot } from "@/components/shell/shell-preferences";
 import { clerkConfigured, devAuthBypass } from "@/lib/clerk";
 import { getAuthContext, UnauthorizedError } from "@/lib/auth";
 import { cachedOpenInvitationsForEmail, cachedPreferences, cachedSwitchableWorkspaces } from "@/lib/cached-shell-reads";
@@ -77,6 +78,7 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
   // no owner timezone to settle "auto" in, and the clock is never read where
   // a route may prerender.
   let interfaceMode: "library" | "action" = "library";
+  let shellPreferences: ShellPreferenceSnapshot = { scope: "anonymous", kind: "unavailable", authenticated: false };
   let authContext: AuthContext | null = null;
   try {
     // Resolving the preference is per-request I/O (the row, and the clock for
@@ -85,12 +87,22 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
     await io();
     authContext = await getAuthContext();
     if (authContext) {
+      const preferenceScope = createHash("sha256")
+        .update(`${authContext.userId}:${authContext.workspaceId}`)
+        .digest("hex");
+      shellPreferences = { scope: preferenceScope, kind: "unavailable", authenticated: true };
       const [preferences, feed, switcher] = await Promise.all([
         cachedPreferences(authContext),
         listTriageFeed(authContext).catch(() => notifications),
         loadWorkspaceSwitcher(authContext).catch(() => null),
       ]);
       interfaceMode = resolveInterfaceMode(preferences.interfaceMode, preferences.timezone);
+      shellPreferences = {
+        scope: preferenceScope,
+        kind: "ready",
+        version: preferences.version,
+        appearance: preferences.appearance,
+      };
       notifications = feed;
       workspaceSwitcher = switcher;
     }
@@ -133,6 +145,7 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
         clerkConfigured={false}
         interfaceMode={interfaceMode}
         notifications={notifications}
+        shellPreferences={shellPreferences}
         workspaceSwitcher={workspaceSwitcher}
       >
         {children}
@@ -146,6 +159,7 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
         clerkConfigured
         interfaceMode={interfaceMode}
         notifications={notifications}
+        shellPreferences={shellPreferences}
         workspaceSwitcher={workspaceSwitcher}
       >
         {children}

@@ -615,12 +615,25 @@ export function FileCapturePanel({
   processingState: string;
   failureReason: string | null;
 }) {
+  const [imageProblem, setImageProblem] = useState<{
+    captureId: string;
+    kind: "unreadable" | "empty";
+  } | null>(null);
+  const previewRef = useRef<HTMLImageElement>(null);
   const payload = (rawPayload ?? {}) as FilePayload;
   const filename = payload.filename?.trim() || "Captured file";
   const quarantined = payload.quarantined === true;
   const isImage = !quarantined && (payload.mimeType ?? "").startsWith("image/");
+  const imageProblemForCapture = imageProblem?.captureId === captureId ? imageProblem.kind : null;
   const reading = text?.trim() ?? null;
   const pendingRead = isImage && !reading && (processingState === "unprocessed" || processingState === "classifying");
+
+  useEffect(() => {
+    const image = previewRef.current;
+    if (!isImage || !image?.complete) return;
+    if (image.naturalWidth === 0) setImageProblem({ captureId, kind: "unreadable" });
+    else if (image.naturalWidth < 2 && image.naturalHeight < 2) setImageProblem({ captureId, kind: "empty" });
+  }, [captureId, isImage]);
 
   return (
     <section aria-label="Captured file" className="flex flex-col gap-3">
@@ -631,16 +644,31 @@ export function FileCapturePanel({
       </p>
       {isImage ? (
         <figure
-          aria-label={`Preview of ${filename}`}
-          className="overflow-hidden rounded-xl border border-border bg-muted/30 shadow-sm"
+          aria-label={"Preview of " + filename}
+          className="flex min-h-48 items-center justify-center overflow-hidden rounded-xl border border-border bg-muted/30 shadow-sm"
         >
-          <img
-            src={`/api/v1/captures/${captureId}/file`}
-            alt={filename}
-            loading="eager"
-            decoding="async"
-            className="mx-auto max-h-[70vh] w-full object-contain"
-          />
+          {imageProblemForCapture ? (
+            <p className="max-w-sm px-6 py-8 text-center text-body-dense text-muted-foreground" role="status">
+              {imageProblemForCapture === "empty"
+                ? "This image is only 1×1 pixel, so there is no visible content to preview."
+                : "This image could not be decoded. The stored file may be incomplete or unreadable."}
+            </p>
+          ) : (
+            <img
+              ref={previewRef}
+              src={"/api/v1/captures/" + captureId + "/file"}
+              alt={filename}
+              loading="eager"
+              decoding="async"
+              onError={() => setImageProblem({ captureId, kind: "unreadable" })}
+              onLoad={(event) => {
+                if (event.currentTarget.naturalWidth < 2 && event.currentTarget.naturalHeight < 2) {
+                  setImageProblem({ captureId, kind: "empty" });
+                }
+              }}
+              className="max-h-[70vh] max-w-full object-contain"
+            />
+          )}
         </figure>
       ) : null}
       {reading ? (
@@ -651,7 +679,7 @@ export function FileCapturePanel({
         ) : isImage ? (
           <>
             <p className="max-w-[70ch] text-body-dense break-words whitespace-pre-wrap text-foreground/90">
-              {reading.length > 300 ? `${reading.slice(0, 300)}…` : reading}
+              {reading.length > 300 ? reading.slice(0, 300) + "…" : reading}
             </p>
             <p className="text-body-dense text-muted-foreground">
               The words were read from the image and are searchable.
@@ -674,7 +702,7 @@ export function FileCapturePanel({
       ) : null}
       <div>
         <a
-          href={`/api/v1/captures/${captureId}/file`}
+          href={"/api/v1/captures/" + captureId + "/file"}
           {...(isImage || quarantined ? { download: filename } : { target: "_blank", rel: "noreferrer" })}
           className="text-body-dense font-medium text-primary underline-offset-4 hover:underline"
         >

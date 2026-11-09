@@ -7,7 +7,7 @@ import type { ZettelCardItem } from "@/domains/knowledge/zettels";
  * chrome. `bloom` is deliberately ignored; the card is the idea itself.
  */
 
-const stamp = (d: Date) => d.toLocaleDateString("en", { month: "short", day: "numeric" });
+const stamp = (d: Date) => d.toLocaleDateString("en", { month: "short", day: "numeric", timeZone: "UTC" });
 
 export function IdeaCard({ item, href }: { item: ZettelCardItem; href: string }) {
   return (

@@ -29,19 +29,21 @@ function shortDate(date: Date) {
 async function WorkOverviewSurface() {
   await io();
   const auth = await getAuthContext();
-  const { timezone } = await getPreferences(auth);
-  const today = todayKeyInTimezone(timezone);
-  const [counts, projects, dueTasks, activityPage] = await Promise.all([
+  const [preferences, counts, projects, activityPage] = await Promise.all([
+    getPreferences(auth),
     countWorkByStatusForPage(auth),
     listWorkProjectSummariesForPage(auth),
-    listTasksDueBetweenForPage(auth, today, shiftDateKey(today, 14)),
     listActivityEvents(auth, { limit: 8, filters: { includeTechnical: false } }),
   ]);
+  const today = todayKeyInTimezone(preferences.timezone);
+  const dueTasks = await listTasksDueBetweenForPage(auth, today, shiftDateKey(today, 14));
   const activities = await presentActivityEvents(auth, activityPage.rows);
   const total = statusRows.reduce((sum, row) => sum + counts[row.key], 0);
   const open = total - counts.done - counts.cancelled;
   const activeProjects = projects.filter((project) => project.phase === "active").length;
   const statusMax = Math.max(1, ...statusRows.map((row) => counts[row.key]));
+  const workloadProjects = projects.filter((project) => project.openCount > 0).slice(0, 7);
+  const workloadMax = Math.max(1, ...workloadProjects.map((project) => project.openCount));
   const soon = dueTasks.filter((task) => task.status !== "done" && task.status !== "cancelled").slice(0, 7);
 
   return (
@@ -133,35 +135,99 @@ async function WorkOverviewSurface() {
           )}
         </Panel>
 
-        <Panel title="Tasks by status" description={`${total} tasks across your workspace`}>
-          <div className="mb-4 flex h-2 overflow-hidden rounded-full bg-muted" aria-label="Task distribution by status">
-            {statusRows.map((row) => (
-              <span
-                key={row.key}
-                className={row.color}
-                style={{ width: `${total ? (counts[row.key] / total) * 100 : 0}%` }}
-              />
-            ))}
-          </div>
-          <ul className="flex flex-col gap-3">
-            {statusRows.map((row) => {
-              const count = counts[row.key];
-              return (
-                <li key={row.key} className="flex items-center gap-3 text-sm">
-                  <span className={`size-2.5 rounded-full ${row.color}`} aria-hidden />
-                  <span className="min-w-0 flex-1">{row.label}</span>
-                  <span className="h-1.5 w-20 overflow-hidden rounded-full bg-muted sm:w-24">
-                    <span
-                      className={`block h-full rounded-full ${row.color}`}
-                      style={{ width: `${(count / statusMax) * 100}%` }}
-                    />
-                  </span>
-                  <span className="readout w-7 text-right text-xs text-muted-foreground">{count}</span>
-                </li>
-              );
-            })}
-          </ul>
-        </Panel>
+        <div className="flex min-w-0 flex-col gap-4">
+          <Panel title="Tasks by status" description={`${total} tasks across your workspace`}>
+            <div
+              className="mb-4 flex h-2 overflow-hidden rounded-full bg-muted"
+              aria-label="Task distribution by status"
+            >
+              {statusRows.map((row) => (
+                <span
+                  key={row.key}
+                  className={row.color}
+                  style={{ width: `${total ? (counts[row.key] / total) * 100 : 0}%` }}
+                />
+              ))}
+            </div>
+            <ul className="flex flex-col gap-3">
+              {statusRows.map((row) => {
+                const count = counts[row.key];
+                return (
+                  <li key={row.key} className="flex items-center gap-3 text-sm">
+                    <span className={`size-2.5 rounded-full ${row.color}`} aria-hidden />
+                    <span className="min-w-0 flex-1">{row.label}</span>
+                    <span className="h-1.5 w-20 overflow-hidden rounded-full bg-muted sm:w-24">
+                      <span
+                        className={`block h-full rounded-full ${row.color}`}
+                        style={{ width: `${(count / statusMax) * 100}%` }}
+                      />
+                    </span>
+                    <span className="readout w-7 text-right text-xs text-muted-foreground">{count}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          </Panel>
+
+          <Panel title="Workload" description="Open tasks by project">
+            {workloadProjects.length === 0 ? (
+              <p className="rounded-lg border border-dashed border-border px-4 py-5 text-center text-sm text-muted-foreground">
+                {projects.length
+                  ? "All projects are clear."
+                  : "Project workload will appear here when you add a project."}
+              </p>
+            ) : (
+              <ul className="divide-y divide-border">
+                {workloadProjects.map((project) => {
+                  const segments = [
+                    { label: "Inbox", value: project.inboxCount, color: "bg-amber-500" },
+                    { label: "Backlog", value: project.backlogCount, color: "bg-muted-foreground/50" },
+                    { label: "To do", value: project.readyCount, color: "bg-sky-500" },
+                    { label: "In progress", value: project.inProgressCount, color: "bg-indigo-400" },
+                    { label: "Waiting", value: project.waitingCount, color: "bg-violet-400" },
+                  ];
+                  return (
+                    <li key={project.id} className="py-3 first:pt-0 last:pb-0">
+                      <div className="mb-2 flex items-center gap-3">
+                        <Link
+                          href={`/projects/${project.id}`}
+                          className="min-w-0 flex-1 truncate text-sm font-medium hover:text-primary"
+                        >
+                          {project.name}
+                        </Link>
+                        <span className="readout text-xs text-muted-foreground">{project.openCount} open</span>
+                      </div>
+                      <div
+                        className="flex h-2 overflow-hidden rounded-full bg-muted"
+                        aria-label={`${project.openCount} open tasks in ${project.name}`}
+                      >
+                        {segments.map((segment) =>
+                          segment.value > 0 ? (
+                            <span
+                              key={segment.label}
+                              title={`${segment.label}: ${segment.value}`}
+                              className={segment.color}
+                              style={{ width: `${(segment.value / workloadMax) * 100}%` }}
+                            />
+                          ) : null,
+                        )}
+                      </div>
+                      <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                        {segments
+                          .filter((segment) => segment.value > 0)
+                          .map((segment) => (
+                            <span key={segment.label}>
+                              {segment.label} {segment.value}
+                            </span>
+                          ))}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </Panel>
+        </div>
       </div>
 
       <div className="grid items-start gap-4 xl:grid-cols-2">
