@@ -810,6 +810,13 @@
       "when": 1793945326042,
       "tag": "0289_poll_fact_suggestions",
       "breakpoints": true
+    },
+    {
+      "idx": 290,
+      "version": "7",
+      "when": 1794031726043,
+      "tag": "0290_superagent_observe_effect_kind",
+      "breakpoints": true
     }
   ]
 }

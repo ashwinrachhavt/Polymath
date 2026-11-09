@@ -368,8 +368,13 @@ export const workSubscriptions = pgTable(
 /* Effects: the durable work queue                                     */
 /* ------------------------------------------------------------------ */
 
-/** Domain work the engine asks the host to perform after commit; `key` names the unit. */
-export type EffectKind = "assessment" | "launch" | "delivery" | "relay" | "notice" | "reply" | "reap";
+/**
+ * Domain work the engine asks the host to perform after commit; `key` names
+ * the unit. `observe` carries a finished agent run's completion from the eve
+ * turn hook to the observer: the hook is the only place that reliably learns
+ * a turn ended, so it enqueues the look instead of trusting a later sweep.
+ */
+export type EffectKind = "assessment" | "launch" | "delivery" | "relay" | "notice" | "reply" | "reap" | "observe";
 
 /**
  * One row per kind+key while pending: the unique partial index coalesces bursts
@@ -402,7 +407,7 @@ export const workEffects = pgTable(
   (t) => [
     check(
       "work_effects_kind_check",
-      sql`${t.kind} in ('assessment', 'launch', 'delivery', 'relay', 'notice', 'reply', 'reap')`,
+      sql`${t.kind} in ('assessment', 'launch', 'delivery', 'relay', 'notice', 'reply', 'reap', 'observe')`,
     ),
     check("work_effects_status_check", sql`${t.status} in ('pending', 'done')`),
     index("work_effects_dispatch_idx").on(t.workspaceId, t.status, t.availableAt),

@@ -45,6 +45,7 @@ import {
 import { createEvalSeam } from "./assessor/eve";
 import { runningTicketRun } from "./core";
 import { createEngine, type Engine, type EngineForExecutor, type WorkerReport } from "./core/engine";
+import { UserError } from "./core/errors";
 import type { AcceptMode, ChannelRef, OutboundMessage, ReceiveResult, Trigger } from "./core";
 import type { PolicyConfig } from "./core/policy/gate";
 import { createPolicy, type SourcePolicy } from "./core/policy/gate";
@@ -104,6 +105,8 @@ export type SuperagentHost = {
   engine: Engine;
   assessor: SuperagentAssessor;
   executor: SuperagentExecutor;
+  /** Run the observer for this workspace now: the completion effect's work. */
+  observeNow(): Promise<void>;
   /** The chat Source's context: translation, receive, read positions, the reply sink. */
   chat: SourceContext;
   /**
@@ -267,6 +270,9 @@ async function buildHost(workspaceId: string): Promise<SuperagentHost> {
     engine,
     assessor,
     executor,
+    observeNow: async () => {
+      await observeWorkspace(workspaceId);
+    },
     chat: undefined as unknown as SourceContext,
     flush: flushHost,
     hydrate: () => store.hydrate(),
@@ -657,6 +663,13 @@ export async function superagentEffectHandlers(): Promise<EffectHandlers> {
       dispatchEffect(effect, (host) => host.executor.handleLaunch(effect.payload as unknown as LaunchPayload)),
     delivery: (effect) =>
       dispatchEffect(effect, (host) => host.executor.handleDelivery(effect.payload as unknown as DeliveryPayload)),
+    // A finished turn's completion, carried from the eve hook that saw it end.
+    // Without this the observer only ran on an inline drain, a dispatch pass,
+    // or a cron sweep — so an agent that finished after the send's drain had
+    // stopped produced an answer the chat would not receive until some later
+    // request happened to look. The hook enqueues the look, so completion
+    // itself drives delivery.
+    observe: (effect) => dispatchEffect(effect, (host) => host.observeNow()),
   };
   return handlers as EffectHandlers;
 }
@@ -719,19 +732,7 @@ async function observeWorkspace(workspaceId: string): Promise<boolean> {
     const report = reportFor(agentRun.state, agentRun.id, agentRun.error);
     if (report) {
       if (alreadyObserved.has(observerKey(agentRun.id))) continue;
-      try {
-        host.engine.turnEnded(ticket.id, run.id);
-        host.engine.report(ticket.id, report);
-        // A closed run's result tells the outcome in the channel the ticket
-        // started in (the ready/completed rule), same as a turn's answer.
-        if (report.state === "ready" || report.state === "failed") {
-          host.engine.reply({ purpose: "result", ticketId: ticket.id, text: report.summary });
-        }
-      } catch (error) {
-        // An ended ticket or an already-ended run means the domain moved on
-        // first; record the observation and let the next state win.
-        console.error(`[superagent] observer report failed for ticket ${ticket.id}:`, error);
-      }
+      if (!(await reportTerminalRun(host, ticket.id, run.id, report))) continue;
       await writeStateValue(db, workspaceId, observerKey(agentRun.id), agentRun.state);
       changed = true;
       continue;
@@ -764,7 +765,17 @@ async function observeWorkspace(workspaceId: string): Promise<boolean> {
         host.engine.reply({ purpose: "result", ticketId: ticket.id, text: turnReport.summary });
       }
     } catch (error) {
-      console.error(`[superagent] observer report failed for ticket ${ticket.id}:`, error);
+      // The domain may have moved on first (an ended ticket, a superseded
+      // run), which is a legitimate no-op — or the report failed for a
+      // transient reason, in which case the work NEVER happened and the
+      // marker must not advance. Advancing it there marked the turn observed
+      // while no report and no reply existed, and the next pass skipped it:
+      // the person waited on "Working" forever with the answer sitting in the
+      // timeline. Leave the marker untouched and let the next pass retry.
+      if (!domainMovedOn(error)) {
+        console.error(`[superagent] observer report failed for ticket ${ticket.id}:`, error);
+        continue;
+      }
     }
     await writeStateValue(db, workspaceId, observerKey(agentRun.id, turn.eventId), `turn.${turn.kind}`);
     changed = true;
@@ -778,6 +789,51 @@ const observerKey = (agentRunId: string, turnEventId?: string): string =>
   turnEventId === undefined
     ? `superagent:observed:${agentRunId}`
     : `superagent:observed:${agentRunId}:turn:${turnEventId}`;
+
+/**
+ * Report one terminal agent run to its ticket and queue the result reply.
+ * Returns whether the ticket's state actually moved, so the caller only
+ * advances the observation marker on a real outcome. A refusal means the
+ * domain already moved on (an ended ticket, a superseded run) — a no-op, not
+ * a failure — while any other error is transient and must leave the marker
+ * where it was so the next pass retries the report. Marking such a run
+ * observed after a failed write lost its result for good.
+ */
+export async function reportTerminalRun(
+  host: SuperagentHost,
+  ticketId: string,
+  runId: string,
+  report: WorkerReport,
+): Promise<boolean> {
+  try {
+    host.engine.turnEnded(ticketId, runId);
+    host.engine.report(ticketId, report);
+    // A closed run's result tells the outcome in the channel the ticket
+    // started in (the ready/completed rule), same as a turn's answer.
+    if (report.state === "ready" || report.state === "failed") {
+      host.engine.reply({ purpose: "result", ticketId, text: report.summary });
+    }
+    return true;
+  } catch (error) {
+    if (domainMovedOn(error)) return true;
+    console.error(`[superagent] observer report failed for ticket ${ticketId}:`, error);
+    return false;
+  }
+}
+
+/**
+ * Whether an engine refusal means the domain already left the state the
+ * observer was reporting into: the ticket ended or a newer run took over.
+ * Those are terminal for this observation — writing the marker is correct
+ * because nothing is left to deliver. Anything else (a database error, a
+ * flush failure) may succeed on a later pass and must not be acknowledged.
+ */
+export function domainMovedOn(error: unknown): boolean {
+  return (
+    error instanceof UserError &&
+    (error.code === "ticketEnded" || error.code === "assignmentEnded" || error.code === "unknownTicket")
+  );
+}
 
 /**
  * The run's newest turn end — completed or failed — with the answer that
@@ -809,6 +865,21 @@ async function lastTurnOutcome(
 }
 
 /**
+ * The provider's reason out of a failure event's payload. The bridge's live
+ * events carry `detail`; recordFailedTurn persists the same reason as `error`.
+ * Both are the same fact under two names, so one reader must accept both or a
+ * failure's cause evaporates depending on which writer produced it.
+ */
+function failureReasonOf(data: unknown): string | undefined {
+  if (!data || typeof data !== "object") return undefined;
+  const record = data as { detail?: unknown; error?: unknown };
+  for (const candidate of [record.detail, record.error]) {
+    if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
+  }
+  return undefined;
+}
+
+/**
  * The turn-end classification itself, free of the database: the newest event
  * decides whether there is anything to report, and the assistant message
  * behind it supplies the answer a completed turn produced.
@@ -822,12 +893,16 @@ export function classifyTurnEnd(
     // Eve reports why on the step that failed, which precedes the turn end;
     // the turn event itself carries only its id. Reading just the newest event
     // dropped the provider's reason and told the person nothing at all.
-    const own = (newestData as { detail?: unknown } | null)?.detail;
+    //
+    // Two writers produce this event and they name the field differently:
+    // the bridge's live turn.failed carries `detail`, while recordFailedTurn
+    // persists the same reason as `error`. Reading only `detail` meant every
+    // failure that came through the persisted writer lost its cause and the
+    // person was told the turn "failed without a reason".
+    const own = failureReasonOf(newestData);
     const fromStep = earlier.find((event) => event.type === "step.failed");
-    const detail =
-      typeof own === "string" && own.trim() ? own : (fromStep?.data as { detail?: unknown } | null)?.detail;
-    const error = typeof detail === "string" && detail.trim() ? detail.trim() : undefined;
-    return { kind: "failed", ...(error ? { error } : {}) };
+    const stepReason = fromStep ? failureReasonOf(fromStep.data) : undefined;
+    return { kind: "failed", ...((stepReason ?? own) ? { error: stepReason ?? own } : {}) };
   }
   if (newestType !== "turn.completed") return undefined;
   const answer = earlier.find(
@@ -837,7 +912,12 @@ export function classifyTurnEnd(
       typeof (event.data as { content?: string } | null)?.content === "string",
   );
   const text = ((answer?.data as { content?: string } | null)?.content ?? "").trim();
-  return { kind: "completed", ...(text ? { summary: text.slice(0, 400) } : {}) };
+  // The full answer, not a prefix: this text becomes the reply the person
+  // reads, so slicing it here silently delivered the opening paragraph of any
+  // long response and dropped the rest. `summary` is deliberately unbounded;
+  // the Supervision panel shortens it at render time, where shortening is
+  // visible and reversible.
+  return { kind: "completed", ...(text ? { summary: text } : {}) };
 }
 
 /** Map an agent run's terminal state to the worker report the domain records. */
