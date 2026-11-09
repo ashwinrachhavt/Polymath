@@ -26,6 +26,7 @@ export async function NeonBoard({ raw = {} }: { raw?: RawSearchParams }) {
   const cards = [...openRows, ...doneRows].filter(keep).map((row) => ({
     id: row.id,
     title: row.title,
+    projectName: row.projectName,
     status: row.status,
     priority: row.priority,
     dueAt: row.dueAt ? row.dueAt.toISOString() : null,

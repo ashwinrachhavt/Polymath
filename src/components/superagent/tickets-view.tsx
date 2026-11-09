@@ -30,7 +30,9 @@ function TicketRow({ ticket }: { ticket: TicketView }) {
           <span className="min-w-0 flex-1 truncate text-body-dense font-medium">{ticket.title}</span>
           <span className="readout shrink-0 text-data opacity-80">{ticket.strength}</span>
         </span>
-        <span className="text-muted-foreground text-xs">{ticket.reportSummary ?? "No report yet."}</span>
+        <span className="text-muted-foreground line-clamp-2 text-xs" title={ticket.reportSummary ?? undefined}>
+          {ticket.reportSummary ?? "No report yet."}
+        </span>
       </button>
       {open ? (
         <div className="border-border mb-2 flex flex-col gap-2 rounded-lg border px-3.5 py-3">

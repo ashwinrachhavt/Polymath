@@ -13,7 +13,7 @@ export type WorkDestination = "today" | "list";
 
 const destinations: { id: WorkDestination; label: string; href: string }[] = [
   { id: "today", label: "Today", href: "/neuralflow/work?view=today" },
-  { id: "list", label: "List", href: "/neuralflow/work?view=saved" },
+  { id: "list", label: "Tasks", href: "/neuralflow/work?view=saved" },
 ];
 
 const presentations: { id: "saved" | "board" | "calendar"; label: string }[] = [

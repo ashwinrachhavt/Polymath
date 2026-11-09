@@ -1,5 +1,5 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull, lt, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
 import { db } from "@/lib/db";
 import { sha256Hex } from "@/lib/hash";
@@ -18,8 +18,8 @@ import { apiClientUsage, apiClients } from "./schema";
  * unknown client is the same "not allowed" on purpose.
  */
 
-/** Daily request ceiling per client (D3). ponytail: one global number, per-client config when a second machine client needs a different bound. */
-const DAILY_REQUEST_CEILING = 1_000;
+/** A full day of 30-second Focus polls uses 5,760 requests across both read endpoints. */
+const DAILY_REQUEST_CEILING = 10_000;
 
 /** Every scope an API key can carry today; the Settings UI offers exactly these. */
 export const API_KEY_SCOPES = ["captures:read", "captures:write", "focus:read"] as const;
@@ -95,14 +95,12 @@ async function authorizeClient(client: ClientRow): Promise<MachineResolveResult>
     .values({ workspaceId: client.workspaceId, clientId: client.id, day, requestCount: 1 })
     .onConflictDoUpdate({
       target: [apiClientUsage.clientId, apiClientUsage.day],
-      // Raw sql keeps the increment atomic without a read-modify-write.
       set: { requestCount: sql`${apiClientUsage.requestCount} + 1` },
+      setWhere: lt(apiClientUsage.requestCount, DAILY_REQUEST_CEILING),
     })
     .returning({ requestCount: apiClientUsage.requestCount });
 
-  if ((bumped?.requestCount ?? 0) > DAILY_REQUEST_CEILING) {
-    return { ok: false, reason: "rate_limited" };
-  }
+  if (!bumped) return { ok: false, reason: "rate_limited" };
 
   await db.update(apiClients).set({ lastSeenAt: new Date() }).where(eq(apiClients.id, client.id));
 
@@ -111,9 +109,7 @@ async function authorizeClient(client: ClientRow): Promise<MachineResolveResult>
     client: {
       clientId: client.id,
       workspaceId: client.workspaceId,
-      // Machine clients resolve to member: the highest role any /api/v1 route
-      // requires today, and no higher — an API key must not mint owner-level
-      // authority. The route's scope check (requireScope) narrows it further.
+      // Machine clients act as members: API keys never carry owner authority.
       role: "member",
       scopes: Array.isArray(client.scopes) ? (client.scopes as string[]) : [],
     },

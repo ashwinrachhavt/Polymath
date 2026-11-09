@@ -152,7 +152,7 @@ describe("navigation", () => {
     expect(isConversationSurface("/more")).toBe(false);
   });
 
-  it("rails exactly the twenty-one destinations in order", () => {
+  it("rails exactly the twenty-two destinations in order", () => {
     // Conversations left the rail when its threads moved into the Assistant;
     // the route still resolves (old links keep working) but it is no longer a
     // destination. Today left when Briefing was removed: its outcomes and day
@@ -169,6 +169,7 @@ describe("navigation", () => {
       "Polymath",
       "Inbox",
       "Work",
+      "Overview",
       "Focus",
       "Notes",
       "Ideas",

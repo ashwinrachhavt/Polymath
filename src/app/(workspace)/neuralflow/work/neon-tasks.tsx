@@ -2,11 +2,12 @@ import Link from "next/link";
 import { io } from "next/cache";
 import { Empty, Panel, Screen, StatStrip } from "@/components/workspace/ui";
 import { getAuthContext } from "@/lib/auth";
-import { WORK_OPEN_STATUSES, WORK_PRIORITIES, countWorkByStatus, type WorkRow } from "@/domains/work/queries";
+import { WORK_OPEN_STATUSES, WORK_PRIORITIES, type WorkRow } from "@/domains/work/queries";
 import {
   getTaskDetailForPage,
   getActiveFocusSessionForPage,
   listFocusHistoryForPage,
+  countWorkByStatusForPage,
   listWorkPageForPage,
   listWorkRowsForPage,
 } from "./data";
@@ -91,7 +92,7 @@ export async function NeonTasks({
       status: list.filters.status as (typeof WORK_OPEN_STATUSES)[number] | undefined,
     }),
     listWorkRowsForPage(auth, "open"),
-    countWorkByStatus(auth),
+    countWorkByStatusForPage(auth),
     getActiveFocusSessionForPage(auth),
     listSeedsForDay(auth, todayKeyInTimezone(timezone)).catch(() => []),
   ]);
@@ -102,7 +103,7 @@ export async function NeonTasks({
   // first committed task, which is also the row the owner is most likely to
   // start. A filtered or empty list falls back to no detail rather than a
   // task the list is not showing.
-  const detailId = validSelection ?? (scope === "today" ? rows[0]?.id : undefined);
+  const detailId = validSelection;
   const [detail, focusHistory] = await Promise.all([
     detailId ? getTaskDetailForPage(auth, detailId) : null,
     detailId ? listFocusHistoryForPage(auth, 5, detailId) : [],
@@ -133,7 +134,7 @@ export async function NeonTasks({
 
   return (
     <Screen
-      title="Work"
+      title={scope === "today" ? "Work" : scope === "done" ? "Finished" : "Tasks"}
       actions={
         // The live session's controls live on Focus now; this entry points at
         // its setup when nothing is running.
@@ -149,21 +150,21 @@ export async function NeonTasks({
 
       {/* The pipeline strip (mockup 2026-10-28): one panel, six stages, each
           a count of real rows. Where the work is in its life, at a glance. */}
-      <StatStrip
-        className="grid-cols-2 sm:grid-cols-3 lg:grid-cols-6"
-        inline
-        variant="pipeline"
-        items={[
-          { label: "Capture", value: counts.inbox, hint: "Anything that arrives lands in one inbox." },
-          { label: "Clarify", value: counts.backlog, hint: "Turn each into a task, a note, or let it go." },
-          { label: "Commit", value: counts.ready, hint: "Work you have taken on for today." },
-          { label: "Focus", value: activeSession ? 1 : 0, hint: "Pick one, start an interval, earn a stone." },
-          { label: "Review", value: counts.waiting, hint: "Nothing leaves Polymath until you approve it." },
-          { label: "Learn", value: counts.done, hint: "Notes and ideas you can think with." },
-        ]}
-      />
+      {scope === "today" ? (
+        <StatStrip
+          className="grid-cols-2 sm:grid-cols-4"
+          items={[
+            { label: "Committed", value: found.total, hint: "Work you have taken on today." },
+            { label: "In progress", value: counts.in_progress, hint: "Across your workspace." },
+            { label: "Finished", value: counts.done, hint: "Tasks completed." },
+            { label: "Inbox", value: counts.inbox, hint: "Waiting to be clarified." },
+          ]}
+        />
+      ) : null}
 
-      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+      <div
+        className={`grid items-start gap-5 ${detail || scope === "today" ? "xl:grid-cols-[minmax(0,1.6fr)_minmax(18rem,1fr)]" : "grid-cols-1"}`}
+      >
         <div className="min-w-0">
           <div className="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-border pb-2">
             <h2 className="text-body font-medium">
@@ -270,6 +271,7 @@ export async function NeonTasks({
               row: {
                 id: row.id,
                 title: row.title,
+                projectName: row.projectName,
                 status: row.status,
                 priority: row.priority,
                 dueAt: row.dueAt ? row.dueAt.toISOString() : null,
@@ -284,140 +286,130 @@ export async function NeonTasks({
           />
           <Pagination basePath={BASE} raw={raw} page={list.page} pageSize={list.pageSize} total={found.total} />
 
-          {scope === "today" && !filtered ? (
-            <div className="mt-6 flex flex-col gap-6">
-              <section aria-labelledby="next-up-heading">
-                <div className="mb-1.5 flex items-baseline gap-2">
-                  <h2 id="next-up-heading" className="text-body-dense font-medium">
-                    Next up
-                  </h2>
-                  <span className="readout text-data text-muted-foreground">{nextUpCount}</span>
-                  <Link
-                    href={listHref(BASE, raw, { view: "saved", show: undefined, task: undefined })}
-                    className="ml-auto text-data text-muted-foreground hover:text-foreground hover:underline"
-                  >
-                    All open
-                  </Link>
-                </div>
-                <CommitList
-                  rows={nextUp.map((r) => ({
-                    ...r,
-                    dueAt: r.dueAt ? r.dueAt.toISOString() : null,
-                    href: hrefFor(r.id),
-                  }))}
-                  emptyState={
-                    <p className="py-2 text-label text-muted-foreground">Every open task is committed to today.</p>
-                  }
-                />
-              </section>
-
-              <section aria-labelledby="inbox-heading">
-                <div className="mb-1.5 flex items-baseline gap-2">
-                  <h2 id="inbox-heading" className="text-body-dense font-medium">
-                    Inbox
-                  </h2>
-                  <span className="readout text-data text-muted-foreground">{inboxCount}</span>
-                  {inboxCount > 0 ? (
-                    <Link
-                      href="/command-center/inbox"
-                      className="ml-auto text-data text-muted-foreground hover:text-foreground hover:underline"
-                    >
-                      Triage
-                    </Link>
-                  ) : null}
-                </div>
-                <CommitList
-                  rows={[]}
-                  emptyState={
-                    <p className="py-2 text-label text-muted-foreground">
-                      {inboxCount === 0
-                        ? "Nothing waiting. New captures land in Inbox until you commit them."
-                        : `${inboxCount} captured, waiting for triage.`}
-                    </p>
-                  }
-                />
-              </section>
-
-              <nav aria-label="Related tools" className="flex flex-wrap gap-x-4 text-data text-muted-foreground">
-                <Link className="py-1 hover:text-foreground hover:underline" href="/command-center/inbox">
-                  Brain dump
-                </Link>
-                <Link className="py-1 hover:text-foreground hover:underline" href="/apps/neuralflow/reports">
-                  Weekly review
-                </Link>
-                <Link className="py-1 hover:text-foreground hover:underline" href="/apps/neuralflow/rewards">
-                  Stone collection
-                </Link>
-              </nav>
-            </div>
+          {scope === "today" ? (
+            <nav aria-label="Related tools" className="mt-5 flex flex-wrap gap-x-4 text-data text-muted-foreground">
+              <Link className="py-1 hover:text-foreground hover:underline" href="/command-center/inbox">
+                Brain dump
+              </Link>
+              <Link className="py-1 hover:text-foreground hover:underline" href="/apps/neuralflow/reports">
+                Weekly review
+              </Link>
+              <Link className="py-1 hover:text-foreground hover:underline" href="/apps/neuralflow/rewards">
+                Stone collection
+              </Link>
+            </nav>
           ) : null}
         </div>
 
-        <Panel title="Task details" className="xl:sticky xl:top-4">
-          {detail ? (
-            <TaskCard
-              data={{
-                id: detail.task.id,
-                title: detail.task.title,
-                description: detail.task.description,
-                status: detail.task.status,
-                priority: detail.task.priority,
-                dueDate: detail.task.dueAt ? detail.task.dueAt.toISOString().slice(0, 10) : null,
-                estimateMinutes: detail.task.estimateMinutes,
-                version: detail.task.version,
-                subtasks: detail.subtasks.map((s) => ({
-                  id: s.id,
-                  title: s.title,
-                  status: s.status,
-                  version: s.version,
-                })),
-                blockedBy: detail.blockedBy.map((b) => ({ dependencyId: b.dependencyId, title: b.title })),
-                blocking: detail.blocking.map((b) => ({ dependencyId: b.dependencyId, title: b.title })),
-              }}
-              candidates={candidates}
-            />
-          ) : (
-            <Empty
-              title={scope === "today" ? "No task committed yet" : "Select a task"}
-              description={
-                scope === "today"
-                  ? "Anything you add above opens here, with its history and a way to start a session."
-                  : "Pick a row to see its details and focus history."
-              }
-            />
-          )}
-          {detail ? (
-            <div className="mt-4 border-t border-border pt-3">
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <p className="text-label font-medium">Focus history</p>
-                {activeSession ? (
-                  <span className="text-data text-muted-foreground">Session live above</span>
+        {detail ? (
+          <Panel title="Task details" className="xl:sticky xl:top-4">
+            {detail ? (
+              <TaskCard
+                data={{
+                  id: detail.task.id,
+                  title: detail.task.title,
+                  description: detail.task.description,
+                  status: detail.task.status,
+                  priority: detail.task.priority,
+                  dueDate: detail.task.dueAt ? detail.task.dueAt.toISOString().slice(0, 10) : null,
+                  estimateMinutes: detail.task.estimateMinutes,
+                  version: detail.task.version,
+                  subtasks: detail.subtasks.map((s) => ({
+                    id: s.id,
+                    title: s.title,
+                    status: s.status,
+                    version: s.version,
+                  })),
+                  blockedBy: detail.blockedBy.map((b) => ({ dependencyId: b.dependencyId, title: b.title })),
+                  blocking: detail.blocking.map((b) => ({ dependencyId: b.dependencyId, title: b.title })),
+                }}
+                candidates={candidates}
+              />
+            ) : (
+              <Empty title="Select a task" description="Pick a row to see its details and focus history." />
+            )}
+            {detail ? (
+              <div className="mt-4 border-t border-border pt-3">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <p className="text-label font-medium">Focus history</p>
+                  {activeSession ? (
+                    <span className="text-data text-muted-foreground">Session live above</span>
+                  ) : (
+                    <FocusTaskButton task={{ id: detail.task.id, title: detail.task.title }} />
+                  )}
+                </div>
+                {focusHistory.length ? (
+                  <div className="divide-y divide-border/60">
+                    {focusHistory.map((session) => (
+                      <div key={session.id} className="py-1.5 first:pt-0">
+                        <p className="readout text-data text-muted-foreground">
+                          {session.state} · {Math.round(session.elapsedSeconds / 60)} min ·{" "}
+                          {session.startedAt ? session.startedAt.toISOString().slice(0, 10) : "scheduled"}
+                        </p>
+                        {session.whatChanged ? <p className="text-label">Changed: {session.whatChanged}</p> : null}
+                        {session.nextStep ? (
+                          <p className="text-label text-muted-foreground">Next: {session.nextStep}</p>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
                 ) : (
-                  <FocusTaskButton task={{ id: detail.task.id, title: detail.task.title }} />
+                  <p className="text-data text-muted-foreground">No focus sessions against this task yet.</p>
                 )}
               </div>
-              {focusHistory.length ? (
-                <div className="divide-y divide-border/60">
-                  {focusHistory.map((session) => (
-                    <div key={session.id} className="py-1.5 first:pt-0">
-                      <p className="readout text-data text-muted-foreground">
-                        {session.state} · {Math.round(session.elapsedSeconds / 60)} min ·{" "}
-                        {session.startedAt ? session.startedAt.toISOString().slice(0, 10) : "scheduled"}
-                      </p>
-                      {session.whatChanged ? <p className="text-label">Changed: {session.whatChanged}</p> : null}
-                      {session.nextStep ? (
-                        <p className="text-label text-muted-foreground">Next: {session.nextStep}</p>
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-data text-muted-foreground">No focus sessions against this task yet.</p>
-              )}
-            </div>
-          ) : null}
-          {detail ? <TaskEvidence items={provenance} taskId={detail.task.id} /> : null}
-        </Panel>
+            ) : null}
+            {detail ? <TaskEvidence items={provenance} taskId={detail.task.id} /> : null}
+          </Panel>
+        ) : scope === "today" ? (
+          <aside className="flex min-w-0 flex-col gap-5">
+            <section aria-labelledby="next-up-heading" className="panel rounded-xl p-4">
+              <div className="mb-3 flex items-baseline gap-2">
+                <h2 id="next-up-heading" className="text-body-dense font-medium">
+                  Next up
+                </h2>
+                <span className="readout text-data text-muted-foreground">{nextUpCount}</span>
+                <Link
+                  href={listHref(BASE, raw, { view: "saved", show: undefined, task: undefined })}
+                  className="ml-auto text-data text-muted-foreground transition-colors hover:text-foreground hover:underline"
+                >
+                  All open
+                </Link>
+              </div>
+              <CommitList
+                rows={nextUp.map((r) => ({ ...r, dueAt: r.dueAt ? r.dueAt.toISOString() : null, href: hrefFor(r.id) }))}
+                emptyState={
+                  <p className="py-2 text-label text-muted-foreground">Every open task is committed to today.</p>
+                }
+              />
+            </section>
+            <section aria-labelledby="inbox-heading" className="panel rounded-xl p-4">
+              <div className="mb-3 flex items-baseline gap-2">
+                <h2 id="inbox-heading" className="text-body-dense font-medium">
+                  Inbox
+                </h2>
+                <span className="readout text-data text-muted-foreground">{inboxCount}</span>
+                {inboxCount > 0 ? (
+                  <Link
+                    href="/command-center/inbox"
+                    className="ml-auto text-data text-muted-foreground transition-colors hover:text-foreground hover:underline"
+                  >
+                    Triage
+                  </Link>
+                ) : null}
+              </div>
+              <CommitList
+                rows={[]}
+                emptyState={
+                  <p className="py-2 text-label text-muted-foreground">
+                    {inboxCount === 0
+                      ? "Nothing waiting. New captures land in Inbox until you commit them."
+                      : `${inboxCount} captured, waiting for triage.`}
+                  </p>
+                }
+              />
+            </section>
+          </aside>
+        ) : null}
       </div>
     </Screen>
   );

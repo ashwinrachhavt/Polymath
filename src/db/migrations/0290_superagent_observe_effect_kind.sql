@@ -1,0 +1,2 @@
+ALTER TABLE "work_effects" DROP CONSTRAINT "work_effects_kind_check";--> statement-breakpoint
+ALTER TABLE "work_effects" ADD CONSTRAINT "work_effects_kind_check" CHECK ("work_effects"."kind" in ('assessment', 'launch', 'delivery', 'relay', 'notice', 'reply', 'reap', 'observe'));

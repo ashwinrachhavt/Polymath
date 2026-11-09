@@ -8,6 +8,7 @@ import {
   GraduationCap,
   Inbox,
   Layers,
+  LayoutDashboard,
   LayoutList,
   Library,
   ScanEye,
@@ -73,6 +74,13 @@ export const destinations: Destination[] = [
     label: "Work",
     purpose: "Execute your commitments.",
     icon: SquareCheckBig,
+    group: "neuralflow",
+  },
+  {
+    href: "/neuralflow/overview",
+    label: "Overview",
+    purpose: "See project progress and the shape of your work.",
+    icon: LayoutDashboard,
     group: "neuralflow",
   },
   {

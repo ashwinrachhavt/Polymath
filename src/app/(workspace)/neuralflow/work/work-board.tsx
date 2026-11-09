@@ -7,6 +7,7 @@ import { updateTaskAction, moveTaskAction } from "./actions";
 import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { CardModal } from "./card-modal";
+import { ChevronDown, ChevronUp } from "lucide-react";
 
 /*
  * The board: one column per status, cards moved between them by dragging.
@@ -27,6 +28,7 @@ export type BoardStatus = "inbox" | "backlog" | "ready" | "in_progress" | "waiti
 export type BoardCardData = {
   id: string;
   title: string;
+  projectName: string | null;
   status: BoardStatus;
   priority: "none" | "low" | "medium" | "high" | "urgent";
   dueAt: string | null;
@@ -39,7 +41,7 @@ export type BoardCardData = {
 const LANES: { id: BoardStatus; label: string }[] = [
   { id: "inbox", label: "Inbox" },
   { id: "backlog", label: "Backlog" },
-  { id: "ready", label: "Ready" },
+  { id: "ready", label: "To do" },
   { id: "in_progress", label: "In progress" },
   { id: "waiting", label: "Waiting" },
   { id: "done", label: "Done" },
@@ -65,9 +67,9 @@ export function WorkBoard({ cards, detailBase }: { cards: BoardCardData[]; detai
   const ALL_STATUSES: Array<[BoardStatus, string]> = [
     ["inbox", "Inbox"],
     ["backlog", "Backlog"],
-    ["ready", "Ready"],
+    ["ready", "To do"],
     ["in_progress", "In progress"],
-    ["waiting", "Waiting"],
+    ["waiting", "Review"],
     ["done", "Done"],
     ["cancelled", "Cancelled"],
   ];
@@ -183,7 +185,7 @@ export function WorkBoard({ cards, detailBase }: { cards: BoardCardData[]; detai
                 event.preventDefault();
                 drop(lane.id);
               }}
-              className={`flex w-64 shrink-0 flex-col rounded-lg border p-2.5 transition-colors ${
+              className={`flex w-72 shrink-0 flex-col rounded-xl border bg-muted/20 p-3 transition-colors ${
                 active ? "border-primary/60 bg-muted/40" : "border-border/70"
               }`}
             >
@@ -211,10 +213,15 @@ export function WorkBoard({ cards, detailBase }: { cards: BoardCardData[]; detai
                           setDragging(null);
                           setOver(null);
                         }}
-                        className={`group cursor-grab rounded-md border border-border/70 bg-card p-2.5 active:cursor-grabbing ${
+                        className={`group cursor-grab rounded-lg border border-border/60 bg-card p-3.5 transition-[transform,opacity,border-color,background-color,box-shadow] duration-150 ease-out hover:border-border hover:shadow-sm active:scale-[.99] active:cursor-grabbing ${
                           dragging === card.id ? "opacity-50" : ""
                         } ${pending ? "pointer-events-none" : ""}`}
                       >
+                        {card.projectName ? (
+                          <span className="mb-2 inline-flex max-w-full truncate rounded-md border border-border/70 bg-muted/50 px-2 py-0.5 text-[11px] text-muted-foreground">
+                            {card.projectName}
+                          </span>
+                        ) : null}
                         <button
                           type="button"
                           onClick={() => setOpenId(card.id)}
@@ -255,22 +262,22 @@ export function WorkBoard({ cards, detailBase }: { cards: BoardCardData[]; detai
                           <Button
                             size="sm"
                             variant="ghost"
-                            className="h-6 shrink-0 px-1 text-data"
+                            className="size-7 shrink-0 p-0"
                             disabled={pending || index === 0}
                             aria-label={`Move ${card.title} up`}
                             onClick={() => reorder(card, laneCards, index, -1)}
                           >
-                            Up
+                            <ChevronUp aria-hidden className="size-3.5" />
                           </Button>
                           <Button
                             size="sm"
                             variant="ghost"
-                            className="h-6 shrink-0 px-1 text-data"
+                            className="size-7 shrink-0 p-0"
                             disabled={pending || index === laneCards.length - 1}
                             aria-label={`Move ${card.title} down`}
                             onClick={() => reorder(card, laneCards, index, 1)}
                           >
-                            Down
+                            <ChevronDown aria-hidden className="size-3.5" />
                           </Button>
                         </div>
                       </article>

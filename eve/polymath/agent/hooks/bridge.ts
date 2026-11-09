@@ -13,6 +13,7 @@ import {
   recordUsageEvent,
 } from "../../../../src/domains/agents/event-bridge";
 import { getRunBySessionRef } from "../../../../src/domains/agents/queries";
+import { enqueueCompletionObservation } from "../../../../src/domains/superagent/store/observe";
 
 /*
  * The Polymath side of eve: this is the only file that imports eve, and its only
@@ -307,6 +308,11 @@ export default defineHook({
       // The session waits for its next message; the run row says so instead of
       // "running" while nothing is computing.
       await guarded("turn.completed waiting state", () => markWaitingForInput({ runId, workspaceId }));
+      // Deliver on completion, not on the next sweep: this hook is the one
+      // place that reliably learns a turn ended. Without it an agent that
+      // finished after the send's inline drain had stopped recorded its answer
+      // and told the person nothing until some later request happened to look.
+      await guarded("turn.completed observe", () => enqueueCompletionObservation(workspaceId));
     },
 
     async "turn.cancelled"(event, ctx) {
@@ -344,6 +350,10 @@ export default defineHook({
         }),
       );
       await guarded("turn.failed waiting state", () => markWaitingForInput({ runId, workspaceId }));
+      // A failed turn is a terminal outcome for the ticket's work even though
+      // the session survives: report it now rather than leaving the person on
+      // "Working" until a sweep notices.
+      await guarded("turn.failed observe", () => enqueueCompletionObservation(workspaceId));
     },
   },
 });
