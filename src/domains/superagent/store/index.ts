@@ -1,6 +1,5 @@
 export { createSuperagentStore } from "./repositories";
 export { getPolicy, savePolicy, storedPolicyConfig } from "./policy";
-export { enqueueCompletionObservation } from "./observe";
 export {
   activeThreads,
   activeTickets,

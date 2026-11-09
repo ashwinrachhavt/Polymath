@@ -14,6 +14,7 @@ async function WorkSurface({ searchParams }: { searchParams: WorkQuery }) {
   const view = workView(query.view);
   const task = typeof query.task === "string" ? query.task : undefined;
   const date = typeof query.date === "string" ? query.date : undefined;
+  const mode = query.mode === "month" ? "month" : "week";
   const show = typeof query.show === "string" ? query.show : undefined;
 
   // Today / Open / Finished are a scope over the same rows, carried in `show`
@@ -28,7 +29,7 @@ async function WorkSurface({ searchParams }: { searchParams: WorkQuery }) {
   if (view === "board") {
     surface = <NeonBoard raw={query} />;
   } else if (view === "calendar") {
-    surface = <NeonCalendar key={date || "current"} date={date} />;
+    surface = <NeonCalendar key={`${date || "current"}-${mode}`} date={date} mode={mode} />;
   } else {
     surface = <NeonTasks show={show ?? (view === "today" ? "today" : undefined)} selectedTask={task} raw={query} />;
   }

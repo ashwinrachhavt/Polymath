@@ -7,6 +7,7 @@ import {
 } from "@/domains/focus/queries";
 import {
   getTaskDetail,
+  countWorkByStatus,
   listTasksDueBetween,
   listWorkPage,
   listWorkProjectSummaries,
@@ -21,6 +22,13 @@ import { focusTag, tasksTag } from "@/lib/cache-tags";
  * session writes updateTag(focusTag).
  */
 type WorkView = "today" | "open" | "done";
+
+export async function countWorkByStatusForPage(auth: AuthContext) {
+  "use cache";
+  cacheLife("default");
+  cacheTag(tasksTag(auth));
+  return countWorkByStatus(auth);
+}
 
 export async function listWorkPageForPage(
   auth: AuthContext,

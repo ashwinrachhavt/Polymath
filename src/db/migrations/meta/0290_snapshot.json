@@ -1,6 +1,6 @@
 {
-  "id": "bbeef2f1-d2fa-4376-a15a-b6f3f57b7424",
-  "prevId": "27b32b89-64cb-4cb7-9eb9-df5c842c74e1",
+  "id": "046ca704-7422-4bd9-b8f4-1856c579741f",
+  "prevId": "bbeef2f1-d2fa-4376-a15a-b6f3f57b7424",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -24388,7 +24388,7 @@
       "checkConstraints": {
         "work_effects_kind_check": {
           "name": "work_effects_kind_check",
-          "value": "\"work_effects\".\"kind\" in ('assessment', 'launch', 'delivery', 'relay', 'notice', 'reply', 'reap')"
+          "value": "\"work_effects\".\"kind\" in ('assessment', 'launch', 'delivery', 'relay', 'notice', 'reply', 'reap', 'observe')"
         },
         "work_effects_status_check": {
           "name": "work_effects_status_check",

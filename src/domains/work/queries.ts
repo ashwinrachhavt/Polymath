@@ -160,6 +160,7 @@ export async function getTaskDetail(
 export type WorkRow = {
   id: string;
   title: string;
+  projectName: string | null;
   status: (typeof tasks.$inferSelect)["status"];
   priority: (typeof tasks.$inferSelect)["priority"];
   dueAt: Date | null;
@@ -313,19 +314,21 @@ async function selectWorkRows(
       ? sql`coalesce(t.completed_at, t.cancelled_at) desc nulls last, t.id`
       : sql`t.rank collate "C", t.id`;
   const rows = await db.execute(sql`
-    select t.id, t.title, t.status, t.priority, t.due_at, t.version, t.rank,
+    select t.id, t.title, p.name as project_name, t.status, t.priority, t.due_at, t.version, t.rank,
       (select count(*) from tasks s where s.parent_task_id = t.id and s.archived_at is null)::int as subtask_count,
       (select count(*) from tasks s where s.parent_task_id = t.id and s.archived_at is null and s.status = 'done')::int as subtasks_done,
       (select count(*) from task_dependencies d
          where d.workspace_id = t.workspace_id and d.resolved_at is null
            and ((d.kind = 'blocked_by' and d.task_id = t.id) or (d.kind = 'blocks' and d.depends_on_task_id = t.id)))::int as blocked_by
     from tasks t
+    left join projects p on p.id = t.project_id and p.workspace_id = t.workspace_id and p.archived_at is null
     where ${viewWhere(auth, view, input)}
     order by ${order}
     limit ${input.limit} offset ${input.offset}`);
   return (rows as unknown as Array<Record<string, unknown>>).map((r) => ({
     id: r.id as string,
     title: r.title as string,
+    projectName: r.project_name as string | null,
     status: r.status as WorkRow["status"],
     priority: r.priority as WorkRow["priority"],
     dueAt: r.due_at ? new Date(r.due_at as string) : null,
@@ -340,6 +343,7 @@ async function selectWorkRows(
 export type DatedTask = {
   id: string;
   title: string;
+  projectName: string | null;
   status: (typeof tasks.$inferSelect)["status"];
   priority: (typeof tasks.$inferSelect)["priority"];
   dueAt: Date;
@@ -368,8 +372,13 @@ export async function listTasksDueBetween(
       estimateMinutes: tasks.estimateMinutes,
       version: tasks.version,
       tags: tasks.tags,
+      projectName: projects.name,
     })
     .from(tasks)
+    .leftJoin(
+      projects,
+      and(eq(projects.id, tasks.projectId), eq(projects.workspaceId, auth.workspaceId), isNull(projects.archivedAt)),
+    )
     .where(
       and(
         eq(tasks.workspaceId, auth.workspaceId),

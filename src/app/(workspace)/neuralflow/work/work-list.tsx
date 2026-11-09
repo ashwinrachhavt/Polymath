@@ -25,6 +25,7 @@ import { STATUS_LABEL as statusLabel, STATUS_PILL as statusPill } from "./status
 export type WorkListRow = {
   id: string;
   title: string;
+  projectName?: string | null;
   status: "inbox" | "backlog" | "ready" | "in_progress" | "waiting" | "done" | "cancelled";
   priority: "none" | "low" | "medium" | "high" | "urgent";
   dueAt: string | null;
@@ -215,6 +216,7 @@ export function WorkList({
         row: {
           id: `optimistic-${key()}`,
           title,
+          projectName: null,
           status: addToToday ? "ready" : "inbox",
           priority: parsed.priority ?? "none",
           dueAt: parsed.dueAt ? parsed.dueAt.toISOString() : null,
@@ -304,6 +306,17 @@ export function WorkList({
 
       {optimisticItems.length === 0 ? emptyState : null}
 
+      {!addToToday ? (
+        <div className="hidden grid-cols-[1.25rem_minmax(0,1.6fr)_minmax(7rem,1fr)_6rem_6rem_7rem_auto] gap-3 border-y border-border px-2 py-2 text-xs text-muted-foreground lg:grid">
+          <span />
+          <span>Task</span>
+          <span>Project</span>
+          <span>Status</span>
+          <span>Priority</span>
+          <span>Due date</span>
+          <span />
+        </div>
+      ) : null}
       <ul className="divide-y divide-border/60">
         {optimisticItems.map((item) => {
           const row = item.row;
@@ -311,7 +324,9 @@ export function WorkList({
           const due = dueLabel(row.dueAt);
           return (
             <li key={row.id}>
-              <div className="flex min-h-11 items-center gap-3 py-1.5">
+              <div
+                className={`flex min-h-11 items-center gap-3 py-2 ${addToToday ? "" : "lg:grid lg:grid-cols-[1.25rem_minmax(0,1.6fr)_minmax(7rem,1fr)_6rem_6rem_7rem_auto]"}`}
+              >
                 {!optimistic ? (
                   <input
                     type="checkbox"
@@ -341,12 +356,25 @@ export function WorkList({
                         {row.title}
                       </Link>
                     )}
-                    <span className={statusPill[row.status]}>{statusLabel[row.status]}</span>
+                    <span className={`${statusPill[row.status]} ${addToToday ? "" : "lg:hidden"}`}>
+                      {statusLabel[row.status]}
+                    </span>
+                    {row.projectName ? (
+                      <span
+                        className={`inline-flex max-w-40 truncate rounded-md border border-border/70 bg-muted/50 px-2 py-0.5 text-data text-muted-foreground ${addToToday ? "" : "lg:hidden"}`}
+                      >
+                        {row.projectName}
+                      </span>
+                    ) : null}
                     {row.priority !== "none" ? (
-                      <span className="text-data text-muted-foreground">{row.priority}</span>
+                      <span className={`text-data text-muted-foreground ${addToToday ? "" : "lg:hidden"}`}>
+                        {row.priority}
+                      </span>
                     ) : null}
                     {due ? (
-                      <span className={`readout text-data ${due.today ? "text-primary" : "text-muted-foreground"}`}>
+                      <span
+                        className={`readout text-data ${due.today ? "text-primary" : "text-muted-foreground"} ${addToToday ? "" : "lg:hidden"}`}
+                      >
                         {due.text}
                       </span>
                     ) : null}
@@ -372,6 +400,21 @@ export function WorkList({
                     </div>
                   ) : null}
                 </div>
+
+                {!addToToday ? (
+                  <>
+                    <span className="hidden truncate text-xs text-muted-foreground lg:block">
+                      {row.projectName ?? "—"}
+                    </span>
+                    <span className="hidden lg:block">
+                      <span className={statusPill[row.status]}>{statusLabel[row.status]}</span>
+                    </span>
+                    <span className="hidden text-xs text-muted-foreground lg:block">
+                      {row.priority === "none" ? "—" : row.priority}
+                    </span>
+                    <span className="readout hidden text-xs text-muted-foreground lg:block">{due?.text ?? "—"}</span>
+                  </>
+                ) : null}
 
                 {!optimistic ? (
                   <div className="flex shrink-0 items-center">
