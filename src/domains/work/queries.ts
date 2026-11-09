@@ -2,23 +2,27 @@ import { and, asc, desc, eq, gte, ilike, isNull, notInArray, sql } from "drizzle
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { escapeLike } from "@/lib/list-params";
-import { tasks } from "./schema";
+import { projects, tasks } from "./schema";
 
 /** A bounded projection of canonical tasks, shared with the agent read tool. */
 export async function listOpenTasks(auth: Pick<AuthContext, "workspaceId">, limit = 25) {
   if (!Number.isInteger(limit) || limit < 1 || limit > 50) throw new Error("Invalid task limit");
-  return db.select({
-    id: tasks.id,
-    title: tasks.title,
-    status: tasks.status,
-    priority: tasks.priority,
-    dueAt: tasks.dueAt,
-  }).from(tasks)
-    .where(and(
-      eq(tasks.workspaceId, auth.workspaceId),
-      isNull(tasks.archivedAt),
-      notInArray(tasks.status, ["done", "cancelled"]),
-    ))
+  return db
+    .select({
+      id: tasks.id,
+      title: tasks.title,
+      status: tasks.status,
+      priority: tasks.priority,
+      dueAt: tasks.dueAt,
+    })
+    .from(tasks)
+    .where(
+      and(
+        eq(tasks.workspaceId, auth.workspaceId),
+        isNull(tasks.archivedAt),
+        notInArray(tasks.status, ["done", "cancelled"]),
+      ),
+    )
     .orderBy(sql`${tasks.rank} collate "C"`, asc(tasks.id))
     .limit(limit);
 }
@@ -42,7 +46,12 @@ export async function searchTasksForLink(auth: AuthContext, query: string, limit
     .where(and(eq(tasks.workspaceId, auth.workspaceId), isNull(tasks.archivedAt), ilike(tasks.title, like)))
     .orderBy(asc(tasks.title), asc(tasks.id))
     .limit(limit);
-  return rows.map((row) => ({ id: row.id, title: row.title, kind: "task" as const, href: `/neuralflow/work?task=${row.id}` }));
+  return rows.map((row) => ({
+    id: row.id,
+    title: row.title,
+    kind: "task" as const,
+    href: `/neuralflow/work?task=${row.id}`,
+  }));
 }
 
 /**
@@ -59,26 +68,36 @@ export async function listRecentlyCompletedTasks(
   if (!Number.isInteger(days) || days < 1 || days > 90) throw new Error("Invalid days");
   if (!Number.isInteger(limit) || limit < 1 || limit > 50) throw new Error("Invalid task limit");
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-  return db.select({
-    id: tasks.id,
-    title: tasks.title,
-    status: tasks.status,
-    priority: tasks.priority,
-    completedAt: tasks.completedAt,
-  }).from(tasks)
-    .where(and(
-      eq(tasks.workspaceId, auth.workspaceId),
-      isNull(tasks.archivedAt),
-      eq(tasks.status, "done"),
-      gte(tasks.completedAt, since),
-    ))
+  return db
+    .select({
+      id: tasks.id,
+      title: tasks.title,
+      status: tasks.status,
+      priority: tasks.priority,
+      completedAt: tasks.completedAt,
+    })
+    .from(tasks)
+    .where(
+      and(
+        eq(tasks.workspaceId, auth.workspaceId),
+        isNull(tasks.archivedAt),
+        eq(tasks.status, "done"),
+        gte(tasks.completedAt, since),
+      ),
+    )
     .orderBy(desc(tasks.completedAt))
     .limit(limit);
 }
 
 export type TaskDetail = {
   task: typeof tasks.$inferSelect;
-  subtasks: { id: string; title: string; status: (typeof tasks.$inferSelect)["status"]; rank: string; version: number }[];
+  subtasks: {
+    id: string;
+    title: string;
+    status: (typeof tasks.$inferSelect)["status"];
+    rank: string;
+    version: number;
+  }[];
   /** Unresolved blockers, whichever way the edge was written. */
   blockedBy: { dependencyId: string; taskId: string; title: string }[];
   blocking: { dependencyId: string; taskId: string; title: string }[];
@@ -128,7 +147,11 @@ export async function getTaskDetail(
     }
     // blocks: task_id blocks depends_on. blocked_by: task_id waits on depends_on.
     const iAmBlocker = (e.kind === "blocks") === mine;
-    const entry = { dependencyId: e.dependency_id as string, taskId: otherId as string, title: (e.other_title ?? "") as string };
+    const entry = {
+      dependencyId: e.dependency_id as string,
+      taskId: otherId as string,
+      title: (e.other_title ?? "") as string,
+    };
     (iAmBlocker ? detail.blocking : detail.blockedBy).push(entry);
   }
   return detail;
@@ -183,7 +206,11 @@ export async function listWorkPage(
   input: { limit: number; offset: number } & WorkFilter,
 ): Promise<{ rows: WorkRow[]; window: WorkRow[]; lead: number; total: number }> {
   const lead = Math.min(input.offset, 2);
-  const window = await selectWorkRows(auth, view, { ...input, offset: input.offset - lead, limit: input.limit + lead + 2 });
+  const window = await selectWorkRows(auth, view, {
+    ...input,
+    offset: input.offset - lead,
+    limit: input.limit + lead + 2,
+  });
   const total = await countWorkRows(auth, view, input);
   return { rows: window.slice(lead, lead + input.limit), window, lead, total };
 }
@@ -221,6 +248,52 @@ export async function countWorkByStatus(
   return counts;
 }
 
+export type WorkProjectSummary = {
+  id: string;
+  name: string;
+  phase: (typeof projects.$inferSelect)["phase"];
+  targetDate: string | null;
+  taskCount: number;
+  openCount: number;
+  completedCount: number;
+};
+
+/** Workspace-scoped project totals for the work overview. */
+export async function listWorkProjectSummaries(auth: Pick<AuthContext, "workspaceId">): Promise<WorkProjectSummary[]> {
+  const rows = await db.execute(sql`
+    select p.id, p.name, p.phase, p.target_date::text as target_date,
+      count(t.id)::int as task_count,
+      count(t.id) filter (where t.status not in ('done', 'cancelled'))::int as open_count,
+      count(t.id) filter (where t.status = 'done')::int as completed_count
+    from projects p
+    left join tasks t on t.project_id = p.id and t.workspace_id = p.workspace_id
+      and t.archived_at is null and t.parent_task_id is null
+    where p.workspace_id = ${auth.workspaceId} and p.archived_at is null
+    group by p.id
+    order by case p.phase when 'active' then 0 when 'proposed' then 1 when 'paused' then 2 else 3 end,
+      p.name collate "C", p.id
+    limit 24`);
+  return (
+    rows as unknown as Array<{
+      id: string;
+      name: string;
+      phase: WorkProjectSummary["phase"];
+      target_date: string | null;
+      task_count: number;
+      open_count: number;
+      completed_count: number;
+    }>
+  ).map((row) => ({
+    id: row.id,
+    name: row.name,
+    phase: row.phase,
+    targetDate: row.target_date,
+    taskCount: row.task_count,
+    openCount: row.open_count,
+    completedCount: row.completed_count,
+  }));
+}
+
 async function countWorkRows(
   auth: Pick<AuthContext, "workspaceId">,
   view: "today" | "open" | "done",
@@ -236,7 +309,9 @@ async function selectWorkRows(
   input: { limit: number; offset: number } & WorkFilter,
 ): Promise<WorkRow[]> {
   const order =
-    view === "done" ? sql`coalesce(t.completed_at, t.cancelled_at) desc nulls last, t.id` : sql`t.rank collate "C", t.id`;
+    view === "done"
+      ? sql`coalesce(t.completed_at, t.cancelled_at) desc nulls last, t.id`
+      : sql`t.rank collate "C", t.id`;
   const rows = await db.execute(sql`
     select t.id, t.title, t.status, t.priority, t.due_at, t.version, t.rank,
       (select count(*) from tasks s where s.parent_task_id = t.id and s.archived_at is null)::int as subtask_count,
@@ -284,7 +359,16 @@ export async function listTasksDueBetween(
   endDay: string,
 ): Promise<DatedTask[]> {
   const rows = await db
-    .select({ id: tasks.id, title: tasks.title, status: tasks.status, priority: tasks.priority, dueAt: tasks.dueAt, estimateMinutes: tasks.estimateMinutes, version: tasks.version, tags: tasks.tags })
+    .select({
+      id: tasks.id,
+      title: tasks.title,
+      status: tasks.status,
+      priority: tasks.priority,
+      dueAt: tasks.dueAt,
+      estimateMinutes: tasks.estimateMinutes,
+      version: tasks.version,
+      tags: tasks.tags,
+    })
     .from(tasks)
     .where(
       and(

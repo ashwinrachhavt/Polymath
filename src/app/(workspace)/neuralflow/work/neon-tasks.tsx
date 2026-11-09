@@ -133,7 +133,7 @@ export async function NeonTasks({
 
   return (
     <Screen
-      title="Work"
+      title={scope === "today" ? "Today" : scope === "done" ? "Finished" : "Tasks"}
       actions={
         // The live session's controls live on Focus now; this entry points at
         // its setup when nothing is running.
@@ -149,19 +149,17 @@ export async function NeonTasks({
 
       {/* The pipeline strip (mockup 2026-10-28): one panel, six stages, each
           a count of real rows. Where the work is in its life, at a glance. */}
-      <StatStrip
-        className="grid-cols-2 sm:grid-cols-3 lg:grid-cols-6"
-        inline
-        variant="pipeline"
-        items={[
-          { label: "Capture", value: counts.inbox, hint: "Anything that arrives lands in one inbox." },
-          { label: "Clarify", value: counts.backlog, hint: "Turn each into a task, a note, or let it go." },
-          { label: "Commit", value: counts.ready, hint: "Work you have taken on for today." },
-          { label: "Focus", value: activeSession ? 1 : 0, hint: "Pick one, start an interval, earn a stone." },
-          { label: "Review", value: counts.waiting, hint: "Nothing leaves Polymath until you approve it." },
-          { label: "Learn", value: counts.done, hint: "Notes and ideas you can think with." },
-        ]}
-      />
+      {scope === "today" ? (
+        <StatStrip
+          className="grid-cols-2 sm:grid-cols-4"
+          items={[
+            { label: "Committed", value: found.total, hint: "Work you have taken on today." },
+            { label: "In progress", value: counts.in_progress, hint: "Across your workspace." },
+            { label: "Finished", value: counts.done, hint: "Tasks completed." },
+            { label: "Inbox", value: counts.inbox, hint: "Waiting to be clarified." },
+          ]}
+        />
+      ) : null}
 
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
         <div className="min-w-0">

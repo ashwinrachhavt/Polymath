@@ -39,9 +39,9 @@ export type BoardCardData = {
 const LANES: { id: BoardStatus; label: string }[] = [
   { id: "inbox", label: "Inbox" },
   { id: "backlog", label: "Backlog" },
-  { id: "ready", label: "Ready" },
+  { id: "ready", label: "To do" },
   { id: "in_progress", label: "In progress" },
-  { id: "waiting", label: "Waiting" },
+  { id: "waiting", label: "Review" },
   { id: "done", label: "Done" },
 ];
 
@@ -65,9 +65,9 @@ export function WorkBoard({ cards, detailBase }: { cards: BoardCardData[]; detai
   const ALL_STATUSES: Array<[BoardStatus, string]> = [
     ["inbox", "Inbox"],
     ["backlog", "Backlog"],
-    ["ready", "Ready"],
+    ["ready", "To do"],
     ["in_progress", "In progress"],
-    ["waiting", "Waiting"],
+    ["waiting", "Review"],
     ["done", "Done"],
     ["cancelled", "Cancelled"],
   ];
@@ -183,7 +183,7 @@ export function WorkBoard({ cards, detailBase }: { cards: BoardCardData[]; detai
                 event.preventDefault();
                 drop(lane.id);
               }}
-              className={`flex w-64 shrink-0 flex-col rounded-lg border p-2.5 transition-colors ${
+              className={`flex w-72 shrink-0 flex-col rounded-xl border bg-muted/20 p-3 transition-colors ${
                 active ? "border-primary/60 bg-muted/40" : "border-border/70"
               }`}
             >
@@ -211,7 +211,7 @@ export function WorkBoard({ cards, detailBase }: { cards: BoardCardData[]; detai
                           setDragging(null);
                           setOver(null);
                         }}
-                        className={`group cursor-grab rounded-md border border-border/70 bg-card p-2.5 active:cursor-grabbing ${
+                        className={`group cursor-grab rounded-lg border border-border/60 bg-card p-3.5 transition-colors hover:border-border hover:shadow-sm active:cursor-grabbing ${
                           dragging === card.id ? "opacity-50" : ""
                         } ${pending ? "pointer-events-none" : ""}`}
                       >

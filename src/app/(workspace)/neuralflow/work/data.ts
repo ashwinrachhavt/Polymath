@@ -5,7 +5,13 @@ import {
   listFocusBlocklist,
   listFocusHistory,
 } from "@/domains/focus/queries";
-import { getTaskDetail, listTasksDueBetween, listWorkPage, listWorkRows } from "@/domains/work/queries";
+import {
+  getTaskDetail,
+  listTasksDueBetween,
+  listWorkPage,
+  listWorkProjectSummaries,
+  listWorkRows,
+} from "@/domains/work/queries";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { focusTag, tasksTag } from "@/lib/cache-tags";
 
@@ -32,6 +38,13 @@ export async function listWorkRowsForPage(auth: AuthContext, view: WorkView, lim
   cacheLife("default");
   cacheTag(tasksTag(auth));
   return listWorkRows(auth, view, limit);
+}
+
+export async function listWorkProjectSummariesForPage(auth: AuthContext) {
+  "use cache";
+  cacheLife("default");
+  cacheTag(tasksTag(auth));
+  return listWorkProjectSummaries(auth);
 }
 
 export async function getTaskDetailForPage(auth: AuthContext, taskId: string) {

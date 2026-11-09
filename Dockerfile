@@ -7,17 +7,14 @@ ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 
-RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
 RUN corepack enable && corepack prepare pnpm@12.10.1 --activate
+RUN pnpm --version
 
 WORKDIR /app
 
-# Source is bind-mounted at runtime and node_modules lives in a named volume
-# (native deps match this container). Dependencies are installed by
-# docker/entrypoint.sh on first boot / when the lockfile changes, so there is
-# no install layer to bake into this dev image — that would only duplicate work
-# and add a ~1 GB node_modules layer that the volume immediately shadows.
-COPY . .
+# Compose bind-mounts the repository at /app and keeps dependencies in a volume.
+# The source tree and local caches do not belong in this development image.
 
 EXPOSE 3000
 
