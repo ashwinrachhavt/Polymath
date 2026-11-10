@@ -131,7 +131,7 @@ describe("ChatSurface context chips", () => {
 });
 
 /*
- * The stage chip's honesty contract: the Supervision panel is the honest
+ * The stage chip's honesty contract: the Reviews agent views is the honest
  * surface — it classifies the run's own report and says "Failed" — and the
  * conversation window's chip must agree with it, speaking the panel's word
  * from the panel's table (STAGE_META). Whatever the stream's transport is

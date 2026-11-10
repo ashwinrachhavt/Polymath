@@ -132,7 +132,7 @@ describe("navigation", () => {
     expect(isConversationSurface("/more")).toBe(false);
   });
 
-  it("rails exactly the twenty-two destinations in order", () => {
+  it("rails exactly the twenty-one destinations in order", () => {
     // Conversations left the rail when its threads moved into the Assistant;
     // the route still resolves (old links keep working) but it is no longer a
     // destination. Today left when Briefing was removed: its outcomes and day
@@ -141,8 +141,7 @@ describe("navigation", () => {
     // back as their own routes when Briefing went, so each keeps a way in.
     // Ideas arrived as its own top-level surface, taking the zettel, card and
     // area routes that used to hide under the vault prefix. Learning now lives
-    // in Notebook. Supervision joined the rail from the base branch since the
-    // release forked. Focus returned when it stopped being a redirect into Work and
+    // in Notebook. Supervision merged into Reviews. Focus returned when it stopped being a redirect into Work and
     // became its own screen (spec §3); it sits beside Work, whose sessions it
     // runs.
     expect(destinations.map((destination) => destination.label)).toEqual([
@@ -162,7 +161,6 @@ describe("navigation", () => {
       "Connectors",
       "Day",
       "Shut down",
-      "Supervision",
       "Reviews",
       "Activity",
       "Spending",
