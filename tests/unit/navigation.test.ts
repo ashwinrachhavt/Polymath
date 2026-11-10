@@ -153,7 +153,6 @@ describe("navigation", () => {
     expect(isConversationSurface("/more")).toBe(false);
   });
 
-<<<<<<< HEAD
   /*
    * Focus pages hide the rail so the page owns the width (spec 5): the note,
    * a learning session, a conversation, a source being read. List and
@@ -178,8 +177,6 @@ describe("navigation", () => {
     expect(isFocusSurface("/command-center/conversations")).toBe(false);
   });
 
-  it("rails exactly the twenty-two destinations in order", () => {
-=======
   it("rail lists Today and People once each", () => {
     const labels = destinations.map((destination) => destination.label);
     expect(labels.filter((label) => label === "Today")).toHaveLength(1);
@@ -211,7 +208,6 @@ describe("navigation", () => {
   });
 
   it("rails exactly the seventeen destinations in order", () => {
->>>>>>> f4cd7f5b (feat(nav): Today replaces five planning entries; People absorbs Companies)
     // Conversations left the rail when its threads moved into the Assistant;
     // the route still resolves (old links keep working) but it is no longer a
     // destination. Decisions left when its queue moved into the header's

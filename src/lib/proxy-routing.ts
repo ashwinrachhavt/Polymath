@@ -32,6 +32,7 @@ export const workspaceSegments: readonly string[] = [
   "reviews",
   "settings",
   "supervision",
+  "today",
   "workspaces",
 ];
 
