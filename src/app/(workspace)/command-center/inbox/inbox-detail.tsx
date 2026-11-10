@@ -1,5 +1,6 @@
 "use client";
 
+import { CaptureContextPanel } from "./capture-context-panel";
 import Link from "next/link";
 import { useEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import { ArtifactMarkdown } from "@/components/artifact-markdown";
@@ -380,6 +381,8 @@ export function InboxDetail({
           </>
         )}
       </div>
+
+      <CaptureContextPanel rawPayload={capture.rawPayload} />
 
       {priorWriting && priorWriting.items.length > 0 ? (
         <section aria-label="What you have written about this" className="mt-6 border-border border-t pt-6">

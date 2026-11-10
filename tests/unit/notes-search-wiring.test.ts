@@ -80,11 +80,11 @@ describe("notes page search-filter wiring", () => {
   it("renders Kind/Edited/Provenance chips only while a query is active", async () => {
     renderToStaticMarkup(await NotesSurface({ searchParams: params({}) }));
     const idle = toolbarProps.fn.mock.calls[0]?.[0] as { filters: { key: string }[] };
-    expect(idle.filters.map((f) => f.key)).toEqual(["view", "layout"]);
+    expect(idle.filters.map((f) => f.key)).toEqual(["view"]);
 
     renderToStaticMarkup(await NotesSurface({ searchParams: params({ q: "quarterly" }) }));
     const searching = toolbarProps.fn.mock.calls[1]?.[0] as { filters: { key: string }[] };
-    expect(searching.filters.map((f) => f.key)).toEqual(["view", "layout", "kind", "edited", "source"]);
+    expect(searching.filters.map((f) => f.key)).toEqual(["view", "kind", "edited", "source"]);
   });
 
   it("parses kind/edited/source URL params into the scope handed to the results surface", async () => {

@@ -5,6 +5,7 @@ import { preflight, withCors } from "@/lib/cors";
 import { problemResponse } from "@/lib/problems";
 import { ConflictError, createCapture } from "@/domains/capture/commands";
 import { listCaptures } from "@/domains/capture/queries";
+import { captureContextSchema } from "@/domains/capture/context";
 
 /*
  * GET /api/v1/captures — the inbox queue (unprocessed by default).
@@ -30,6 +31,10 @@ const captureRequest = z
     // before, so older companions keep working.
     raw_markdown: z.string().max(200_000).optional(),
     quality: z.string().max(20).optional(),
+    // Where it came from and why it was kept - passage, surrounding text,
+    // source identity, turn, screenshot region, an optional "why". All
+    // optional; an older companion sends none and captures exactly as before.
+    context: captureContextSchema.optional(),
   })
   .refine((value) => Boolean(value.text?.trim() || value.url), {
     message: "Send text, a url, or both.",
@@ -59,10 +64,13 @@ export const POST = authedHandler(async (auth, request) => {
   const origin = request.headers.get("origin");
   const parsed = captureRequest.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
-    return withCors(problemResponse(422, "invalid_input", "Send text, a url, or both (max 200k chars)."), origin);
+    return withCors(
+      problemResponse(422, "invalid_input", "Send text, a url, or both (max 200k chars), and a valid context if any."),
+      origin,
+    );
   }
 
-  const { text, url, title, mode, raw_markdown, quality } = parsed.data;
+  const { text, url, title, mode, raw_markdown, quality, context } = parsed.data;
   // A page grab arrives as { url, text }; a bare URL or a plain note is text-only.
   const body = text?.trim() || url || "";
   // An address that arrived with no text of its own is the address itself, not
@@ -82,6 +90,7 @@ export const POST = authedHandler(async (auth, request) => {
       mode: arrival,
       raw_markdown,
       quality,
+      context,
       source: "companion",
       idempotencyKey,
     });

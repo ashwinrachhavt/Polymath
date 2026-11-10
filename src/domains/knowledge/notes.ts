@@ -12,7 +12,7 @@ import {
   safeArtifactEmbedError,
   type ArtifactEmbedOutcome,
 } from "./embedding";
-import { noteContentToMarkdown } from "./note-content";
+import { noteContentToMarkdown, unescapeWikiLinks } from "./note-content";
 import { materializeSemanticEdges } from "./relations";
 import { artifactLinks, artifactVersions, artifacts, embeddings, recoveryCopies, workingDrafts } from "./schema";
 import type { EmbeddingProvider } from "@/integrations/embeddings/provider";
@@ -77,7 +77,7 @@ export type NoteKind = (typeof LINKABLE_KINDS)[number] | "transcript" | "documen
 
 export function extractWikiLinkTitles(markdown: string): string[] {
   const titles = new Set<string>();
-  for (const match of markdown.matchAll(WIKI_LINK)) {
+  for (const match of unescapeWikiLinks(markdown).matchAll(WIKI_LINK)) {
     const title = match[1].trim();
     if (title) titles.add(title);
   }

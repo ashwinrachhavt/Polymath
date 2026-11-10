@@ -6,6 +6,9 @@ import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/r
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import { Markdown } from "@tiptap/markdown";
+import { useRouter } from "next/navigation";
+import { WIKI_LINK_OPEN, WikiLinks } from "./wiki-links";
+import { unescapeWikiLinks } from "@/domains/knowledge/note-content";
 import { Bold, Italic, List, ListOrdered, Quote, Undo2, Redo2 } from "lucide-react";
 import { filterBlockCommands, slashQuery, type BlockCommand } from "@/components/workspace/slash-commands";
 import { Button } from "@/components/ui/button";
@@ -330,11 +333,34 @@ function RichMarkdownEditor({
   useEffect(() => {
     candidatesRef.current = candidates;
   });
+  // A clicked [[Title]] opens that note: the title resolves through the same
+  // finder the [[ picker uses, so a link reads and navigates the same way.
+  const router = useRouter();
+  useEffect(() => {
+    const host = containerRef.current;
+    if (!host) return;
+    const open = (event: Event) => {
+      const title = (event as CustomEvent<string>).detail;
+      const wanted = title.toLowerCase();
+      const exact = (rows: LinkTarget[]) => rows.find((row) => !row.href && row.title.trim().toLowerCase() === wanted);
+      const local = state.artifacts.find((a) => a.id !== undefined && a.title.trim().toLowerCase() === wanted);
+      if (local?.id) return router.push(`/polymath/notes?id=${local.id}`);
+      if (!findLinkTargets) return notify(`No note titled "${title}" yet.`);
+      void findLinkTargets(title, "keyword").then((rows) => {
+        const hit = exact(rows);
+        if (hit) router.push(`/polymath/notes?id=${hit.id}`);
+        else notify(`No note titled "${title}" yet.`);
+      });
+    };
+    host.addEventListener(WIKI_LINK_OPEN, open);
+    return () => host.removeEventListener(WIKI_LINK_OPEN, open);
+  }, [findLinkTargets, notify, router, state.artifacts]);
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ link: { openOnClick: false } }),
       Placeholder.configure({ placeholder: "Write. Press space for AI, / for a block, [[ to link a note." }),
       Markdown,
+      WikiLinks,
     ],
     content,
     contentType: "markdown",
@@ -465,7 +491,7 @@ function RichMarkdownEditor({
       });
     },
     onUpdate: ({ editor }) => {
-      onChange(editor.getMarkdown());
+      onChange(unescapeWikiLinks(editor.getMarkdown()));
       const { from } = editor.state.selection;
       const query = editor.state.selection.empty
         ? slashQuery(editor.state.doc.textBetween(Math.max(0, from - 40), from, "\n"))
@@ -516,7 +542,7 @@ function RichMarkdownEditor({
     }
   }, [editor, menuAnchor]);
   useEffect(() => {
-    if (editor && editor.getMarkdown() !== content)
+    if (editor && unescapeWikiLinks(editor.getMarkdown()) !== content)
       editor.commands.setContent(content, { contentType: "markdown", emitUpdate: false });
   }, [content, editor]);
   const formatButtons = [

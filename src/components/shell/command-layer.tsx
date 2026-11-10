@@ -25,6 +25,8 @@ import { ImportDrop } from "@/components/workspace/import-drop";
 import { MAX_UPLOAD_LABEL } from "@/lib/file-validation";
 import { uploadCaptureFile } from "@/lib/capture-upload";
 import { ShortcutsDialog } from "./shortcuts-dialog";
+import { snapshotCaptureContext, type CaptureSnapshot } from "./capture-context";
+import type { CaptureContext } from "@/domains/capture/context";
 import { mergePaletteResults } from "./palette-merge";
 import {
   quickCapture,
@@ -56,7 +58,10 @@ export function CommandLayer({
   const router = useRouter();
   const [mode, setMode] = useState<"search" | "capture" | null>(initialMode ?? null);
   const [query, setQuery] = useState("");
-  const [text, setText] = useState("");
+  // Opened straight into Capture, a selection made beforehand becomes the words.
+  const [text, setText] = useState(() =>
+    initialMode === "capture" && typeof window !== "undefined" ? (snapshotCaptureContext().passage ?? "") : "",
+  );
   const [saveError, setSaveError] = useState("");
   const [saveErrorId, setSaveErrorId] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -80,8 +85,59 @@ export function CommandLayer({
   const recorder = useRef<MediaRecorder | null>(null);
   const [recording, setRecording] = useState(false);
   const returnTo = useRef<"search" | "capture">(initialMode ?? "search");
+  // Where the capture came from, read at the moment Capture opens (see
+  // capture-context.ts), and the optional answer to why it matters.
+  const [snapshot, setSnapshot] = useState<CaptureSnapshot | null>(() =>
+    initialMode === "capture" && typeof window !== "undefined" ? snapshotCaptureContext() : null,
+  );
+  const [why, setWhy] = useState<NonNullable<CaptureContext["why"]> | null>(null);
+  const [dictating, setDictating] = useState(false);
+  const dictation = useRef<SpeechRecognitionLike | null>(null);
+
+  function beginCapture() {
+    const next = snapshotCaptureContext();
+    setSnapshot(next);
+    setWhy(null);
+    if (next.passage) setText((current) => current || next.passage || "");
+  }
+
+  function toggleDictation() {
+    if (dictating) {
+      dictation.current?.stop();
+      return;
+    }
+    const Recognition = speechRecognition();
+    if (!Recognition) {
+      setSaveError("This browser cannot dictate. Type the answer instead.");
+      return;
+    }
+    const session = new Recognition();
+    session.interimResults = false;
+    session.continuous = false;
+    session.onresult = (event) => {
+      const heard = Array.from(event.results)
+        .map((result) => result[0]?.transcript ?? "")
+        .join(" ")
+        .trim();
+      if (heard)
+        setWhy((current) => ({
+          kind: "answer",
+          text: current?.kind === "answer" ? `${current.text} ${heard}` : heard,
+          via: "voice",
+        }));
+    };
+    session.onend = () => {
+      dictation.current = null;
+      setDictating(false);
+    };
+    session.onerror = () => setSaveError("Dictation stopped. Type the answer instead.");
+    dictation.current = session;
+    session.start();
+    setDictating(true);
+  }
 
   function open(next: "search" | "capture") {
+    if (next === "capture") beginCapture();
     returnTo.current = next;
     setQuery("");
     setSelected(0);
@@ -102,6 +158,7 @@ export function CommandLayer({
       if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === "c") {
         event.preventDefault();
         returnTo.current = "capture";
+        beginCapture();
         setMode("capture");
       }
     };
@@ -234,7 +291,11 @@ export function CommandLayer({
     setSaveError("");
     setSaveErrorId(null);
     setPending(true);
-    void quickCapture(text, crypto.randomUUID())
+    const context: CaptureContext = { ...snapshot?.context, ...(why ? { why } : {}) };
+    // A selection the person replaced with their own words is still the passage
+    // they were looking at; one they cleared away entirely is not.
+    if (context.passage && !text.includes(context.passage.slice(0, 80)) && !text.trim()) delete context.passage;
+    void quickCapture(text, crypto.randomUUID(), context)
       .then((result) => {
         if (!result.ok) {
           setSaveError(result.error);
@@ -243,6 +304,8 @@ export function CommandLayer({
         }
         notify(result.message);
         setText("");
+        setWhy(null);
+        setSnapshot(null);
         setMode(null);
       })
       .catch(() => setSaveError("Could not save. Try again."))
@@ -299,6 +362,7 @@ export function CommandLayer({
   // The mic never outlives the dialog: closing or switching modes stops it.
   useEffect(() => {
     if (mode === null && recorder.current) recorder.current.stop();
+    if (mode === null) dictation.current?.stop();
   }, [mode]);
 
   // Triggerless mount: the wrapper in command-layer-mount.tsx owns the
@@ -399,7 +463,14 @@ export function CommandLayer({
                 aria-activedescendant={results[active] ? `command-${active}` : undefined}
               />
               <div className="flex gap-2">
-                <Button variant="outline" className="flex-1 justify-start" onClick={() => setMode("capture")}>
+                <Button
+                  variant="outline"
+                  className="flex-1 justify-start"
+                  onClick={() => {
+                    beginCapture();
+                    setMode("capture");
+                  }}
+                >
                   <Plus aria-hidden />
                   Capture something<span className="readout ml-auto text-data">Ctrl/⌘ Shift C</span>
                 </Button>
@@ -507,6 +578,46 @@ export function CommandLayer({
                     Up to {MAX_UPLOAD_LABEL}. Files are stored as-is; audio transcribes when that ships.
                   </span>
                 </div>
+                <div className="flex flex-col gap-2">
+                  <label htmlFor="capture-why" className="text-body-dense font-medium">
+                    Why does this matter? <span className="font-normal text-muted-foreground">Optional</span>
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="capture-why"
+                      value={why?.kind === "answer" ? why.text : ""}
+                      disabled={why?.kind === "unknown"}
+                      maxLength={4000}
+                      onChange={(event) =>
+                        setWhy(
+                          event.target.value.trim() ? { kind: "answer", text: event.target.value, via: "text" } : null,
+                        )
+                      }
+                      placeholder={why?.kind === "unknown" ? "Not yet - that's fine" : "Say it in a line, or skip"}
+                    />
+                    <Button
+                      type="button"
+                      variant={dictating ? "secondary" : "outline"}
+                      size="icon-sm"
+                      aria-pressed={dictating}
+                      aria-label={dictating ? "Stop dictating" : "Dictate why it matters"}
+                      disabled={why?.kind === "unknown"}
+                      onClick={toggleDictation}
+                    >
+                      {dictating ? <Square aria-hidden /> : <Mic aria-hidden />}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={why?.kind === "unknown" ? "secondary" : "outline"}
+                      size="sm"
+                      aria-pressed={why?.kind === "unknown"}
+                      onClick={() => setWhy((current) => (current?.kind === "unknown" ? null : { kind: "unknown" }))}
+                    >
+                      I don&apos;t know yet
+                    </Button>
+                  </div>
+                  <CaptureProvenance snapshot={snapshot} />
+                </div>
               </form>
               <ImportDrop
                 hint="Add pasted text or a URL. Files upload through Polymath Knowledge, where they are extracted."
@@ -547,4 +658,41 @@ export function CommandLayer({
       </Dialog>
     </>
   );
+}
+
+/*
+ * What is stored besides the words, said back in one quiet line so nothing is
+ * a surprise and nothing needs a decision.
+ */
+function CaptureProvenance({ snapshot }: { snapshot: CaptureSnapshot | null }) {
+  const context = snapshot?.context;
+  if (!context) return null;
+  const parts = [
+    context.turn ? "the conversation turn" : context.source?.title ? `from ${context.source.title}` : null,
+    context.passage ? "your selection and the text around it" : null,
+    context.suggestion?.projectId ? "a suggestion to file it under this project" : null,
+  ].filter(Boolean);
+  return (
+    <p className="text-data text-muted-foreground">
+      Kept with it: the time{parts.length ? `, ${parts.join(", ")}` : ""}.
+      {context.partial ? ` Partial: ${context.partial.reason}` : ""}
+    </p>
+  );
+}
+
+/* The Web Speech API is not in the DOM typings; this is the slice used here. */
+type SpeechRecognitionLike = {
+  interimResults: boolean;
+  continuous: boolean;
+  onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+  onend: (() => void) | null;
+  onerror: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+
+function speechRecognition(): (new () => SpeechRecognitionLike) | null {
+  const scope = window as unknown as Record<string, unknown>;
+  const ctor = scope.SpeechRecognition ?? scope.webkitSpeechRecognition;
+  return typeof ctor === "function" ? (ctor as new () => SpeechRecognitionLike) : null;
 }
