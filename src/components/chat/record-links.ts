@@ -58,7 +58,7 @@ const PATHS: Record<RecordKind, (id: string) => string> = {
   task: () => "/work",
   note: () => "/polymath/notes",
   document: (id) => `/polymath/library/${id}`,
-  source: () => "/polymath/sources",
+  source: () => "/polymath/knowledge",
   project: (id) => `/projects/${id}`,
   artifact: (id) => `/artifacts/${id}`,
   run: (id) => `/polymath/${id}`,

@@ -16,7 +16,6 @@ import {
   draftTitle,
   type DraftTemplate,
 } from "./draft-templates";
-import { proposeLinearIssue, renderLinearIssueDraft } from "./linear-issue-proposal";
 import { withTransaction } from "@/lib/db-transaction";
 import { db } from "@/lib/db";
 import { inferCaptureMode, contentHash, workingText, type CaptureMode } from "./mode";
@@ -746,23 +745,10 @@ export async function convertCaptureToDraft(
         .map((line) => line.trim())
         .find(Boolean) ?? "Captured item";
     // Same title preference as the other conversions: the capture's own title
-    // names the draft (and seeds the linear-issue proposer); the body still
-    // quotes the material verbatim.
+    // names the draft; the body still quotes the material verbatim.
     const preferredTitle = capture.title?.trim() || firstLine;
-    let title = draftTitle(input.template, preferredTitle);
-    let body = draftBody(input.template, { firstLine, material });
-    if (input.template === "linear-issue") {
-      // ASH-285 part 2: with a generation provider configured, fill the
-      // scaffold into a fully formed proposal grounded in the capture. Any
-      // failure keeps the honest deterministic scaffold - never fake content.
-      try {
-        const { proposal, proposer } = await proposeLinearIssue(auth, { title: preferredTitle, text: material });
-        title = `Linear issue: ${proposal.title}`;
-        body = renderLinearIssueDraft(proposal, { sourceMaterial: material, proposer });
-      } catch {
-        /* scaffold stands */
-      }
-    }
+    const title = draftTitle(input.template, preferredTitle);
+    const body = draftBody(input.template, { firstLine, material });
     const draft = await createNoteInTx(tx, auth, {
       title,
       content: { format: "markdown", text: body },

@@ -16,6 +16,7 @@ describe("markdownSourceReason", () => {
       "Ask <https://example.com/notes> for the source.",
       "Notes:\n- first point\n- second point",
       "A pipe | inside prose is fine.",
+      "- [ ] unfinished\n- [x] done",
     ]) {
       expect(markdownSourceReason(text), text).toBeUndefined();
     }
@@ -24,7 +25,6 @@ describe("markdownSourceReason", () => {
   it("still names constructs the rich editor cannot keep", () => {
     expect(markdownSourceReason("| A | B |\n| --- | --- |\n| 1 | 2 |")).toBe("tables");
     expect(markdownSourceReason("![alt](https://x.com/a.png)")).toBe("images");
-    expect(markdownSourceReason("- [ ] unfinished")).toBe("task checkbox states");
     expect(markdownSourceReason("[ref]: https://x.com")).toBe("reference links, images or footnotes");
     expect(markdownSourceReason("text[^1]\n\n[^1]: a note")).toBe("reference links, images or footnotes");
   });

@@ -31,7 +31,7 @@ Migrations: 125 files, highest `0298_learning_artifact_feedback`.
 
 ## Tests
 
-587 `.test.ts` and 52 `.spec.ts` files (unit: 352, integration: 232, e2e: 52).
+585 `.test.ts` and 51 `.spec.ts` files (unit: 351, integration: 231, e2e: 51).
 ## Domains
 
 25 folders; 19 own tables.
@@ -299,14 +299,13 @@ Totals: 94 versioned, 57 append-only, 6 versionless but guarded (each declared w
 
 - weekly-review (Weekly review)
 - research-brief (Research brief)
-- linear-issue-draft (Linear issue draft)
 - design-brief (Design brief)
 - meeting-notes (Meeting notes)
 - calendar-conflicts (Calendar conflicts)
 
 ## Outbox
 
-Emitted topics: 26. Registered handlers: 12. Declared audit-only: 14.
+Emitted topics: 25. Registered handlers: 12. Declared audit-only: 13.
 
 Topics with no handler and no declaration (a defect if non-empty):
 
@@ -320,7 +319,6 @@ Declared audit-only (observation events; no consumer by design):
 - `delegation_grant.revoked`
 - `grant.created`
 - `grant.revoked`
-- `note.snapshot`
 - `research.company.completed`
 - `research.profile.completed`
 - `role.archived`

@@ -25,7 +25,6 @@ import {
   createNoteAction,
   findLinkTargetsAction,
   getNoteAIRunOutputAction,
-  proposeLinearIssueAction,
   removeLinkAction,
   renameNoteAction,
   retryNoteEmbeddingAction,
@@ -430,7 +429,6 @@ export function NoteEditor({
     (query: string, mode: "keyword" | "hybrid") => findLinkTargetsAction({ query, mode, excludeId: noteId }),
     [noteId],
   );
-  const router = useRouter();
   const [title, setTitle] = useState(initialTitle);
   const [markdown, setMarkdown] = useState(initialMarkdown);
   const [localOffer, setLocalOffer] = useState<{ markdown: string; savedAt: string } | null>(null);
@@ -616,8 +614,6 @@ export function NoteEditor({
   const [ai, setAi] = useState<AIProposal | null>(null);
   const [aiMenuOpen, setAiMenuOpen] = useState(false);
   const aiBusy = !!ai && !AI_TERMINAL.has(ai.state);
-  const [issuePending, setIssuePending] = useState(false);
-  const [issueError, setIssueError] = useState("");
 
   const startAI = async (request: NoteAIRequest) => {
     if (aiBusy) return;
@@ -939,26 +935,6 @@ export function NoteEditor({
             />
             <Button
               type="button"
-              variant="ghost"
-              size="xs"
-              className="text-muted-foreground"
-              disabled={issuePending}
-              onClick={async () => {
-                setIssuePending(true);
-                setIssueError("");
-                const result = await proposeLinearIssueAction({ artifactId: noteId });
-                setIssuePending(false);
-                if (!result.ok) {
-                  setIssueError(result.error);
-                  return;
-                }
-                router.push(`/polymath/notes?id=${result.artifactId}`);
-              }}
-            >
-              {issuePending ? "Drafting issue…" : "Draft Linear issue"}
-            </Button>
-            <Button
-              type="button"
               size="xs"
               variant="ghost"
               className="text-muted-foreground"
@@ -979,11 +955,6 @@ export function NoteEditor({
               <MessageSquare aria-hidden className="size-3.5" />
               {openCommentCount > 0 ? `Comments ${openCommentCount}` : "Comments"}
             </Button>
-            {issueError && (
-              <span role="alert" className="text-xs text-destructive">
-                {issueError}
-              </span>
-            )}
           </div>
           <div
             ref={noteColumnRef}

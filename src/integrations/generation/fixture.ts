@@ -99,19 +99,6 @@ function personProfileAnswer(): string {
   });
 }
 
-function linearIssueAnswer(): string {
-  return JSON.stringify({
-    title: "Send the Q3 roadmap to Priya by Friday",
-    problem: "Priya needs the Q3 roadmap before Friday's review and the launch date is still unconfirmed.",
-    proposal: "Send the current Q3 roadmap draft to Priya and confirm the launch date in the same thread.",
-    acceptanceCriteria: [
-      "Priya receives the Q3 roadmap draft before Friday",
-      "The launch date is confirmed in writing in the same thread",
-    ],
-    outOfScope: "Revising the roadmap contents or moving the launch date.",
-  });
-}
-
 function designBriefAnswer(): string {
   return JSON.stringify({
     title: "Q3 roadmap one-pager",
@@ -134,7 +121,6 @@ function answerFor(system: string): string {
   if (system.includes("long-form writing")) return writingAnswer();
   if (system.includes("company profile card set")) return companyProfileAnswer();
   if (system.includes("person profile card set")) return personProfileAnswer();
-  if (system.includes("Linear issue proposal")) return linearIssueAnswer();
   if (system.includes("research card into a design brief")) return designBriefAnswer();
   // The Bloom practice classification (plan §6): deterministic JSON.
   if (system.includes("practice a note most invites"))

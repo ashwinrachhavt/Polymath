@@ -33,10 +33,6 @@ export const DEFAULT_ALLOWED_TOOLS = [
   // ASH-279: reads a meeting transcript and proposes tasks from it. The
   // proposals themselves still need tasks.create, which is separate.
   "meetings.debrief",
-  // ASH-285: drafts a Linear-issue proposal note from pasted material. An
-  // internal write at prepare risk - it never calls Linear - and without a
-  // row here the tool is a dead 403 on every call.
-  "linear.issue.propose",
   // ASH-282: proposes conflict-resolution moves the owner approves first;
   // without a row here the tool is a dead 403 on every call.
   "calendar.propose",
@@ -209,6 +205,9 @@ export const DEFAULT_ALLOWED_TOOLS = [
   "instant.gleif.gleif_search_lei_records",
 ];
 
+/** Capabilities whose tool no longer exists (the Linear-issue drafter). */
+const RETIRED_TOOLS = ["linear.issue.propose"];
+
 export async function ensureProfile(workspaceId: string, name = "polymath") {
   // Resolution order (2026-10-29 rename, plan §16.3): polymath lineage
   // (metadata.renamedFrom = "alfred", recorded by migration 0260) FIRST,
@@ -261,9 +260,6 @@ export async function ensureProfile(workspaceId: string, name = "polymath") {
       "notion.page.append",
       "notion.page.create",
       "meetings.debrief",
-      // ASH-285: an existing profile without this fails closed on every
-      // linear_issue_propose call; the draft is an internal write.
-      "linear.issue.propose",
       // ASH-282: an existing profile without this fails closed on every
       // calendar_conflict_propose call; the draft is an internal write.
       "calendar.propose",
@@ -415,11 +411,14 @@ export async function ensureProfile(workspaceId: string, name = "polymath") {
       "instant.gleif.gleif_list_successor_entities",
       "instant.gleif.gleif_search_lei_records",
     ];
-    const missing = gained.filter((t) => !tools.includes(t));
-    if (missing.length) {
+    // A capability whose tool was removed leaves the profile: kept, it would
+    // still be advertised in the agent panel and refused as an unknown operation.
+    const kept = tools.filter((t) => !RETIRED_TOOLS.includes(t));
+    const missing = gained.filter((t) => !kept.includes(t));
+    if (missing.length || kept.length !== tools.length) {
       await db
         .update(agentProfiles)
-        .set({ allowedTools: [...tools, ...missing] })
+        .set({ allowedTools: [...kept, ...missing] })
         .where(eq(agentProfiles.id, existing.id));
     }
     return existing.id;

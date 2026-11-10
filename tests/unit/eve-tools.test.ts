@@ -2,18 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getRunBySessionRef } from "@/domains/agents/queries";
 import { listOpenTasks } from "@/domains/work/queries";
 import tasksDefinition from "../../eve/polymath/agent/tools/tasks_read";
-import linearDefinition from "../../eve/polymath/agent/tools/linear_issue_propose";
 import triageDefinition from "../../eve/polymath/agent/tools/github_triage_propose";
-import { draftLinearIssueFromText } from "@/domains/capture/linear-issue-proposal";
 import { proposeGitHubTriage } from "@/domains/integrations/github-triage";
 
 vi.mock("eve/tools", () => ({ defineTool: (definition: unknown) => definition }));
 vi.mock("@/domains/agents/queries", () => ({ getRunBySessionRef: vi.fn() }));
 vi.mock("@/domains/work/queries", () => ({ listOpenTasks: vi.fn() }));
-vi.mock("@/domains/capture/linear-issue-proposal", () => ({
-  draftLinearIssueFromText: vi.fn(),
-  LinearIssueNoteError: class LinearIssueNoteError extends Error {},
-}));
 vi.mock("@/domains/integrations/github-triage", () => ({
   GITHUB_ISSUE_TRIAGE: "github.issue.triage",
   proposeGitHubTriage: vi.fn(),
@@ -32,14 +26,22 @@ const tasks = tasksDefinition as unknown as { execute(input: { limit?: number },
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(getRunBySessionRef).mockResolvedValue({
-    id: runId, state: "running", policySnapshot: { allowedTools: ["tasks.read"] },
+    id: runId,
+    state: "running",
+    policySnapshot: { allowedTools: ["tasks.read"] },
   });
-  vi.mocked(listOpenTasks).mockResolvedValue([{ id: "task-1", title: "Canonical task", status: "ready", priority: "high", dueAt: null }]);
+  vi.mocked(listOpenTasks).mockResolvedValue([
+    { id: "task-1", title: "Canonical task", status: "ready", priority: "high", dueAt: null },
+  ]);
 });
 
 describe("Eve tools bind through the persisted session reference", () => {
   it("reads real canonical tasks with the session workspace and frozen policy", async () => {
-    expect(await tasks.execute({ limit: 7 }, ctx)).toMatchObject({ ok: true, tasks: [{ title: "Canonical task" }], limit: 7 });
+    expect(await tasks.execute({ limit: 7 }, ctx)).toMatchObject({
+      ok: true,
+      tasks: [{ title: "Canonical task" }],
+      limit: 7,
+    });
     expect(getRunBySessionRef).toHaveBeenCalledWith(sessionId, workspaceId);
     expect(listOpenTasks).toHaveBeenCalledWith({ workspaceId }, 7);
   });
@@ -51,13 +53,21 @@ describe("Eve tools bind through the persisted session reference", () => {
   });
 
   it("a bound run still cannot escape its captured allowlist", async () => {
-    vi.mocked(getRunBySessionRef).mockResolvedValue({ id: runId, state: "running", policySnapshot: { allowedTools: [] } });
+    vi.mocked(getRunBySessionRef).mockResolvedValue({
+      id: runId,
+      state: "running",
+      policySnapshot: { allowedTools: [] },
+    });
     expect(await tasks.execute({}, ctx)).toMatchObject({ ok: false });
     expect(listOpenTasks).not.toHaveBeenCalled();
   });
 
   it("terminal runs cannot use tools even if the old snapshot allowed them", async () => {
-    vi.mocked(getRunBySessionRef).mockResolvedValue({ id: runId, state: "cancelled", policySnapshot: { allowedTools: ["tasks.read"] } });
+    vi.mocked(getRunBySessionRef).mockResolvedValue({
+      id: runId,
+      state: "cancelled",
+      policySnapshot: { allowedTools: ["tasks.read"] },
+    });
     expect(await tasks.execute({}, ctx)).toMatchObject({ ok: false });
     expect(listOpenTasks).not.toHaveBeenCalled();
   });
@@ -70,94 +80,7 @@ describe("Eve tools bind through the persisted session reference", () => {
 });
 
 /*
- * ASH-285: the conversation-drafting tool binds the same way - the run comes
- * from the persisted session reference, the capability must be in the frozen
- * snapshot, and the draft's source key is derived from the authenticated
- * session id so a model-chosen dedupeId can only collide inside its own
- * conversation.
- */
-describe("linear_issue_propose binds run, policy and caller-owned draft identity", () => {
-  const memberCtx = {
-    session: { id: sessionId, auth: { current: { principalId: "user_1", attributes: { workspaceId } } } },
-  } as unknown as Context;
-  const linear = linearDefinition as unknown as {
-    execute(input: { title: string; text: string; dedupeId: string }, ctx: Context): Promise<unknown>;
-  };
-  const input = { title: "Pasted bug report", text: "The badge never clears.", dedupeId: "bug-1" };
-
-  beforeEach(() => {
-    vi.mocked(getRunBySessionRef).mockResolvedValue({
-      id: runId, state: "running", policySnapshot: { allowedTools: ["linear.issue.propose"] },
-    });
-    vi.mocked(draftLinearIssueFromText).mockResolvedValue({
-      artifactId: "note-1", title: "Draft: badge", generated: true, outcome: "created",
-    } as never);
-  });
-
-  it("drafts with session-derived source identity and workspace-scoped auth", async () => {
-    expect(await linear.execute(input, memberCtx)).toMatchObject({ ok: true });
-    expect(getRunBySessionRef).toHaveBeenCalledWith(sessionId, workspaceId);
-    expect(vi.mocked(draftLinearIssueFromText).mock.calls[0][0]).toMatchObject({ workspaceId, userId: "user_1" });
-    expect(vi.mocked(draftLinearIssueFromText).mock.calls[0][1]).toMatchObject({
-      sourceKey: `${sessionId}:bug-1`,
-    });
-  });
-
-  it("two conversations with the same dedupeId resolve different drafts", async () => {
-    const otherCtx = {
-      session: { id: "wrun_other-session", auth: { current: { principalId: "user_2", attributes: { workspaceId } } } },
-    } as unknown as Context;
-    await linear.execute(input, memberCtx);
-    await linear.execute(input, otherCtx);
-    const keys = vi.mocked(draftLinearIssueFromText).mock.calls.map((c) => (c[1] as { sourceKey: string }).sourceKey);
-    expect(keys).toEqual([`${sessionId}:bug-1`, "wrun_other-session:bug-1"]);
-    expect(keys[0]).not.toBe(keys[1]);
-  });
-
-  it("draft identity comes from the authenticated session - model input cannot smuggle one", async () => {
-    // A dedupeId carrying a forged session/run-looking string stays inert
-    // data after the authenticated session prefix; the tool's input schema
-    // has no session or run field to impersonate through.
-    await linear.execute({ ...input, dedupeId: "wrun_other-session:bug-1" }, memberCtx);
-    const key = (vi.mocked(draftLinearIssueFromText).mock.calls[0][1] as { sourceKey: string }).sourceKey;
-    expect(key).toBe(`${sessionId}:wrun_other-session:bug-1`);
-    expect(key.startsWith(`${sessionId}:`)).toBe(true);
-  });
-
-  it("an unbound or foreign session cannot draft", async () => {
-    vi.mocked(getRunBySessionRef).mockResolvedValue(null);
-    expect(await linear.execute(input, memberCtx)).toMatchObject({ ok: false });
-    expect(draftLinearIssueFromText).not.toHaveBeenCalled();
-  });
-
-  it("a snapshot without linear.issue.propose cannot draft", async () => {
-    vi.mocked(getRunBySessionRef).mockResolvedValue({
-      id: runId, state: "running", policySnapshot: { allowedTools: ["tasks.read"] },
-    });
-    expect(await linear.execute(input, memberCtx)).toMatchObject({ ok: false });
-    expect(draftLinearIssueFromText).not.toHaveBeenCalled();
-  });
-
-  it("a terminal run cannot draft even when its old snapshot allowed it", async () => {
-    vi.mocked(getRunBySessionRef).mockResolvedValue({
-      id: runId, state: "succeeded", policySnapshot: { allowedTools: ["linear.issue.propose"] },
-    });
-    expect(await linear.execute(input, memberCtx)).toMatchObject({ ok: false });
-    expect(draftLinearIssueFromText).not.toHaveBeenCalled();
-  });
-
-  it("missing workspace or principal fails closed before any lookup", async () => {
-    const noWorkspace = { session: { id: sessionId, auth: { current: { principalId: "user_1", attributes: {} } } } } as unknown as Context;
-    const noPrincipal = { session: { id: sessionId, auth: { current: { attributes: { workspaceId } } } } } as unknown as Context;
-    expect(await linear.execute(input, noWorkspace)).toMatchObject({ ok: false });
-    expect(await linear.execute(input, noPrincipal)).toMatchObject({ ok: false });
-    expect(getRunBySessionRef).not.toHaveBeenCalled();
-    expect(draftLinearIssueFromText).not.toHaveBeenCalled();
-  });
-});
-
-/*
- * ASH-284: the triage tool binds the same way - run from the persisted
+ * ASH-284: the triage tool binds like tasks_read - run from the persisted
  * session reference, capability from the frozen snapshot - and the dedupe
  * key is derived from the authenticated session plus the proposed-content
  * hash the domain adds, so a model-chosen dedupeId can only collide inside
@@ -171,19 +94,34 @@ describe("github_triage_propose binds run, policy and caller-owned dedupe identi
     execute(input: Record<string, unknown>, ctx: Context): Promise<unknown>;
   };
   const input = {
-    owner: "ashwinrachhavt", repo: "Polymath", issueNumber: 42, issueTitle: "Badge keeps a count",
-    addLabels: ["bug"], rationale: "Repro steps present.", dedupeId: "issue-42",
+    owner: "ashwinrachhavt",
+    repo: "Polymath",
+    issueNumber: 42,
+    issueTitle: "Badge keeps a count",
+    addLabels: ["bug"],
+    rationale: "Repro steps present.",
+    dedupeId: "issue-42",
   };
 
   beforeEach(() => {
     vi.mocked(getRunBySessionRef).mockResolvedValue({
-      id: runId, state: "running", policySnapshot: { allowedTools: ["github.issue.triage"] },
+      id: runId,
+      state: "running",
+      policySnapshot: { allowedTools: ["github.issue.triage"] },
     });
-    vi.mocked(proposeGitHubTriage).mockResolvedValue({ proposalId: "prop-1", deduplicated: false, changesHash: "h" } as never);
+    vi.mocked(proposeGitHubTriage).mockResolvedValue({
+      proposalId: "prop-1",
+      deduplicated: false,
+      changesHash: "h",
+    } as never);
   });
 
   it("proposes with session-derived dedupe identity and workspace-scoped auth", async () => {
-    expect(await triage.execute(input, memberCtx)).toMatchObject({ ok: true, status: "proposed", proposalId: "prop-1" });
+    expect(await triage.execute(input, memberCtx)).toMatchObject({
+      ok: true,
+      status: "proposed",
+      proposalId: "prop-1",
+    });
     expect(getRunBySessionRef).toHaveBeenCalledWith(sessionId, workspaceId);
     expect(vi.mocked(proposeGitHubTriage).mock.calls[0][0]).toMatchObject({ workspaceId, userId: "user_1" });
     expect(vi.mocked(proposeGitHubTriage).mock.calls[0][1]).toMatchObject({
@@ -206,7 +144,9 @@ describe("github_triage_propose binds run, policy and caller-owned dedupe identi
 
   it("a snapshot without github.issue.triage cannot propose", async () => {
     vi.mocked(getRunBySessionRef).mockResolvedValue({
-      id: runId, state: "running", policySnapshot: { allowedTools: ["github.issue.read"] },
+      id: runId,
+      state: "running",
+      policySnapshot: { allowedTools: ["github.issue.read"] },
     });
     expect(await triage.execute(input, memberCtx)).toMatchObject({ ok: false });
     expect(proposeGitHubTriage).not.toHaveBeenCalled();
@@ -214,15 +154,21 @@ describe("github_triage_propose binds run, policy and caller-owned dedupe identi
 
   it("a terminal run cannot propose even when its old snapshot allowed it", async () => {
     vi.mocked(getRunBySessionRef).mockResolvedValue({
-      id: runId, state: "succeeded", policySnapshot: { allowedTools: ["github.issue.triage"] },
+      id: runId,
+      state: "succeeded",
+      policySnapshot: { allowedTools: ["github.issue.triage"] },
     });
     expect(await triage.execute(input, memberCtx)).toMatchObject({ ok: false });
     expect(proposeGitHubTriage).not.toHaveBeenCalled();
   });
 
   it("missing workspace or principal fails closed before any lookup", async () => {
-    const noWorkspace = { session: { id: sessionId, auth: { current: { principalId: "user_1", attributes: {} } } } } as unknown as Context;
-    const noPrincipal = { session: { id: sessionId, auth: { current: { attributes: { workspaceId } } } } } as unknown as Context;
+    const noWorkspace = {
+      session: { id: sessionId, auth: { current: { principalId: "user_1", attributes: {} } } },
+    } as unknown as Context;
+    const noPrincipal = {
+      session: { id: sessionId, auth: { current: { attributes: { workspaceId } } } },
+    } as unknown as Context;
     expect(await triage.execute(input, noWorkspace)).toMatchObject({ ok: false });
     expect(await triage.execute(input, noPrincipal)).toMatchObject({ ok: false });
     expect(getRunBySessionRef).not.toHaveBeenCalled();

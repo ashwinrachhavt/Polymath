@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { linkTargetInsertion, type LinkTarget } from "./link-target-insertion";
 import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
+import { TaskItem, TaskList } from "@tiptap/extension-list";
 import Placeholder from "@tiptap/extension-placeholder";
 import { Markdown } from "@tiptap/markdown";
 import { useRouter } from "next/navigation";
@@ -412,6 +413,9 @@ function RichMarkdownEditor({
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ link: { openOnClick: false } }),
+      // `- [ ]` / `- [x]` round-trip through @tiptap/markdown as real checkboxes.
+      TaskList,
+      TaskItem.configure({ nested: true }),
       Placeholder.configure({ placeholder: "Write. Press space for AI, / for a block, [[ to link a note." }),
       Markdown,
       WikiLinks,
@@ -526,7 +530,7 @@ function RichMarkdownEditor({
         role: "textbox",
         "aria-label": "Rich note content",
         "aria-multiline": "true",
-        class: `${compact ? "min-h-24 p-2 text-body-dense leading-6" : floating ? "prose-reading flex-1 cursor-text font-[family-name:var(--font-reading)] text-foreground" : "min-h-72 max-w-[var(--measure-prose)] p-4 text-sm leading-7"} ${editable ? "writing-surface outline-none" : "outline-none [&_*]:cursor-text"} [&_p]:mb-4 [&_h1]:text-2xl [&_h2]:text-xl [&_h2]:mb-3 [&_h3]:text-lg [&_h3]:mb-2 [&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-6 [&_ol]:pl-6 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-4 [&_blockquote]:italic [&_pre]:overflow-auto [&_pre]:bg-muted [&_pre]:p-3 [&_a]:text-primary [&_a]:underline`,
+        class: `${compact ? "min-h-24 p-2 text-body-dense leading-6" : floating ? "prose-reading flex-1 cursor-text font-[family-name:var(--font-reading)] text-foreground" : "min-h-72 max-w-[var(--measure-prose)] p-4 text-sm leading-7"} ${editable ? "writing-surface outline-none" : "outline-none [&_*]:cursor-text"} [&_p]:mb-4 [&_h1]:text-2xl [&_h2]:text-xl [&_h2]:mb-3 [&_h3]:text-lg [&_h3]:mb-2 [&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-6 [&_ol]:pl-6 [&_ul[data-type=taskList]]:list-none [&_ul[data-type=taskList]]:pl-1 [&_li[data-type=taskItem]]:flex [&_li[data-type=taskItem]]:items-start [&_li[data-type=taskItem]]:gap-2 [&_li[data-type=taskItem]>label]:mt-[0.3em] [&_li[data-type=taskItem]>label]:select-none [&_li[data-type=taskItem]>div]:min-w-0 [&_li[data-type=taskItem]>div]:flex-1 [&_li[data-type=taskItem]_p]:mb-1 [&_li[data-type=taskItem][data-checked=true]>div]:text-muted-foreground [&_li[data-type=taskItem][data-checked=true]>div]:line-through [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-4 [&_blockquote]:italic [&_pre]:overflow-auto [&_pre]:bg-muted [&_pre]:p-3 [&_a]:text-primary [&_a]:underline`,
       },
     },
     onSelectionUpdate: ({ editor }) => {

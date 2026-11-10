@@ -285,9 +285,6 @@ suite("documents.search for the agent (real Postgres + pgvector)", () => {
       "notion.page.append",
       "notion.page.create",
       "meetings.debrief",
-      // ASH-285: drafting a Linear issue persists a proposal note - an
-      // internal write that still fails closed without the grant.
-      "linear.issue.propose",
       // ASH-282: proposing a calendar move persists a review card - an
       // internal write that still fails closed without the grant.
       "calendar.propose",
@@ -449,9 +446,6 @@ suite("documents.search for the agent (real Postgres + pgvector)", () => {
       "notion.page.append",
       "notion.page.create",
       "meetings.debrief",
-      // ASH-285: drafting a Linear issue persists a proposal note - an
-      // internal write that still fails closed without the grant.
-      "linear.issue.propose",
       // ASH-282: proposing a calendar move persists a review card - an
       // internal write that still fails closed without the grant.
       "calendar.propose",

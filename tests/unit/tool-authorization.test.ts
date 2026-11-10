@@ -188,49 +188,12 @@ describe("authorizeToolInvocation", () => {
     });
   });
 
-  describe("linear.issue.propose (ASH-285)", () => {
-    it("is an internal write under action.prepare - persisting a proposal note is not a read", () => {
-      const spec = TOOL_OPERATION_REGISTRY["linear.issue.propose"];
-      expect(spec.capability).toBe("action.prepare");
-      expect(spec.effectClass).toBe("internal_write");
-      // Internal writes authorize directly; only external effects and paid ops gate on approval.
-      expect(spec.requiresApproval).toBeUndefined();
-    });
-
-    it("authorizes directly for a member-grade grant carrying action.prepare", () => {
-      expect(
-        authorizeToolInvocation(
-          grant({ allowedOperations: ["action.prepare"] }),
-          req({ operation: "linear.issue.propose" }),
-        ),
-      ).toEqual({ allowed: true, requiresApproval: false });
-    });
-
-    it("denies a viewer-grade grant: the fixed-role read set carries no prepare authority", () => {
-      // Mirrors FIXED_ROLE_CAPABILITIES.viewer in domains/identity/capabilities.
-      const viewerReads = [
-        "person.read",
-        "document.read",
-        "task.read",
-        "knowledge.read",
-        "member.read",
-        "role.read",
-        "integration.use",
-        "audit.read",
-      ];
-      expect(
-        authorizeToolInvocation(grant({ allowedOperations: viewerReads }), req({ operation: "linear.issue.propose" })),
-      ).toEqual({ allowed: false, reasons: ["operation_not_granted"] });
-    });
-  });
-
   it("the proposal-only operations have no executor to fall through to", () => {
     // The reviews approve path runs executeApprovedEffect only when
     // supportsEffect is true; an executor-less capability returns the
     // decision alone. These operations' contract is proposal-only, so pin
     // them by name: a future executor lands as a deliberate diff here, never
     // a silent fall-through to a real effect or an applied success.
-    expect(supportsEffect("linear.issue.propose")).toBe(false);
     expect(supportsEffect("github.issue.triage")).toBe(false);
   });
 

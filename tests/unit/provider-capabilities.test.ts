@@ -179,9 +179,6 @@ const NATIVE_TOOLS = [
   // ASH-282: proposal-only; approval records the decision, no calendar call.
   "calendar.propose",
   "records.browse",
-  // ASH-285: drafts a Linear-issue proposal note in this repo; never a
-  // provider call, so no catalog row.
-  "linear.issue.propose",
   // ASH-284: triage proposals persist in this repo; GitHub is never called,
   // so no catalog row.
   "github.issue.triage",

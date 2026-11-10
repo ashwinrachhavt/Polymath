@@ -172,18 +172,6 @@ export const STUBBED_TOOLS = {
       deduplicated: 0,
     },
   },
-  // ASH-285: only ever drafts a proposal note, so the stub is the "drafted"
-  // shape and an eval can never reach Linear or spend a generation call.
-  linear_issue_propose: {
-    response: {
-      ok: true,
-      status: "drafted",
-      artifactId: "00000000-0000-0000-0000-000000000000",
-      title: "Linear issue: stub",
-      generated: false,
-      outcome: "created",
-    },
-  },
   // ASH-284: decision-only triage proposal; the stub can never reach GitHub.
   github_triage_propose: {
     response: { ok: true, status: "proposed", proposalId: "00000000-0000-0000-0000-000000000000", deduplicated: false },
