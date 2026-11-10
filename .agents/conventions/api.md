@@ -8,6 +8,13 @@
 - Respect method idempotency. For retryable creation or effects, bind an idempotency key to principal, operation, and payload; reject conflicting reuse and replay the recorded result.
 - Keep domain logic independent of transport. Next.js server actions and HTTP routes must use equivalent domain checks. This convention does not require replacing internal server actions with HTTP round trips.
 
+## Reviewable API design
+
+- Name endpoints, fields, operations, and errors so a new caller can predict what they mean. Prefer existing resource vocabulary and URL conventions over inventing a separate style for one route.
+- Keep the request path traceable: parse input, authenticate, authorize the object, call the owning domain, then map a typed outcome to transport. An endpoint should not hide unrelated business operations behind generic dispatch flags.
+- Define which operations are synchronous and which are accepted for later execution. Expose an operation identity and observable state for the latter; do not imply completion from successful admission.
+- Prefer one owning schema and contract definition to copies across routes, actions, tools, and UI. When contracts change, inventory and migrate actual callers; don't maintain competing versions by accident.
+
 ## Authorization and input
 
 - Resolve identity on the server. Derive workspace access from verified membership or credential scope, then authorize the specific action and object. A caller-supplied workspace or object ID is input, not authority.
