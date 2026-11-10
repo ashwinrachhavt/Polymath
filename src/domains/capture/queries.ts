@@ -76,6 +76,9 @@ const listColumns = {
   convertedId: captures.convertedId,
   // Enrichment's short noun phrase; the list's label leads with it.
   title: captures.title,
+  // What the capture is (kind-label.ts); the row's chip.
+  kindLabel: captures.kindLabel,
+  kindReason: captures.kindReason,
   // A file capture's preview is its reading once the OCR rung has landed one;
   // until then the filename is the only label the row carries.
   preview: sql<string | null>`coalesce(left(${captures.text}, 300), ${captures.rawPayload}->>'filename')`,

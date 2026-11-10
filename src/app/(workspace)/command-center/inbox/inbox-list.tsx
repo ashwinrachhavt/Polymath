@@ -4,7 +4,9 @@ import { cn } from "cn";
 import { AlignLeft, FileText, Forward, Link2, Mic, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { useOptimistic, useRef, useState, useTransition } from "react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import type { CaptureKind } from "@/domains/capture/kind-label";
 import { listHref } from "@/lib/list-params";
 import { setCaptureStateAction } from "./actions";
 import { generateZettelsAction } from "./zettel-actions";
@@ -27,6 +29,10 @@ export type InboxRow = {
   kind: string;
   createdAt: string;
   title: string | null;
+  /** What the capture is (an article, a task...); null until labeled. */
+  kindLabel?: string | null;
+  /** Why it has that label, or with no label, why it is not classified. */
+  kindReason?: string | null;
   preview: string | null;
   url: string | null;
   version: number;
@@ -67,6 +73,36 @@ const STATE_LABELS: Record<string, string> = {
 
 export function captureKindLabel(kind: string): string {
   return KIND_LABELS[kind] ?? kind;
+}
+
+/** What a capture is, in words. Keyed by every CaptureKind, so a new kind fails to compile until named here. */
+export const CAPTURE_KIND_NAMES: Record<CaptureKind, string> = {
+  article: "Article",
+  idea: "Idea",
+  task: "Task",
+  person: "Person",
+  reference: "Reference",
+  quote: "Quote",
+  other: "Other",
+};
+
+/**
+ * The kind chip: the label when one is set, "Not classified" when the
+ * capture has a reason but no label (the classification budget ran out),
+ * and nothing while the capture is still unlabeled.
+ */
+export function CaptureKindChip({ kindLabel, kindReason }: { kindLabel?: string | null; kindReason?: string | null }) {
+  const name = kindLabel
+    ? (CAPTURE_KIND_NAMES[kindLabel as CaptureKind] ?? kindLabel)
+    : kindReason
+      ? "Not classified"
+      : null;
+  if (!name) return null;
+  return (
+    <Badge variant={kindLabel ? "secondary" : "outline"} title={kindReason ?? undefined} className="h-4 px-1">
+      {name}
+    </Badge>
+  );
 }
 
 export function captureStateLabel(state: string): string {
@@ -296,6 +332,7 @@ export function InboxList({
                       {capture.processingState === "unprocessed" ? (
                         <span aria-label="To clarify" className="size-1.5 shrink-0 rounded-full bg-primary" />
                       ) : null}
+                      <CaptureKindChip kindLabel={capture.kindLabel} kindReason={capture.kindReason} />
                       <span className="truncate">{captureKindLabel(capture.kind)}</span>
                       {capture.processingState !== "unprocessed" ? (
                         <>

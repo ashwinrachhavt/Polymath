@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { SEED_TAXONOMY } from "@/domains/knowledge/taxonomy";
-import { captureQuestions, documentQuestions, JEV_QUESTIONS_VERSION } from "@/integrations/jev/questions";
+import { CAPTURE_KINDS } from "@/domains/capture/kind-label";
+import {
+  captureKindQuestions,
+  captureQuestions,
+  documentQuestions,
+  JEV_QUESTIONS_VERSION,
+} from "@/integrations/jev/questions";
 
 /*
  * The question-set contract (ASH-272): every question asks one judgment,
@@ -11,12 +17,19 @@ import { captureQuestions, documentQuestions, JEV_QUESTIONS_VERSION } from "@/in
 
 describe("jev questions", () => {
   it("exports the provenance version", () => {
-    expect(JEV_QUESTIONS_VERSION).toBe("jev-q2");
+    expect(JEV_QUESTIONS_VERSION).toBe("jev-q3");
   });
 
   it("bundles exactly the domain capture judgment", () => {
     const q = captureQuestions([]);
     expect(Object.keys(q).sort()).toEqual(["domain"]);
+  });
+
+  it("the capture kind Choice offers exactly the Inbox's kinds", () => {
+    const kind = captureKindQuestions().kind;
+    expect(kind.type).toBe("choice");
+    if (kind.type !== "choice") return;
+    expect(Object.keys(kind.criteria)).toEqual([...CAPTURE_KINDS]);
   });
 
   it("the domain Choice options are the seeded L1 taxonomy slugs", () => {

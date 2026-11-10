@@ -12,13 +12,24 @@ import {
   makeNoteAction,
   makeTaskAction,
   retryCaptureUrlAction,
+  setCaptureKindAction,
   setCaptureStateAction,
   unparkCaptureAction,
 } from "./actions";
 import { DRAFT_TEMPLATES, DRAFT_TEMPLATE_LABEL, type DraftTemplate } from "@/domains/capture/draft-templates";
 import type { PriorWriting } from "@/domains/knowledge/prior-writing";
 import dynamic from "next/dynamic";
-import { captureDetailHeading, captureKindLabel, captureStateLabel, captureTitle, type InboxRow } from "./inbox-list";
+import { Select } from "@/components/ui/select";
+import type { CaptureKind } from "@/domains/capture/kind-label";
+import {
+  CAPTURE_KIND_NAMES,
+  CaptureKindChip,
+  captureDetailHeading,
+  captureKindLabel,
+  captureStateLabel,
+  captureTitle,
+  type InboxRow,
+} from "./inbox-list";
 import { generateZettelsAction } from "./zettel-actions";
 import { ZettelQueueWatch } from "./zettel-queue-watch";
 
@@ -96,6 +107,9 @@ function readExtensionExtraction(rawPayload: unknown): ExtensionExtraction | nul
   };
 }
 
+/** The kind row's view: the stored label and reason, or the person's pick while it saves. */
+type KindView = { label: string | null; reason: string | null };
+
 /**
  * The fetch outcomes that mean the page was not read and asking again could
  * change that. `acquired` speaks for itself; `pending` is a read in flight.
@@ -136,6 +150,11 @@ export function InboxDetail({
   const [optimisticState, decide] = useOptimistic(
     capture?.processingState ?? null,
     (_current: string | null, next: string) => next,
+  );
+  // The person's correction shows at once; the action's render brings the stored label.
+  const [optimisticKind, chooseKind] = useOptimistic<KindView, CaptureKind>(
+    { label: capture?.kindLabel ?? null, reason: capture?.kindReason ?? null },
+    (_current, kind) => ({ label: kind, reason: "Set by you." }),
   );
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -258,6 +277,15 @@ export function InboxDetail({
     });
   }
 
+  function changeKind(kind: CaptureKind) {
+    setError(null);
+    startTransition(async () => {
+      chooseKind(kind);
+      const result = await setCaptureKindAction({ captureId, kind });
+      if (!result.ok) setError(result.error);
+    });
+  }
+
   function act(next: "converted" | "discarded" | "unprocessed") {
     setError(null);
     startTransition(async () => {
@@ -314,6 +342,35 @@ export function InboxDetail({
             {when(capture.createdAt)}
           </time>
         </p>
+
+        {/* What the capture is and why, with the person's correction beside it.
+            A fixed-height row, so a label landing never shifts the body. */}
+        <div className="text-muted-foreground mt-1.5 flex h-8 min-w-0 items-center gap-2 text-xs">
+          <CaptureKindChip kindLabel={optimisticKind.label} kindReason={optimisticKind.reason} />
+          <span className="min-w-0 truncate">{optimisticKind.reason ?? "Not labeled yet. Use Change to set it."}</span>
+          <div className="ml-auto shrink-0">
+            <Select
+              variant="ghost"
+              aria-label="Change what this capture is"
+              className="w-auto"
+              value=""
+              disabled={pending}
+              onChange={(event) => {
+                const kind = event.target.value as CaptureKind;
+                if (kind) changeKind(kind);
+              }}
+            >
+              <option value="" disabled>
+                Change
+              </option>
+              {(Object.entries(CAPTURE_KIND_NAMES) as Array<[CaptureKind, string]>).map(([kind, name]) => (
+                <option key={kind} value={kind}>
+                  {name}
+                </option>
+              ))}
+            </Select>
+          </div>
+        </div>
       </header>
 
       {/* Keyed by capture id: CaptureBody holds the draft and a Tiptap editor

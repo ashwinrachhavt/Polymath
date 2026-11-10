@@ -76,6 +76,15 @@ export const captures = pgTable(
     domain: text("domain"),
     /** Tier 2 LLM reading: free-form topic tags, capped. */
     tags: jsonb("tags"),
+    /**
+     * What the capture is (kind-label.ts: article, idea, task, ...), apart from
+     * how it arrived (`kind`). Set by the rules, then Jev, or by the person;
+     * `kind_source` says which, and a "user" label is never overwritten.
+     */
+    kindLabel: text("kind_label"),
+    /** One plain sentence on why; with no label, why the capture is not classified. */
+    kindReason: text("kind_reason"),
+    kindSource: text("kind_source"),
     /** Set once the capture becomes a canonical record; the lineage edge. */
     convertedType: text("converted_type"),
     convertedId: uuid("converted_id"),
@@ -120,6 +129,15 @@ export const captures = pgTable(
     check(
       "captures_identity_hash_present",
       sql`url is null or capture_mode in ('url-reference', 'blob') or content_hash is not null`,
+    ),
+    check(
+      "captures_kind_label_known",
+      sql`kind_label is null or kind_label in ('article', 'idea', 'task', 'person', 'reference', 'quote', 'other')`,
+    ),
+    // A label always says who set it, and a source never stands without a label.
+    check(
+      "captures_kind_source_known",
+      sql`(kind_label is null) = (kind_source is null) and (kind_source is null or kind_source in ('rules', 'jev', 'user'))`,
     ),
   ],
 );

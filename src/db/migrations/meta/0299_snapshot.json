@@ -1,6 +1,6 @@
 {
-  "id": "9d5ae9db-e12d-44ec-9f59-b3129a08116a",
-  "prevId": "e8ac1d9a-21c1-4c68-a00c-de0021be4f45",
+  "id": "31af4f3c-4567-4aed-9f08-2d748a843538",
+  "prevId": "9d5ae9db-e12d-44ec-9f59-b3129a08116a",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -6500,6 +6500,24 @@
           "primaryKey": false,
           "notNull": false
         },
+        "kind_label": {
+          "name": "kind_label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "kind_reason": {
+          "name": "kind_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "kind_source": {
+          "name": "kind_source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "converted_type": {
           "name": "converted_type",
           "type": "text",
@@ -6715,6 +6733,14 @@
         "captures_identity_hash_present": {
           "name": "captures_identity_hash_present",
           "value": "url is null or capture_mode in ('url-reference', 'blob') or content_hash is not null"
+        },
+        "captures_kind_label_known": {
+          "name": "captures_kind_label_known",
+          "value": "kind_label is null or kind_label in ('article', 'idea', 'task', 'person', 'reference', 'quote', 'other')"
+        },
+        "captures_kind_source_known": {
+          "name": "captures_kind_source_known",
+          "value": "(kind_label is null) = (kind_source is null) and (kind_source is null or kind_source in ('rules', 'jev', 'user'))"
         }
       },
       "isRLSEnabled": false
