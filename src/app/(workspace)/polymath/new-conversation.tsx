@@ -11,7 +11,7 @@ import {
   replaceMention,
   type RecordReference,
 } from "@/components/chat/composer-plus";
-import { startChatRun } from "@/app/(workspace)/apps/polymath/chat-actions";
+import { startChatRun } from "@/app/(workspace)/polymath/chat-actions";
 import { SurfaceCardView } from "@/components/chat/surface-card";
 import { fetchMentionContext } from "./mention-actions";
 import { serializeChips, type ContextChip } from "@/components/chat/mention-context";

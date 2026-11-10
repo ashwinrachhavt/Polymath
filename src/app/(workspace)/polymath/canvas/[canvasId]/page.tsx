@@ -11,8 +11,7 @@ export const metadata = { title: "Canvas · Polymath" };
 /*
  * The canonical canvas route: loads a canvas and its version chain straight
  * from canvases / canvas_versions, so a diagram's "Open in canvas" lands on
- * the scene the tool persisted — never on the /apps/polymath/canvas preview
- * screen, whose drawings live in browser-local preview storage.
+ * the scene the tool persisted.
  *
  * The domain query owns tenancy; a foreign or unknown canvasId renders the
  * empty state, not an error (the same contract as the wiki artifact reader).

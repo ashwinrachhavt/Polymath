@@ -106,7 +106,7 @@ for (const vp of VIEWPORTS) {
     test.setTimeout(90_000);
     await page.setViewportSize({ width: vp.width, height: vp.height });
     test.skip(!(await seedWeek()), "DATABASE_URL not configured");
-    await page.goto("/apps/neuralflow/reports");
+    await page.goto("/neuralflow/reports");
     const panel = page.locator("section", { has: page.getByRole("heading", { name: /This week in your words/ }) });
     await expect(panel).toBeVisible({ timeout: 30_000 });
     await expect(panel.getByText(OUTCOME)).toHaveCount(1);
@@ -114,7 +114,10 @@ for (const vp of VIEWPORTS) {
     await expect(panel.getByText(/streak|points|score/i)).toHaveCount(0);
     const before = await narrativeNoteCount();
     await panel.scrollIntoViewIfNeeded();
-    await page.screenshot({ path: `test-results/feature-pixels/weekly-narrative-${vp.name}.png`, style: HIDE_DEV_CHROME });
+    await page.screenshot({
+      path: `test-results/feature-pixels/weekly-narrative-${vp.name}.png`,
+      style: HIDE_DEV_CHROME,
+    });
     // Controls stay inside the viewport width on mobile (no clipped buttons).
     const keep = panel.getByRole("button", { name: "Keep as note" });
     const box = await keep.boundingBox();
@@ -125,7 +128,10 @@ for (const vp of VIEWPORTS) {
     await keep.click();
     await expect(panel.getByRole("link", { name: "Open note" })).toBeVisible({ timeout: 30_000 });
     await expect(panel.getByRole("button", { name: "Keep as note" })).toHaveCount(0);
-    await page.screenshot({ path: `test-results/feature-pixels/weekly-narrative-kept-${vp.name}.png`, style: HIDE_DEV_CHROME });
+    await page.screenshot({
+      path: `test-results/feature-pixels/weekly-narrative-kept-${vp.name}.png`,
+      style: HIDE_DEV_CHROME,
+    });
     expect(await narrativeNoteCount()).toBe(before + 1);
     await panel.getByRole("link", { name: "Open note" }).click();
     await expect(page).toHaveURL(/\/polymath\/notes\?id=[0-9a-f-]{36}/);
@@ -135,7 +141,7 @@ for (const vp of VIEWPORTS) {
 test("discard hides the narrative and writes no note", async ({ page }) => {
   test.setTimeout(90_000);
   test.skip(!(await seedWeek()), "DATABASE_URL not configured");
-  await page.goto("/apps/neuralflow/reports");
+  await page.goto("/neuralflow/reports");
   const heading = page.getByRole("heading", { name: /This week in your words/ });
   await expect(heading).toBeVisible({ timeout: 30_000 });
   const before = await narrativeNoteCount();

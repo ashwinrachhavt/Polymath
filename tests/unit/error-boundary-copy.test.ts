@@ -14,22 +14,15 @@ const ROOT = path.resolve(__dirname, "../..");
 
 const GLOBAL = "src/app/global-error.tsx";
 const WORKSPACE = "src/app/(workspace)/error.tsx";
-const ALFRED = "src/app/(workspace)/apps/polymath/error.tsx";
-const COMMAND_CENTER = "src/app/(workspace)/apps/command-center/error.tsx";
 
 // Every boundary, whatever its route.
-const BOUNDARIES = [GLOBAL, WORKSPACE, ALFRED, COMMAND_CENTER];
+const BOUNDARIES = [GLOBAL, WORKSPACE];
 // The ones whose copy was rewritten by this task.
-const APP_LEVEL = [GLOBAL, ALFRED, COMMAND_CENTER];
+const APP_LEVEL = [GLOBAL];
 
 // Claims a render crash cannot make. Checked as a blocklist because a rewrite
 // asserting an outcome in new words is exactly the regression to catch.
-const OUTCOME_CLAIMS = [
-  /was not saved/i,
-  /nothing was sent/i,
-  /no external action/i,
-  /have performed any work/i,
-];
+const OUTCOME_CLAIMS = [/was not saved/i, /nothing was sent/i, /no external action/i, /have performed any work/i];
 
 function source(rel: string) {
   return fs.readFileSync(path.join(ROOT, rel), "utf8");
@@ -80,11 +73,6 @@ describe("global error boundary", () => {
 });
 
 describe("app-level error boundaries", () => {
-  it("drop the outcome guarantees a render crash cannot make", () => {
-    expect(source(ALFRED)).not.toContain("have not performed any work");
-    expect(source(COMMAND_CENTER)).not.toContain("Retry without creating a new external action");
-  });
-
   it("assert no outcome at all, whatever the wording", () => {
     for (const rel of APP_LEVEL) {
       const text = copy(rel);

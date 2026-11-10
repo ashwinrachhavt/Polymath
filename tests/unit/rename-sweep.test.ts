@@ -2,7 +2,6 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { destinations } from "@/lib/navigation";
-import { products, productHref } from "@/lib/products";
 
 /*
  * 2026-10-29 rename sweep audit (plan §9, §16.7): no internal href, redirect
@@ -29,17 +28,6 @@ describe("rename sweep", () => {
     for (const d of destinations) {
       expect(d.href).not.toMatch(/^\/(apps\/)?alfred(\/|$)/);
     }
-  });
-
-  it("keeps every product href off /apps/alfred/*", () => {
-    for (const p of products) {
-      expect(productHref(p)).not.toMatch(/^\/apps\/alfred(\/|$)/);
-      for (const d of p.destinations) {
-        expect(productHref(p, d.slug)).not.toMatch(/^\/apps\/alfred(\/|$)/);
-      }
-    }
-    expect(products.map((p) => p.id)).toContain("polymath");
-    expect(products.find((p) => p.id === "polymath")?.name).toBe("Polymath");
   });
 
   it("redirects legacy /alfred/* and /apps/alfred/* URLs and never redirects to them", () => {

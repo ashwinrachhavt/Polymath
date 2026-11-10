@@ -38,7 +38,8 @@ function chimeEnabled(): boolean {
 
 function playChime(): void {
   try {
-    const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    const Ctx =
+      window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!Ctx) return;
     const ctx = new Ctx();
     const notes = [523.25, 783.99]; // C5, G5 - a soft rising fifth
@@ -110,7 +111,7 @@ export function StoneCeremony({ sentence, onDismiss }: { sentence?: string; onDi
           <p className="stone-ceremony-line">First completed task of the day.</p>
           {sentence ? <p className="stone-ceremony-line stone-ceremony-sentence">&ldquo;{sentence}&rdquo;</p> : null}
           <div className="stone-ceremony-actions">
-            <Link href="/apps/neuralflow/rewards" className="text-xs text-primary hover:underline" onClick={dismiss}>
+            <Link href="/neuralflow/rewards" className="text-xs text-primary hover:underline" onClick={dismiss}>
               View collection
             </Link>
             <label className="stone-ceremony-sound">
@@ -119,7 +120,14 @@ export function StoneCeremony({ sentence, onDismiss }: { sentence?: string; onDi
             </label>
           </div>
         </div>
-        <Button type="button" variant="ghost" size="sm" className="stone-ceremony-dismiss" aria-label="Dismiss" onClick={dismiss}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="stone-ceremony-dismiss"
+          aria-label="Dismiss"
+          onClick={dismiss}
+        >
           <X aria-hidden className="size-3.5" />
         </Button>
       </div>

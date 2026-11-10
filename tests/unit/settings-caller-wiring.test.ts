@@ -1,17 +1,13 @@
-import { createElement as h } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /*
  * The mode flag must follow the caller's actual execution mode, not just a
  * manually supplied prop: the /settings route passes browserPreview from
- * clerkConfigured (its established preview switch), and the command-center
- * dispatch threads it through, defaulting unknown callers to account mode
- * (which never makes no-egress claims).
+ * clerkConfigured (its established preview switch).
  */
 
 const settingsProps = vi.hoisted(() => ({ fn: vi.fn((props: unknown) => (void props, null)) }));
-const dispatched = vi.hoisted(() => ({ fn: vi.fn((props: unknown) => (void props, null)) }));
 vi.mock("@/components/products/command-center/settings", () => ({
   default: (props: unknown) => settingsProps.fn(props),
 }));
@@ -68,22 +64,5 @@ describe("/settings route wiring", () => {
     renderToStaticMarkup(await SettingsSurface());
     expect(settingsProps.fn.mock.calls[0][0]).toMatchObject({ browserPreview: true });
     expect(settingsProps.fn.mock.calls[0][0]).not.toHaveProperty("serverPreferences");
-  });
-});
-
-describe("command-center dispatch wiring", () => {
-  it("threads browserPreview to the settings screen and defaults unknown callers to account mode", async () => {
-    vi.doMock("next/dynamic", () => ({
-      default: () => (props: unknown) => dispatched.fn(props),
-    }));
-    vi.resetModules();
-    const { default: CommandCenterScreen } = await import("@/components/products/command-center/screen-dispatch");
-
-    renderToStaticMarkup(h(CommandCenterScreen, { screen: "settings", browserPreview: true }));
-    expect(dispatched.fn.mock.calls[0][0]).toMatchObject({ browserPreview: true });
-
-    dispatched.fn.mockClear();
-    renderToStaticMarkup(h(CommandCenterScreen, { screen: "settings" }));
-    expect(dispatched.fn.mock.calls[0][0]).toMatchObject({ browserPreview: false });
   });
 });

@@ -258,18 +258,19 @@ test("a conversation that does not exist says so, without a 404 page", async ({ 
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Nothing is here");
 });
 
-test("the old /work path redirects to the tasks screen", async ({ page }) => {
+test("the old /work path redirects to Work", async ({ page }) => {
+  // /work still points at the retired /apps preview, which forwards to Work.
   await page.goto("/work");
-  await expect(page).toHaveURL("/apps/neuralflow/tasks");
+  await expect(page).toHaveURL("/neuralflow/work");
 });
 
-test("unknown apps screens render a noindex not-found state", async ({ page }) => {
-  // The shell's loading.tsx commits before notFound() runs, so the response
-  // is 200 with not-found content — assert the content, never the status.
-  const response = await page.goto("/apps/polymath/not-a-screen");
-  expect([200, 404]).toContain(response?.status());
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Nothing is here");
-  await expect(page.locator('head meta[name="robots"]')).toHaveAttribute("content", "noindex");
+test("retired /apps preview addresses land on a real screen", async ({ page }) => {
+  // The /apps preview tools are retired: a known screen goes to its real
+  // counterpart, and an unknown one goes to the conversation home.
+  await page.goto("/apps/neuralflow/reports");
+  await expect(page).toHaveURL("/neuralflow/reports");
+  await page.goto("/apps/polymath/not-a-screen");
+  await expect(page).toHaveURL("/polymath");
 });
 
 /*

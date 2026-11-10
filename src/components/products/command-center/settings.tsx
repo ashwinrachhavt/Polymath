@@ -439,7 +439,7 @@ export default function Settings({
           ? "This browser preview keeps its own local state; nothing here is an account. The panels below describe what the preview stores or name what is not built yet."
           : "Timezone, week start, appearance and motion save to your account and load on every device. The remaining panels name this deployment's capabilities and what is not built yet."
       }
-      actions={<Destination screen="integrations">Connection catalog</Destination>}
+      actions={<Destination href="/command-center/integrations">Connection catalog</Destination>}
     >
       <div className="flex flex-col gap-6 lg:flex-row lg:gap-8">
         <SettingsNav groups={SECTION_GROUPS} active={active} />
@@ -643,8 +643,8 @@ export default function Settings({
                 starts. Nothing on this screen can widen them.
               </Unavailable>
               <div className="mt-4 flex flex-wrap gap-2">
-                <Destination screen="reviews">External action reviews</Destination>
-                <Destination screen="spending">Spending policy</Destination>
+                <Destination href="/reviews">External action reviews</Destination>
+                <Destination href="/command-center/spending">Spending policy</Destination>
               </div>
             </Panel>
           </Section>
@@ -656,7 +656,7 @@ export default function Settings({
                 domain commands against Composio.
               </Unavailable>
               <div className="mt-4">
-                <Destination screen="integrations">Open connection catalog</Destination>
+                <Destination href="/command-center/integrations">Open connection catalog</Destination>
               </div>
             </Panel>
             <CapabilityPanel capabilities={capabilities} />
@@ -675,7 +675,7 @@ export default function Settings({
                 Enable classification suggestions
               </DisabledAction>
               <div className="mt-4">
-                <Destination screen="documents">Classify manually</Destination>
+                <Destination href="/polymath/knowledge">Classify manually</Destination>
               </div>
             </Panel>
           </Section>

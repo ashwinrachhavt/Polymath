@@ -159,8 +159,7 @@ export function DiagramView({
       {canvasId && (
         <p className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
           {/* The canonical canvas route loads this diagram's persisted scene
-              chain from Postgres; the /apps/polymath/canvas preview screen
-              cannot (its drawings live in browser-local storage). */}
+              chain from Postgres. */}
           <Link
             href={`/polymath/canvas/${canvasId}`}
             className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-body-dense text-foreground hover:bg-muted"

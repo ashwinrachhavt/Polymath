@@ -1,15 +1,15 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 export { Select } from "@/components/ui/select";
 
-export function Destination({ screen, children }: { screen: string; children: ReactNode }) {
+export function Destination({ href, children }: { href: string; children: ReactNode }) {
   return (
     <Button variant="outline" size="sm" asChild>
-      <Link href={`/apps/command-center/${screen}`}>{children}</Link>
+      <Link href={href}>{children}</Link>
     </Button>
   );
 }
@@ -47,40 +47,6 @@ export function DisabledAction({ children, reason }: { children: ReactNode; reas
       </Button>
       <p className="text-xs text-muted-foreground">{reason}</p>
     </div>
-  );
-}
-export function ConfirmDelete({ name, onConfirm }: { name: string; onConfirm: () => void }) {
-  const [open, setOpen] = useState(false);
-  const [confirmed, setConfirmed] = useState(false);
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(value) => {
-        setOpen(value);
-        setConfirmed(false);
-      }}
-    >
-      <DialogTrigger asChild>
-        <Button variant="outline">Delete {name}</Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogTitle>Delete {name} from preview?</DialogTitle>
-        <DialogDescription>
-          This removes the local record. No external system is changed. Related notes and tasks are retained. This
-          cannot be undone except by clearing the whole browser preview.
-        </DialogDescription>
-        <Check label={`I confirm deletion of ${name}`} checked={confirmed} onChange={setConfirmed} />
-        <Button
-          disabled={!confirmed}
-          onClick={() => {
-            onConfirm();
-            setOpen(false);
-          }}
-        >
-          Confirm local deletion
-        </Button>
-      </DialogContent>
-    </Dialog>
   );
 }
 export function Check({

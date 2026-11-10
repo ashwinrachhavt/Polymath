@@ -7,7 +7,7 @@ import {
   loadKnowledgeDebtAction,
   loadOutcomeNarrativeAction,
   loadWeeklyReviewAction,
-} from "@/app/(workspace)/apps/neuralflow/reports-actions";
+} from "./actions";
 import type { KnowledgeDebt, KnowledgeDebtSection } from "@/domains/knowledge/debt";
 import type { OutcomeNarrative } from "@/domains/work/outcome-narrative";
 import type { WeeklyReview } from "@/domains/work/reports";

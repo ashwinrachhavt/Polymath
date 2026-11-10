@@ -51,7 +51,7 @@ vi.mock("@/app/(workspace)/polymath/mention-actions", () => ({
   },
 }));
 
-vi.mock("@/app/(workspace)/apps/polymath/chat-actions", () => ({
+vi.mock("@/app/(workspace)/polymath/chat-actions", () => ({
   startChatRun: async () => ({ ok: true, runId: "run-9" }),
 }));
 
@@ -173,44 +173,5 @@ describe("ChatSurface stage chip", () => {
       }),
     );
     expect(screen.getByRole("status").textContent).toBe(STAGE_META["person-failed"].label);
-  });
-});
-
-/*
- * The Ask Polymath surface, pinned on its own screen. It rides a conversation
- * run whose stream carries the run's stage facts (the head `run` frame and the
- * replayed turn events), so its chip must read the facts, not the transport.
- * These are the two states the stream path can honestly produce: a real turn
- * failure, and a transient transport drop — the pause.
- */
-describe("Ask Polymath stage chip", () => {
-  async function askScreen() {
-    render(createElement((await import("@/components/products/polymath/chat")).default, {}));
-    fireEvent.change(await screen.findByLabelText("Your question"), {
-      target: { value: "What do these sources support?" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Start the conversation" }));
-    await screen.findByLabelText("Message");
-  }
-
-  it("renders Failed, not Working, when the stream carries a failed turn", async () => {
-    // A failed turn rides a live transport until the facts land: the chip must
-    // speak the panel's word from the stream's facts, whatever the transport
-    // is doing while they arrive.
-    mockChatState = () => ({ ...streamingState(), connection: "streaming", lastFailedTurn: true });
-    await askScreen();
-    expect(screen.getByText(STAGE_META["person-failed"].label)).toBeTruthy();
-    expect(screen.queryByText("Working")).toBeNull();
-  });
-
-  it("renders pause vocabulary for a transient drop, never Failed", async () => {
-    // The reconnect-pause contract: a transport drop is a pause — the durable
-    // stream keeps the run's events — so the chip names the pause and failed
-    // vocabulary stays reserved for a real run failure.
-    mockChatState = () => ({ ...streamingState(), connection: "reconnecting" });
-    await askScreen();
-    expect(screen.getByText("Reconnecting…")).toBeTruthy();
-    expect(screen.queryByText(STAGE_META["person-failed"].label)).toBeNull();
-    expect(screen.queryByText(STAGE_META.working.label)).toBeNull();
   });
 });

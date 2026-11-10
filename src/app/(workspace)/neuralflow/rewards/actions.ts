@@ -36,7 +36,7 @@ export async function createDefinitionAction(input: {
   } catch (cause) {
     return { ok: false, error: cause instanceof Error ? cause.message : "Could not save the reward definition." };
   }
-  revalidatePath("/apps/neuralflow/rewards");
+  revalidatePath("/neuralflow/rewards");
   return { ok: true };
 }
 
@@ -49,7 +49,7 @@ export async function claimShardAction(): Promise<Result> {
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "The shard could not be claimed." };
   }
-  revalidatePath("/apps/neuralflow/rewards");
+  revalidatePath("/neuralflow/rewards");
   return { ok: true };
 }
 
@@ -71,7 +71,7 @@ export async function decideFoundryProposalAction(input: {
   const auth = await getAuthContext();
   requireRole(auth, "member");
   const result = await decideProposalAction(input);
-  revalidatePath("/apps/neuralflow/rewards");
+  revalidatePath("/neuralflow/rewards");
   if (!result.ok) return { ok: false, error: result.error };
   return { ok: true };
 }

@@ -7,8 +7,7 @@ import { canvases, canvasVersions } from "@/domains/knowledge/schema";
  * Server read model behind the canonical canvas route
  * /polymath/canvas/[canvasId] — the bridge between the diagram tool's
  * Postgres-persisted scenes (canvases + canvas_versions) and the Excalidraw
- * editor, which the /apps/polymath/canvas preview screen never loads (it
- * reads browser-local preview storage instead).
+ * editor.
  *
  * Server-only: drizzle must never reach the client bundle. The scene payloads
  * pass through raw; parsing stays in the pure, client-safe
