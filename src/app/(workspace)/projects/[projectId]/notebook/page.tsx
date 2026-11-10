@@ -27,9 +27,10 @@ import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { timeAgo } from "@/lib/time";
 import { listLinkableRecords, resolveLinkTitles } from "@/app/(workspace)/projects-links";
 import { DraftWorkbench } from "../../draft-workbench";
-import { getQuizForSitting } from "@/domains/learning/queries";
+import { getNotebookLearningResults } from "@/domains/learning/notebook-results";
+import { describeShortfall } from "@/domains/learning/item-count";
 import { getArtifactFeedback } from "@/domains/knowledge/artifact-feedback";
-import { QuizRunner } from "../../../learn/[documentId]/quiz-runner";
+import { LearningResults } from "./learning-results";
 import NotebookSurface, { type GeneratedArtifact } from "./notebook-surface";
 
 export const metadata: Metadata = { title: "Notebook · Polymath" };
@@ -106,15 +107,9 @@ async function NotebookData({
   const generatedPromise = documentIdsPromise.then((documentIds) =>
     listGeneratedArtifacts(auth.workspaceId, documentIds),
   );
-  const quizPromise = Promise.all([
-    quizId ? getQuizForSitting(auth, quizId) : Promise.resolve(null),
-    documentIdsPromise,
-  ]).then(([quiz, documentIds]) => {
-    if (!quiz || (quiz.notebookId !== null && quiz.notebookId !== projectId)) return null;
-    const pinnedIds =
-      quiz.sourceManifest.length > 0 ? quiz.sourceManifest.map((source) => source.documentId) : [quiz.documentId];
-    return pinnedIds.every((id) => documentIds.includes(id)) ? quiz : null;
-  });
+  const resultsPromise = documentIdsPromise.then((documentIds) =>
+    getNotebookLearningResults(auth, projectId, { documentIds, quizId }),
+  );
   // The Studio Runs panel lists generation/research runs. A conversation is a
   // run too, but it belongs to the chat's own history, not this panel.
   const runsPromise = listProjectRuns(auth, projectId).then((runs) =>
@@ -137,7 +132,7 @@ async function NotebookData({
         : { draftDetail: null, linkTitles: {}, linkable: null },
   );
 
-  const [sources, vault, chats, labels, chatView, generatedRows, runs, runDrafts, workbench, learningQuiz] =
+  const [sources, vault, chats, labels, chatView, generatedRows, runs, runDrafts, workbench, learning] =
     await Promise.all([
       sourcesPromise,
       listAttachableDocuments(auth),
@@ -148,11 +143,14 @@ async function NotebookData({
       runsPromise,
       runDraftsPromise,
       workbenchPromise,
-      quizPromise,
+      resultsPromise,
     ]);
   const { activeChat, activeChatLive, activeThread, lastAnswer } = chatView;
   const { draftDetail, linkTitles, linkable } = workbench;
-  const quizFeedback = learningQuiz ? await getArtifactFeedback(auth, { kind: "quiz", id: learningQuiz.id }) : null;
+  const [quizFeedback, deckFeedback] = await Promise.all([
+    learning.quiz ? getArtifactFeedback(auth, { kind: "quiz", id: learning.quiz.id }) : null,
+    learning.deck ? getArtifactFeedback(auth, { kind: "flashcard_deck", id: learning.deck.id }) : null,
+  ]);
 
   const generated: GeneratedArtifact[] = generatedRows.map((row) => ({
     artifactId: row.id,
@@ -190,13 +188,47 @@ async function NotebookData({
         lastAnswer={lastAnswer}
         runs={runs.map((run) => ({ id: run.id, state: run.state, objective: run.objective }))}
         runDrafts={Object.fromEntries(runDrafts)}
+        results={
+          <LearningResults
+            projectId={project.id}
+            initiallyOpen={quizId && learning.quiz?.id === quizId ? "quiz" : null}
+            results={{
+              quiz: learning.quiz && {
+                id: learning.quiz.id,
+                title: learning.quiz.title,
+                ago: timeAgo(learning.quiz.createdAt),
+                questionCount: learning.quiz.questions.length,
+                note: describeShortfall({
+                  made: learning.quiz.questions.length,
+                  requested: learning.quiz.requested,
+                  stoppedBy: learning.quiz.stoppedBy,
+                }),
+                quiz: learning.quiz,
+                rating: quizFeedback,
+              },
+              deck: learning.deck && {
+                id: learning.deck.id,
+                title: learning.deck.title,
+                ago: timeAgo(learning.deck.createdAt),
+                cardCount: learning.deck.cardCount,
+                note: describeShortfall({
+                  made: learning.deck.cardCount,
+                  requested: learning.deck.requested,
+                  stoppedBy: learning.deck.stoppedBy,
+                }),
+                dueCards: learning.deck.cards,
+                rating: deckFeedback,
+              },
+              explain: learning.explain && {
+                id: learning.explain.id,
+                title: learning.explain.title,
+                ago: timeAgo(learning.explain.createdAt),
+                session: learning.explain,
+              },
+            }}
+          />
+        }
       />
-      {learningQuiz ? (
-        <section aria-label="Notebook quiz" className="page-content mt-6">
-          <h2 className="mb-3 text-lg font-medium">{learningQuiz.title}</h2>
-          <QuizRunner quiz={learningQuiz} rating={quizFeedback} />
-        </section>
-      ) : null}
       {draftDetail && linkable ? (
         <section aria-label="Draft workbench" className="page-content mt-6">
           <DraftWorkbench

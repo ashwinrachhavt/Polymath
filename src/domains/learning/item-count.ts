@@ -102,3 +102,36 @@ export async function generateInBatches<T extends { prompt: string }>(
   }
   return { items: made, stoppedBy: made.length >= total ? "complete" : "source_exhausted" };
 }
+
+/**
+ * The one sentence that tells the learner what a request made and where to
+ * look, for every way a run can end. `in_progress` is a run another request
+ * started and has not finished.
+ */
+export function describeGenerationOutcome(
+  noun: { one: string; many: string },
+  run: { made: number; requested: number; stoppedBy: GenerationOutcome | "in_progress" },
+): string {
+  const { made, requested, stoppedBy } = run;
+  const name = made === 1 ? noun.one : noun.many;
+  const open = made === 1 ? "Open it in Results." : "Open them in Results.";
+  if (stoppedBy === "in_progress") return `Still making ${noun.many}: ${made} so far, in Results.`;
+  if (stoppedBy === "batch_failed")
+    return `Made ${made} of ${requested} ${noun.many} before a batch failed. ${open.replace(".", ", or create again for more.")}`;
+  if (stoppedBy === "source_exhausted" && made < requested)
+    return `Made ${made} ${name}; the sources support no more. ${open}`;
+  return `Made ${made} ${name}. ${open}`;
+}
+
+/** A short note for a result that stopped short of its request, or null when it did not. */
+export function describeShortfall(run: {
+  made: number;
+  requested: number | null;
+  stoppedBy: GenerationOutcome | "in_progress" | null;
+}): string | null {
+  if (run.stoppedBy === "in_progress") return "Still being made.";
+  if (run.requested === null || run.made >= run.requested) return null;
+  if (run.stoppedBy === "batch_failed") return `A batch failed after ${run.made} of ${run.requested}.`;
+  if (run.stoppedBy === "source_exhausted") return "The sources support no more.";
+  return null;
+}

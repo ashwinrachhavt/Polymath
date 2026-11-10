@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { dedupeByPrompt, defaultItemCount, generateInBatches, planBatches } from "@/domains/learning/item-count";
+import {
+  dedupeByPrompt,
+  defaultItemCount,
+  describeGenerationOutcome,
+  generateInBatches,
+  planBatches,
+} from "@/domains/learning/item-count";
 
 describe("defaultItemCount", () => {
   it("scales a substantial source to 20-50 items", () => {
@@ -91,5 +97,36 @@ describe("generateInBatches", () => {
       throw new Error("provider down");
     });
     await expect(generateInBatches(30, propose)).rejects.toThrow("provider down");
+  });
+});
+
+describe("describeGenerationOutcome", () => {
+  const cards = { one: "flashcard", many: "flashcards" };
+
+  it("says what was made and where it is, for each way a run ends", () => {
+    expect(describeGenerationOutcome(cards, { made: 24, requested: 24, stoppedBy: "complete" })).toBe(
+      "Made 24 flashcards. Open them in Results.",
+    );
+    expect(describeGenerationOutcome(cards, { made: 8, requested: 20, stoppedBy: "source_exhausted" })).toBe(
+      "Made 8 flashcards; the sources support no more. Open them in Results.",
+    );
+    expect(describeGenerationOutcome(cards, { made: 24, requested: 50, stoppedBy: "batch_failed" })).toBe(
+      "Made 24 of 50 flashcards before a batch failed. Open them in Results, or create again for more.",
+    );
+    expect(describeGenerationOutcome(cards, { made: 24, requested: 50, stoppedBy: "in_progress" })).toBe(
+      "Still making flashcards: 24 so far, in Results.",
+    );
+  });
+
+  it("uses the singular for one item and does not claim a shortfall when the request was met", () => {
+    expect(
+      describeGenerationOutcome(
+        { one: "question", many: "questions" },
+        { made: 1, requested: 1, stoppedBy: "complete" },
+      ),
+    ).toBe("Made 1 question. Open it in Results.");
+    expect(describeGenerationOutcome(cards, { made: 20, requested: 20, stoppedBy: "source_exhausted" })).toBe(
+      "Made 20 flashcards. Open them in Results.",
+    );
   });
 });

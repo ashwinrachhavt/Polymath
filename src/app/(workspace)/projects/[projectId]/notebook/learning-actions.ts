@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { GENERATION_COPY, generateQuiz, QuizGenerationError } from "@/domains/learning/generate-quiz";
+import { describeGenerationOutcome } from "@/domains/learning/item-count";
 import { projectDocumentIds } from "@/domains/knowledge/projects";
 import { actionError } from "@/lib/action-error";
 import { getAuthContext } from "@/lib/auth";
@@ -40,9 +41,10 @@ export async function generateNotebookQuizAction(input: z.input<typeof inputSche
     return {
       ok: true as const,
       quizId: result.quizId,
-      questionCount: result.questionCount,
-      requested: result.requested,
-      stoppedBy: result.stoppedBy,
+      summary: describeGenerationOutcome(
+        { one: "question", many: "questions" },
+        { made: result.questionCount, requested: result.requested, stoppedBy: result.stoppedBy },
+      ),
     };
   } catch (error) {
     if (error instanceof QuizGenerationError) return { ok: false as const, error: GENERATION_COPY[error.code] };

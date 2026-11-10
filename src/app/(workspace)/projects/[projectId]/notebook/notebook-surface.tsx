@@ -93,6 +93,7 @@ export default function NotebookSurface({
   runs = [],
   runDrafts = {},
   lastAnswer,
+  results = null,
 }: {
   notebook: { projectId: string; title: string };
   sources: SourceRow[];
@@ -109,6 +110,8 @@ export default function NotebookSurface({
   runDrafts?: Record<string, { artifactId: string; status: string; version: number }>;
   /** The selected conversation's last grounded answer, when one exists. */
   lastAnswer?: { runId: string; answer: string; citations: DocumentCitation[] } | null;
+  /** The Results panel (latest quiz, deck, Explain It), rendered by the page. */
+  results?: React.ReactNode;
 }) {
   const router = useRouter();
   const [selected, setSelected] = useState<StudioOutput>("report");
@@ -226,9 +229,9 @@ export default function NotebookSurface({
   }
 
   return (
-    <div className="page-content grid grid-cols-[minmax(0,1fr)] gap-4 xl:grid-cols-[260px_minmax(0,1fr)_300px]">
+    <div className="page-content grid grid-cols-[minmax(0,1fr)] gap-4 xl:grid-cols-[260px_minmax(0,1fr)]">
       {/* Sources */}
-      <aside aria-label="Sources" className="panel rounded-xl p-3">
+      <aside aria-label="Sources" className="panel rounded-xl p-3 xl:row-span-4 xl:self-start">
         <div className="flex items-baseline justify-between gap-2 px-1">
           <h2 className="text-body-dense font-medium">Sources</h2>
         </div>
@@ -276,6 +279,16 @@ export default function NotebookSurface({
           </p>
         )}
       </aside>
+
+      <LearningStudio
+        projectId={notebook.projectId}
+        sources={sources
+          .filter((source) => source.readiness === "ready")
+          .map(({ documentId, title }) => ({ documentId, title }))}
+      />
+
+      {/* Results: the latest quiz, deck and Explain It, opened in place */}
+      {results}
 
       {/* Chat */}
       <section aria-label="Chat" className="panel flex min-h-[60vh] flex-col rounded-xl p-4">
@@ -410,7 +423,43 @@ export default function NotebookSurface({
       {/* Studio */}
       <aside aria-label="Studio" className="flex flex-col gap-3">
         <div className="panel rounded-xl p-3">
-          <h2 className="text-body-dense font-medium">Studio</h2>
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-body-dense font-medium">Studio</h2>
+            <details className="relative">
+              <summary
+                aria-label="More"
+                className="cursor-pointer list-none rounded-md px-2 py-0.5 text-body-dense text-muted-foreground hover:bg-muted"
+              >
+                …
+              </summary>
+              <div className="absolute right-0 z-10 mt-1 w-64 rounded-md border border-border bg-popover p-3 text-popover-foreground shadow-md">
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void research();
+                  }}
+                >
+                  <p className="text-xs font-medium text-muted-foreground">Research a company</p>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    Reads only this notebook&apos;s pinned sources; gaps are marked, not filled.
+                  </p>
+                  <div className="mt-2 flex flex-col gap-2">
+                    <Input
+                      aria-label="Company name"
+                      className="h-8 text-body-dense"
+                      placeholder="Company name"
+                      value={companyName}
+                      onChange={(e) => setCompanyName(e.target.value)}
+                    />
+                    <Button type="submit" size="sm" variant="outline" disabled={researching || !companyName.trim()}>
+                      {researching ? <Loader2 aria-hidden className="animate-spin" /> : null}
+                      Research
+                    </Button>
+                  </div>
+                </form>
+              </div>
+            </details>
+          </div>
           <div className="mt-2 flex flex-col gap-1" role="radiogroup" aria-label="Output kind">
             {OUTPUTS.map((output) => {
               const Icon = output.icon;
@@ -454,39 +503,7 @@ export default function NotebookSurface({
               Generate {OUTPUTS.find((o) => o.kind === selected)?.label}
             </Button>
           </form>
-          <form
-            className="mt-4 border-t border-border pt-3"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void research();
-            }}
-          >
-            <p className="text-xs font-medium text-muted-foreground">Research a company</p>
-            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-              Reads only this notebook&apos;s pinned sources; gaps are marked, not filled.
-            </p>
-            <div className="mt-2 flex flex-col gap-2">
-              <Input
-                aria-label="Company name"
-                className="h-8 text-body-dense"
-                placeholder="Company name"
-                value={companyName}
-                onChange={(e) => setCompanyName(e.target.value)}
-              />
-              <Button type="submit" size="sm" variant="outline" disabled={researching || !companyName.trim()}>
-                {researching ? <Loader2 aria-hidden className="animate-spin" /> : null}
-                Research
-              </Button>
-            </div>
-          </form>
         </div>
-
-        <LearningStudio
-          projectId={notebook.projectId}
-          sources={sources
-            .filter((source) => source.readiness === "ready")
-            .map(({ documentId, title }) => ({ documentId, title }))}
-        />
 
         <div className="panel rounded-xl p-3">
           <h2 className="text-body-dense font-medium">Runs</h2>

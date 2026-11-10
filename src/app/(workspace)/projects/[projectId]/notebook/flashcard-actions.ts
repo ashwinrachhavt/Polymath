@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { describeGenerationOutcome } from "@/domains/learning/item-count";
 import { FlashcardError, generateFlashcardDeck, getFlashcardDeck, rateFlashcard } from "@/domains/learning/flashcards";
 import { projectDocumentIds } from "@/domains/knowledge/projects";
 import { actionError } from "@/lib/action-error";
@@ -28,7 +29,14 @@ export async function generateNotebookFlashcardsAction(input: z.input<typeof gen
     }
     const result = await generateFlashcardDeck(auth, { ...parsed.data, notebookId: parsed.data.projectId });
     revalidatePath("/projects/" + parsed.data.projectId + "/notebook");
-    return { ok: true as const, ...result };
+    return {
+      ok: true as const,
+      deckId: result.deckId,
+      summary: describeGenerationOutcome(
+        { one: "flashcard", many: "flashcards" },
+        { made: result.cardCount, requested: result.requested, stoppedBy: result.stoppedBy },
+      ),
+    };
   } catch (error) {
     if (error instanceof FlashcardError) return { ok: false as const, error: error.message };
     return { ok: false as const, error: actionError(error, "Could not generate flashcards from these sources.") };

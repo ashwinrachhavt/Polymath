@@ -30,7 +30,11 @@ export async function startNotebookExplainItAction(input: z.input<typeof startSc
       idempotencyKey: parsed.data.idempotencyKey,
     });
     revalidatePath("/projects/" + parsed.data.projectId + "/notebook");
-    return { ok: true as const, sessionId: result.sessionId };
+    return {
+      ok: true as const,
+      sessionId: result.sessionId,
+      summary: "Started Explain It. Open it in Results.",
+    };
   } catch (error) {
     if (error instanceof ExplainItError) return { ok: false as const, error: error.message };
     return { ok: false as const, error: actionError(error, "Could not start Explain It.") };
@@ -58,6 +62,7 @@ export async function answerNotebookExplainItAction(input: z.input<typeof answer
       turnId: parsed.data.turnId,
       answer: parsed.data.answer,
     });
+    revalidatePath("/projects/" + parsed.data.projectId + "/notebook");
     revalidatePath("/projects/" + parsed.data.projectId + "/notebook/explain");
     return { ok: true as const, status: result.status };
   } catch (error) {
