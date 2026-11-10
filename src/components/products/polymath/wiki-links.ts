@@ -7,7 +7,7 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
  * A [[Title]] stays plain text in the document (the save path resolves it to a
  * graph edge), so it is styled here as a decoration rather than a mark: the
  * stored markdown is unchanged, the brackets fade, the title reads as a link,
- * and a click bubbles a WIKI_LINK_OPEN event (detail: the title) from the
+ * and a click (Cmd/Ctrl-click while editing) bubbles a WIKI_LINK_OPEN event (detail: the title) from the
  * editor's DOM for the host to resolve and open.
  */
 
@@ -26,7 +26,11 @@ function decorate(doc: ProseMirrorNode): DecorationSet {
       const title = match[1].split("|")[0].trim();
       decorations.push(
         Decoration.inline(start, start + 2, { class: "wiki-link-bracket" }),
-        Decoration.inline(start + 2, end - 2, { class: "wiki-link", "data-wiki-title": title }),
+        Decoration.inline(start + 2, end - 2, {
+          class: "wiki-link",
+          "data-wiki-title": title,
+          title: "Cmd/Ctrl-click to open",
+        }),
         Decoration.inline(end - 2, end, { class: "wiki-link-bracket" }),
       );
     }
@@ -50,6 +54,9 @@ export const WikiLinks = Extension.create({
             const target = (event.target as HTMLElement | null)?.closest<HTMLElement>("[data-wiki-title]");
             const title = target?.dataset.wikiTitle;
             if (!title) return false;
+            // While editing, a plain click places the cursor so the title can
+            // be fixed; Cmd/Ctrl-click opens, like the editor's other links.
+            if (view.editable && !(event.metaKey || event.ctrlKey)) return false;
             event.preventDefault();
             view.dom.dispatchEvent(new CustomEvent(WIKI_LINK_OPEN, { detail: title, bubbles: true }));
             return true;

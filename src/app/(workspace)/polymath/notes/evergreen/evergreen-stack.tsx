@@ -81,26 +81,37 @@ function groupEntries(entries: StackIndexEntry[], by: GroupBy, now: number): [st
   );
 }
 
-export function EvergreenStack({ index, notes }: { index: StackIndexEntry[]; notes: StackNote[] }) {
+export function EvergreenStack({
+  index,
+  notes,
+  linked = [],
+}: {
+  index: StackIndexEntry[];
+  notes: StackNote[];
+  /** Notes the open panes link to that fall outside the capped index. */
+  linked?: StackIndexEntry[];
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const scroller = useRef<HTMLDivElement>(null);
   const [scrollLeft, setScrollLeft] = useState(0);
   const [query, setQuery] = useState("");
   const [preview, setPreview] = useState<Preview | null>(null);
+  // Recency buckets are relative to when the board opened; read the clock once.
+  const [now] = useState(() => Date.now());
   const [groupBy, setGroupBy] = useState<GroupBy>(() => (index.some((e) => e.tags.length) ? "tag" : "recency"));
   const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const stackIds = useMemo(() => notes.map((n) => n.id), [notes]);
   const byTitle = useMemo(() => {
     const map = new Map<string, StackIndexEntry>();
-    for (const entry of index) {
+    for (const entry of [...index, ...linked]) {
       const key = entry.title.trim().toLowerCase();
       if (!map.has(key)) map.set(key, entry);
     }
     return map;
-  }, [index]);
-  const byId = useMemo(() => new Map(index.map((e) => [e.id, e])), [index]);
+  }, [index, linked]);
+  const byId = useMemo(() => new Map([...linked, ...index].map((e) => [e.id, e])), [index, linked]);
 
   // Pane 0 is the index; note k in the stack is pane k + 1.
   const scrollToPane = useCallback((pane: number) => {
@@ -197,7 +208,7 @@ export function EvergreenStack({ index, notes }: { index: StackIndexEntry[]; not
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder="Filter by title or text"
-        className="h-8 w-full rounded-md border border-border bg-transparent pl-8 pr-2 text-body-dense outline-none placeholder:text-muted-foreground focus-visible:border-foreground/30"
+        className="h-8 w-full rounded-md border border-border bg-transparent pl-8 pr-2 text-body-dense outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-[var(--focus)]"
       />
     </label>
   );
@@ -259,8 +270,7 @@ export function EvergreenStack({ index, notes }: { index: StackIndexEntry[]; not
     ) : null;
 
   if (notes.length === 0) {
-    // eslint-disable-next-line react-hooks/purity -- recency buckets are relative to the moment of rendering.
-    const ordered = groupEntries(filtered, groupBy, Date.now());
+    const ordered = groupEntries(filtered, groupBy, now);
     return (
       <div className="flex h-[calc(100dvh-var(--topbar-h,48px))] min-h-0 flex-col">
         <header className="flex flex-wrap items-end justify-between gap-4 px-8 pb-5 pt-10">
@@ -285,7 +295,7 @@ export function EvergreenStack({ index, notes }: { index: StackIndexEntry[]; not
                   role="radio"
                   aria-checked={groupBy === g.value}
                   onClick={() => setGroupBy(g.value)}
-                  className={`rounded px-2.5 text-xs ${
+                  className={`rounded px-2.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)] ${
                     groupBy === g.value ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
@@ -317,7 +327,7 @@ export function EvergreenStack({ index, notes }: { index: StackIndexEntry[]; not
             >
               <h2 className="flex items-center justify-between px-3 pb-2 pt-3 text-xs font-medium text-muted-foreground">
                 <span>{column}</span>
-                <span>{entries.length}</span>
+                <span className="readout">{entries.length}</span>
               </h2>
               <ul className="flex flex-col gap-2 overflow-y-auto px-2 pb-2">
                 {entries.map((entry) => (
@@ -335,7 +345,7 @@ export function EvergreenStack({ index, notes }: { index: StackIndexEntry[]; not
                           </span>
                         )}
                         <span className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
-                          <span>{editedLabel(entry.updatedAt)}</span>
+                          <span className="readout">{editedLabel(entry.updatedAt)}</span>
                           {entry.kind === "zettel" && <span>zettel</span>}
                         </span>
                       </>,
@@ -412,7 +422,8 @@ export function EvergreenStack({ index, notes }: { index: StackIndexEntry[]; not
                 {backRow(pane)}
                 <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
                   <span>
-                    {note.kind === "zettel" ? "Zettel · " : ""}Tended {editedLabel(note.updatedAt)}
+                    {note.kind === "zettel" ? "Zettel · " : ""}Tended{" "}
+                    <span className="readout">{editedLabel(note.updatedAt)}</span>
                   </span>
                   <Link
                     href={`/polymath/notes?id=${note.id}`}
@@ -441,9 +452,7 @@ export function EvergreenStack({ index, notes }: { index: StackIndexEntry[]; not
                 </div>
 
                 <section aria-label="Links to this note" className="mt-12 border-t border-border pt-6">
-                  <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Links to this note
-                  </h3>
+                  <h3 className="text-body-dense font-medium text-muted-foreground">Links to this note</h3>
                   {note.backlinks.length === 0 ? (
                     <p className="mt-3 text-body-dense text-muted-foreground">Nothing links here yet.</p>
                   ) : (

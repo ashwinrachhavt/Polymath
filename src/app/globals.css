@@ -581,14 +581,15 @@
   text-wrap: pretty;
 }
 /* [[Title]] links: the editor decorates them (wiki-links.ts) and the
-   evergreen reader renders them as anchors; both read as one quiet link. */
+   evergreen reader renders them as anchors; both read as one quiet link.
+   Ink, not tangerine: DESIGN.md keeps the signal for actions, selection and
+   state, and a page of notes is mostly links. */
 .wiki-link {
-  color: var(--primary);
+  color: var(--foreground);
   text-decoration: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
-  text-decoration-color: color-mix(in oklab, var(--primary) 35%, transparent);
-  background: color-mix(in oklab, var(--primary) 6%, transparent);
+  text-decoration-color: var(--contour);
   border-radius: 3px;
   cursor: pointer;
   transition:
@@ -596,8 +597,8 @@
     text-decoration-color 120ms ease;
 }
 .wiki-link:hover {
-  text-decoration-color: var(--primary);
-  background: color-mix(in oklab, var(--primary) 12%, transparent);
+  text-decoration-color: var(--foreground);
+  background: var(--muted);
 }
 .wiki-link-bracket {
   color: var(--muted-foreground);
