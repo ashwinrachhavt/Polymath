@@ -981,6 +981,7 @@ export function NoteEditor({
           </div>
           <div
             ref={noteColumnRef}
+            data-note-title={title}
             className="mt-8 flex flex-1 flex-col"
             onClick={() => {
               if (!editing) setEditing(true);
@@ -989,6 +990,7 @@ export function NoteEditor({
             <RichEditor
               chrome="minimal"
               editable={editing}
+              autocomplete
               mode={editorMode}
               onModeChange={setEditorMode}
               findLinkTargets={findLinkTargets}

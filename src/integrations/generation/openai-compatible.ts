@@ -2,6 +2,7 @@ import {
   GENERATION_TIMEOUT_MS,
   GenerationRequestError,
   chatMessages,
+  requestSignal,
   type GenerateInput,
   type GenerationProvider,
   type StreamChunk,
@@ -64,8 +65,9 @@ export function openAICompatibleProvider(
           messages: chatMessages(input),
           temperature: input.temperature ?? 0,
           ...(input.json ? { response_format: { type: "json_object" } } : {}),
+          ...(input.maxTokens ? { max_tokens: input.maxTokens } : {}),
         }),
-        signal: AbortSignal.timeout(GENERATION_TIMEOUT_MS),
+        signal: requestSignal(input),
       });
       // Provider error text is not kept: status only (credentials never in logs).
       if (!response.ok) throw new GenerationRequestError(config.registryId, response.status);
@@ -94,7 +96,10 @@ export function openAICompatibleProvider(
         try {
           const parsed = JSON.parse(data) as CompletionResponse;
           if (parsed.usage) {
-            yield { type: "usage", usage: { inputTokens: parsed.usage.prompt_tokens, outputTokens: parsed.usage.completion_tokens } };
+            yield {
+              type: "usage",
+              usage: { inputTokens: parsed.usage.prompt_tokens, outputTokens: parsed.usage.completion_tokens },
+            };
             continue;
           }
           const delta = parsed.choices?.[0]?.delta;

@@ -19,6 +19,10 @@ export type GenerateInput = {
   /** Ask the provider for a JSON response body. */
   json?: boolean;
   temperature?: number;
+  /** Cap on the reply length, for short low-latency calls. Adapters that cannot cap ignore it. */
+  maxTokens?: number;
+  /** Cancels the request (the caller's deadline or a client that went away), on top of the adapter timeout. */
+  signal?: AbortSignal;
 };
 
 /** Token counts when the provider reports them; absent when it does not. */
@@ -80,6 +84,12 @@ export class GenerationRequestError extends Error {
 
 /** One call never hangs a run. */
 export const GENERATION_TIMEOUT_MS = 30_000;
+
+/** The adapter timeout, joined with the caller's own signal when it sent one. */
+export function requestSignal(input: GenerateInput): AbortSignal {
+  const timeout = AbortSignal.timeout(GENERATION_TIMEOUT_MS);
+  return input.signal ? AbortSignal.any([timeout, input.signal]) : timeout;
+}
 
 /** Fail closed for an explicit provider selection whose key env is unset. */
 function throwUnconfigured(variable: string): never {

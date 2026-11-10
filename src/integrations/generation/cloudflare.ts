@@ -32,7 +32,10 @@ export function cloudflareProvider(
 ): GenerationProvider {
   const account = env.CLOUDFLARE_ACCOUNT_ID;
   if (!account) {
-    throw new GenerationConfigError("CLOUDFLARE_ACCOUNT_ID", "your Cloudflare account ID, from the dashboard URL or `wrangler whoami`");
+    throw new GenerationConfigError(
+      "CLOUDFLARE_ACCOUNT_ID",
+      "your Cloudflare account ID, from the dashboard URL or `wrangler whoami`",
+    );
   }
   const apiKey = env.CLOUDFLARE_API_KEY;
   if (!apiKey) {
@@ -63,7 +66,10 @@ export function cloudflareProvider(
       const body = (await response.json().catch(() => null)) as CfResponse | null;
       return {
         text: body?.result?.response ?? "",
-        usage: { inputTokens: body?.result?.usage?.prompt_tokens, outputTokens: body?.result?.usage?.completion_tokens },
+        usage: {
+          inputTokens: body?.result?.usage?.prompt_tokens,
+          outputTokens: body?.result?.usage?.completion_tokens,
+        },
       };
     },
     async *stream(input: GenerateInput): AsyncGenerator<StreamChunk> {

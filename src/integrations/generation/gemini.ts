@@ -1,5 +1,6 @@
 import {
   GENERATION_TIMEOUT_MS,
+  requestSignal,
   GenerationRequestError,
   GenerationUnconfiguredError,
   type GenerateInput,
@@ -51,9 +52,10 @@ export function geminiProvider(
           generationConfig: {
             temperature: input.temperature ?? 0,
             ...(input.json ? { responseMimeType: "application/json" } : {}),
+            ...(input.maxTokens ? { maxOutputTokens: input.maxTokens } : {}),
           },
         }),
-        signal: AbortSignal.timeout(GENERATION_TIMEOUT_MS),
+        signal: requestSignal(input),
       });
       // Provider error text is not kept: status only.
       if (!response.ok) throw new GenerationRequestError("gemini", response.status);
@@ -61,7 +63,10 @@ export function geminiProvider(
       const text = (body?.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? "").join("");
       return {
         text,
-        usage: { inputTokens: body?.usageMetadata?.promptTokenCount, outputTokens: body?.usageMetadata?.candidatesTokenCount },
+        usage: {
+          inputTokens: body?.usageMetadata?.promptTokenCount,
+          outputTokens: body?.usageMetadata?.candidatesTokenCount,
+        },
       };
     },
     async *stream(input: GenerateInput): AsyncGenerator<StreamChunk> {
@@ -81,7 +86,13 @@ export function geminiProvider(
         try {
           const parsed = JSON.parse(data) as GeminiResponse;
           if (parsed.usageMetadata) {
-            yield { type: "usage", usage: { inputTokens: parsed.usageMetadata.promptTokenCount, outputTokens: parsed.usageMetadata.candidatesTokenCount } };
+            yield {
+              type: "usage",
+              usage: {
+                inputTokens: parsed.usageMetadata.promptTokenCount,
+                outputTokens: parsed.usageMetadata.candidatesTokenCount,
+              },
+            };
           }
           const text = (parsed.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? "").join("");
           if (text) yield { type: "token", content: text };

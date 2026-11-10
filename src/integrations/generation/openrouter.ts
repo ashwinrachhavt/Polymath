@@ -1,7 +1,4 @@
-import {
-  GenerationUnconfiguredError,
-  type GenerationProvider,
-} from "./provider";
+import { GenerationUnconfiguredError, type GenerationProvider } from "./provider";
 import { providerFromCatalog } from "./openai-compatible-providers";
 
 /*
