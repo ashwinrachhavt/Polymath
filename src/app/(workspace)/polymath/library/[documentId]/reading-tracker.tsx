@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import type { TextSegment } from "@/domains/knowledge/passages";
 import { recordReadingEventAction, savePassageAction } from "../actions";
@@ -30,7 +29,6 @@ export function ReadingShell({
   segments: TextSegment[];
   canSave: boolean;
 }) {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [selection, setSelection] = useState<{ quote: string; x: number; y: number } | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -147,7 +145,6 @@ export function ReadingShell({
       setSelection(null);
       window.getSelection()?.removeAllRanges();
       setMessage(result.ok ? (result.created ? "Saved as a zettel." : "Already saved.") : result.error);
-      if (result.ok) router.refresh();
     });
   };
 

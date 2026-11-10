@@ -122,6 +122,20 @@ describe("openAICompatibleProvider (mercury + openrouter share the wire)", () =>
     expect(body.response_format).toEqual({ type: "json_object" });
   });
 
+  it("mercury switches reasoning off only when a call asks", async () => {
+    const bodies: Record<string, unknown>[] = [];
+    const f = async (_u: unknown, i?: RequestInit) => {
+      bodies.push(JSON.parse(String(i!.body)));
+      return mercuryOk();
+    };
+    const p = mercuryProvider({ MERCURY_API_KEY: "m" }, f as unknown as typeof fetch);
+    await p.generate({ prompt: "x", maxTokens: 48, reasoning: "none" });
+    await p.generate({ prompt: "x" });
+    // Under a short cap mercury-3's reasoning spends every token and the content is null.
+    expect(bodies[0].reasoning_effort).toBe("instant");
+    expect(bodies[1]).not.toHaveProperty("reasoning_effort");
+  });
+
   it("fails closed on HTTP errors with status only", async () => {
     const f = async () => new Response("key detail", { status: 401 });
     const p = mercuryProvider({ MERCURY_API_KEY: "m" }, f as unknown as typeof fetch);

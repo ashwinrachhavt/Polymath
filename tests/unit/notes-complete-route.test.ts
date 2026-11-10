@@ -36,7 +36,7 @@ const call = (body: unknown) =>
 
 beforeEach(() => {
   completeWriting.mockReset();
-  completeWriting.mockResolvedValue({ completion: " be atomic." });
+  completeWriting.mockResolvedValue({ completion: " be atomic.", answered: true });
   // A fresh person per test, so the per-person brake starts empty.
   holder.auth = { userId: `u-${++seq}`, workspaceId: "w1", role: "member" };
 });
@@ -63,11 +63,19 @@ describe("POST /api/v1/notes/complete", () => {
     expect((await spent.json()).code).toBe("quota_exhausted");
   });
 
-  it("answers an empty suggestion, not an error, when the provider fails", async () => {
+  it("answers an empty suggestion, not an error, when the provider fails, marked as no answer", async () => {
     completeWriting.mockRejectedValueOnce(new Error("upstream timed out"));
     const res = await call({ before: "Evergreen notes should" });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ completion: "" });
+    expect(await res.json()).toEqual({ completion: "", answered: false });
+  });
+
+  it("marks a model that replied with no text as no answer", async () => {
+    completeWriting.mockResolvedValueOnce({ completion: "", answered: false });
+    expect(await (await call({ before: "Evergreen notes should" })).json()).toEqual({
+      completion: "",
+      answered: false,
+    });
   });
 
   it("refuses viewers and API keys before any model call", async () => {

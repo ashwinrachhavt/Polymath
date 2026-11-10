@@ -1,5 +1,6 @@
 "use client";
 
+import { AppearancePicker } from "@/components/appearance-picker";
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 
@@ -577,18 +578,29 @@ export default function Settings({
                 onChange={(celebrations) => updatePreferences({ celebrations })}
               />
               <p className="mt-2 text-xs text-muted-foreground">
-                Motion saves to your account. Appearance is set by the header toggle, which also saves to your account;
-                system reduced-motion settings remain respected.
+                Motion saves to your account; system reduced-motion settings remain respected.
               </p>
             </Panel>
           </Section>
 
           <Section id="appearance">
-            <Panel title="Appearance" description="No appearance overrides.">
-              <p className="text-body-dense leading-relaxed text-muted-foreground">
-                The header toggle cycles light, dark and system, and saves the choice to your account, so a new browser
-                adopts it on first load. One accent colour is used across all three products; per-surface palette
-                switching is not offered.
+            <Panel title="Appearance" description="Mode, page colour and accent. Changes apply immediately.">
+              <AppearancePicker
+                onModeChange={(appearance) => {
+                  const before = saved;
+                  setSaved({ ...saved, appearance });
+                  void savePreferencesAction({ expectedVersion: before.version, appearance }).then((result) => {
+                    if (result.ok) {
+                      setSaved(result.preferences);
+                      return;
+                    }
+                    setSaved(before);
+                    notify(result.error);
+                  });
+                }}
+              />
+              <p className="mt-3 text-xs text-muted-foreground">
+                Mode saves to your account; page colour and accent are remembered in this browser.
               </p>
             </Panel>
           </Section>

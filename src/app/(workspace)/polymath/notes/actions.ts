@@ -27,11 +27,6 @@ import {
   startNoteAIRun,
 } from "@/domains/knowledge/note-ai";
 import { NoteCommentError, addNoteComment, resolveNoteComment } from "@/domains/knowledge/note-comments";
-import {
-  LinearIssueNoteError,
-  draftLinearIssueFromNote,
-  type LinearIssueDraftResult,
-} from "@/domains/capture/linear-issue-proposal";
 import { searchKnowledge } from "@/domains/knowledge/retrieval";
 import { safeArtifactEmbedError } from "@/domains/knowledge/embedding";
 import { searchCapturesForLink } from "@/domains/capture/queries";
@@ -68,11 +63,16 @@ const domainErrors = [
   VersionConflictError,
   IdempotencyConflictError,
   NoteAIError,
-  LinearIssueNoteError,
   NoteCommentError,
 ];
 
 const guarded = bindGuarded({ domainErrors, onSuccess: revalidate });
+/*
+ * Autosave fires on every pause in typing. The editor already holds the text,
+ * so re-rendering the whole Notes route after each one only made the page
+ * stall and flicker mid-sentence; the list catches up on the next navigation.
+ */
+const guardedQuiet = bindGuarded({ domainErrors });
 
 const content = z.record(z.string(), z.unknown());
 const key = z.string().uuid().optional();
@@ -103,7 +103,7 @@ export async function autosaveNoteAction(input: z.input<typeof autosaveInput>): 
   const parsed = autosaveInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "That autosave is not valid." };
   const auth = await authorize();
-  return guarded(async () => ({ version: (await autosaveNoteDraft(auth, parsed.data)).version }));
+  return guardedQuiet(async () => ({ version: (await autosaveNoteDraft(auth, parsed.data)).version }));
 }
 
 const commitInput = z.object({
@@ -360,24 +360,6 @@ export async function resolveNoteCommentAction(
     const { resolvedAt } = await resolveNoteComment(auth, parsed.data);
     return { resolvedAt: resolvedAt ? resolvedAt.toISOString() : null };
   });
-}
-
-const proposeIssueInput = z.object({ artifactId: z.string().uuid() });
-
-/**
- * ASH-285: draft a fully formed Linear issue proposal from this note. The
- * result is a note linking back to its source; with no generation provider
- * configured it is the honest deterministic scaffold instead. Repeats are
- * honest too: unchanged source replays the existing draft, a changed source
- * refreshes it as a new version. It never talks to Linear.
- */
-export async function proposeLinearIssueAction(
-  input: z.input<typeof proposeIssueInput>,
-): Promise<Result<LinearIssueDraftResult>> {
-  const parsed = proposeIssueInput.safeParse(input);
-  if (!parsed.success) return { ok: false, error: "That issue request is not valid." };
-  const auth = await authorize();
-  return guarded(async () => draftLinearIssueFromNote(auth, parsed.data));
 }
 
 export async function findLinkTargetsAction(

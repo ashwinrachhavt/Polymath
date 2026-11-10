@@ -21,6 +21,12 @@ export type GenerateInput = {
   temperature?: number;
   /** Cap on the reply length, for short low-latency calls. Adapters that cannot cap ignore it. */
   maxTokens?: number;
+  /**
+   * "none" asks a reasoning model to answer without its thinking step, for
+   * short low-latency calls: under a small maxTokens the thinking can spend the
+   * whole cap and leave an empty reply. Adapters that cannot control it ignore it.
+   */
+  reasoning?: "none";
   /** Cancels the request (the caller's deadline or a client that went away), on top of the adapter timeout. */
   signal?: AbortSignal;
 };

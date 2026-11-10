@@ -2,7 +2,6 @@
 
 import { Select } from "@/components/ui/select";
 
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -37,7 +36,6 @@ export function DraftWorkbench({
   linkTitles: Record<string, string>;
   linkable: { task: Pick[]; contact: Pick[]; opportunity: Pick[] };
 }) {
-  const router = useRouter();
   const [draftText, setDraftText] = useState(text);
   const [version, setVersion] = useState(artifact.version);
   const [targetType, setTargetType] = useState<"task" | "contact" | "opportunity">("task");
@@ -74,7 +72,6 @@ export function DraftWorkbench({
       });
       setVersion(result.version);
       setNotice("Edits saved as a new version.");
-      router.refresh();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Saving failed.");
     } finally {
@@ -96,7 +93,6 @@ export function DraftWorkbench({
       });
       setTargetId("");
       setNotice("Attached.");
-      router.refresh();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Attaching failed.");
     } finally {
@@ -110,7 +106,6 @@ export function DraftWorkbench({
     setNotice(null);
     try {
       await unlinkDraftFromRecordAction({ artifactId: artifact.id, linkId, idempotencyKey: crypto.randomUUID() });
-      router.refresh();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Detaching failed.");
     } finally {

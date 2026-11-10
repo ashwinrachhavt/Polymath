@@ -93,14 +93,12 @@ export function ProjectRow({
     documentCount: number;
   };
 }) {
-  const router = useRouter();
   const [pending, start] = useTransition();
   const pinned = project.pinnedAt != null;
 
   function togglePin() {
     start(async () => {
       await setProjectPinnedAction({ projectId: project.id, pinned: !pinned });
-      router.refresh();
     });
   }
 

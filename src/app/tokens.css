@@ -1,27 +1,29 @@
 /* Hallmark · Furrow tokens · redesign: polish · shape: app screen · posture: restrained · hero: none · theme: Furrow (by request) */
 
 .dark:root {
+  /* Reading links: a lighter blue that holds contrast on the dark paper. */
+  --link: #7aa7ff;
   color-scheme: dark;
   /* Furrow night: the same hue bands re-derived (paper L 14%, ink L 93%,
      accent chroma -0.03 / L +5). The aliases above point at these roles, so
      dark mode is one re-derivation, not a second theme. Elevation is
      lightness, not shadow; hairlines sit a step apart in lightness. */
-  --paper: oklch(14% 0.008 85);
-  --paper-2: oklch(17% 0.008 85);
-  --paper-3: oklch(11% 0.01 85);
-  --ink: oklch(93% 0.006 85);
-  --ink-2: oklch(82% 0.008 80);
-  --ink-muted: oklch(58% 0.012 80);
-  --rule: oklch(24% 0.013 85);
-  --sheet: oklch(19% 0.004 85);
-  --grid: oklch(22% 0.014 85);
-  --grid-strong: oklch(27% 0.018 85);
+  --paper: oklch(18% 0.003 260);
+  --paper-2: oklch(21% 0.003 260);
+  --paper-3: oklch(15.5% 0.003 260);
+  --ink: oklch(93% 0.003 260);
+  --ink-2: oklch(84% 0.004 260);
+  --ink-muted: oklch(62% 0.006 260);
+  --rule: oklch(27% 0.004 260);
+  --sheet: oklch(21% 0.003 260);
+  --grid: oklch(24% 0.004 260);
+  --grid-strong: oklch(29% 0.005 260);
 
-  --signal: oklch(75% 0.16 40);
-  --signal-ink: oklch(14% 0.008 85);
-  --signal-soft: oklch(26% 0.045 50);
+  --signal: oklch(92% 0.004 260);
+  --signal-ink: oklch(18% 0.003 260);
+  --signal-soft: oklch(27% 0.005 260);
 
-  --focus: oklch(72% 0.19 40);
+  --focus: oklch(70% 0.13 255);
   --error: oklch(68% 0.17 27);
   --success: oklch(72% 0.1 150);
   --green: oklch(68% 0.1 150);

@@ -150,8 +150,8 @@ export default function NotebookSurface({
       const out = await startNotebookRun({ projectId: notebook.projectId, title: notebook.title });
       if (out.ok) {
         setStartedRunId(out.runId);
-        // The new conversation joins the history on the next server render.
-        router.refresh();
+        // The new conversation joins the history in the action's own
+        // revalidated render.
       } else {
         setMessage(out.error);
       }
@@ -215,7 +215,6 @@ export default function NotebookSurface({
       });
       if (!result.ok) throw new Error(result.error);
       setCompanyName("");
-      router.refresh();
       setMessage(
         `Case study drafted from ${result.manifestSize} pinned ${result.manifestSize === 1 ? "source" : "sources"}.`,
       );

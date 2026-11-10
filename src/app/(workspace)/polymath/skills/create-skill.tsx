@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { createAuthoredSkillAction } from "./actions";
@@ -11,7 +10,6 @@ import { createAuthoredSkillAction } from "./actions";
  * in the same library an import would, pinned and auditable like one.
  */
 export function NewSkill() {
-  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -43,7 +41,6 @@ export function NewSkill() {
           setName("");
           setDescription("");
           setBody("");
-          router.refresh();
         });
       }}
     >

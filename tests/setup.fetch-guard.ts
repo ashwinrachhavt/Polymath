@@ -10,9 +10,7 @@ import { installFetchGuard } from "./helpers/fetch-guard";
  * servers; every non-loopback host fails closed there.
  *
  * What this rejects: every `fetch(...)` the test process attempts, any host,
- * loopback included. The existing eval guard (eve/polymath/evals/
- * network-guard.ts) stacks cleanly on top of this one and restores back to it;
- * see tests/helpers/fetch-guard.ts for why the two are separate modules.
+ * loopback included. See tests/helpers/fetch-guard.ts for the lifecycle.
  *
  * What this does NOT reject — a test boundary, not a sandbox:
  *   - raw HTTP via `node:http`/`node:https` or undici used directly

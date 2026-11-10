@@ -62,6 +62,13 @@ describe("cleanCompletion", () => {
       "",
       " and linked.",
     ],
+    [
+      "drops a restated sentence after a space",
+      "The main reason teams ship slowly is unclear ownership.",
+      "The main reason teams ship slowly is ",
+      "",
+      "unclear ownership.",
+    ],
     ["keeps one sentence", "is short. And then it rambles on for a while.", "The rule ", "", "is short."],
     ["shows nothing for a chatty reply", "Sure, here is the continuation: more text", "The goal is ", "", ""],
     [
@@ -87,7 +94,10 @@ describe("cleanCompletion", () => {
 describe("completeWriting", () => {
   const provider = (text: string) => {
     const generate = vi.fn(
-      async (input: { prompt: string; maxTokens?: number; signal?: AbortSignal }) => (void input, { text }),
+      async (input: { prompt: string; maxTokens?: number; reasoning?: string; signal?: AbortSignal }) => (
+        void input,
+        { text }
+      ),
     );
     // "stub" has no registry entry, so the quota ledger (and the database) is not involved.
     return { generate, provider: { name: "stub:model", registryId: "stub", generate } as GenerationProvider };
@@ -98,19 +108,32 @@ describe("completeWriting", () => {
     const { generate, provider: stub } = provider("notes should be atomic.");
     const before = `${"x".repeat(5_000)} Evergreen notes`;
     const out = await completeWriting(auth, { title: "Method", before, after: "tail" }, { provider: stub });
-    expect(out).toEqual({ completion: " should be atomic." });
+    expect(out).toEqual({ completion: " should be atomic.", answered: true });
     const input = generate.mock.calls[0][0];
     expect(input.prompt).toContain("Note title: Method");
     expect(input.prompt).toContain(`<before>${before.slice(-COMPLETION_BEFORE_CHARS)}</before>`);
     expect(input.prompt).toContain("<after>tail</after>");
     expect(input.maxTokens).toBeGreaterThan(0);
+    // A reasoning model would otherwise think through the whole cap and reply empty.
+    expect(input.reasoning).toBe("none");
     expect(input.signal).toBeInstanceOf(AbortSignal);
   });
 
   it("makes no model call when there is too little to continue", async () => {
     const { generate, provider: stub } = provider("anything");
-    expect(await completeWriting(auth, { before: " a " }, { provider: stub })).toEqual({ completion: "" });
+    expect(await completeWriting(auth, { before: " a " }, { provider: stub })).toEqual({
+      completion: "",
+      answered: true,
+    });
     expect(generate).not.toHaveBeenCalled();
+  });
+
+  it("reports no answer when the model replies with no text", async () => {
+    const { provider: stub } = provider("");
+    expect(await completeWriting(auth, { before: "Evergreen notes" }, { provider: stub })).toEqual({
+      completion: "",
+      answered: false,
+    });
   });
 
   it("leaves the title line out when the note has none", () => {

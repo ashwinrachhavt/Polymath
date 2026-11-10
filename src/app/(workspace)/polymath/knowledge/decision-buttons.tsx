@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,7 +22,6 @@ import {
  */
 
 function useDecision() {
-  const router = useRouter();
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const errorId = useId();
@@ -33,7 +31,6 @@ function useDecision() {
     setError(null);
     try {
       await action();
-      router.refresh();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Something went wrong.");
     } finally {

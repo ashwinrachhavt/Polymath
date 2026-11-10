@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Palette } from "lucide-react";
 import { proposeCanvaImportAction } from "./actions";
@@ -12,7 +11,6 @@ import { proposeCanvaImportAction } from "./actions";
  * through reconciliation. A repeat click resolves the same proposal.
  */
 export function CanvaImportButton({ artifactId }: { artifactId: string }) {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
@@ -45,7 +43,6 @@ export function CanvaImportButton({ artifactId }: { artifactId: string }) {
             }
             setProposed(true);
             setMessage(result.deduplicated ? "Import already proposed" : "Import proposed");
-            router.refresh();
           });
         }}
         className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 hover:bg-muted disabled:opacity-50"

@@ -80,7 +80,7 @@ export default defineTool({
             closeReason: input.closeReason,
           },
           rationale: input.rationale,
-          // Caller-owned identity, same contract as linear_issue_propose:
+          // Caller-owned identity:
           // the session id comes from the authenticated session, so a
           // model-chosen dedupeId can only collide inside its own thread.
           dedupeKey: `${ctx.session.id}:${input.dedupeId}`,

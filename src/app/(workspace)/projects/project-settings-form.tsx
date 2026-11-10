@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -51,7 +50,6 @@ export function ProjectSettingsForm({
   memories: Array<{ id: string; content: string }>;
   connectors: Array<{ id: string; label: string; enabled: boolean }>;
 }) {
-  const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -73,7 +71,6 @@ export function ProjectSettingsForm({
       }
       done?.();
       setNotice("Saved.");
-      router.refresh();
     });
   }
 
@@ -206,11 +203,11 @@ export function ProjectSettingsForm({
           <h2 className="text-lg font-medium">Sources</h2>
           {sources.length === 0 ? (
             <p className="text-body-dense text-muted-foreground">
-              No sources yet. Add them from{" "}
-              <Link href="/polymath/sources" className="underline">
-                Sources
-              </Link>{" "}
-              and attach them to this project.
+              No sources yet. Add files, links or Vault documents in{" "}
+              <Link href={`/projects/${projectId}/notebook`} className="underline">
+                this project&apos;s Notebook
+              </Link>
+              .
             </p>
           ) : (
             <ul className="flex flex-col gap-1">

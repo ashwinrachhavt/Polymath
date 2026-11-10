@@ -33,12 +33,16 @@ export function ResearchCompanyButton({ companyId }: { companyId: string }) {
       <Button type="button" variant="outline" size="sm" onClick={research} disabled={pending}>
         {pending ? "Researching…" : "Research"}
       </Button>
-      {error ? <span role="alert" className="text-destructive text-xs">{error}</span> : null}
+      {error ? (
+        <span role="alert" className="text-destructive text-xs">
+          {error}
+        </span>
+      ) : null}
       {done ? (
         <span className="text-muted-foreground text-xs">
           Draft ready from {done.manifestSize} {done.manifestSize === 1 ? "source" : "sources"}
           {done.gapSections > 0 ? ` (${done.gapSections} evidence gaps)` : ""}.{" "}
-          <a href={`/polymath/dossiers?draft=${done.artifactId}`} className="underline underline-offset-2 hover:text-foreground">
+          <a href={`/artifacts/${done.artifactId}`} className="underline underline-offset-2 hover:text-foreground">
             Open the workbench
           </a>
         </span>

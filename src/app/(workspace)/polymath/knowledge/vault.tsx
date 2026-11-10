@@ -527,7 +527,6 @@ export function DocumentVault({
       // would hide it, then let the server list pick it up.
       setQuery("");
       setCreatedFolder(result.name);
-      router.refresh();
     } catch {
       setFolderError("The folder could not be created. Try again.");
     } finally {

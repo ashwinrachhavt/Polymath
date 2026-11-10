@@ -75,7 +75,7 @@ export function deriveContinuationFromArtifacts(rows: ContinuationRow[], limit =
         updatedAt: row.updatedAt,
         pendingRevisions,
         suggestedNextStep: artifactNextStep(row.status, pendingRevisions) as string,
-        href: pendingRevisions > 0 ? "/reviews" : `/polymath/dossiers?draft=${row.id}`,
+        href: pendingRevisions > 0 ? "/reviews" : `/artifacts/${row.id}`,
       };
     });
 }
@@ -120,7 +120,10 @@ export async function deriveContinuation(auth: AuthContext, limit = 5): Promise<
   const recentIds = new Set(recentRows.map((row) => row.id));
   const missingIds = [...pendingById.keys()].filter((id) => !recentIds.has(id));
   const proposalRows = missingIds.length
-    ? await db.select(CONTINUATION_COLUMNS).from(artifacts).where(and(openRows, inArray(artifacts.id, missingIds)))
+    ? await db
+        .select(CONTINUATION_COLUMNS)
+        .from(artifacts)
+        .where(and(openRows, inArray(artifacts.id, missingIds)))
     : [];
 
   return deriveContinuationFromArtifacts(

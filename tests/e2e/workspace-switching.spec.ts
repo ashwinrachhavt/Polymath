@@ -119,7 +119,7 @@ test("switching workspaces changes the data context on the notes list", async ({
       expect(cookie?.value, "the active-workspace cookie names the target").toBe(seed.targetId);
 
       // The data context changed: the notes list now serves Acme's notes.
-      await page.goto("/polymath/notes");
+      await page.goto("/polymath/notes?mode=list");
       const content = page.locator("#content").first();
       await expect(content.getByText(`Target note ${tag}`)).toBeVisible({ timeout: 30_000 });
       await expect(content.getByText(`Home note ${tag}`)).toHaveCount(0);
@@ -157,7 +157,7 @@ test("switching workspaces changes the data context on the notes list", async ({
       await expect(dialog2).toBeHidden();
 
       // Back in the personal workspace, the home note is the context again.
-      await page.goto("/polymath/notes");
+      await page.goto("/polymath/notes?mode=list");
       const content2 = page.locator("#content").first();
       await expect(content2.getByText(`Home note ${tag}`)).toBeVisible({ timeout: 30_000 });
       await expect(content2.getByText(`Target note ${tag}`)).toHaveCount(0);

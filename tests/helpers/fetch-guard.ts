@@ -15,16 +15,8 @@
  * `vi.stubGlobal("fetch", …)` replaces the guard for the stubbed scope and
  * restoring it puts the guard back.
  *
- * Why not reuse `eve/polymath/evals/network-guard.ts` as the module: two
- * reasons, both checked against its source. Its policy allows the evals model
- * host (`generativelanguage.googleapis.com`) — exactly the access tests must
- * not have. And its lifecycle is a module-level single-active-guard slot; a
- * setup-file install would occupy that slot for the whole worker process, so
- * `tests/unit/eval-guards.test.ts` installs of the eval guard would silently
- * no-op and their model-host pass-through cases would fail. This module
- * mirrors the evals guard's proven lifecycle instead (single active install,
- * restore returns exactly what was beneath, fail-closed on unparseable URLs)
- * with its own state and its own deny-all policy.
+ * Lifecycle: a single active install, restore returns exactly what was
+ * beneath, and unparseable URLs fail closed, with a deny-all policy.
  *
  * Scope, stated plainly because it matters: this guards in-process
  * `globalThis.fetch` in the test worker only. It does NOT block raw HTTP via

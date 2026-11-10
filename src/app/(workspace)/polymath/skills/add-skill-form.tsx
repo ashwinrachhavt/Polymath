@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { FactPoll } from "@/components/fact-poll";
 import type { PollFact } from "@/lib/poll-facts";
@@ -23,7 +22,6 @@ type Found = Extract<InspectAction, { ok: true }>;
 type Inspected = Found & { source: string };
 
 export function AddSkillForm({ extraFacts }: { extraFacts?: PollFact[] }) {
-  const router = useRouter();
   const [source, setSource] = useState("");
   const [found, setFound] = useState<Inspected | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -61,7 +59,6 @@ export function AddSkillForm({ extraFacts }: { extraFacts?: PollFact[] }) {
       return;
     }
     setInstalled((current) => new Set(current).add(skill.slug));
-    router.refresh();
   }
 
   return (

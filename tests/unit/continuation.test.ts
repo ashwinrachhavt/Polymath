@@ -47,7 +47,7 @@ describe("deriveContinuationFromArtifacts", () => {
     expect(items[0]).toMatchObject({
       artifactId: "a9",
       status: "draft",
-      href: "/polymath/dossiers?draft=a9",
+      href: "/artifacts/a9",
       suggestedNextStep: "Review it: keep the draft or discard it.",
     });
   });
@@ -55,7 +55,14 @@ describe("deriveContinuationFromArtifacts", () => {
   it("work with a decision waiting ranks first and links to Reviews", () => {
     const items = deriveContinuationFromArtifacts([
       { id: "a1", title: "Fresh draft, nothing waiting", kind: "report", status: "draft", updatedAt: newer },
-      { id: "a2", title: "Older output with a proposed revision", kind: "report", status: "reviewed", updatedAt: older, pendingRevisions: 1 },
+      {
+        id: "a2",
+        title: "Older output with a proposed revision",
+        kind: "report",
+        status: "reviewed",
+        updatedAt: older,
+        pendingRevisions: 1,
+      },
     ]);
     expect(items[0]).toMatchObject({
       artifactId: "a2",
@@ -63,7 +70,7 @@ describe("deriveContinuationFromArtifacts", () => {
       href: "/reviews",
       suggestedNextStep: "Review the proposed revision in Reviews.",
     });
-    expect(items[1]).toMatchObject({ artifactId: "a1", href: "/polymath/dossiers?draft=a1", pendingRevisions: 0 });
+    expect(items[1]).toMatchObject({ artifactId: "a1", href: "/artifacts/a1", pendingRevisions: 0 });
   });
 
   it("honours the limit", () => {

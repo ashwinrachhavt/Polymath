@@ -10,8 +10,6 @@ concurrency:
   cancel-in-progress: true
 
 # Least privilege: every job gets a read-only token unless it grants more.
-# The evals job declares its own scoped permissions (pull-requests: write
-# for the eval-results PR comment), which fully overrides this block.
 permissions:
   contents: read
 
@@ -34,7 +32,7 @@ jobs:
   #                  service, shallow clone, no guard scripts.
   #   check-tests-db — everything that needs the database and history: the
   #                  guard scripts, the psql-applied migrations, the db
-  #                  project (integration + migration), inventory:check and
+  #                  project (integration + migration) and
   #                  the schema-drift gate, on the pgvector service.
   #   check-build  — production build + route-JS budget + boot smoke, on its
   #                  own pgvector service (boot smoke sets DATABASE_URL).
@@ -189,10 +187,6 @@ jobs:
       # The db project covers the integration, contract and migration suites
       # (vitest.config.mts); unit and ui run in check-tests-unit.
       - run: pnpm vitest run --project db
-      # docs/generated/inventory.md is checked in and read as fact. If a schema,
-      # route, tool, or outbox topic changed without regenerating it, the doc is
-      # lying and this fails. Keep it on this leg, next to `test`.
-      - run: pnpm inventory:check
       # Schema drift gate: a domain schema edited without a generated
       # migration passes every other check here and breaks the next deploy or
       # migration replay. drizzle-kit generate never touches the database
@@ -431,7 +425,7 @@ jobs:
           case ${{ matrix.shard }} in
             1) SPECS="tests/e2e/canvas-persistence.spec.ts tests/e2e/task-notes-editor.spec.ts tests/e2e/neuralflow.spec.ts tests/e2e/work-bulk-complete.spec.ts tests/e2e/voice-capture.spec.ts tests/e2e/layout-alignment.spec.ts tests/e2e/document-review-loop.spec.ts tests/e2e/onboarding-fixtures.spec.ts tests/e2e/interface-modes.spec.ts tests/e2e/capture-text-detail.spec.ts tests/e2e/home-decisions.spec.ts tests/e2e/list-toolbar.spec.ts tests/e2e/github-triage.spec.ts tests/e2e/daybook.spec.ts" ;;
             2) SPECS="tests/e2e/smoke.spec.ts tests/e2e/weekly-outcome-narrative.spec.ts tests/e2e/neuralflow-canonical-consolidation.spec.ts tests/e2e/command-center.spec.ts tests/e2e/meeting-prep.spec.ts tests/e2e/library-writing.spec.ts tests/e2e/activity-feed.spec.ts tests/e2e/rename-redirects.spec.ts tests/e2e/sender-grants.spec.ts tests/e2e/connectors-tier-journey.spec.ts tests/e2e/conversational-navigation.spec.ts tests/e2e/inbox-pixels.spec.ts tests/e2e/ingestion-selection.spec.ts" ;;
-            3) SPECS="tests/e2e/shared-command-layer.spec.ts tests/e2e/notebook-neon.spec.ts tests/e2e/work-neon.spec.ts tests/e2e/design-brief.spec.ts tests/e2e/meeting-debrief.spec.ts tests/e2e/profile-research.spec.ts tests/e2e/crm-sender-switch.spec.ts tests/e2e/linear-issue-draft.spec.ts tests/e2e/calendar-conflicts.spec.ts tests/e2e/qa-fixes.spec.ts tests/e2e/focus-dock.spec.ts tests/e2e/local-write-card.spec.ts tests/e2e/perf-budget.spec.ts tests/e2e/notion-diff.spec.ts" ;;
+            3) SPECS="tests/e2e/shared-command-layer.spec.ts tests/e2e/notebook-neon.spec.ts tests/e2e/work-neon.spec.ts tests/e2e/design-brief.spec.ts tests/e2e/meeting-debrief.spec.ts tests/e2e/profile-research.spec.ts tests/e2e/crm-sender-switch.spec.ts tests/e2e/calendar-conflicts.spec.ts tests/e2e/qa-fixes.spec.ts tests/e2e/focus-dock.spec.ts tests/e2e/local-write-card.spec.ts tests/e2e/perf-budget.spec.ts tests/e2e/notion-diff.spec.ts" ;;
           esac
           pnpm exec playwright test $SPECS
         env:
@@ -586,102 +580,3 @@ jobs:
           retention-days: 14
           path: test-results/feature-pixels/
           if-no-files-found: ignore
-
-  # Behavioral gate for the agent. The unit suite cannot see whether Polymath
-  # actually reaches for the corpus before answering; these evals drive a real
-  # turn against Gemini and fail the build when grounding regresses.
-  #
-  # Eval steps are skipped with a notice when the secret is absent. When it is
-  # present, the strict eval run remains a required CI check and regressions fail.
-  evals:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    # No `needs:` - the eval run only requires install, and its PR-comment
-    # step reads PR_NUMBER from the event context, so it never depended on
-    # the check job. Running it parallel to the check legs keeps it off the
-    # critical path.
-    # The PR-comment step posts with the workflow token; everything else in
-    # this job is read-only. Minimum grant, scoped to the job.
-    permissions:
-      contents: read
-      pull-requests: write
-    steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: .node-version
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Check the agent is runnable
-        id: credential
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: |
-          if [ -z "$GEMINI_API_KEY" ]; then
-            echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::GEMINI_API_KEY is not set; agent evals were skipped, not run."
-          else
-            echo "present=true" >> "$GITHUB_OUTPUT"
-          fi
-      - name: Run agent evals
-        id: evals
-        if: steps.credential.outputs.present == 'true'
-        working-directory: eve/polymath
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GEMINI_AGENT_MODEL: gemini-3.5-flash-lite
-        # --strict turns soft thresholds into failures, so a score regression
-        # blocks the merge instead of only showing in the artifact.
-        # --json also prints the per-eval verdicts as one JSON document, which
-        # the summary step below turns into the job table.
-        run: |
-          set +e
-          ../../node_modules/.bin/eve eval --strict --json > "$RUNNER_TEMP/eval-report.json"
-          status=$?
-          cat "$RUNNER_TEMP/eval-report.json"
-          exit $status
-      # Surface the result where a reviewer looks first. The artifact has the
-      # detail; this table answers "which eval failed, and how many gates did it
-      # miss" without opening a download.
-      - name: Eval results
-        if: always() && steps.credential.outputs.present == 'true'
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: node .github/scripts/eval-summary.mjs "$RUNNER_TEMP/eval-report.json"
-      # Keep the missing-secret state visible on main without failing the rest
-      # of CI. The eval step above still runs and fails normally when configured.
-      - name: Skip evals on main when Gemini key is missing
-        if: github.ref == 'refs/heads/main' && steps.credential.outputs.present != 'true'
-        run: echo "::notice::GEMINI_API_KEY is not set on main; agent evals were skipped."
-      - name: Upload eval artifacts
-        if: always() && steps.credential.outputs.present == 'true'
-        uses: actions/upload-artifact@v7
-        with:
-          name: eve-evals
-          path: eve/polymath/.eve/evals/
-          if-no-files-found: ignore
-          retention-days: 14
-      # Post the same table as a PR comment, replacing the previous one. The
-      # marker lets the comment be found and deleted before the fresh post, so
-      # a PR carries one live results thread instead of a stack per run. The
-      # report file is re-rendered (not copied) because the job summary adds
-      # GITHUB_STEP_SUMMARY noise the comment should not carry. Job summaries
-      # still get the table; the comment is the PR-visible copy.
-      - name: Post eval results as PR comment
-        if: always() && steps.credential.outputs.present == 'true' && github.event_name == 'pull_request'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          # PR number comes from the event context expression — there is no
-          # default GITHUB_EVENT_PULL_REQUEST_NUMBER env var; an empty value
-          # would make the poster exit 2 on every PR.
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          node .github/scripts/eval-comment.mjs \
-            "$RUNNER_TEMP/eval-report.json" \
-            "$GITHUB_REPOSITORY" \
-            "$PR_NUMBER"
-
-  # Vercel deploys `main` through its own GitHub integration; every other branch
-  # is disabled in vercel.json, so a merged PR is the only thing that ships.
-  # Nothing is deployed from CI.

@@ -36,6 +36,8 @@ export type OpenAICompatibleConfig = {
   headers?: Record<string, string>;
   /** Ask for the terminal usage frame on streams (OpenRouter-style). */
   streamUsage?: boolean;
+  /** Body fields that switch the model's reasoning off, sent when a call asks for `reasoning: "none"`. */
+  noReasoning?: Record<string, unknown>;
 };
 
 type CompletionResponse = {
@@ -66,6 +68,7 @@ export function openAICompatibleProvider(
           temperature: input.temperature ?? 0,
           ...(input.json ? { response_format: { type: "json_object" } } : {}),
           ...(input.maxTokens ? { max_tokens: input.maxTokens } : {}),
+          ...(input.reasoning === "none" ? config.noReasoning : {}),
         }),
         signal: requestSignal(input),
       });

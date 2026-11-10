@@ -8,9 +8,6 @@ opencode.json
 !.env.example
 .env.axiom
 
-# gstack local artifacts
-.gstack/*
-!.gstack/pregate.json
 
 # private — personal job/outreach tracking, never public
 outreach/
@@ -66,7 +63,6 @@ mockups/
 # Agent scratch: the SDD workspace (ledger, briefs, review packages) and the
 # isolated worktrees spawned for parallel task execution. Neither is source.
 .superpowers/
-.claude/worktrees/
 
 # Vendored skill tooling (skills.sh installs: e.g. nutlope/hallmark). The
 # canonical copy lives in .agents/skills; .claude/skills symlinks to it and
@@ -83,7 +79,6 @@ mockups/
 !/.agents/conventions/
 !/.agents/templates/
 /agent/
-.claude/skills/
 # Hallmark run output: before/after screenshots and wiring records. Evidence
 # is uploaded to the PR, not committed (spec: .hallmark/ stays out of the diff).
 .hallmark/
@@ -101,3 +96,12 @@ graphify-out/
 
 # Retrieval eval run outputs (run locally against a scratch DB)
 evals/retrieval/results/
+
+# Per-developer agent tool config (Claude Code, Codex, Cursor): local only.
+.claude/
+.codex/
+.cursor/
+.gstack/
+.serena/
+# Docs are kept locally, not in the repo.
+docs/

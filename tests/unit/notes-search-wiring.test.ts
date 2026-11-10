@@ -84,7 +84,7 @@ describe("notes page search-filter wiring", () => {
     const { pageNotes } = await import("@/domains/knowledge/notes");
     vi.mocked(pageNotes).mockClear();
     const rendered = NotesSurface({ searchParams: params({ layout: "kanban" }) });
-    await expect(rendered).rejects.toMatchObject({ digest: expect.stringContaining("/polymath/notes/evergreen") });
+    await expect(rendered).rejects.toMatchObject({ digest: expect.stringContaining("/polymath/notes?board=1") });
     expect(pageNotes).not.toHaveBeenCalled();
   });
 

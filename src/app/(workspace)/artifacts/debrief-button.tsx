@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { ClipboardList } from "lucide-react";
 import { debriefArtifactAction } from "./actions";
@@ -12,7 +11,6 @@ import { debriefArtifactAction } from "./actions";
  * retry - the batch dedupe keys keep the queue from doubling.
  */
 export function DebriefButton({ artifactId }: { artifactId: string }) {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
@@ -41,7 +39,6 @@ export function DebriefButton({ artifactId }: { artifactId: string }) {
               setMessage(result.deduplicated > 0 ? "Already in Reviews" : "Nothing to propose");
             } else {
               setMessage(`${result.created} proposal${result.created === 1 ? "" : "s"} in Reviews`);
-              router.refresh();
             }
           });
         }}

@@ -22,8 +22,8 @@ export const clerkAppearance = {
     colorBorder: "var(--border)",
     colorRing: "var(--ring)",
     borderRadius: "var(--radius)",
-    fontFamily: "var(--font-red-hat-text), ui-sans-serif, system-ui, sans-serif",
-    fontFamilyButtons: "var(--font-red-hat-text), ui-sans-serif, system-ui, sans-serif",
+    fontFamily: "var(--font-system)",
+    fontFamilyButtons: "var(--font-system)",
   },
   elements: {
     rootBox: "mx-auto w-full max-w-[400px]",

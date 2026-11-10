@@ -2,11 +2,9 @@
  * The provider capability catalog: one authoritative answer to "what can this
  * capability do, and under what limit".
  *
- * Capability names exist in three vocabularies that must never drift:
+ * Capability names exist in two vocabularies that must never drift:
  *  - the frozen policy snapshot and `DEFAULT_ALLOWED_TOOLS`, which spell the
  *    capability (`gmail.read`);
- *  - the risk table the evals read, `eve/polymath/evals/axiom-policy.ts`, which
- *    assigns it a class;
  *  - the MCP tool name a model calls (`gmail_search`).
  * This module is the single map between them. Everything downstream - the
  * gateway, the tools, the proposal path - reads it instead of restating a name.

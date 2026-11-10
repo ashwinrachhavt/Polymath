@@ -59,6 +59,14 @@ const HAS_WORD = /[\p{L}\p{N}]/u;
  * there is nothing worth showing. `before` and `after` are the note text on
  * either side of the cursor.
  */
+/** Length of the longest start of `lead` (6+ chars) that the text before the cursor already ends with. */
+function repeatedPrefix(lead: string, before: string): number {
+  for (let size = Math.min(lead.length, before.length, 240); size >= 6; size--) {
+    if (before.endsWith(lead.slice(0, size))) return size;
+  }
+  return 0;
+}
+
 export function cleanCompletion(raw: string, before: string, after: string): string {
   let text = raw.replace(/\r/g, "");
   // A fenced or quoted reply is the continuation wrapped, not part of it.
@@ -82,18 +90,14 @@ export function cleanCompletion(raw: string, before: string, after: string): str
     // ("interes" + "ting") or starts the next one (" should be").
     text = lead.slice(tail.length);
   } else if (afterOpener) {
-    // After a space, a line break or an opening mark the reply begins a word.
-    text = lead;
+    // After a space, a line break or an opening mark the reply begins a word,
+    // unless it starts by restating the sentence the cursor ends.
+    const overlap = repeatedPrefix(lead, before.trimEnd());
+    text = overlap ? lead.slice(overlap).trimStart() : lead;
   } else {
     // No echo. Drop a longer repeat of the text before the cursor if there is
     // one; otherwise the reply is the next word and needs its space.
-    let overlap = 0;
-    for (let size = Math.min(lead.length, before.length, 120); size >= 6; size--) {
-      if (before.endsWith(lead.slice(0, size))) {
-        overlap = size;
-        break;
-      }
-    }
+    const overlap = repeatedPrefix(lead, before);
     if (overlap) text = lead.slice(overlap);
     else text = /^[\p{L}\p{N}]/u.test(lead) ? ` ${lead}` : lead;
   }
@@ -117,11 +121,11 @@ export async function completeWriting(
   auth: Pick<AuthContext, "workspaceId">,
   input: { title?: string; before: string; after?: string },
   deps: { provider?: GenerationProvider; quotaStore?: QuotaStore; signal?: AbortSignal } = {},
-): Promise<{ completion: string }> {
+): Promise<{ completion: string; answered: boolean }> {
   const before = input.before.slice(-COMPLETION_BEFORE_CHARS);
   const after = (input.after ?? "").slice(0, COMPLETION_AFTER_CHARS);
   // Too little to continue from: no call, no spend.
-  if (before.trim().length < 3) return { completion: "" };
+  if (before.trim().length < 3) return { completion: "", answered: true };
 
   const provider = deps.provider ?? generationProvider(process.env);
   const prompt = completionPrompt({ title: input.title, before, after });
@@ -132,6 +136,8 @@ export async function completeWriting(
       prompt,
       temperature: 0.2,
       maxTokens: MAX_TOKENS,
+      // A reasoning model thinks through the whole 48-token cap and replies empty.
+      reasoning: "none",
       signal: deps.signal ? AbortSignal.any([deadline, deps.signal]) : deadline,
     });
 
@@ -147,5 +153,8 @@ export async function completeWriting(
             : 1,
         )
       : await call();
-  return { completion: cleanCompletion(reply.text, before, after) };
+  // `answered` is false when the model sent no text at all: not "nothing worth
+  // showing" but a provider that is not producing replies (a reasoning model
+  // spending its whole cap, an empty body), which the editor reports.
+  return { completion: cleanCompletion(reply.text, before, after), answered: reply.text.trim() !== "" };
 }

@@ -31,6 +31,8 @@ export type CompleteQuizAttemptResult = {
   totalCount: number;
   /** Whether this call's transaction wrote the ledger row. */
   stoneEarned: boolean;
+  /** Whether a perfect sitting earned the gated emerald in this call. */
+  emeraldEarned: boolean;
   /** True when the idempotency key matched an attempt that already happened. */
   replayed: boolean;
 };
@@ -137,6 +139,7 @@ export async function completeQuizAttempt(
         correctCount: existing.correctCount,
         totalCount: existing.totalCount,
         stoneEarned: false,
+        emeraldEarned: false,
         replayed: true,
       };
     }
@@ -178,6 +181,9 @@ export async function completeQuizAttempt(
       correctCount: graded.correctCount,
       totalCount: graded.totalCount,
       stoneEarned,
+      // Returned so the sitting can celebrate it; it was computed and audited
+      // but never reached the learner.
+      emeraldEarned,
       replayed: false,
     };
   });

@@ -140,18 +140,6 @@ export const TOOL_OPERATION_REGISTRY: Record<string, ToolOperationSpec> = {
   "linear.read": { capability: "integration.use", effectClass: "read" },
   "linear.issue.read": { capability: "integration.use", effectClass: "read" },
   /*
-   * ASH-285: drafting persists a proposal note, so this is an internal write
-   * under action.prepare - not a read. The "creates nothing" phrasing on
-   * meetings.debrief describes its external world only; both tools write
-   * rows, and this entry says so. The external Linear write stays a separate
-   * approved action, so nothing here requires approval.
-   */
-  "linear.issue.propose": {
-    capability: "action.prepare",
-    effectClass: "internal_write",
-    note: "Persists a Linear-issue proposal note in the workspace; never calls Linear.",
-  },
-  /*
    * ASH-287: proposing a contact from an email sender persists a review card,
    * so this is an internal write under action.prepare - not a read. Approving
    * the card is the only path that creates the contact, and it is local-only:

@@ -139,7 +139,7 @@ export function AddSources({ projectId, vault }: { projectId: string; vault: Vau
         ref={fileInput}
         type="file"
         aria-label="Upload a file"
-        accept=".pdf,.png,.jpeg,.jpg"
+        accept=".pdf,.md,.markdown,.txt,.docx,.png,.jpeg,.jpg,.webp"
         className="sr-only"
         onChange={(event) => {
           const file = event.target.files?.[0];

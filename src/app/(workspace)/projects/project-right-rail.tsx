@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { ChevronDown, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -76,7 +75,6 @@ export function ProjectRightRail({
   memories: Array<{ id: string; content: string }>;
   connectors: Array<{ id: string; displayName: string; alias: string | null; enabled: boolean }>;
 }) {
-  const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   // While an in-place conversation runs on the page, the rail folds away:
@@ -95,7 +93,6 @@ export function ProjectRightRail({
         setError(result.error ?? "That failed.");
         return;
       }
-      router.refresh();
     });
   }
 
@@ -120,7 +117,8 @@ export function ProjectRightRail({
               Add files or other resources to reference in this project.
             </p>
             <Button size="sm" variant="outline" className="mt-3" asChild>
-              <Link href="/polymath/sources">Browse sources</Link>
+              {/* /polymath/sources is retired; sources are added in the project's Notebook. */}
+              <Link href={`/projects/${projectId}/notebook`}>Add sources</Link>
             </Button>
           </div>
         ) : (

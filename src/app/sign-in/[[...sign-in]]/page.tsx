@@ -9,17 +9,18 @@ export const metadata = { title: "Sign in · Polymath" };
 /*
  * Identity is opt-in on configuration, so this route only exists when Clerk
  * does — otherwise it 404s rather than rendering a component that would throw.
+ *
+ * fallbackRedirectUrl, not forceRedirectUrl: a signed-out visitor arrives via
+ * /landing?returnTo=… → /sign-in?redirect_url=…, and a forced URL discarded
+ * that destination, so an expired session always dropped the owner on the
+ * home screen instead of the page they were on.
  */
 export default function SignInPage() {
   if (!clerkConfigured) notFound();
   return (
     <main className="flex flex-1 items-center justify-center p-6">
       <ClerkAuthProvider>
-        <SignIn
-        appearance={clerkAppearance}
-        forceRedirectUrl={afterAuthUrl}
-        signUpUrl="/sign-up"
-      />
+        <SignIn appearance={clerkAppearance} fallbackRedirectUrl={afterAuthUrl} signUpUrl="/sign-up" />
       </ClerkAuthProvider>
     </main>
   );

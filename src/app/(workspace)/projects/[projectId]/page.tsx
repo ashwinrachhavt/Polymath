@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import { connection } from "next/server";
 import Link from "next/link";
 import { and, desc, eq, isNull } from "drizzle-orm";
-import { Folder, Lock, Settings } from "lucide-react";
+import { Folder, Library, Lock, Settings } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getAuthContext } from "@/lib/auth";
 import { timeAgoShort } from "@/lib/time";
@@ -81,13 +81,23 @@ export async function ProjectSurface({ projectId }: { projectId: string }) {
           <span className="px-1.5">›</span>
           <span className="text-foreground">{project.title}</span>
         </p>
-        <Link
-          href={`/projects/${projectId}/settings`}
-          aria-label="Project settings"
-          className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-body-dense hover:bg-muted"
-        >
-          <Settings aria-hidden className="size-4" /> Settings
-        </Link>
+        <div className="flex items-center gap-2">
+          {/* The Notebook is where sources are added and studied; it had no way in from here. */}
+          <Link
+            href={`/projects/${projectId}/notebook`}
+            className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-body-dense text-primary-foreground hover:opacity-90"
+          >
+            <Library aria-hidden className="size-4" /> Open Notebook
+            <span className="max-sm:hidden"> · sources, quizzes, flashcards</span>
+          </Link>
+          <Link
+            href={`/projects/${projectId}/settings`}
+            aria-label="Project settings"
+            className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-body-dense hover:bg-muted"
+          >
+            <Settings aria-hidden className="size-4" /> Settings
+          </Link>
+        </div>
       </div>
       <div className="grid gap-8 px-6 py-8 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="min-w-0">

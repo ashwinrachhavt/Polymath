@@ -21,7 +21,11 @@ test("global capture feeds the inbox, and search opens the exact task it became"
   // The capture is the inbox's newest row; the owner converts it there.
   await page.goto("/command-center/inbox");
   await waitSettled(page);
-  await page.getByRole("list").getByRole("link", { name: new RegExp(shared) }).first().click();
+  await page
+    .getByRole("list")
+    .getByRole("link", { name: new RegExp(shared) })
+    .first()
+    .click();
   await page.getByRole("article").getByRole("button", { name: "Make task", exact: true }).click();
 
   await page.keyboard.press("Control+k");
@@ -39,20 +43,30 @@ test("global capture feeds the inbox, and search opens the exact task it became"
   // new row (?id=), and actions live in the detail pane.
   await page.goto("/command-center/inbox");
   await waitSettled(page);
-  await page.getByRole("textbox", { name: "Capture a thought, excerpt, or URL" }).fill(`Inbox original ${tag}\nKeep this original context`);
+  await page
+    .getByRole("textbox", { name: "Capture a thought, excerpt, or URL" })
+    .fill(`Inbox original ${tag}\nKeep this original context`);
   await page.getByRole("button", { name: "Capture to inbox", exact: true }).click();
   await expect(page).toHaveURL(/\/command-center\/inbox\?id=[0-9a-f-]{36}$/);
   const detail = page.getByRole("article");
   await expect(detail).toContainText(`Inbox original ${tag}`);
   await expect(detail).toContainText("Keep this original context");
   await detail.getByRole("button", { name: "Make task", exact: true }).click();
-  await page.getByRole("navigation", { name: "Inbox filters" }).getByRole("link", { name: "Converted", exact: true }).click();
+  await page
+    .getByRole("navigation", { name: "Inbox filters" })
+    .getByRole("link", { name: "Converted", exact: true })
+    .click();
   await expect(page.getByRole("article").getByRole("link", { name: "Open task in Work" })).toBeVisible();
 });
 
-test("the header capture dialog validates pasted URLs and a captured item survives reload in the durable inbox", async ({ page }) => {
+test("the header capture dialog validates pasted URLs and a captured item survives reload in the durable inbox", async ({
+  page,
+}) => {
   // File capture returns with the blob pipeline (captures.blob_id ->
   // blob_objects); the durable inbox handles text and URLs first.
+  // Tagged per run: a fixed string accumulates rows in a reused local
+  // database and trips strict mode on the second run.
+  const preserved = `Preserve these bytes ${Date.now().toString(36)}`;
   await page.goto("/command-center/inbox");
   await waitSettled(page);
   await page.getByRole("button", { name: "Capture", exact: true }).click();
@@ -64,15 +78,15 @@ test("the header capture dialog validates pasted URLs and a captured item surviv
 
   // Header capture writes the durable inbox directly: the item survives reload.
   await page.getByRole("button", { name: "Capture", exact: true }).click();
-  await page.getByRole("dialog").getByRole("textbox", { name: "Anything worth keeping" }).fill("Preserve these bytes");
+  await page.getByRole("dialog").getByRole("textbox", { name: "Anything worth keeping" }).fill(preserved);
   await page.getByRole("dialog").getByRole("button", { name: "Save capture", exact: true }).click();
   await expect(page.getByRole("dialog")).toBeHidden();
   await page.goto("/command-center/inbox");
   await waitSettled(page);
-  await expect(page.getByRole("list").getByText("Preserve these bytes")).toBeVisible();
+  await expect(page.getByRole("list").getByText(preserved)).toBeVisible();
   await page.reload();
   await waitSettled(page);
-  await expect(page.getByRole("list").getByText("Preserve these bytes")).toBeVisible();
+  await expect(page.getByRole("list").getByText(preserved)).toBeVisible();
 });
 test("bulk archive moves two captures in one pass with per-row errors visible on conflict", async ({ page }) => {
   const tag = Date.now().toString(36);
@@ -94,7 +108,10 @@ test("bulk archive moves two captures in one pass with per-row errors visible on
   await expect(toolbar).toContainText("2 selected");
   await toolbar.getByRole("button", { name: "Archive", exact: true }).click();
   await expect(toolbar).toBeHidden();
-  await page.getByRole("navigation", { name: "Inbox filters" }).getByRole("link", { name: "Archived", exact: true }).click();
+  await page
+    .getByRole("navigation", { name: "Inbox filters" })
+    .getByRole("link", { name: "Archived", exact: true })
+    .click();
   await expect(page.getByRole("list").getByText(first)).toBeVisible();
   await expect(page.getByRole("list").getByText(second)).toBeVisible();
 });
@@ -130,7 +147,9 @@ test("clicking a second capture swaps the detail body with the title, not one tu
   await expect(page.getByRole("article")).not.toContainText(first);
 });
 
-test("a capture outside the current filter still renders in the detail pane and the filtered-empty state is distinct", async ({ page }) => {
+test("a capture outside the current filter still renders in the detail pane and the filtered-empty state is distinct", async ({
+  page,
+}) => {
   const tag = Date.now().toString(36);
   const body = `Filter edge ${tag}`;
   await page.goto("/command-center/inbox");
@@ -173,10 +192,21 @@ test("preview routes retain app context and all tools are reachable on a phone",
   await page.goto("/command-center/inbox");
   await waitSettled(page);
   // Inbox is the destination now that Today left the rail with Briefing.
-  await expect(page.getByRole("navigation", { name: "Destinations", exact: true }).getByRole("link", { name: "Inbox", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(
+    page
+      .getByRole("navigation", { name: "Destinations", exact: true })
+      .getByRole("link", { name: "Inbox", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
   await page.goto("/neuralflow/work");
-  await expect(page.getByRole("navigation", { name: "Destinations", exact: true }).getByRole("link", { name: "Work", exact: true })).toHaveAttribute("aria-current", "page");
-  await page.getByRole("navigation", { name: "Destinations", exact: true }).getByRole("link", { name: "More", exact: true }).click();
+  await expect(
+    page
+      .getByRole("navigation", { name: "Destinations", exact: true })
+      .getByRole("link", { name: "Work", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
+  await page
+    .getByRole("navigation", { name: "Destinations", exact: true })
+    .getByRole("link", { name: "More", exact: true })
+    .click();
   await expect(page).toHaveURL(/\/more$/);
   const content = page.locator("#content");
   await expect(content.getByRole("link", { name: /Stone collection/ })).toBeVisible();
@@ -193,7 +223,9 @@ test("keyboard search handles an empty result set and remains accessible", async
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("Enter");
   await expect(dialog.getByRole("status")).toContainText("No results");
-  const { violations } = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"]).analyze();
+  const { violations } = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
+    .analyze();
   expect(violations).toEqual([]);
   await page.keyboard.press("Escape");
   await expect(page.getByRole("button", { name: "Search workspace", exact: true })).toBeFocused();

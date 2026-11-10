@@ -33,10 +33,9 @@ const AGENT_SEARCH_MAX_TEXT = 1200;
  * LIMITATION (issue #533 finding 3): it is not calibrated answerability - a
  * single leg's rank-1 hit scores just below it while rank 0 scores exactly at
  * it, so in hybrid mode it partly measures leg count. It stays the production
- * rule because the measured replacement (rank-provenance admission, see
- * isEvidence) regressed precision and never abstained on the draft
- * evaluation set (evals/retrieval): an unvalidated policy must not replace a
- * known one. Replace only with eval-set-validated thresholds.
+ * rule because the measured replacement (rank-provenance admission)
+ * regressed precision and never abstained on a draft evaluation set: an
+ * unvalidated policy must not replace a known one.
  */
 export const AGENT_SEARCH_MIN_SCORE = 0.5;
 
@@ -102,25 +101,6 @@ export type ScoredHit = ChunkHit & {
 export const AGENT_SEARCH_PER_DOCUMENT_LIMIT = 3;
 
 /**
- * EXPERIMENTAL, HARNESS-ONLY (evals/retrieval) - NOT the production admission
- * rule. Draft-set measurement (92 synthetic questions, 2026-11-05): recall
- * 0.467 vs the production floor's 0.322, but precision 0.176 vs 0.315 and
- * ZERO abstention on unanswerable questions - an unacceptable trade to ship.
- * Dual-leg agreement alone does not prove relevance. Kept exported so the
- * eval harness can measure revisions against the owner-reviewed question
- * set; do not wire into searchDocumentsForAgent without validated
- * improvement on the reviewed set.
- */
-export const AGENT_SEARCH_SINGLE_LEG_MAX_RANK = 2;
-
-/** EXPERIMENTAL candidate admission rule for the eval harness - see above. */
-export function isEvidence(hit: ScoredHit): boolean {
-  if (hit.legs.length > 1) return true;
-  const rank = hit.bestRank.fts ?? hit.bestRank.vector ?? Number.POSITIVE_INFINITY;
-  return rank <= AGENT_SEARCH_SINGLE_LEG_MAX_RANK;
-}
-
-/**
  * Reciprocal rank fusion over the two chunk rankings, normalized by how many
  * legs ran (`legsRun`, default: two only when both brought hits) so the two
  * modes share one 0–1 scale: a passage both sides found at rank 0 scores 1.0.
@@ -165,7 +145,9 @@ export function rrfMerge(
           // either disagreement.
           const cautious = [entry.hit.coverage, hit.coverage].includes("partial")
             ? "partial"
-            : ([entry.hit.coverage, hit.coverage].includes("unknown") ? "unknown" : "complete");
+            : [entry.hit.coverage, hit.coverage].includes("unknown")
+              ? "unknown"
+              : "complete";
           entry.hit = { ...entry.hit, coverage: cautious };
         }
       } else {
