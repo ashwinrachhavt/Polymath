@@ -3,153 +3,82 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /*
- * Pins the notes-search filter wiring end to end at the component level: the
- * page parses kind/edited/source URL params into the shared search scope and
- * renders the filter chips only while a query is active, and the results
- * surface passes that scope to BOTH search calls and renders the coverage
- * note from countMeaningUncovered. Written when the wiring landed - an
- * earlier revision of this surface had the domain filters with no consumer
- * while the checklist described chips as rendered.
+ * The notes page is one always-editable note. Bare /polymath/notes opens the
+ * most recent note with content, and the retired view params (board, mode,
+ * stack, layout, q) are accepted and ignored.
  */
 
 vi.mock("next/server", () => ({ connection: async () => undefined }));
-vi.mock("next/link", () => ({
-  default: (props: { href: string; children: ReactNode }) => h("a", { href: props.href }, props.children),
-}));
 const auth = { userId: "u1", workspaceId: "w1", role: "owner" as const };
 vi.mock("@/lib/auth", () => ({ getAuthContext: vi.fn(async () => auth) }));
-const { searchKnowledge, countMeaningUncovered } = vi.hoisted(() => ({
-  searchKnowledge: vi.fn(async () => ({ hits: [], meaning: "ok" as const, ms: 1 })),
-  countMeaningUncovered: vi.fn(async () => 0),
-}));
-vi.mock("@/domains/knowledge/retrieval", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/domains/knowledge/retrieval")>();
-  return { ...actual, searchKnowledge, countMeaningUncovered };
-});
+const now = new Date();
+const noteRow = {
+  id: "b",
+  title: "Quarterly plan",
+  kind: "note",
+  tags: [],
+  version: 1,
+  content: null,
+  draft: null,
+  createdAt: now,
+  updatedAt: now,
+};
 vi.mock("@/domains/knowledge/notes", () => ({
-  pageNotes: vi.fn(async () => ({ items: [], total: 0 })),
-  listNoteTags: vi.fn(async () => []),
-  getNote: vi.fn(async () => null as null | { id: string }),
+  listNotes: vi.fn(async () => [] as { id: string; excerpt: string | null }[]),
+  getNote: vi.fn(async () => null as unknown),
   listNoteVersions: vi.fn(async () => []),
   listNoteOutlinks: vi.fn(async () => []),
   listNoteBacklinks: vi.fn(async () => []),
 }));
+vi.mock("@/domains/knowledge/note-comments", () => ({ listNoteComments: vi.fn(async () => []) }));
 vi.mock("@/domains/knowledge/relations", () => ({ relatedNotes: vi.fn(async () => []) }));
-const toolbarProps = vi.hoisted(() => ({ fn: vi.fn((props: unknown) => (void props, null)) }));
-vi.mock("@/components/list/list-toolbar", () => ({
-  ListToolbar: (props: unknown) => {
-    toolbarProps.fn(props);
-    return null;
-  },
+vi.mock("@/app/(workspace)/polymath/notes/note-editor", () => ({
+  NewNoteButton: () => h("button", null, "New note"),
+  NoteEditor: (props: { noteId: string }) => h("div", { "data-testid": "editor", "data-note": props.noteId }),
 }));
-vi.mock("@/components/list/clamp", () => ({ redirectPastEnd: vi.fn() }));
-vi.mock("@/app/(workspace)/polymath/notes/note-editor", () => ({ NewNoteButton: () => null, NoteEditor: () => null }));
 vi.mock("@/app/(workspace)/polymath/notes/notebook-workspace", () => ({
-  NotebookListToggle: () => null,
-  NotebookWorkspace: (props: { list: unknown; children: unknown }) =>
-    h(
-      "div",
-      null,
-      h("div", { "data-testid": "list-column" }, props.list as ReactNode),
-      h("div", { "data-testid": "working-column" }, props.children as ReactNode),
-    ),
-}));
-
-const resultsProps = vi.hoisted(() => ({ fn: vi.fn((props: unknown) => (void props, null)) }));
-vi.mock("@/app/(workspace)/polymath/notes/search-results", () => ({
-  SearchResults: (props: unknown) => {
-    resultsProps.fn(props);
-    return h("div", { "data-testid": "search-results" });
-  },
+  NotebookWorkspace: (props: { children: ReactNode }) => h("div", null, props.children),
 }));
 
 import { NotesSurface } from "@/app/(workspace)/polymath/notes/page";
-import { getNote } from "@/domains/knowledge/notes";
+import { getNote, listNotes } from "@/domains/knowledge/notes";
 
 const params = (raw: Record<string, string>) => Promise.resolve(raw);
 
 beforeEach(() => {
-  searchKnowledge.mockClear();
-  countMeaningUncovered.mockClear();
-  toolbarProps.fn.mockClear();
-  resultsProps.fn.mockClear();
-  vi.mocked(getNote).mockResolvedValue(null);
+  vi.mocked(listNotes).mockReset().mockResolvedValue([]);
+  vi.mocked(getNote).mockReset().mockResolvedValue(null);
 });
 
-describe("notes page search-filter wiring", () => {
-  // Value: protects=old ?layout=kanban links land on the evergreen board; fails_when=the redirect is
-  // removed and kanban falls through to the plain list; why_new=only the filter keys were pinned;
-  // seam=none; no_claim=browser navigation
-  it("sends the retired kanban layout to the evergreen board", async () => {
-    const { pageNotes } = await import("@/domains/knowledge/notes");
-    vi.mocked(pageNotes).mockClear();
-    const rendered = NotesSurface({ searchParams: params({ layout: "kanban" }) });
-    await expect(rendered).rejects.toMatchObject({ digest: expect.stringContaining("/polymath/notes?board=1") });
-    expect(pageNotes).not.toHaveBeenCalled();
+describe("notes page", () => {
+  it("bare /polymath/notes redirects to the latest note with content", async () => {
+    vi.mocked(listNotes).mockResolvedValue([
+      { id: "a", excerpt: "" },
+      { id: "b", excerpt: "text" },
+    ] as never);
+    await expect(NotesSurface({ searchParams: params({}) })).rejects.toMatchObject({
+      digest: expect.stringContaining("/polymath/notes?id=b"),
+    });
+    expect(listNotes).toHaveBeenCalledWith(auth, 25);
   });
 
-  it("renders Kind/Edited/Provenance chips only while a query is active", async () => {
-    renderToStaticMarkup(await NotesSurface({ searchParams: params({}) }));
-    const idle = toolbarProps.fn.mock.calls[0]?.[0] as { filters: { key: string }[] };
-    expect(idle.filters.map((f) => f.key)).toEqual(["view"]);
-
-    renderToStaticMarkup(await NotesSurface({ searchParams: params({ q: "quarterly" }) }));
-    const searching = toolbarProps.fn.mock.calls[1]?.[0] as { filters: { key: string }[] };
-    expect(searching.filters.map((f) => f.key)).toEqual(["view", "kind", "edited", "source"]);
+  it("retired view params are ignored", async () => {
+    vi.mocked(getNote).mockResolvedValue(noteRow as never);
+    const retiredParams: Record<string, string>[] = [
+      { board: "1", mode: "list" },
+      { stack: "x" },
+      { layout: "kanban" },
+      { q: "plan" },
+    ];
+    for (const retired of retiredParams) {
+      const html = renderToStaticMarkup(await NotesSurface({ searchParams: params({ id: "b", ...retired }) }));
+      expect(html).toContain('data-note="b"');
+    }
   });
 
-  it("parses kind/edited/source URL params into the scope handed to the results surface", async () => {
-    renderToStaticMarkup(
-      await NotesSurface({ searchParams: params({ q: "quarterly", kind: "zettel", edited: "week", source: "agent" }) }),
-    );
-    const scope = (
-      resultsProps.fn.mock.calls[0]?.[0] as { scope: { kinds: string[]; filters: { from: Date; provenance: string } } }
-    ).scope;
-    expect(scope.kinds).toEqual(["zettel"]);
-    expect(scope.filters.provenance).toBe("agent");
-    const ageMs = Date.now() - scope.filters.from.getTime();
-    expect(ageMs).toBeGreaterThan(6 * 86_400_000);
-    expect(ageMs).toBeLessThan(8 * 86_400_000);
-
-    // An invalid filter value falls back to unfiltered, never crashes the page.
-    renderToStaticMarkup(await NotesSurface({ searchParams: params({ q: "quarterly", kind: "bogus" }) }));
-    const scope2 = (resultsProps.fn.mock.calls[1]?.[0] as { scope: { kinds?: string[]; filters?: unknown } }).scope;
-    expect(scope2.kinds).toBeUndefined();
+  it("with no notes at all, offers a new note instead of redirecting", async () => {
+    const html = renderToStaticMarkup(await NotesSurface({ searchParams: params({ board: "1" }) }));
+    expect(html).toContain("New note");
+    expect(html).not.toContain('data-testid="editor"');
   });
-
-  // Two full server-component renders in one test; under the full suite's
-  // parallel workers this routinely brushes the 5s default on a loaded machine,
-  // though it runs in ~1.5s in isolation.
-  it(
-    "places ranked results in the working column while searching, and back in the list column once a note is open",
-    { timeout: 15_000 },
-    async () => {
-      // No note selected: results take the wide reading column, not the 16rem sidebar.
-      const searching = renderToStaticMarkup(await NotesSurface({ searchParams: params({ q: "quarterly" }) }));
-      const working = searching.split('data-testid="working-column"')[1] ?? "";
-      const listCol = searching.split('data-testid="list-column"')[1]?.split('data-testid="working-column"')[0] ?? "";
-      expect(working).toContain('data-testid="search-results"');
-      expect(listCol).not.toContain('data-testid="search-results"');
-      expect(resultsProps.fn).toHaveBeenCalledTimes(1);
-
-      // A note open: results return to the sidebar so the reader can jump between hits.
-      const now = new Date();
-      vi.mocked(getNote).mockResolvedValue({
-        id: "n1",
-        title: "Quarterly plan",
-        kind: "note",
-        tags: [],
-        version: 1,
-        content: null,
-        draft: null,
-        createdAt: now,
-        updatedAt: now,
-      } as never);
-      const open = renderToStaticMarkup(await NotesSurface({ searchParams: params({ q: "quarterly", id: "n1" }) }));
-      const openList = open.split('data-testid="list-column"')[1]?.split('data-testid="working-column"')[0] ?? "";
-      const openWorking = open.split('data-testid="working-column"')[1] ?? "";
-      expect(openList).toContain('data-testid="search-results"');
-      expect(openWorking).not.toContain('data-testid="search-results"');
-    },
-  );
 });

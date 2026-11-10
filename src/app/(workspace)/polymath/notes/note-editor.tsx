@@ -32,8 +32,7 @@ import {
   setNoteTagsAction,
   startNoteAIAction,
 } from "./actions";
-import { X, History, Info, Link2, Plus, MessageSquare, Pencil } from "lucide-react";
-import { NotebookListToggle } from "./notebook-workspace";
+import { X, History, Info, Link2, Plus, MessageSquare } from "lucide-react";
 import { NotionAppendAction } from "./notion-append";
 import { NoteCommentsPanel, type PanelComment } from "./note-comments-panel";
 
@@ -590,10 +589,6 @@ export function NoteEditor({
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // The note reads as a document until the reader chooses to write to it. The
-  // body stays mounted in both states, but the editor only takes focus and
-  // shows its chrome while editing.
-  const [editing, setEditing] = useState(false);
   const noteColumnRef = useRef<HTMLDivElement>(null);
   // Scroll-away chrome: once the reader is into the document, the header rows
   // recede; scroll back or hover to return them. The scroller is the suite
@@ -763,10 +758,7 @@ export function NoteEditor({
         >
           {/* The header zone: chrome fades in on pointer hover, always on for
               keyboard focus and coarse pointers. */}
-          <div
-            className={`header-zone -mx-6 flex h-8 items-center justify-between px-6 ${scrolled ? "is-scrolled" : ""}`}
-          >
-            <NotebookListToggle />
+          <div className={`header-zone -mx-6 flex h-8 items-center justify-end px-6 ${scrolled ? "is-scrolled" : ""}`}>
             <div className="header-actions flex items-center gap-1">
               <NewNoteButton icon />
               <Dialog>
@@ -864,32 +856,12 @@ export function NoteEditor({
                 ref={titleRef}
                 aria-label="Note title"
                 value={title}
-                readOnly={!editing}
                 onChange={(e) => setTitle(e.target.value)}
-                onFocus={() => setEditing(true)}
                 onBlur={rename}
                 placeholder="Untitled note"
                 style={{ fontFamily: "var(--font-display)" }}
                 className="w-full min-w-0 bg-transparent text-display font-semibold leading-[1.2] tracking-tight outline-none placeholder:text-muted-foreground/40"
               />
-              <Button
-                type="button"
-                variant="ghost"
-                size="xs"
-                className="mt-2 shrink-0 text-muted-foreground"
-                aria-pressed={editing}
-                aria-label={editing ? "Read only" : "Edit note"}
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => {
-                  const next = !editing;
-                  setEditing(next);
-                  if (next) titleRef.current?.focus();
-                  else noteColumnRef.current?.querySelector<HTMLElement>(".ProseMirror")?.focus();
-                }}
-              >
-                <Pencil aria-hidden />
-                {editing ? "Read" : "Edit"}
-              </Button>
               {outlinks.length > 0 && (
                 <button
                   type="button"
@@ -956,17 +928,9 @@ export function NoteEditor({
               {openCommentCount > 0 ? `Comments ${openCommentCount}` : "Comments"}
             </Button>
           </div>
-          <div
-            ref={noteColumnRef}
-            data-note-title={title}
-            className="mt-8 flex flex-1 flex-col"
-            onClick={() => {
-              if (!editing) setEditing(true);
-            }}
-          >
+          <div ref={noteColumnRef} data-note-title={title} className="mt-8 flex flex-1 flex-col">
             <RichEditor
               chrome="minimal"
-              editable={editing}
               autocomplete
               mode={editorMode}
               onModeChange={setEditorMode}

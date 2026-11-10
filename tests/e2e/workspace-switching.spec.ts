@@ -131,11 +131,9 @@ test("switching workspaces changes the data context on the notes list", async ({
       const cookie = (await page.context().cookies()).find((c) => c.name === "polymath_active_workspace");
       expect(cookie?.value, "the active-workspace cookie names the target").toBe(seed.targetId);
 
-      // The data context changed: the notes list now serves Acme's notes.
-      await page.goto("/polymath/notes?mode=list");
-      const content = page.locator("#content").first();
-      await expect(content.getByText(`Target note ${tag}`)).toBeVisible({ timeout: 30_000 });
-      await expect(content.getByText(`Home note ${tag}`)).toHaveCount(0);
+      // The data context changed: Notes now opens Acme's latest note.
+      await page.goto("/polymath/notes");
+      await expect(page.getByLabel("Note title")).toHaveValue(`Target note ${tag}`, { timeout: 30_000 });
       await page.screenshot({ path: "test-results/feature-pixels/switcher-notes-acme.png", fullPage: true });
 
       // Keyboard leg: focus the trigger, Enter opens, the first Tab stop is a
@@ -170,10 +168,8 @@ test("switching workspaces changes the data context on the notes list", async ({
       await expect(dialog2).toBeHidden();
 
       // Back in the personal workspace, the home note is the context again.
-      await page.goto("/polymath/notes?mode=list");
-      const content2 = page.locator("#content").first();
-      await expect(content2.getByText(`Home note ${tag}`)).toBeVisible({ timeout: 30_000 });
-      await expect(content2.getByText(`Target note ${tag}`)).toHaveCount(0);
+      await page.goto("/polymath/notes");
+      await expect(page.getByLabel("Note title")).toHaveValue(`Home note ${tag}`, { timeout: 30_000 });
       await page.screenshot({ path: "test-results/feature-pixels/switcher-notes-personal.png", fullPage: true });
 
       expect(errors).toEqual([]);

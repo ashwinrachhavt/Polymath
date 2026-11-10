@@ -44,7 +44,7 @@ export async function buildSurfaceCard(auth: AuthContext, intent: NavigationInte
     return {
       surface: "note_search",
       title: `Notes matching "${intent.query}"`,
-      href: `/polymath/notes?q=${encodeURIComponent(intent.query)}`,
+      href: "/polymath/notes",
       items: items.map((note) => ({
         label: note.title || "Untitled note",
         href: `/polymath/notes?id=${note.id}`,

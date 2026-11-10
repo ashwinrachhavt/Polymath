@@ -1067,15 +1067,3 @@ li[data-deep-linked="true"] {
 .activity-title-toggle[open] > summary .title-collapse {
   display: inline;
 }
-
-/* Evergreen reader: links read as links (Andy Matuschak's working-notes feel),
-   blue and unadorned until hovered, so prose stays prose. */
-.evergreen-prose .wiki-link {
-  color: var(--link);
-  text-decoration: none;
-}
-.evergreen-prose .wiki-link:hover {
-  text-decoration: underline;
-  text-decoration-color: currentColor;
-  background-color: transparent;
-}
