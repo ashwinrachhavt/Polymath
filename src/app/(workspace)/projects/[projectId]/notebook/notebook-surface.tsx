@@ -406,7 +406,7 @@ export default function NotebookSurface({
             </Unavailable>
           ) : (
             <div className="flex flex-col items-start gap-3 py-8">
-              <Button onClick={beginChat} disabled={starting}>
+              <Button variant="outline" onClick={beginChat} disabled={starting}>
                 {starting ? <Loader2 aria-hidden className="animate-spin" /> : <NotebookPen aria-hidden />}
                 Start a conversation
               </Button>
