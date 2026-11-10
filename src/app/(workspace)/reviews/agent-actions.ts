@@ -119,7 +119,7 @@ export async function savePolicyAction(input: SavePolicyInput): Promise<ActionRe
         position,
       })),
     );
-    revalidatePath("/supervision");
+    revalidatePath("/reviews");
     // This process's composition still holds the policy the gate just
     // replaced; drop it so the next intake rebuilds from the saved
     // document. Other processes (the worker) refresh by version in the
@@ -144,7 +144,7 @@ export async function dismissDecisionAction(decisionId: string): Promise<ActionR
     const { engine, flush } = await peopleEngine(auth.workspaceId);
     engine.dismiss(decisionId);
     await flush();
-    revalidatePath("/supervision");
+    revalidatePath("/reviews");
     return { ok: true };
   } catch (error) {
     return {
