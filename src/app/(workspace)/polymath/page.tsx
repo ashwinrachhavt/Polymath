@@ -12,11 +12,10 @@ import { displayTitle } from "@/lib/display-text";
 import { stripMentionContext } from "@/components/chat/mention-context";
 import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { markOnboardingWelcomedAction } from "@/app/(workspace)/onboarding/actions";
-import { getUpNext } from "@/domains/learning/up-next";
 import type { PickableSkill } from "./skills/slash-skill-menu";
 import { groupHistory, type HistoryRow } from "./history";
 import { HomeSurface } from "./home-surface";
-import { UpNextCard } from "./up-next-card";
+import { UpNextSection } from "./up-next-card";
 
 export const metadata = { title: "Polymath" };
 
@@ -58,7 +57,7 @@ export async function PolymathSurface() {
   // The history read, the model policy, and the one-time welcome check are
   // independent: issue them together so the page costs one round trip per
   // query rather than one per query in sequence.
-  const [runs, skillRows, modelPolicy, unwelcomed, upNext] = await Promise.all([
+  const [runs, skillRows, modelPolicy, unwelcomed] = await Promise.all([
     // Every conversation on this surface is a run, so runs are the history.
     // Fifty is a bounded read, not the whole table, and it is deep enough that
     // the grouped list still reaches "Older" for a regular user. Onboarding
@@ -71,7 +70,6 @@ export async function PolymathSurface() {
     // been welcomed on yet. Null forever after the stamp, so this read doubles
     // as the "show it at all" decision.
     findUnwelcomedOnboardingSession(auth.workspaceId),
-    getUpNext(auth),
   ]);
   const skills: PickableSkill[] = skillRows.map((skill) => ({
     id: skill.id,
@@ -94,7 +92,9 @@ export async function PolymathSurface() {
 
   return (
     <HomeSurface
-      upNext={<UpNextCard upNext={upNext} />}
+      // Up next streams behind its own boundary: the composer and the
+      // conversations never wait on, or fail with, the learning reads.
+      upNext={<UpNextSection auth={auth} />}
       history={groupHistory(rows)}
       skills={skills}
       models={models}
@@ -118,8 +118,9 @@ export async function PolymathSurface() {
 /*
  * A Suspense boundary is required, not decorative: `cacheComponents` refuses to
  * prerender a route that awaits `io()` outside one, and the workspace group's
- * loading.tsx shell does not count. The fallback matches the shell so a
- * navigation does not flash a second skeleton.
+ * loading.tsx shell does not count. The fallback takes the idle home's
+ * geometry (HomeSurface: the same gap and top offset, the 80px Up next card,
+ * the greeting line), so the page lands where its skeleton stood.
  */
 export default function PolymathPage() {
   return (
@@ -131,9 +132,13 @@ export default function PolymathPage() {
 
 function PolymathSkeleton() {
   return (
-    <div role="status" aria-label="Loading Polymath" className="page-content flex flex-1 flex-col gap-10 pt-16">
-      <Skeleton className="mx-auto h-20 w-full max-w-3xl" />
-      <Skeleton className="mx-auto h-7 w-80 max-w-full" />
+    <div
+      role="status"
+      aria-label="Loading Polymath"
+      className="page-content flex flex-1 flex-col gap-12 pt-[12vh] pb-16"
+    >
+      <Skeleton className="mx-auto h-20 w-full max-w-3xl rounded-lg" />
+      <Skeleton className="mx-auto h-8 w-80 max-w-full" />
       <Skeleton className="mx-auto h-24 w-full max-w-3xl" />
     </div>
   );

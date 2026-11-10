@@ -5,8 +5,7 @@ import type { Metadata } from "next";
 import { getAuthContext } from "@/lib/auth";
 import { getLearnLibrary } from "@/domains/learning/queries";
 import { getFlashcardDueQueue } from "@/domains/learning/flashcards";
-import { getUpNext } from "@/domains/learning/up-next";
-import { UpNextCard } from "@/app/(workspace)/polymath/up-next-card";
+import { UpNextSection } from "@/app/(workspace)/polymath/up-next-card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export const metadata: Metadata = { title: "Learn · Polymath" };
@@ -37,13 +36,7 @@ export default function LearnPage() {
 async function LearnSurface() {
   await connection();
   const auth = await getAuthContext();
-  // Home's Up next card leads, so both pages agree on where Continue goes;
-  // the lists below are everything behind it.
-  const [upNext, library, dueCards] = await Promise.all([
-    getUpNext(auth),
-    getLearnLibrary(auth),
-    getFlashcardDueQueue(auth, 40),
-  ]);
+  const [library, dueCards] = await Promise.all([getLearnLibrary(auth), getFlashcardDueQueue(auth, 40)]);
   const quizzes = library.filter((item) => item.quizId);
 
   return (
@@ -54,8 +47,10 @@ async function LearnSurface() {
           Continue a quiz or review flashcards due across your Notebooks.
         </p>
       </header>
+      {/* Home's Up next card leads, so both pages agree on where Continue goes;
+          the lists below are everything behind it. */}
       <div className="mb-4">
-        <UpNextCard upNext={upNext} />
+        <UpNextSection auth={auth} />
       </div>
       <section aria-labelledby="due-flashcards-title" className="panel rounded-xl p-4">
         <h2 id="due-flashcards-title" className="font-medium">

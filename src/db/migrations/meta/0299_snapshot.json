@@ -1,6 +1,6 @@
 {
-  "id": "9d5ae9db-e12d-44ec-9f59-b3129a08116a",
-  "prevId": "e8ac1d9a-21c1-4c68-a00c-de0021be4f45",
+  "id": "77154e30-a54f-40e8-89a1-c1b6553e88b8",
+  "prevId": "9d5ae9db-e12d-44ec-9f59-b3129a08116a",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -4682,6 +4682,34 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "audit_events_flashcard_review_idx": {
+          "name": "audit_events_flashcard_review_idx",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "actor_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "action = 'learning.flashcard_reviewed'",
           "concurrently": false,
           "method": "btree",
           "with": {}

@@ -62,6 +62,12 @@ export const auditEvents = pgTable(
     index("audit_events_workspace_created_idx").on(t.workspaceId, t.createdAt),
     index("audit_events_subject_idx").on(t.workspaceId, t.subjectType, t.subjectId),
     index("audit_events_operation_idx").on(t.workspaceId, t.operationId),
+    // Home's learning streak (learning/up-next.ts) reads one learner's review
+    // days. Without it the read walks every audit row the workspace wrote in
+    // the lookback window; partial, so other domains' writes never touch it.
+    index("audit_events_flashcard_review_idx")
+      .on(t.workspaceId, t.actorId, t.createdAt)
+      .where(sql`action = 'learning.flashcard_reviewed'`),
   ],
 );
 
