@@ -55,6 +55,11 @@ const statusLabel: Record<WorkRow["status"], string> = {
 
 export type Scope = "today" | "open" | "done";
 
+/**
+ * The list's scope from `show`. The scope links always write `show`, so each
+ * route picks its own default for a URL without one (Work reads `view`,
+ * Today opens on today).
+ */
 function scopeOf(show: string | undefined): Scope {
   return show === "today" || show === "done" ? show : "open";
 }
@@ -70,16 +75,42 @@ function dueDay(task: DatedTask) {
   return task.dueAt.toISOString().slice(0, 10);
 }
 
-export async function NeonTasks({
-  show,
-  selectedTask,
-  raw = {},
-}: {
+type TaskListProps = {
   show?: string;
   selectedTask?: string;
   /** The page's search params, so filters and the pager keep each other's state. */
   raw?: RawSearchParams;
-}) {
+};
+
+/** The Work screen: the task list under Work's heading. */
+export function NeonTasks(props: TaskListProps) {
+  const scope = scopeOf(props.show);
+  return (
+    <Screen
+      title={scope === "today" ? "Work" : scope === "done" ? "Finished" : "Tasks"}
+      description={scope === "today" ? "Your day, at a glance." : undefined}
+      actions={
+        // The live session's controls live on Focus now; this entry points at
+        // its setup when nothing is running.
+        <Link
+          href="/neuralflow/focus"
+          className="inline-flex h-8 items-center rounded-md border border-border px-3 text-label text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          New session
+        </Link>
+      }
+    >
+      <TaskSection {...props} basePath={BASE} />
+    </Screen>
+  );
+}
+
+/**
+ * The task list without a screen heading, so Work and Today both render it.
+ * `basePath` is the route the list lives on: filters, the pager, the scope
+ * links and task selection all stay on that route.
+ */
+export async function TaskSection({ show, selectedTask, raw = {}, basePath }: TaskListProps & { basePath: string }) {
   // Per-user data: render at request time, never prerender.
   await io();
   const auth = await getAuthContext();
@@ -112,7 +143,7 @@ export async function NeonTasks({
       ? listTasksDueBetweenForPage(auth, shiftDateKey(today, -30), shiftDateKey(today, 14))
       : Promise.resolve([]),
   ]);
-  redirectPastEnd(BASE, raw, list.page, list.pageSize, found.total);
+  redirectPastEnd(basePath, raw, list.page, list.pageSize, found.total);
   const rows = found.rows;
 
   // The inspector never sits empty: with no explicit selection it shows the
@@ -147,7 +178,7 @@ export async function NeonTasks({
     .slice(0, 5);
   const inboxCount = counts.inbox;
 
-  const hrefFor = (id: string) => listHref(BASE, raw, { view: "saved", task: id });
+  const hrefFor = (id: string) => listHref(basePath, raw, { view: "saved", task: id });
   const scopeLabel = scope === "today" ? "committed" : scope === "open" ? "open" : "finished";
   // "Inbox" on Today is the triage count, not the rows: captured work is
   // triaged on Inbox, and this screen's job is to say how much is waiting.
@@ -170,7 +201,7 @@ export async function NeonTasks({
           {tasks.map((task) => (
             <li key={task.id}>
               <Link
-                href={`/neuralflow/work?view=saved&task=${task.id}`}
+                href={`${basePath}?view=saved&task=${task.id}`}
                 className="group flex min-w-0 items-center gap-2.5 py-2.5 first:pt-1"
               >
                 <CircleDashed aria-hidden className={`size-3.5 shrink-0 ${tone}`} />
@@ -191,20 +222,7 @@ export async function NeonTasks({
     ) : null;
 
   return (
-    <Screen
-      title={scope === "today" ? "Work" : scope === "done" ? "Finished" : "Tasks"}
-      description={scope === "today" ? "Your day, at a glance." : undefined}
-      actions={
-        // The live session's controls live on Focus now; this entry points at
-        // its setup when nothing is running.
-        <Link
-          href="/neuralflow/focus"
-          className="inline-flex h-8 items-center rounded-md border border-border px-3 text-label text-muted-foreground hover:bg-muted hover:text-foreground"
-        >
-          New session
-        </Link>
-      }
-    >
+    <>
       {scope === "today" ? <DayStrip auth={auth} /> : null}
 
       {/* The pipeline strip (mockup 2026-10-28): one panel, six stages, each
@@ -235,7 +253,7 @@ export async function NeonTasks({
             <nav aria-label="Saved task filter" className="ml-auto flex gap-3 text-label">
               <Link
                 className={scope === "today" ? "text-foreground" : "text-muted-foreground hover:text-foreground"}
-                href={listHref(BASE, raw, {
+                href={listHref(basePath, raw, {
                   view: "saved",
                   show: "today",
                   status: undefined,
@@ -248,9 +266,9 @@ export async function NeonTasks({
               </Link>
               <Link
                 className={scope === "open" ? "text-foreground" : "text-muted-foreground hover:text-foreground"}
-                href={listHref(BASE, raw, {
+                href={listHref(basePath, raw, {
                   view: "saved",
-                  show: undefined,
+                  show: "open",
                   status: undefined,
                   page: undefined,
                   task: undefined,
@@ -261,7 +279,7 @@ export async function NeonTasks({
               </Link>
               <Link
                 className={scope === "done" ? "text-foreground" : "text-muted-foreground hover:text-foreground"}
-                href={listHref(BASE, raw, {
+                href={listHref(basePath, raw, {
                   view: "saved",
                   show: "done",
                   status: undefined,
@@ -308,7 +326,7 @@ export async function NeonTasks({
             emptyState={
               <NoResults
                 filtered={filtered}
-                clearHref={listHref(BASE, raw, {
+                clearHref={listHref(basePath, raw, {
                   q: undefined,
                   status: undefined,
                   priority: undefined,
@@ -343,7 +361,7 @@ export async function NeonTasks({
               selected: detail?.task.id === row.id,
             }))}
           />
-          <Pagination basePath={BASE} raw={raw} page={list.page} pageSize={list.pageSize} total={found.total} />
+          <Pagination basePath={basePath} raw={raw} page={list.page} pageSize={list.pageSize} total={found.total} />
 
           {scope === "today" ? (
             <nav aria-label="Related tools" className="mt-5 flex flex-wrap gap-x-4 text-data text-muted-foreground">
@@ -454,7 +472,7 @@ export async function NeonTasks({
                 </h2>
                 <span className="readout text-data text-muted-foreground">{nextUpCount}</span>
                 <Link
-                  href={listHref(BASE, raw, { view: "saved", show: undefined, task: undefined })}
+                  href={listHref(basePath, raw, { view: "saved", show: "open", task: undefined })}
                   className="ml-auto text-data text-muted-foreground transition-colors hover:text-foreground hover:underline"
                 >
                   All open
@@ -496,6 +514,6 @@ export async function NeonTasks({
           </aside>
         ) : null}
       </div>
-    </Screen>
+    </>
   );
 }

@@ -13,6 +13,7 @@ import { pageOrganizations } from "@/domains/identity/party-queries";
 import { getAuthContext } from "@/lib/auth";
 import { listHref, offsetFor, parseListParams, parsePageNumber } from "@/lib/list-params";
 import { timeAgo } from "@/lib/time";
+import { PeopleTabs } from "../people-tabs";
 
 export const metadata = { title: "Companies · Polymath" };
 
@@ -45,6 +46,8 @@ async function Companies({ searchParams }: { searchParams: SearchParams }) {
 
   return (
     <Screen title="Companies">
+      <PeopleTabs active="companies" />
+
       <ListToolbar searchPlaceholder="Search name or domain" />
 
       <div className="panel min-w-0 overflow-hidden rounded-xl">

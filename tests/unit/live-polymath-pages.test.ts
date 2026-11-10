@@ -7,6 +7,8 @@ import { listProjects } from "@/domains/knowledge/projects";
 import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { KnowledgeSurface } from "@/app/(workspace)/polymath/knowledge/page";
 import { PolymathSurface } from "@/app/(workspace)/polymath/page";
+import { UpNextCard, UpNextContent } from "@/app/(workspace)/polymath/up-next-card";
+import { getUpNext } from "@/domains/learning/up-next";
 import { ProjectsSurface } from "@/app/(workspace)/projects/page";
 import { getVaultDocuments } from "@/domains/knowledge/vault-queries";
 import { listFolders } from "@/domains/knowledge/library";
@@ -25,6 +27,7 @@ vi.mock("next/navigation", () => ({
   usePathname: () => "/polymath",
   useSearchParams: () => new URLSearchParams(),
   redirect: vi.fn(),
+  unstable_rethrow: vi.fn(),
 }));
 vi.mock("@/domains/conversations/queries", () => ({ listConversations: vi.fn(async () => []) }));
 vi.mock("@/domains/knowledge/projects", () => ({
@@ -71,6 +74,11 @@ vi.mock("@/domains/agents/onboarding", () => ({
 // The composer's skill picker reads the workspace's enabled skills; static
 // markup has no database, so the read is stubbed like every other one here.
 vi.mock("@/domains/skills/queries", () => ({ listSkills: vi.fn(async () => []) }));
+// Up next is its own domain read (tests/integration/up-next.test.ts); a fresh
+// workspace has nothing due, no quiz and no streak.
+vi.mock("@/domains/learning/up-next", () => ({
+  getUpNext: vi.fn(async () => ({ dueCards: 0, firstDue: null, quizWaiting: null, streakDays: 0 })),
+}));
 
 const document = {
   id: "doc-fixture",
@@ -249,6 +257,53 @@ describe("live Alfred route functionality", () => {
     // so the limit is the menu's, not the glance's. Onboarding runs are
     // machinery, not conversations, and the home list never shows them.
     expect(listRecentRuns).toHaveBeenCalledWith("workspace", 50, { excludeOnboarding: true });
+    // Up next streams behind its own boundary, above the greeting, so the
+    // composer never waits on the learning reads. The card has no heading:
+    // the greeting stays the screen's one h1.
+    const slot = html.indexOf('aria-label="Loading Up next"');
+    expect(slot).toBeGreaterThan(-1);
+    expect(slot).toBeLessThan(html.indexOf("<h1"));
+    expect(html.match(/<h1/g)).toHaveLength(1);
+  });
+
+  it("Up next with nothing to learn yet leads to the Notebooks and mentions no streak", async () => {
+    const auth = { userId: "owner", workspaceId: "workspace", role: "owner" as const };
+    const html = renderToStaticMarkup(await UpNextContent({ auth }));
+    expect(getUpNext).toHaveBeenCalledWith(auth);
+    expect(html).toContain("No cards due");
+    expect(html).toContain('href="/projects"');
+    expect(html).not.toContain("streak");
+    expect(html).not.toMatch(/<h[1-6]/);
+  });
+
+  it("Up next says it did not load when a learning read fails, instead of claiming nothing is due", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.mocked(getUpNext).mockRejectedValueOnce(new Error("time zone not recognized"));
+    const html = renderToStaticMarkup(
+      await UpNextContent({ auth: { userId: "owner", workspaceId: "workspace", role: "owner" } }),
+    );
+    expect(html).toContain("Your flashcards and quizzes did not load. Reload the page to try again.");
+    expect(html).not.toContain("No cards due");
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
+  });
+
+  it("Up next continues with the due deck first, then the waiting quiz, and shows the streak", () => {
+    const quizWaiting = { quizId: "quiz-1", title: "Lease", href: "/projects/nb-2/notebook?quiz=quiz-1" };
+    const due = renderToStaticMarkup(
+      UpNextCard({
+        upNext: { dueCards: 12, firstDue: { notebookId: "nb-1", deckId: "deck-1" }, quizWaiting, streakDays: 4 },
+      }),
+    );
+    expect(due).toContain('href="/projects/nb-1/notebook/flashcards?deck=deck-1"');
+    expect(due).toContain("12 cards due · 4-day streak");
+
+    const quiz = renderToStaticMarkup(
+      UpNextCard({ upNext: { dueCards: 0, firstDue: null, quizWaiting, streakDays: 1 } }),
+    );
+    expect(quiz).toContain('href="/projects/nb-2/notebook?quiz=quiz-1"');
+    expect(quiz).toContain("Take the quiz on Lease.");
+    expect(quiz).toContain("No cards due · 1-day streak");
   });
 
   it("lists recent runs as plain rows: objective and time, no status vocabulary", async () => {

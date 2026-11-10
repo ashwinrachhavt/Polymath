@@ -15,11 +15,12 @@ import {
  * reference an app name that no longer exists in the interface.
  */
 describe("navigation", () => {
-  it("highlights Work for the Reports and stone collection screens it links to", () => {
-    expect(destinationForPath("/neuralflow/reports")?.href).toBe("/neuralflow/work");
-    expect(destinationForPath("/neuralflow/rewards")?.href).toBe("/neuralflow/work");
+  it("highlights Today for the Reports and stone collection screens it links to", () => {
+    expect(destinationForPath("/neuralflow/reports")?.href).toBe("/today");
+    expect(destinationForPath("/neuralflow/rewards")?.href).toBe("/today");
     // The retired /apps preview tools redirect away and name no destination.
     expect(destinationForPath("/apps/neuralflow/tasks")).toBeUndefined();
+    expect(destinationForPath("/apps/polymath/not-a-screen")).toBeUndefined();
   });
 
   it("does not label live routes as disconnected browser previews", () => {
@@ -162,35 +163,62 @@ describe("navigation", () => {
     expect(isFocusSurface("/command-center/conversations")).toBe(false);
   });
 
-  it("rails exactly the twenty destinations in order", () => {
+  it("rail lists Today and People once each", () => {
+    const labels = destinations.map((destination) => destination.label);
+    expect(labels.filter((label) => label === "Today")).toHaveLength(1);
+    expect(labels.filter((label) => label === "People")).toHaveLength(1);
+    for (const gone of ["Overview", "Focus", "Work", "Day", "Shut down", "Companies"]) {
+      expect(labels, gone).not.toContain(gone);
+    }
+  });
+
+  /*
+   * The planning screens and Companies left the rail but kept their URLs. Each
+   * old address still names the entry that absorbed it, so the rail and the
+   * breadcrumb stay lit on a deep link, including a dated Day record.
+   */
+  it("lights Today and People on the routes they absorbed", () => {
+    for (const path of [
+      "/today",
+      "/neuralflow/work",
+      "/neuralflow/overview",
+      "/neuralflow/focus",
+      "/command-center/day",
+      "/command-center/day/2026-11-10",
+      "/command-center/shutdown",
+    ]) {
+      expect(destinationForPath(path)?.label, path).toBe("Today");
+    }
+    expect(destinationForPath("/command-center/relationships/companies")?.label).toBe("People");
+    expect(destinationForPath("/command-center/relationships/contacts")?.label).toBe("People");
+  });
+
+  it("rails exactly the sixteen destinations in order", () => {
     // Conversations left the rail when its threads moved into the Assistant;
     // the route still resolves (old links keep working) but it is no longer a
-    // destination. Today left when Briefing was removed: its outcomes and day
-    // context moved to Work's Today view. Decisions left when its queue moved
-    // into the header's notifications panel. Day, Shut down and Spending came
-    // back as their own routes when Briefing went, so each keeps a way in.
-    // Ideas arrived as its own top-level surface, taking the zettel, card and
-    // area routes that used to hide under the vault prefix. Learning now lives
-    // in Notebook. Supervision merged into Reviews. Focus returned when it stopped being a redirect into Work and
-    // became its own screen (spec §3); it sits beside Work, whose sessions it
-    // runs.
+    // destination. Decisions left when its queue moved into the header's
+    // notifications panel. Ideas arrived as its own top-level surface, taking
+    // the zettel, card and area routes that used to hide under the vault
+    // prefix. Learning is made in Notebook; Learn, beside it, lists what is due
+    // across every Notebook. Today holds the plan, the tasks and the focus
+    // timer, with Shut down as its last step; it replaced Work, Overview,
+    // Focus, Day and Shut down. People absorbed Companies as a filter. Today
+    // and People sit together after the reading surfaces (spec §2: the order
+    // follows the loop), then the shared items.
+    // Supervision merged into Reviews.
     expect(destinations.map((destination) => destination.label)).toEqual([
       "Polymath",
       "Inbox",
-      "Work",
-      "Overview",
-      "Focus",
       "Notes",
       "Ideas",
       "Document Vault",
       "Notebook",
+      "Learn",
       "Artifacts",
       "Skills",
+      "Today",
       "People",
-      "Companies",
       "Connectors",
-      "Day",
-      "Shut down",
       "Reviews",
       "Activity",
       "Spending",

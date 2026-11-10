@@ -5,13 +5,13 @@ import { destinationForPath, destinations, moreDestination } from "@/lib/navigat
 import { cn } from "cn";
 
 /*
- * The phone bottom bar: Polymath, Today, Work, Notebook, and More — the
+ * The phone bottom bar: Polymath, Inbox, Notebook, Today, and More — the
  * destinations a thumb reaches for most — with the full list behind More.
  * Wired by href, not label, so each tile pins one destination's URL.
  * Target size is 44px, above the 24px floor in agents/design.md, because a
  * thumb is not a cursor.
  */
-const barHrefs = ["/polymath", "/command-center/inbox", "/neuralflow/work", "/projects"];
+const barHrefs = ["/polymath", "/command-center/inbox", "/today", "/projects"];
 
 export function MobileNav() {
   const pathname = usePathname();

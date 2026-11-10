@@ -65,7 +65,8 @@ test("the rail leads with the conversation, then Inbox", async ({ page }) => {
   // excluded by the query itself.
   // Retried, not read once: the rail mounts with the shell, and waitSettled can
   // return before it is in the DOM, which made a one-shot read see no links.
-  // Decisions left the rail when its queue moved into the notifications panel.
+  // Decisions left the rail when its queue moved into the notifications panel;
+  // Work moved under Today, which sits with People after the reading surfaces.
   await expect
     .poll(
       async () =>
@@ -74,7 +75,7 @@ test("the rail leads with the conversation, then Inbox", async ({ page }) => {
           .locator("a[aria-label]")
           .evaluateAll((links) => links.map((link) => link.getAttribute("aria-label")).slice(0, 3)),
     )
-    .toEqual(["Polymath", "Inbox", "Work"]);
+    .toEqual(["Polymath", "Inbox", "Notes"]);
 });
 
 /*
@@ -139,7 +140,7 @@ test("the launcher lists destinations", async ({ page }) => {
   await page.getByRole("button", { name: "Open destinations" }).click();
   const launcher = page.getByRole("dialog");
   await expect(launcher).toBeVisible();
-  await expect(launcher.getByRole("link", { name: "Work", exact: true })).toBeVisible();
+  await expect(launcher.getByRole("link", { name: "Today", exact: true })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(launcher).toBeHidden();
 });

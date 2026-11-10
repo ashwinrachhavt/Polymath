@@ -1,6 +1,6 @@
 {
-  "id": "0caa1331-9764-465c-8d77-0f839bc84ae6",
-  "prevId": "31af4f3c-4567-4aed-9f08-2d748a843538",
+  "id": "797352a4-1259-4bd1-9f8f-1e84845ec35c",
+  "prevId": "0caa1331-9764-465c-8d77-0f839bc84ae6",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -4682,6 +4682,34 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "audit_events_flashcard_review_idx": {
+          "name": "audit_events_flashcard_review_idx",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "actor_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "action = 'learning.flashcard_reviewed'",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -20050,6 +20078,18 @@
           "primaryKey": false,
           "notNull": true
         },
+        "requested_count": {
+          "name": "requested_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "stopped_by": {
+          "name": "stopped_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_by": {
           "name": "created_by",
           "type": "uuid",
@@ -20088,18 +20128,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": 1
-        },
-        "requested_count": {
-          "name": "requested_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "stopped_by": {
-          "name": "stopped_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {
@@ -21422,6 +21450,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "requested_count": {
+          "name": "requested_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "stopped_by": {
+          "name": "stopped_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_by": {
           "name": "created_by",
           "type": "uuid",
@@ -21460,18 +21500,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": 1
-        },
-        "requested_count": {
-          "name": "requested_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "stopped_by": {
-          "name": "stopped_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {

@@ -2,23 +2,19 @@ import type { LucideIcon } from "lucide-react";
 import {
   Activity,
   BookOpen,
-  Briefcase,
   CalendarDays,
+  GraduationCap,
   Inbox,
   Layers,
-  LayoutDashboard,
   LayoutList,
   Library,
   Lightbulb,
-  Moon,
   NotebookPen,
   Puzzle,
   Receipt,
   Settings,
   ShieldCheck,
   Sparkles,
-  SquareCheckBig,
-  Timer,
   Unplug,
   Users,
 } from "lucide-react";
@@ -67,27 +63,6 @@ export const destinations: Destination[] = [
     group: "command-center",
   },
   {
-    href: "/neuralflow/work",
-    label: "Work",
-    purpose: "Execute your commitments.",
-    icon: SquareCheckBig,
-    group: "neuralflow",
-  },
-  {
-    href: "/neuralflow/overview",
-    label: "Overview",
-    purpose: "See project progress and the shape of your work.",
-    icon: LayoutDashboard,
-    group: "neuralflow",
-  },
-  {
-    href: "/neuralflow/focus",
-    label: "Focus",
-    purpose: "Run a strict focus session.",
-    icon: Timer,
-    group: "neuralflow",
-  },
-  {
     href: "/polymath/notes",
     label: "Notes",
     purpose: "Write and keep your own pages.",
@@ -116,6 +91,13 @@ export const destinations: Destination[] = [
     group: "polymath",
   },
   {
+    href: "/learn",
+    label: "Learn",
+    purpose: "Review the flashcards that are due and take your quizzes.",
+    icon: GraduationCap,
+    group: "polymath",
+  },
+  {
     href: "/artifacts",
     label: "Artifacts",
     purpose: "Everything the assistant made that you kept.",
@@ -130,6 +112,13 @@ export const destinations: Destination[] = [
     group: "polymath",
   },
   {
+    href: "/today",
+    label: "Today",
+    purpose: "Plan the day, work through it, then shut it down.",
+    icon: CalendarDays,
+    group: "neuralflow",
+  },
+  {
     href: "/command-center/relationships/people",
     label: "People",
     purpose: "Everyone you know, with companies from their roles.",
@@ -137,31 +126,10 @@ export const destinations: Destination[] = [
     group: "command-center",
   },
   {
-    href: "/command-center/relationships/companies",
-    label: "Companies",
-    purpose: "The organizations your people belong to.",
-    icon: Briefcase,
-    group: "command-center",
-  },
-  {
     href: "/command-center/integrations",
     label: "Connectors",
     purpose: "Wire external accounts and see what they may do.",
     icon: Unplug,
-    group: "command-center",
-  },
-  {
-    href: "/command-center/day",
-    label: "Day",
-    purpose: "Review one day's record.",
-    icon: CalendarDays,
-    group: "command-center",
-  },
-  {
-    href: "/command-center/shutdown",
-    label: "Shut down",
-    purpose: "Close the day and seed tomorrow.",
-    icon: Moon,
     group: "command-center",
   },
   {
@@ -201,9 +169,9 @@ const featureRoutes: Record<string, string> = {
   "/polymath/notebook": "/polymath/notes",
   "/command-center/relationships": "/command-center/relationships/people",
   // Reports and the stone collection moved out of the retired /apps preview;
-  // both are opened from Work, so Work stays the highlighted destination.
-  "/neuralflow/reports": "/neuralflow/work",
-  "/neuralflow/rewards": "/neuralflow/work",
+  // both are opened from Work, which Today absorbed, so Today stays lit.
+  "/neuralflow/reports": "/today",
+  "/neuralflow/rewards": "/today",
   "/polymath/dossiers": "/projects",
   "/polymath/artifacts": "/artifacts",
   // Ideas became a top-level surface; the zettel, card, area and sitting
@@ -214,10 +182,33 @@ const featureRoutes: Record<string, string> = {
   "/polymath/knowledge/ideas": "/polymath/ideas",
   "/polymath/knowledge/cards": "/polymath/ideas",
   "/polymath/knowledge/areas": "/polymath/ideas",
+  // Today absorbed the five planning screens and People absorbed Companies.
+  // Their routes still render (old links and the in-page links reach them);
+  // only the rail changed, so each lights the entry that holds it now.
+  "/neuralflow/work": "/today",
+  "/neuralflow/overview": "/today",
+  "/neuralflow/focus": "/today",
+  "/command-center/day": "/today",
+  "/command-center/shutdown": "/today",
+  "/command-center/relationships/companies": "/command-center/relationships/people",
 };
 
+/**
+ * The canonical address for a path: its own redirect-map entry, else the
+ * longest mapped prefix (a dated day record under /command-center/day), else
+ * the path itself.
+ */
+function canonicalPath(pathname: string): string {
+  const exact = featureRoutes[pathname];
+  if (exact) return exact;
+  const prefix = Object.keys(featureRoutes)
+    .filter((route) => pathname.startsWith(`${route}/`))
+    .sort((a, b) => b.length - a.length)[0];
+  return prefix ? featureRoutes[prefix] : pathname;
+}
+
 export function destinationForPath(pathname: string): Destination | undefined {
-  const canonical = featureRoutes[pathname] ?? pathname;
+  const canonical = canonicalPath(pathname);
   const exact = destinations.find((destination) => destination.href === canonical);
   if (exact) return exact;
   return destinations

@@ -27,6 +27,7 @@ const PAGE_SHELLS = [
   "src/app/(workspace)/more/page.tsx",
   "src/app/(workspace)/neuralflow/focus/page.tsx",
   "src/app/(workspace)/neuralflow/work/page.tsx",
+  "src/app/(workspace)/today/page.tsx",
   "src/app/(workspace)/reviews/page.tsx",
   "src/app/(workspace)/settings/page.tsx",
   "src/components/page-header.tsx",

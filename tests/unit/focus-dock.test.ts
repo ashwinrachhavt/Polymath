@@ -71,6 +71,18 @@ describe("FocusDock", () => {
     expect(screen.queryByLabelText("Focus session")).toBeNull();
   });
 
+  it("stays off Today, whose focus section renders the live controls itself", async () => {
+    // A fresh module has no cached read, so any page that does not own the
+    // controls would fetch here; Today must not.
+    pathname = "/today";
+    const onToday = respond({ session: live });
+    vi.stubGlobal("fetch", onToday);
+    render(h(FocusDock));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(screen.queryByLabelText("Focus session")).toBeNull();
+    expect(onToday).not.toHaveBeenCalled();
+  });
+
   it("a failed refresh keeps the last known session but marks it unverified, and a good read clears the mark", async () => {
     // Inside the revalidate window the dock reuses its cache and never
     // refetches; the test bends Date.now past the window where it needs the
