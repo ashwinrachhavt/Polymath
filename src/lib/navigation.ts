@@ -5,7 +5,6 @@ import {
   BookOpen,
   Briefcase,
   CalendarDays,
-  GraduationCap,
   Inbox,
   Layers,
   LayoutDashboard,
@@ -109,13 +108,6 @@ export const destinations: Destination[] = [
     label: "Document Vault",
     purpose: "Your uploaded documents, retrievable and connected.",
     icon: BookOpen,
-    group: "polymath",
-  },
-  {
-    href: "/learn",
-    label: "Learn",
-    purpose: "Turn what you saved into what you know.",
-    icon: GraduationCap,
     group: "polymath",
   },
   {

@@ -817,6 +817,62 @@
       "when": 1794031726043,
       "tag": "0290_superagent_observe_effect_kind",
       "breakpoints": true
+    },
+    {
+      "idx": 291,
+      "version": "7",
+      "when": 1794267117250,
+      "tag": "0291_learning_quiz_source_manifest",
+      "breakpoints": true
+    },
+    {
+      "idx": 292,
+      "version": "7",
+      "when": 1794267358572,
+      "tag": "0292_learning_quiz_generation_key",
+      "breakpoints": true
+    },
+    {
+      "idx": 293,
+      "version": "7",
+      "when": 1794267998015,
+      "tag": "0293_artifact_feedback",
+      "breakpoints": true
+    },
+    {
+      "idx": 294,
+      "version": "7",
+      "when": 1794268848589,
+      "tag": "0294_learning_flashcards",
+      "breakpoints": true
+    },
+    {
+      "idx": 295,
+      "version": "7",
+      "when": 1794269070741,
+      "tag": "0295_learning_explain_it",
+      "breakpoints": true
+    },
+    {
+      "idx": 296,
+      "version": "7",
+      "when": 1794269361476,
+      "tag": "0296_learning_graph_recall",
+      "breakpoints": true
+    },
+    {
+      "idx": 297,
+      "version": "7",
+      "when": 1794269797738,
+      "tag": "0297_learning_artifacts_home",
+      "breakpoints": true
+    },
+    {
+      "idx": 298,
+      "version": "7",
+      "when": 1794270655447,
+      "tag": "0298_learning_artifact_feedback",
+      "breakpoints": true
     }
   ]
 }

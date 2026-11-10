@@ -1,6 +1,7 @@
 import { and, asc, count, desc, eq, ilike, isNull, ne, or, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { recordAudit } from "@/domains/audit/record";
+import { learningArtifactFeedback } from "@/domains/learning/schema";
 import { db } from "@/lib/db";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { escapeLike } from "@/lib/list-params";
@@ -31,12 +32,10 @@ import {
 /*
  * Two zettelization paths share one extraction head.
  *
- * Direct creation (the authorship-is-acceptance pattern saveMessageAsIdea
- * established): the triggering action - a Zettelize click on the inbox, a
- * conversation save - is the permission, so `createZettelsFromSource` reads a
- * source and writes cards now, with no proposal row and no review step. The
- * card's content is the extractor's own words, of whatever length the idea
- * needs; the verbatim quote is the evidence block, located in the source
+ * Extraction can create Zettels automatically, but generation is not user
+ * acceptance. New cards are marked `generated`, and their claims remain
+ * `proposed` until a person reviews them. The card's content is the
+ * extractor's own words; its verbatim quote is relocated in the source
  * before anything is written.
  *
  * The extractor is injected. Whatever it returns is checked here against the
@@ -54,11 +53,10 @@ import {
 const MAX_TITLE = 120;
 
 /*
- * A candidate whose content sits within this cosine distance of an existing
- * idea is its twin. Calibrated far tighter than the related-neighbour
- * threshold. On the proposal path it flags the row for the owner to decide;
- * on the direct path it is a create-time gate - without a review step, a
- * duplicate card is pure noise, so the twin is skipped instead of minted.
+ * This is the maximum cosine distance at which an existing Zettel becomes a
+ * duplicate candidate. Very close matches are reused directly; ambiguous
+ * near-matches go through the extractor's budgeted comparison before a card
+ * is reused or created.
  */
 export const ZETTEL_DUPLICATE_MAX_DISTANCE = 0.15;
 
@@ -66,7 +64,7 @@ export function isDuplicateDistance(distance: number): boolean {
   return distance <= ZETTEL_DUPLICATE_MAX_DISTANCE;
 }
 
-type DuplicateHit = { artifactId: string; title: string; distance: number };
+type DuplicateHit = { artifactId: string; title: string; content: string; distance: number };
 
 /**
  * The one existing idea this candidate's content would duplicate, nearest
@@ -85,23 +83,94 @@ async function findDuplicateIdea(
   const conn = options.conn ?? db;
   const literal = vectorLiteral(vector);
   const result = await conn.execute(sql`
-    select a.id, a.title, min(e.embedding <=> ${literal}::vector) as distance
+    select a.id, a.title, coalesce(c.statement, av.plain_text) as content,
+      min(e.embedding <=> ${literal}::vector) as distance
     from embeddings e
     join artifacts a on a.id = e.owner_id
+    left join artifact_versions av on av.id = a.current_version_id
+    left join claims c on c.artifact_id = a.id and c.workspace_id = a.workspace_id
+      and c.status not in ('rejected', 'retracted')
     where e.workspace_id = ${auth.workspaceId}
       and e.owner_type = 'artifact'
       and e.model = ${provider.model}
       and a.kind = 'zettel'
       and a.archived_at is null
       ${options.excludeArtifactId ? sql`and a.id <> ${options.excludeArtifactId}` : sql``}
-    group by a.id, a.title
+    group by a.id, a.title, c.statement, av.plain_text
     having min(e.embedding <=> ${literal}::vector) <= ${ZETTEL_DUPLICATE_MAX_DISTANCE}
     order by distance asc
     limit 1
   `);
-  const rows = result as unknown as Array<{ id: string; title: string; distance: number | string }>;
+  const rows = result as unknown as Array<{
+    id: string;
+    title: string;
+    content: string | null;
+    distance: number | string;
+  }>;
   const [hit] = rows;
-  return hit ? { artifactId: hit.id, title: hit.title, distance: Number(hit.distance) } : null;
+  return hit && hit.content
+    ? { artifactId: hit.id, title: hit.title, content: hit.content, distance: Number(hit.distance) }
+    : null;
+}
+
+const ZETTEL_DUPLICATE_STRONG_DISTANCE = 0.04;
+
+async function linkSourceToExistingZettel(
+  auth: AuthContext,
+  zettelId: string,
+  origin: { path: "doc" | "artifact"; id: string },
+  quote: string | undefined,
+  conn: TxDrizzle | typeof db,
+): Promise<void> {
+  const [target] = await conn
+    .select({ title: artifacts.title })
+    .from(artifacts)
+    .where(and(eq(artifacts.id, zettelId), eq(artifacts.workspaceId, auth.workspaceId), eq(artifacts.kind, "zettel")))
+    .limit(1);
+  if (!target) throw new Error("Existing Zettel not found in workspace");
+
+  const targetType = origin.path === "doc" ? "document" : "artifact";
+  const [source] =
+    origin.path === "doc"
+      ? await conn
+          .select({ title: documents.title })
+          .from(documents)
+          .where(and(eq(documents.id, origin.id), eq(documents.workspaceId, auth.workspaceId)))
+          .limit(1)
+      : await conn
+          .select({ title: artifacts.title })
+          .from(artifacts)
+          .where(and(eq(artifacts.id, origin.id), eq(artifacts.workspaceId, auth.workspaceId)))
+          .limit(1);
+  if (!source) throw new Error("Zettel source not found in workspace");
+
+  const [edge] = await conn
+    .insert(artifactLinks)
+    .values({
+      workspaceId: auth.workspaceId,
+      artifactId: zettelId,
+      targetType,
+      targetId: origin.id,
+      linkType: "source",
+      label: source.title,
+      context: quote ?? null,
+    })
+    .onConflictDoNothing({ target: [artifactLinks.artifactId, artifactLinks.targetType, artifactLinks.targetId] })
+    .returning({ id: artifactLinks.id });
+
+  if (edge) {
+    await recordAudit(
+      auth,
+      {
+        action: "zettel.evidence_linked",
+        subjectType: "zettel",
+        subjectId: zettelId,
+        summary: `Linked source "${source.title}" to zettel "${target.title}"`,
+        metadata: { sourceType: targetType, sourceId: origin.id, ...(quote ? { quote } : {}) },
+      },
+      conn,
+    );
+  }
 }
 
 /** Same shape as obligationDedupeKey: kind, source, then what makes this one distinct (its span). */
@@ -120,20 +189,24 @@ async function listEarlierCards(
   auth: AuthContext,
   origin: { path: "doc" | "artifact"; id: string },
   conn: Pick<TxDrizzle, "select">,
-) {
-  return conn
-    .select({ claim: claims.statement, quote: artifactLinks.context })
-    .from(claims)
-    .innerJoin(
-      artifactLinks,
+): Promise<EarlierIdea[]> {
+  const rows = await conn
+    .select({ artifactId: artifacts.id, title: artifacts.title, claim: claims.statement, quote: artifactLinks.context })
+    .from(artifactLinks)
+    .innerJoin(artifacts, and(eq(artifacts.id, artifactLinks.artifactId), eq(artifacts.workspaceId, auth.workspaceId)))
+    .innerJoin(claims, and(eq(claims.artifactId, artifacts.id), eq(claims.workspaceId, auth.workspaceId)))
+    .where(
       and(
-        eq(artifactLinks.artifactId, claims.artifactId),
         eq(artifactLinks.workspaceId, auth.workspaceId),
         eq(artifactLinks.linkType, "source"),
         eq(artifactLinks.targetType, origin.path === "doc" ? "document" : "artifact"),
         eq(artifactLinks.targetId, origin.id),
+        eq(artifacts.kind, "zettel"),
+        isNull(artifacts.archivedAt),
       ),
-    );
+    )
+    .limit(200);
+  return rows.map(({ quote, ...row }) => ({ ...row, ...(quote ? { quote } : {}) }));
 }
 
 /** Whitespace-collapsed form of a verbatim quote, for the containment check. */
@@ -168,7 +241,7 @@ export function cosineDistance(a: number[], b: number[]): number {
 }
 
 /** An earlier idea of this source: its content, its quote when it has one, and its embedded vector when one could be computed. */
-type EarlierIdea = { claim: string; quote?: string; vector?: number[] };
+type EarlierIdea = { artifactId: string; title: string; claim: string; quote?: string };
 
 /**
  * Whether a candidate repeats one of this source's earlier ideas. Quote
@@ -176,12 +249,9 @@ type EarlierIdea = { claim: string; quote?: string; vector?: number[] };
  * when the earlier ideas could be embedded. A hit proposes and creates
  * nothing — the earlier row already stands.
  */
-async function isRepeatProposal(candidate: SectionCandidate, earlier: EarlierIdea[]): Promise<boolean> {
-  if (candidate.quote && earlier.some((p) => p.quote && quotesOverlap(candidate.quote!, p.quote!))) return true;
-  if (!earlier.some((p) => p.vector)) return false;
-  const provider = embeddingProvider();
-  const [vector] = await provider.embed([candidate.content]);
-  return earlier.some((p) => p.vector && isDuplicateDistance(cosineDistance(vector, p.vector)));
+function findQuoteOverlap(candidate: SectionCandidate, earlier: EarlierIdea[]): EarlierIdea | undefined {
+  if (!candidate.quote) return undefined;
+  return earlier.find((idea) => idea.quote && quotesOverlap(candidate.quote!, idea.quote));
 }
 
 export type ZettelSourceInput =
@@ -294,12 +364,42 @@ type ZettelCandidatePass = {
  * section (re-based onto the source), and merge the survivors of a chunked
  * source. No dedupe, no writes - the paths decide what a survivor becomes.
  */
+type ZettelFeedbackExample = { rating: "helpful" | "not_helpful"; title: string; content: string };
+
+async function recentZettelFeedback(auth: AuthContext): Promise<ZettelFeedbackExample[]> {
+  const rows = await db
+    .select({ rating: learningArtifactFeedback.rating, title: artifacts.title, content: artifactVersions.plainText })
+    .from(learningArtifactFeedback)
+    .innerJoin(
+      artifacts,
+      and(eq(artifacts.id, learningArtifactFeedback.artifactId), eq(artifacts.workspaceId, auth.workspaceId)),
+    )
+    .leftJoin(
+      artifactVersions,
+      and(eq(artifactVersions.id, artifacts.currentVersionId), eq(artifactVersions.workspaceId, auth.workspaceId)),
+    )
+    .where(
+      and(
+        eq(learningArtifactFeedback.workspaceId, auth.workspaceId),
+        eq(learningArtifactFeedback.userId, auth.userId),
+        eq(artifacts.kind, "zettel"),
+        isNull(artifacts.archivedAt),
+      ),
+    )
+    .orderBy(desc(learningArtifactFeedback.updatedAt), desc(learningArtifactFeedback.id))
+    .limit(4);
+  return rows.flatMap((row) =>
+    row.content ? [{ rating: row.rating, title: row.title.slice(0, 120), content: row.content.slice(0, 200) }] : [],
+  );
+}
+
 async function zettelCandidatesForSource(auth: AuthContext, input: ZettelSourceInput): Promise<ZettelCandidatePass> {
   const conn = input.tx ?? db;
   const source = await resolveZettelSource(auth, input, conn);
   const origin = zettelOrigin(source);
 
   const extractor = input.extractor ?? defaultZettelExtractor(auth.workspaceId);
+  const feedback = await recentZettelFeedback(auth);
 
   // One size-derived cap for the whole pass, computed once from the resolved
   // source text: every seam below (extractor prompt, response schema, merge,
@@ -314,7 +414,7 @@ async function zettelCandidatesForSource(auth: AuthContext, input: ZettelSourceI
 
   const survivors: SectionCandidate[] = [];
   for (const [sectionIndex, section] of sections.entries()) {
-    const candidates = await extractor.extract(section.text, { max: cap });
+    const candidates = await extractor.extract(section.text, { max: cap, feedback });
     for (const c of candidates) {
       const title = c.title?.trim();
       const content = c.content?.trim();
@@ -350,26 +450,9 @@ async function zettelCandidatesForSource(auth: AuthContext, input: ZettelSourceI
   return { source, origin, extractor, cap, merged, readChars, unreadChars, unreadSections };
 }
 
-/** Embeds a source's earlier ideas with the corpus provider, degrading to quote-overlap alone when unconfigured. */
-async function withEmbeddings(rows: { claim: string; quote?: string | null }[]): Promise<EarlierIdea[]> {
-  if (!rows.length) return [];
-  const normalized = rows.map((p) => ({ claim: p.claim, quote: p.quote ?? undefined }));
-  try {
-    const provider = embeddingProvider();
-    const vectors = await provider.embed(normalized.map((p) => p.claim));
-    return normalized.map((p, i) => ({ ...p, vector: vectors[i] }));
-  } catch (cause) {
-    if (!(cause instanceof EmbeddingUnconfiguredError)) throw cause;
-    console.warn("[zettels] earlier-idea dedup degraded: no embedding provider configured");
-    return normalized;
-  }
-}
-
 /*
- * Direct creation core (the authorship-is-acceptance pattern
- * saveMessageAsIdea established): the triggering action - a Zettelize click,
- * an enrichment stage, a tool call - is the permission, so the card is
- * written now and no proposal row waits for a second click.
+ * A generated Zettel is saved with `generated` status and a `proposed` claim.
+ * Automatic persistence records a candidate; it does not imply the learner's approval.
  */
 
 type ZettelCardSource = { kind: "document"; documentId: string } | { kind: "artifact"; artifactId: string };
@@ -424,24 +507,70 @@ async function hasCardForSpan(auth: AuthContext, dedupeKey: string, conn: Pick<T
  * the commit and with it the post-commit embed; without one the card gets
  * its own transaction and best-effort embedding.
  */
+/**
+ * Persist one source-backed Zettel. Embedding and semantic comparison run
+ * before opening the write transaction, so model latency never holds database
+ * locks. The transaction still rechecks the exact source-span key.
+ */
+
 export async function createZettelFromSource(
   auth: AuthContext,
   input: ZettelCardCreateInput,
   tx?: TxDrizzle,
+  options: {
+    compareDuplicate?: ZettelExtractor["compareDuplicate"];
+    excludeArtifactId?: string;
+  } = {},
 ): Promise<ZettelCardCreateResult> {
-  const create = async (conn: TxDrizzle): Promise<ZettelCardCreateResult> => {
-    const origin =
-      input.source.kind === "document"
-        ? { path: "doc" as const, id: input.source.documentId }
-        : { path: "artifact" as const, id: input.source.artifactId };
-    const title = input.title.trim().slice(0, MAX_TITLE);
-    const content = input.content.trim();
-    const quote = input.quote?.trim();
-    const dedupeKey = input.span ? zettelDedupeKey(origin.path, origin.id, input.span.start, input.span.end) : null;
+  const origin =
+    input.source.kind === "document"
+      ? { path: "doc" as const, id: input.source.documentId }
+      : { path: "artifact" as const, id: input.source.artifactId };
+  const title = input.title.trim().slice(0, MAX_TITLE);
+  const content = input.content.trim();
+  const quote = input.quote?.trim();
+  const dedupeKey = input.span ? zettelDedupeKey(origin.path, origin.id, input.span.start, input.span.end) : null;
 
-    // Two create-time gates stand where the review queue used to. First:
-    // the same span of the same source is already a card - a second click
-    // lands on it instead of minting a twin.
+  if (dedupeKey) {
+    const [existing] = await db
+      .select({ id: artifacts.id })
+      .from(artifacts)
+      .where(
+        and(
+          eq(artifacts.workspaceId, auth.workspaceId),
+          eq(artifacts.kind, "zettel"),
+          sql`${artifacts.metadata}->>'dedupeKey' = ${dedupeKey}`,
+        ),
+      )
+      .limit(1);
+    if (existing) return { skipped: "same-span" };
+  }
+
+  try {
+    const hit = await findDuplicateIdea(auth, content, { excludeArtifactId: options.excludeArtifactId });
+    if (hit) {
+      const sameIdea =
+        hit.distance <= ZETTEL_DUPLICATE_STRONG_DISTANCE ||
+        (options.compareDuplicate
+          ? await options.compareDuplicate({
+              candidate: { title, content, ...(quote ? { quote } : {}) },
+              existing: { title: hit.title, content: hit.content },
+            })
+          : true);
+      if (sameIdea) {
+        if (tx) await linkSourceToExistingZettel(auth, hit.artifactId, origin, quote, tx);
+        else await withTransaction((conn) => linkSourceToExistingZettel(auth, hit.artifactId, origin, quote, conn));
+        return { skipped: "duplicate" };
+      }
+    }
+  } catch (cause) {
+    if (!(cause instanceof EmbeddingUnconfiguredError)) throw cause;
+    console.warn("[zettels] create-time dedup skipped: no embedding provider configured");
+  }
+
+  const create = async (conn: TxDrizzle): Promise<ZettelCardCreateResult> => {
+    // The exact source-span gate is idempotent: retrying extraction for the
+    // same source version cannot mint a second card for the same passage.
     if (dedupeKey) {
       const [existing] = await conn
         .select({ id: artifacts.id })
@@ -455,19 +584,6 @@ export async function createZettelFromSource(
         )
         .limit(1);
       if (existing) return { skipped: "same-span" };
-    }
-
-    // Second: a near-duplicate of an existing card is skipped, not minted -
-    // the review flow used to make that a human decision, and without one a
-    // duplicate is pure noise. Without an embedding provider the gate
-    // degrades to unfiltered creation rather than failing - a missing key
-    // must not block reading a document.
-    try {
-      const hit = await findDuplicateIdea(auth, content, { conn });
-      if (hit) return { skipped: "duplicate" };
-    } catch (cause) {
-      if (!(cause instanceof EmbeddingUnconfiguredError)) throw cause;
-      console.warn("[zettels] create-time dedup skipped: no embedding provider configured");
     }
 
     /*
@@ -566,7 +682,7 @@ export async function createZettelFromSource(
         workspaceId: auth.workspaceId,
         kind: "zettel",
         title,
-        status: "reviewed",
+        status: "generated",
         metadata: dedupeKey ? { dedupeKey } : null,
         createdBy: auth.userId,
         updatedBy: auth.userId,
@@ -603,7 +719,7 @@ export async function createZettelFromSource(
         workspaceId: auth.workspaceId,
         artifactId: card.id,
         statement: content,
-        status: "accepted",
+        status: "proposed",
         createdBy: auth.userId,
         updatedBy: auth.userId,
       })
@@ -733,29 +849,41 @@ export type ZettelCardsResult = {
 export async function createZettelsFromSource(auth: AuthContext, input: ZettelSourceInput): Promise<ZettelCardsResult> {
   const conn = input.tx ?? db;
   const pass = await zettelCandidatesForSource(auth, input);
-
-  // Re-zettelize dedup, both source kinds: the cards this source already
-  // produced are judged before anything new is created.
-  const earlier = await withEmbeddings(await listEarlierCards(auth, pass.origin, conn));
+  const earlier = await listEarlierCards(auth, pass.origin, conn);
 
   const created: Array<{ artifactId: string; title: string }> = [];
   let skippedRepeats = 0;
   let skippedDuplicates = 0;
   let skippedSpans = 0;
   for (const z of pass.merged.slice(0, pass.cap)) {
-    // Same-span gate first: a re-zettelize re-proposes the same spans, and
-    // those are span skips, not repeat heuristics - the precise, cheap gate
-    // answers before the fuzzy ones run.
+    // Exact source span is the cheapest and most reliable idempotency check.
     const span = z.start !== undefined && z.end !== undefined ? { start: z.start, end: z.end } : undefined;
     const dedupeKey = span ? zettelDedupeKey(pass.origin.path, pass.origin.id, span.start, span.end) : null;
     if (dedupeKey && (await hasCardForSpan(auth, dedupeKey, conn))) {
       skippedSpans += 1;
       continue;
     }
-    if (await isRepeatProposal(z, earlier)) {
-      skippedRepeats += 1;
-      continue;
+
+    let excludeArtifactId: string | undefined;
+    const sourceRepeat = findQuoteOverlap(z, earlier);
+    if (sourceRepeat) {
+      const sameText = z.content.trim().toLocaleLowerCase() === sourceRepeat.claim.trim().toLocaleLowerCase();
+      const sameIdea =
+        sameText ||
+        (pass.extractor.compareDuplicate
+          ? await pass.extractor.compareDuplicate({
+              candidate: { title: z.title, content: z.content, ...(z.quote ? { quote: z.quote } : {}) },
+              existing: { title: sourceRepeat.title, content: sourceRepeat.claim },
+            })
+          : true);
+      if (sameIdea) {
+        await linkSourceToExistingZettel(auth, sourceRepeat.artifactId, pass.origin, z.quote, conn);
+        skippedRepeats += 1;
+        continue;
+      }
+      excludeArtifactId = sourceRepeat.artifactId;
     }
+
     const result = await createZettelFromSource(
       auth,
       {
@@ -771,6 +899,7 @@ export async function createZettelsFromSource(auth: AuthContext, input: ZettelSo
         proposer: pass.extractor.name,
       },
       input.tx,
+      { compareDuplicate: pass.extractor.compareDuplicate, excludeArtifactId },
     );
     if ("skipped" in result) {
       if (result.skipped === "duplicate") skippedDuplicates += 1;

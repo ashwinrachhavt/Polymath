@@ -4,6 +4,8 @@ import Link from "next/link";
 import { ArrowLeft, Download, MoreHorizontal, Sparkles } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getAuthContext } from "@/lib/auth";
+import { getArtifactFeedback } from "@/domains/knowledge/artifact-feedback";
+import { ArtifactFeedback } from "./artifact-feedback";
 import { getArtifactDetail } from "@/domains/knowledge/artifact-gallery";
 import { extractToc, type TocEntry } from "@/domains/knowledge/artifact-toc";
 import { ArtifactMarkdown } from "@/components/artifact-markdown";
@@ -30,6 +32,7 @@ export async function ArtifactSurface({ artifactId }: { artifactId: string }) {
   await connection();
   const auth = await getAuthContext();
   const artifact = await getArtifactDetail(auth, artifactId);
+  const feedback = artifact ? await getArtifactFeedback(auth, { kind: "artifact", id: artifactId }) : null;
   if (!artifact) {
     return <div className="page-content text-body-dense text-muted-foreground">This artifact does not exist.</div>;
   }
@@ -145,6 +148,7 @@ export async function ArtifactSurface({ artifactId }: { artifactId: string }) {
               </ul>
             </section>
           ) : null}
+          <ArtifactFeedback target={{ kind: "artifact", id: artifactId }} rating={feedback} />
         </article>
       </div>
     </>

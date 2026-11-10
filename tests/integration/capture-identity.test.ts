@@ -51,8 +51,10 @@ suite("capture identity", () => {
   it("rejects the identical selection twice with the existing id", async () => {
     const url = "https://example.com/article-2";
     const first = await commands.createCapture(auth, { text: "same words", url, mode: "selection" });
-    await expect(commands.createCapture(auth, { text: "same words", url, mode: "selection" }))
-      .rejects.toMatchObject({ code: "conflict", existingId: first.id });
+    await expect(commands.createCapture(auth, { text: "same words", url, mode: "selection" })).rejects.toMatchObject({
+      code: "conflict",
+      existingId: first.id,
+    });
     const rows = await db.select().from(captures).where(eq(captures.workspaceId, workspaceId));
     expect(rows).toHaveLength(1);
   });
@@ -75,9 +77,9 @@ suite("capture identity", () => {
   it("does not clear the survivor's title when the repeat supplies none", async () => {
     const url = "https://example.com/article-4";
     const first = await commands.createCapture(auth, { text: "kept body", url, mode: "selection", title: "Kept" });
-    await expect(
-      commands.createCapture(auth, { text: "kept body", url, mode: "selection" }),
-    ).rejects.toMatchObject({ existingId: first.id });
+    await expect(commands.createCapture(auth, { text: "kept body", url, mode: "selection" })).rejects.toMatchObject({
+      existingId: first.id,
+    });
     const [survivor] = await db.select().from(captures).where(eq(captures.id, first.id));
     expect(survivor.title).toBe("Kept");
   });
@@ -93,8 +95,7 @@ suite("capture identity", () => {
   it("still rejects a bare address twice", async () => {
     const url = "https://example.com/once";
     await commands.createCapture(auth, { text: url });
-    await expect(commands.createCapture(auth, { text: url }))
-      .rejects.toMatchObject({ code: "conflict" });
+    await expect(commands.createCapture(auth, { text: url })).rejects.toMatchObject({ code: "conflict" });
   });
 
   it("does not fetch the page for a selection", async () => {
@@ -107,9 +108,13 @@ suite("capture identity", () => {
     expect(events.filter((e) => (e.payload as { captureId?: string }).captureId === capture.id)).toHaveLength(0);
   });
 
-  it("does fetch for a bare address", async () => {
+  it("waits for an explicit read request for a bare address", async () => {
     const capture = await commands.createCapture(auth, { text: "https://example.com/fetched" });
-    const events = await db.select().from(outboxEvents).where(eq(outboxEvents.topic, "capture.url_content_requested"));
-    expect(events.filter((e) => (e.payload as { captureId?: string }).captureId === capture.id)).toHaveLength(1);
+    const before = await db.select().from(outboxEvents).where(eq(outboxEvents.topic, "capture.url_content_requested"));
+    expect(before.filter((e) => (e.payload as { captureId?: string }).captureId === capture.id)).toHaveLength(0);
+
+    await commands.retryCaptureUrl(auth, { captureId: capture.id });
+    const after = await db.select().from(outboxEvents).where(eq(outboxEvents.topic, "capture.url_content_requested"));
+    expect(after.filter((e) => (e.payload as { captureId?: string }).captureId === capture.id)).toHaveLength(1);
   });
 });

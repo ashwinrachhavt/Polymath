@@ -197,7 +197,7 @@ suite("zettel generation from the inbox", () => {
       .from(artifacts)
       .where(and(eq(artifacts.workspaceId, auth.workspaceId), eq(artifacts.kind, "zettel")));
     expect(cards).toHaveLength(2);
-    expect(cards.every((c) => c.status === "reviewed" && c.currentVersionId !== null)).toBe(true);
+    expect(cards.every((c) => c.status === "generated" && c.currentVersionId !== null)).toBe(true);
 
     const versions = await holder
       .db!.select()

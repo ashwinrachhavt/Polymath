@@ -3,7 +3,7 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { documents } from "@/domains/knowledge/schema";
 import { currentExtractionSql } from "@/domains/knowledge/versions";
-import { quizAttempts, quizQuestions, quizzes, type QuizEvidence } from "./schema";
+import { quizAttempts, quizQuestions, quizzes, type QuizEvidence, type QuizSourceSnapshot } from "./schema";
 
 /*
  * Every read the Learn surface needs, so UI code never joins across domains.
@@ -31,8 +31,10 @@ export type LearnLibraryRow = {
 
 export type QuizForSitting = {
   id: string;
+  notebookId: string | null;
   documentId: string;
   title: string;
+  sourceManifest: QuizSourceSnapshot[];
   questions: Array<{
     id: string;
     ordinal: number;
@@ -147,7 +149,13 @@ export async function latestReadyQuizForDocument(auth: AuthContext, documentId: 
  */
 export async function getQuizForSitting(auth: AuthContext, quizId: string): Promise<QuizForSitting | null> {
   const [quiz] = await db
-    .select({ id: quizzes.id, documentId: quizzes.documentId, title: quizzes.title })
+    .select({
+      id: quizzes.id,
+      notebookId: quizzes.notebookId,
+      documentId: quizzes.documentId,
+      title: quizzes.title,
+      sourceManifest: quizzes.sourceManifest,
+    })
     .from(quizzes)
     .where(and(eq(quizzes.id, quizId), eq(quizzes.workspaceId, auth.workspaceId), eq(quizzes.status, "ready")))
     .limit(1);

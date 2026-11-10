@@ -25,7 +25,6 @@
 import postgres from "postgres";
 import { and, asc, desc, eq, isNull, like, sql } from "drizzle-orm";
 
-import { createConversationRun } from "@/domains/agents/conversations";
 import { createEngine as createAgentsEngine } from "@/domains/agents/engine";
 import type { AgentEngine } from "@/domains/agents/engine";
 import { recordRoundEvent } from "@/domains/agents/event-bridge";
@@ -60,7 +59,7 @@ import { CHAT_SOURCE_KIND, chatSourceKind, chatTrigger, type ChatSourceConfig } 
 import { routeChatMessage, type ChatLane } from "./routing";
 import type { ChatEvent, SourceContext, SourceState } from "./sources/host";
 import { SourceRegistry } from "./sources/registry";
-import { createSuperagentStore, getPolicy, readStateValue, storedPolicyConfig, writeStateValue } from "./store";
+import { createSuperagentStore, getPolicy, storedPolicyConfig, writeStateValue } from "./store";
 import { superagentState, workThreads, workTickets } from "./store/schema";
 import type { SuperagentStore } from "./store/repositories";
 import { rawQueryDebugger, withQueryLog } from "@/lib/db-query-log";
@@ -147,7 +146,7 @@ export function evictSuperagentHost(workspaceId: string): void {
  * the change here, by comparing the stored version against the stamp the
  * composition was built from, once per sweep pass.
  */
-export async function evictStaleSuperagentHost(workspaceId: string): Promise<void> {
+async function evictStaleSuperagentHost(workspaceId: string): Promise<void> {
   const cached = await hosts.get(workspaceId);
   if (!cached) return;
   const stored = await getPolicy(db, workspaceId);
@@ -495,25 +494,6 @@ async function intakeConversationMessage(input: {
  * not fail because the pipeline refused a candidate or the drain hit its
  * pass cap — those are recorded domain outcomes, not errors.
  */
-export async function startSuperagentConversation(input: {
-  auth: AuthContext;
-  profileName: string;
-  message: string;
-  subjects?: { type: "project" | "document" | "artifact"; id: string }[];
-}): Promise<{ runId: string; received: ReceiveResult; lane?: ChatLane }> {
-  // The transcript carrier: a waiting_input run with no session, whose first
-  // event is the person's own words. Created before intake so the Source's
-  // stable id (key("chat", runId, sequence)) exists to hang the Trigger on.
-  const created = await createConversationRun(input);
-  const intake = await intakeConversationMessage({
-    auth: input.auth,
-    runId: created.runId,
-    sequence: created.sequence,
-    text: input.message,
-  });
-  return { runId: created.runId, ...intake };
-}
-
 /**
  * A follow-up on a conversation run that has no eve session.
  *
@@ -564,10 +544,10 @@ export async function continueSuperagentConversation(input: {
 /* The drain                                                           */
 /* ------------------------------------------------------------------ */
 
-export type DrainSummary = { passes: number; claimed: number; completed: number; failed: number; deferred: number };
+type DrainSummary = { passes: number; claimed: number; completed: number; failed: number; deferred: number };
 
 /** Null result for a workspace with nothing to do; the panel renders zero counts honestly. */
-export const emptyDrain = (): DrainSummary => ({ passes: 0, claimed: 0, completed: 0, failed: 0, deferred: 0 });
+const emptyDrain = (): DrainSummary => ({ passes: 0, claimed: 0, completed: 0, failed: 0, deferred: 0 });
 
 /** The module's one raw client for the queue's claim/complete/fail mechanics (single connection, as the routes use). */
 let rawClient: RawClient | undefined;
@@ -600,7 +580,7 @@ async function tickWorkspace(workspaceId: string): Promise<void> {
  * passes, each observed, so a reply lands in the same request when the
  * pipeline is warm and never blocks the send when it is not.
  */
-export async function drainSuperagentInline(workspaceId: string): Promise<DrainSummary> {
+async function drainSuperagentInline(workspaceId: string): Promise<DrainSummary> {
   // One canonical query-log line per inline drain: the queue's raw-client
   // statements (claim/complete/fail) and the drizzle statements the tick and
   // the observers run attribute to the same unit.
@@ -968,11 +948,4 @@ export async function sweepSuperagentWorkspaces(): Promise<void> {
 /* ------------------------------------------------------------------ */
 
 /** Read the wiring's stored value for one key. */
-export async function getWiringState(workspaceId: string, key: string): Promise<string | undefined> {
-  return readStateValue(db, workspaceId, key);
-}
-
 /** Persist the wiring's stored value for one key (host bookkeeping, never domain state). */
-export async function setWiringState(workspaceId: string, key: string, value: string): Promise<void> {
-  await writeStateValue(db, workspaceId, key, value);
-}

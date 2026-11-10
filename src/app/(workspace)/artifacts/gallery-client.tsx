@@ -11,7 +11,19 @@ import { WriteFromLibrary } from "./write-from-library";
  * preview card. All of it navigates; the page is the only fetcher.
  */
 
-export function GalleryToolbar({ currentView, query }: { currentView: string; query: string }) {
+export function GalleryToolbar({
+  currentView,
+  currentFilter,
+  currentKind,
+  currentStatus,
+  query,
+}: {
+  currentView: string;
+  currentFilter: string;
+  currentKind: string;
+  currentStatus: string;
+  query: string;
+}) {
   const router = useRouter();
   const params = useSearchParams();
   const [draft, setDraft] = useState(query);
@@ -26,7 +38,75 @@ export function GalleryToolbar({ currentView, query }: { currentView: string; qu
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-3">
+    <div className="flex flex-wrap items-center gap-3 px-6 py-3">
+      <div className="flex items-center gap-1" role="group" aria-label="Artifact origin">
+        {[
+          { label: "All", value: "all" },
+          { label: "Sources", value: "source" },
+          { label: "Generated", value: "generated" },
+        ].map((filter) => (
+          <button
+            key={filter.value}
+            type="button"
+            aria-pressed={currentFilter === filter.value}
+            className={`rounded-md px-2.5 py-1.5 text-body-dense ${currentFilter === filter.value ? "bg-muted font-medium" : "text-muted-foreground hover:bg-muted/60"}`}
+            onClick={() => navigate({ kind: undefined, filter: filter.value === "all" ? undefined : filter.value })}
+          >
+            {filter.label}
+          </button>
+        ))}
+      </div>
+      <label className="flex items-center gap-2 text-body-dense text-muted-foreground">
+        <span>Kind</span>
+        <select
+          aria-label="Filter by kind"
+          value={currentKind}
+          onChange={(event) => {
+            const value = event.target.value;
+            navigate({ kind: value || undefined, filter: value === "source" ? "source" : undefined });
+          }}
+          className="h-8 rounded-md border border-border bg-background px-2 text-body-dense text-foreground"
+        >
+          <option value="">All kinds</option>
+          {[
+            "source",
+            "note",
+            "zettel",
+            "document",
+            "memo",
+            "report",
+            "diagram",
+            "transcript",
+            "deck",
+            "infographic",
+            "quiz",
+            "flashcards",
+            "other",
+          ].map((kind) => (
+            <option key={kind} value={kind}>
+              {kind[0].toUpperCase() + kind.slice(1)}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="flex items-center gap-2 text-body-dense text-muted-foreground">
+        <span>Status</span>
+        <select
+          aria-label="Filter by status"
+          value={currentStatus}
+          onChange={(event) => navigate({ status: event.target.value || undefined })}
+          className="h-8 rounded-md border border-border bg-background px-2 text-body-dense text-foreground"
+        >
+          <option value="">All statuses</option>
+          {["draft", "generated", "reviewed", "published", "pending", "succeeded", "failed", "skipped"].map(
+            (status) => (
+              <option key={status} value={status}>
+                {status[0].toUpperCase() + status.slice(1)}
+              </option>
+            ),
+          )}
+        </select>
+      </label>
       <form
         role="search"
         onSubmit={(event) => {
@@ -35,7 +115,7 @@ export function GalleryToolbar({ currentView, query }: { currentView: string; qu
         }}
       >
         <label className="sr-only" htmlFor="artifact-search">
-          Search artifacts
+          Search sources and artifacts
         </label>
         <div className="flex h-8 items-center gap-1.5 rounded-md border border-border px-2">
           <Search aria-hidden className="size-3.5 text-muted-foreground" />
@@ -77,26 +157,47 @@ export function ArtifactCard({
   artifact,
   view,
 }: {
-  artifact: { id: string; title: string; kind: string; preview: string };
+  artifact: {
+    recordType: "artifact" | "source" | "quiz" | "flashcard_deck";
+    id: string;
+    title: string;
+    kind: string;
+    status: string;
+    preview: string;
+    notebookId?: string | null;
+    documentId?: string | null;
+  };
   view: string;
 }) {
   const isList = view === "list";
+  const href =
+    artifact.recordType === "source"
+      ? `/polymath/knowledge?doc=${artifact.id}`
+      : artifact.recordType === "quiz"
+        ? artifact.notebookId
+          ? `/projects/${artifact.notebookId}/notebook?quiz=${artifact.id}`
+          : `/learn/${artifact.documentId}`
+        : artifact.recordType === "flashcard_deck"
+          ? `/projects/${artifact.notebookId}/notebook/flashcards?deck=${artifact.id}`
+          : `/artifacts/${artifact.id}`;
+  const label = artifact.recordType === "source" ? "Source" : artifact.kind;
   return (
     <Link
-      href={`/artifacts/${artifact.id}`}
+      href={href}
       className={`group block rounded-xl border border-border p-4 transition-colors hover:bg-muted/40 ${isList ? "flex items-center gap-4" : ""}`}
     >
       <div className={isList ? "min-w-0 flex-1" : ""}>
         <p
           className={`text-muted-foreground/70 leading-snug ${isList ? "line-clamp-2 text-body-dense" : "line-clamp-6 font-serif text-body-dense"}`}
         >
-          {artifact.preview || "Empty artifact."}
+          {artifact.preview || (artifact.recordType === "source" ? "No extracted text yet." : "Empty artifact.")}
         </p>
       </div>
-      <div className={`mt-3 flex items-center gap-2 ${isList ? "mt-0 shrink-0" : ""}`}>
+      <div className={`mt-3 flex min-w-0 items-center gap-2 ${isList ? "mt-0 shrink-0" : ""}`}>
         <FileText aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
         <span className="truncate text-body-dense">{artifact.title}</span>
-        <span className="text-xs text-muted-foreground">{artifact.kind}</span>
+        <span className="shrink-0 text-xs text-muted-foreground">{label}</span>
+        <span className="shrink-0 text-xs text-muted-foreground">{artifact.status}</span>
       </div>
     </Link>
   );

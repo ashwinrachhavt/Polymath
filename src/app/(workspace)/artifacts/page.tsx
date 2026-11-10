@@ -3,6 +3,7 @@ import { connection } from "next/server";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getAuthContext } from "@/lib/auth";
 import { listGalleryArtifacts, type GalleryArtifact } from "@/domains/knowledge/artifact-gallery";
+import { listLearningGalleryArtifacts } from "@/domains/learning/artifact-gallery";
 import { ArtifactCard, GalleryToolbar } from "./gallery-client";
 
 export const metadata = { title: "Artifacts · Polymath" };
@@ -29,13 +30,52 @@ export async function ArtifactsSurface({
   const auth = await getAuthContext();
   const raw = await searchParams;
   const filterRaw = typeof raw.filter === "string" ? raw.filter : "all";
-  const origin = filterRaw === "run" || filterRaw === "upload" ? filterRaw : undefined;
+  const allowedKinds = [
+    "source",
+    "note",
+    "zettel",
+    "document",
+    "memo",
+    "report",
+    "diagram",
+    "transcript",
+    "deck",
+    "infographic",
+    "quiz",
+    "flashcards",
+    "other",
+  ] as const;
+  const rawKind = typeof raw.kind === "string" ? raw.kind : "";
+  const kind = allowedKinds.includes(rawKind as (typeof allowedKinds)[number])
+    ? (rawKind as (typeof allowedKinds)[number])
+    : filterRaw === "source"
+      ? "source"
+      : undefined;
+  const origin = filterRaw === "generated" ? "run" : undefined;
+  const allowedStatuses = new Set([
+    "draft",
+    "generated",
+    "reviewed",
+    "published",
+    "pending",
+    "succeeded",
+    "failed",
+    "skipped",
+  ]);
+  const statusRaw = typeof raw.status === "string" ? raw.status : "";
+  const status = allowedStatuses.has(statusRaw) ? statusRaw : undefined;
   const query = typeof raw.q === "string" ? raw.q.trim() : "";
   const view = raw.view === "list" ? "list" : "grid";
 
-  const { items: matching } = await listGalleryArtifacts(auth, { origin, query, limit: 200 });
+  const [artifactGallery, learningGallery] = await Promise.all([
+    listGalleryArtifacts(auth, { kind, origin, status, query, limit: 200 }),
+    listLearningGalleryArtifacts(auth, { kind, status, query, limit: 200 }),
+  ]);
+  const matching: GalleryArtifact[] = [...artifactGallery.items, ...learningGallery]
+    .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime() || b.id.localeCompare(a.id))
+    .slice(0, 200);
 
-  // Month groups, newest first: "October 2026".
+  // Month groups, newest first.
   const groups = new Map<string, GalleryArtifact[]>();
   for (const item of matching) {
     const label = item.updatedAt.toLocaleString("en-US", { month: "long", year: "numeric" });
@@ -52,18 +92,22 @@ export async function ArtifactsSurface({
       {/* GalleryToolbar reads useSearchParams, which forces a CSR bailout for
           the whole page unless it sits inside a Suspense boundary. */}
       <Suspense fallback={null}>
-        <GalleryToolbar currentView={view} query={query} />
+        <GalleryToolbar
+          currentView={view}
+          currentFilter={filterRaw}
+          currentKind={kind ?? ""}
+          currentStatus={status ?? ""}
+          query={query}
+        />
       </Suspense>
       <div className="px-6 py-6">
         {matching.length === 0 ? (
           <p className="text-body-dense text-muted-foreground">
-            Nothing here yet. Generate a draft from a project and it lands in this gallery.
+            Nothing here yet. Captured sources and generated artifacts will appear here.
           </p>
         ) : (
           [...groups.entries()].map(([label, group]) => (
             <section key={label} aria-label={label} className="mb-10">
-              {/* The mockup's dotted passage rule: the month names the passage,
-                  not a toolbar row. */}
               <div className="rule-label mb-5">{label}</div>
               <div
                 className={
@@ -73,7 +117,7 @@ export async function ArtifactsSurface({
                 }
               >
                 {group.map((item) => (
-                  <ArtifactCard key={item.id} artifact={item} view={view} />
+                  <ArtifactCard key={`${item.recordType}:${item.id}`} artifact={item} view={view} />
                 ))}
               </div>
             </section>

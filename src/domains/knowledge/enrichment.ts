@@ -17,8 +17,8 @@ import {
 import { createZettelsFromSource } from "./zettels";
 
 /*
- * The document enrichment state machine (ASH-174/ASH-184). After a source is
- * captured and its extraction succeeds, the stages that follow run in order:
+ * The document post-extraction state machine (ASH-174/ASH-184). After a source is
+ * captured and its extraction succeeds, independent work stages run:
  *
  *   extract  - already owned by extraction.ts; mirrored here, never re-run
  *   embed    - chunk + embed the succeeded extraction text (embedExtraction)
@@ -28,9 +28,8 @@ import { createZettelsFromSource } from "./zettels";
  *
  * One row per document per stage is the whole state: a failure is a `failed`
  * row with `last_error`, visible and retryable, and a worker restart loses
- * nothing because nothing lives in memory. A stage only runs when the stage
- * before it succeeded; reruns are safe because each underlying pass is its
- * own idempotent boundary.
+ * nothing because nothing lives in memory. Embedding failure does not prevent
+ * Zettel generation from a succeeded extraction.
  */
 
 export type EnrichmentRow = typeof documentEnrichment.$inferSelect;
@@ -165,9 +164,8 @@ async function runStage(
 }
 
 /**
- * Advance the pipeline: mirror the extract stage, then run each due stage in
- * order, stopping at the first failure (later stages stay pending). Called
- * after a successful extraction, and by the retry control for a manual rerun.
+ * Mirror extraction, then run each due work stage independently. Called
+ * after extraction succeeds and by the retry control for a manual rerun.
  */
 export async function advanceDocumentEnrichment(
   auth: AuthContext,
@@ -194,8 +192,8 @@ export async function advanceDocumentEnrichment(
     // add a card the last pass never saw, and embedArtifact is idempotent
     // per card.
     if (!row || row.status === "skipped" || (row.status === "succeeded" && stage !== "link")) continue;
-    const outcome = await runStage(auth, { documentId: input.documentId, stage, providers: input.providers });
-    if (!outcome.ok) break;
+    const result = await runStage(auth, { documentId: input.documentId, stage, providers: input.providers });
+    if (!result.ok) break;
   }
   return getDocumentEnrichment(auth, input.documentId);
 }

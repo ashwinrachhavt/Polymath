@@ -4,6 +4,7 @@ import { briefFromContent } from "./design-brief-handoff";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { artifactLinks, artifactVersions, artifacts, documents } from "./schema";
+import { currentExtractionSql } from "./versions";
 
 /*
  * The artifact gallery: every artifact in the workspace, generated or
@@ -12,6 +13,7 @@ import { artifactLinks, artifactVersions, artifacts, documents } from "./schema"
  */
 
 export type GalleryArtifact = {
+  recordType: "artifact" | "source" | "quiz" | "flashcard_deck";
   id: string;
   title: string;
   kind: string;
@@ -22,6 +24,8 @@ export type GalleryArtifact = {
   updatedAt: Date;
   /** Plain-text projection, truncated for the card preview. */
   preview: string;
+  notebookId?: string | null;
+  documentId?: string | null;
 };
 
 const PREVIEW_LENGTH = 280;
@@ -29,25 +33,57 @@ const PREVIEW_LENGTH = 280;
 export async function listGalleryArtifacts(
   auth: AuthContext,
   input: {
-    kind?: "note" | "zettel" | "document" | "memo" | "report" | "diagram" | "transcript" | "deck" | "infographic" | "other";
+    kind?:
+      | "source"
+      | "note"
+      | "zettel"
+      | "document"
+      | "memo"
+      | "report"
+      | "diagram"
+      | "transcript"
+      | "deck"
+      | "infographic"
+      | "other"
+      | "quiz"
+      | "flashcards";
     origin?: "run" | "upload" | "authored";
-    /** Title substring, case-insensitive; filtered in SQL. */
+    status?: string;
     query?: string;
     limit?: number;
     offset?: number;
   } = {},
 ): Promise<{ items: GalleryArtifact[]; total: number }> {
-  const filters = [eq(artifacts.workspaceId, auth.workspaceId), isNull(artifacts.archivedAt)];
-  if (input.kind) filters.push(eq(artifacts.kind, input.kind));
-  if (input.origin === "run") filters.push(isNotNull(artifacts.producedByRunId));
-  if (input.origin === "upload" || input.origin === "authored") filters.push(isNull(artifacts.producedByRunId));
-  if (input.query?.trim()) filters.push(sql`${artifacts.title} ilike ${"%" + input.query.trim().replace(/[%_]/g, "\\$&") + "%"}`);
-  const where = and(...filters);
-  // The card preview is a 280-char slice; pulling the full content JSONB for
-  // 200 rows to throw 99% of it away is the expensive way to get one. Truncate
-  // in SQL: markdown text or the plain-text projection.
-  const [countRow, rows] = await Promise.all([
-    db.select({ total: sql<number>`count(*)::int` }).from(artifacts).where(where),
+  const limit = input.limit ?? 100;
+  const offset = input.offset ?? 0;
+  const escapedQuery = input.query?.trim().replace(/[%_]/g, "\\$&");
+  const artifactFilters = [eq(artifacts.workspaceId, auth.workspaceId), isNull(artifacts.archivedAt)];
+  if (input.kind === "source" || input.kind === "quiz" || input.kind === "flashcards") artifactFilters.push(sql`false`);
+  else if (input.kind) artifactFilters.push(eq(artifacts.kind, input.kind));
+  if (input.origin === "run") artifactFilters.push(isNotNull(artifacts.producedByRunId));
+  if (input.origin === "upload" || input.origin === "authored") artifactFilters.push(isNull(artifacts.producedByRunId));
+  if (input.status) artifactFilters.push(eq(artifacts.status, input.status as typeof artifacts.$inferSelect.status));
+  if (escapedQuery)
+    artifactFilters.push(
+      sql`(${artifacts.title} ilike ${`%${escapedQuery}%`} or exists (select 1 from artifact_versions av where av.id = ${artifacts.currentVersionId} and av.plain_text ilike ${`%${escapedQuery}%`}))`,
+    );
+  const artifactWhere = and(...artifactFilters);
+
+  const sourceFilters = [eq(documents.workspaceId, auth.workspaceId), isNull(documents.archivedAt)];
+  if (input.kind && input.kind !== "source") sourceFilters.push(sql`false`);
+  if (input.origin === "run" || input.origin === "authored") sourceFilters.push(sql`false`);
+  if (input.status) sourceFilters.push(sql`coalesce(${currentExtractionSql("status")}, 'pending') = ${input.status}`);
+  if (escapedQuery)
+    sourceFilters.push(
+      sql`(${documents.title} ilike ${`%${escapedQuery}%`} or ${currentExtractionSql("text")} ilike ${`%${escapedQuery}%`})`,
+    );
+  const sourceWhere = and(...sourceFilters);
+
+  const [artifactCount, artifactRows, sourceCount, sourceRows] = await Promise.all([
+    db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(artifacts)
+      .where(artifactWhere),
     db
       .select({
         id: artifacts.id,
@@ -57,32 +93,63 @@ export async function listGalleryArtifacts(
         producedByRunId: artifacts.producedByRunId,
         createdAt: artifacts.createdAt,
         updatedAt: artifacts.updatedAt,
-        contentText: sql<string | null>`case when ${artifactVersions.content} ->> 'kind' = 'markdown' then left(${artifactVersions.content} ->> 'text', ${PREVIEW_LENGTH}) end`,
+        contentText: sql<
+          string | null
+        >`case when ${artifactVersions.content} ->> 'kind' = 'markdown' then left(${artifactVersions.content} ->> 'text', ${PREVIEW_LENGTH}) end`,
         plainText: sql<string | null>`left(${artifactVersions.plainText}, ${PREVIEW_LENGTH})`,
       })
       .from(artifacts)
       .leftJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
-      .where(where)
-      .orderBy(desc(artifacts.updatedAt))
-      .limit(input.limit ?? 100)
-      .offset(input.offset ?? 0),
+      .where(artifactWhere)
+      .orderBy(desc(artifacts.updatedAt), desc(artifacts.id))
+      .limit(limit + offset),
+    db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(documents)
+      .where(sourceWhere),
+    db
+      .select({
+        id: documents.id,
+        title: documents.title,
+        status: sql<string>`coalesce(${currentExtractionSql("status")}, 'pending')`,
+        preview: sql<string | null>`left(${currentExtractionSql("text")}, ${PREVIEW_LENGTH})`,
+        createdAt: documents.createdAt,
+        updatedAt: documents.updatedAt,
+      })
+      .from(documents)
+      .where(sourceWhere)
+      .orderBy(desc(documents.updatedAt), desc(documents.id))
+      .limit(limit + offset),
   ]);
 
-  return {
-    total: countRow[0]?.total ?? 0,
-    items: rows.map((row) => ({
+  const items: GalleryArtifact[] = [
+    ...artifactRows.map((row) => ({
+      recordType: "artifact" as const,
       id: row.id,
       title: row.title,
       kind: row.kind,
       status: row.status,
-      origin: row.producedByRunId ? "run" : "authored",
+      origin: row.producedByRunId ? ("run" as const) : ("authored" as const),
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
-      // The preview is plain text by convention (lib/display-text): strip
-      // whichever source wins - raw markers in a card read as corruption.
-      // Stripping is marker-precise, so already-plain text passes through.
       preview: markdownToPlainText(row.plainText ?? row.contentText ?? ""),
-    }) satisfies GalleryArtifact),
+    })),
+    ...sourceRows.map((row) => ({
+      recordType: "source" as const,
+      id: row.id,
+      title: row.title,
+      kind: "source",
+      status: row.status,
+      origin: "upload" as const,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      preview: markdownToPlainText(row.preview ?? ""),
+    })),
+  ];
+  items.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime() || b.id.localeCompare(a.id));
+  return {
+    total: (artifactCount[0]?.total ?? 0) + (sourceCount[0]?.total ?? 0),
+    items: items.slice(offset, offset + limit),
   };
 }
 
@@ -122,14 +189,22 @@ export async function getArtifactDetail(auth: AuthContext, artifactId: string): 
     ? await db
         .select({ content: artifactVersions.content, plainText: artifactVersions.plainText })
         .from(artifactVersions)
-        .where(and(eq(artifactVersions.id, artifact.currentVersionId), eq(artifactVersions.workspaceId, auth.workspaceId)))
+        .where(
+          and(eq(artifactVersions.id, artifact.currentVersionId), eq(artifactVersions.workspaceId, auth.workspaceId)),
+        )
         .limit(1)
     : [null];
 
   const linkRows = await db
     .select({ targetId: artifactLinks.targetId })
     .from(artifactLinks)
-    .where(and(eq(artifactLinks.artifactId, artifactId), eq(artifactLinks.workspaceId, auth.workspaceId), eq(artifactLinks.targetType, "document")));
+    .where(
+      and(
+        eq(artifactLinks.artifactId, artifactId),
+        eq(artifactLinks.workspaceId, auth.workspaceId),
+        eq(artifactLinks.targetType, "document"),
+      ),
+    );
   const documentIds = [...new Set(linkRows.map((l) => l.targetId))];
   const docs = documentIds.length
     ? await db
@@ -146,7 +221,8 @@ export async function getArtifactDetail(auth: AuthContext, artifactId: string): 
     status: artifact.status,
     version: artifact.version,
     updatedAt: artifact.updatedAt,
-    markdown: content?.kind === "markdown" && typeof content.text === "string" ? content.text : version?.plainText ?? null,
+    markdown:
+      content?.kind === "markdown" && typeof content.text === "string" ? content.text : (version?.plainText ?? null),
     structured: artifact.kind === "deck" || artifact.kind === "infographic" ? content : null,
     plainText: version?.plainText ?? null,
     isDesignBrief: briefFromContent(content) !== null,

@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
@@ -12,7 +12,8 @@ import {
   type GeneratedQuestion,
   type QuizGenerator,
 } from "@/integrations/learning/quiz-generator";
-import { quizzes, quizQuestions } from "./schema";
+import { quizzes, quizQuestions, type QuizEvidence, type QuizSourceSnapshot } from "./schema";
+import { quizGenerationContext } from "./generation-context";
 
 /*
  * The quiz generator's domain half (learn-harness replication). Producing a
@@ -41,7 +42,8 @@ const MAX_ERROR_CHARS = 500;
 
 export class QuizGenerationError extends Error {
   constructor(
-    public readonly code: "document_not_found" | "no_extraction" | "insufficient_evidence" | "generation_failed",
+    public readonly code:
+      "document_not_found" | "no_extraction" | "invalid_sources" | "insufficient_evidence" | "generation_failed",
     message: string,
   ) {
     super(message);
@@ -58,6 +60,7 @@ export class QuizGenerationError extends Error {
 export const GENERATION_COPY: Record<QuizGenerationError["code"], string> = {
   document_not_found: "That document is not in this workspace.",
   no_extraction: "This document is still being read. Try again once its text is ready.",
+  invalid_sources: "Choose up to eight distinct sources from this notebook.",
   insufficient_evidence: "Not enough of this document could be verified against its text to build an honest quiz.",
   generation_failed: "The quiz generator did not answer. Try again in a moment.",
 };
@@ -67,7 +70,7 @@ export type VerifiedQuestion = {
   choices: Array<{ value: string; label: string }>;
   answerValue: string;
   explanation: string;
-  evidence: { quote: string; startOffset: number; endOffset: number };
+  evidence: QuizEvidence;
 };
 
 export type VerifiedQuiz = {
@@ -75,6 +78,8 @@ export type VerifiedQuiz = {
   /** Questions the model offered but could not prove against the text. */
   droppedQuestions: number;
 };
+
+export type QuizSourceText = QuizSourceSnapshot & { text: string };
 
 /*
  * Pure trust boundary between the model's proposal and a persistable quiz.
@@ -84,7 +89,7 @@ export type VerifiedQuiz = {
  * (normalized matching - formatting-tolerant, content-strict, see
  * locate-quote.ts). Everything else is dropped and counted, never repaired.
  */
-export function verifyQuiz(text: string, raw: GeneratedQuestion[]): VerifiedQuiz {
+export function verifyQuiz(text: string, raw: GeneratedQuestion[], limit = MAX_QUIZ_QUESTIONS): VerifiedQuiz {
   const questions: VerifiedQuestion[] = [];
   let droppedQuestions = 0;
   for (const q of raw) {
@@ -144,52 +149,108 @@ export function verifyQuiz(text: string, raw: GeneratedQuestion[]): VerifiedQuiz
         endOffset: span.end,
       },
     });
-    if (questions.length >= MAX_QUIZ_QUESTIONS) break;
+    if (questions.length >= limit) break;
   }
   return { questions, droppedQuestions };
 }
 
-async function loadCurrentExtraction(auth: AuthContext, documentId: string) {
-  // Two distinct honest failures: a document that does not exist (or is not
-  // ours) is not the same as one still being read. One join would report
-  // "no such document" about a document the user captured minutes ago.
-  const [doc] = await db
-    .select({ title: documents.title })
-    .from(documents)
-    .where(and(eq(documents.id, documentId), eq(documents.workspaceId, auth.workspaceId)))
-    .limit(1);
-  if (!doc) throw new QuizGenerationError("document_not_found", "No such document.");
+/** Verify each question against the exact source version it names. */
+export function verifyQuizAcrossSources(
+  sources: QuizSourceText[],
+  raw: GeneratedQuestion[],
+  limit = MAX_QUIZ_QUESTIONS,
+): VerifiedQuiz {
+  const questions: VerifiedQuestion[] = [];
+  let droppedQuestions = 0;
+  for (const question of raw) {
+    const sourceIndex = question.sourceIndex ?? (sources.length === 1 ? 0 : -1);
+    const source = sources[sourceIndex];
+    if (!source) {
+      droppedQuestions += 1;
+      continue;
+    }
+    const verified = verifyQuiz(source.text, [question], limit);
+    droppedQuestions += verified.droppedQuestions;
+    if (verified.questions[0]) {
+      questions.push({
+        ...verified.questions[0],
+        evidence: {
+          ...verified.questions[0].evidence,
+          source: { documentId: source.documentId, extractionId: source.extractionId, title: source.title },
+        },
+      });
+    }
+    if (questions.length >= limit) break;
+  }
+  return { questions, droppedQuestions };
+}
 
-  const [extraction] = await db
-    .select({ id: documentExtractions.id, text: documentExtractions.text, status: documentExtractions.status })
+export async function loadCurrentQuizSources(auth: AuthContext, documentIds: string[]): Promise<QuizSourceText[]> {
+  if (documentIds.length === 0 || documentIds.length > 8 || new Set(documentIds).size !== documentIds.length) {
+    throw new QuizGenerationError("invalid_sources", "Choose between one and eight distinct notebook sources.");
+  }
+  const docs = await db
+    .select({ id: documents.id, title: documents.title })
+    .from(documents)
+    .where(and(eq(documents.workspaceId, auth.workspaceId), inArray(documents.id, documentIds)));
+  if (docs.length !== documentIds.length) {
+    throw new QuizGenerationError("document_not_found", "One or more selected sources are not in this workspace.");
+  }
+  const extractions = await db
+    .select({
+      documentId: documents.id,
+      extractionId: documentExtractions.id,
+      text: documentExtractions.text,
+      status: documentExtractions.status,
+    })
     .from(documents)
     .innerJoin(documentExtractions, eq(documentExtractions.documentId, documents.id))
     .where(
       and(
-        eq(documents.id, documentId),
         eq(documents.workspaceId, auth.workspaceId),
-        // Correlates against documents: currentExtractionIdSubquery resolves
-        // the document's active extraction, falling back to its newest row.
+        inArray(documents.id, documentIds),
         eq(documentExtractions.id, sql`(${currentExtractionIdSubquery()})`),
       ),
-    )
-    .limit(1);
-  if (!extraction || extraction.status !== "succeeded" || !extraction.text) {
-    throw new QuizGenerationError("no_extraction", "This document has no succeeded extraction to quiz yet.");
-  }
-  return { id: extraction.id, text: extraction.text, title: doc.title };
+    );
+  const byDocument = new Map(extractions.map((row) => [row.documentId, row]));
+  const byTitle = new Map(docs.map((row) => [row.id, row.title]));
+  const sources = documentIds.map((documentId) => {
+    const extraction = byDocument.get(documentId);
+    if (!extraction || extraction.status !== "succeeded" || !extraction.text) {
+      throw new QuizGenerationError("no_extraction", "Every selected source must have a succeeded extraction.");
+    }
+    return {
+      documentId,
+      extractionId: extraction.extractionId,
+      text: extraction.text,
+      title: byTitle.get(documentId)!,
+    };
+  });
+  return sources;
 }
 
 async function recordFailedQuiz(
   auth: AuthContext,
-  input: { documentId: string; sourceExtractionId: string; title: string; model: string; error: string },
+  input: {
+    notebookId?: string;
+    documentId: string;
+    sourceExtractionId: string;
+    sourceManifest: QuizSourceSnapshot[];
+    generationKey?: string;
+    title: string;
+    model: string;
+    error: string;
+  },
 ) {
   await db.insert(quizzes).values({
     workspaceId: auth.workspaceId,
+    notebookId: input.notebookId,
     documentId: input.documentId,
     // Generation only runs when a succeeded extraction exists, so a failed
     // row can always pin the extraction it ran against.
     sourceExtractionId: input.sourceExtractionId,
+    sourceManifest: input.sourceManifest,
+    generationKey: input.generationKey,
     title: input.title.slice(0, MAX_QUIZ_TITLE_CHARS),
     status: "failed",
     questionCount: 0,
@@ -210,42 +271,111 @@ async function recordFailedQuiz(
  */
 export async function generateQuiz(
   auth: AuthContext,
-  input: { documentId: string },
+  input: {
+    notebookId?: string;
+    documentId: string;
+    documentIds?: string[];
+    questionCount?: number;
+    idempotencyKey?: string;
+  },
   generator?: QuizGenerator,
 ): Promise<{ quizId: string; questionCount: number; droppedQuestions: number }> {
-  const extraction = await loadCurrentExtraction(auth, input.documentId);
+  const selectedIds = input.documentIds ?? [input.documentId];
+  if (selectedIds[0] !== input.documentId) {
+    throw new QuizGenerationError(
+      "invalid_sources",
+      "The first source must match the notebook's selected source order.",
+    );
+  }
+  const questionCount = input.questionCount ?? 5;
+  if (!Number.isInteger(questionCount) || questionCount < MIN_QUIZ_QUESTIONS || questionCount > MAX_QUIZ_QUESTIONS) {
+    throw new QuizGenerationError(
+      "invalid_sources",
+      `Choose between ${MIN_QUIZ_QUESTIONS} and ${MAX_QUIZ_QUESTIONS} questions.`,
+    );
+  }
+  const sources = await loadCurrentQuizSources(auth, selectedIds);
+  const primary = sources[0];
+  const manifest: QuizSourceSnapshot[] = sources.map(({ documentId, extractionId, title }) => ({
+    documentId,
+    extractionId,
+    title,
+  }));
+  const title = sources.length === 1 ? primary.title : `${primary.title} + ${sources.length - 1} more`;
+  if (input.idempotencyKey) {
+    const [existing] = await db
+      .select({
+        id: quizzes.id,
+        status: quizzes.status,
+        questionCount: quizzes.questionCount,
+        error: quizzes.error,
+        sourceManifest: quizzes.sourceManifest,
+        notebookId: quizzes.notebookId,
+      })
+      .from(quizzes)
+      .where(and(eq(quizzes.workspaceId, auth.workspaceId), eq(quizzes.generationKey, input.idempotencyKey)))
+      .limit(1);
+    if (existing) {
+      if (
+        existing.notebookId !== input.notebookId ||
+        JSON.stringify(existing.sourceManifest) !== JSON.stringify(manifest)
+      ) {
+        throw new QuizGenerationError(
+          "invalid_sources",
+          "This quiz request key already belongs to a different source selection.",
+        );
+      }
+      if (existing.status === "ready") {
+        return { quizId: existing.id, questionCount: existing.questionCount, droppedQuestions: 0 };
+      }
+      throw new QuizGenerationError("generation_failed", existing.error ?? GENERATION_COPY.generation_failed);
+    }
+  }
 
-  // defaultQuizGenerator throws EmbeddingUnconfiguredError synchronously when
-  // no provider is configured - a workspace setting, not a quiz attempt, so
-  // it propagates here without writing a failed row per click.
+  // Provider setup happens after source validation, so a missing key never
+  // creates a failed quiz row for an invalid or unready source selection.
   const engine = generator ?? defaultQuizGenerator(auth.workspaceId);
+  const learningContext = await quizGenerationContext(auth, selectedIds);
 
   let raw: { questions: GeneratedQuestion[] };
   try {
-    raw = await engine.generate(extraction.text);
+    if (sources.length === 1) {
+      raw = await engine.generate(primary.text, { questionCount, learningContext });
+    } else if (engine.generateFromSources) {
+      raw = await engine.generateFromSources(
+        sources.map(({ title, text }) => ({ title, text })),
+        { questionCount, learningContext },
+      );
+    } else {
+      throw new Error("This quiz generator does not support multiple sources.");
+    }
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : "Quiz generation failed.";
     await recordFailedQuiz(auth, {
-      documentId: input.documentId,
-      title: extraction.title,
+      notebookId: input.notebookId,
+      documentId: primary.documentId,
+      title,
       model: engine.name,
-      // The row stores the authored sentence, not the driver's text: the
-      // schema promises an owner-facing failure reason.
       error: GENERATION_COPY.generation_failed,
-      sourceExtractionId: extraction.id,
+      sourceExtractionId: primary.extractionId,
+      sourceManifest: manifest,
+      generationKey: input.idempotencyKey,
     });
     throw new QuizGenerationError("generation_failed", message);
   }
 
-  const verified = verifyQuiz(extraction.text, raw.questions);
+  const verified = verifyQuizAcrossSources(sources, raw.questions, questionCount);
   if (verified.questions.length < MIN_QUIZ_QUESTIONS) {
-    const message = `Only ${verified.questions.length} of ${raw.questions.length} proposed questions could be verified against the text; a quiz needs at least ${MIN_QUIZ_QUESTIONS}.`;
+    const message = `Only ${verified.questions.length} of ${raw.questions.length} proposed questions could be verified against selected source text; a quiz needs at least ${MIN_QUIZ_QUESTIONS}.`;
     await recordFailedQuiz(auth, {
-      documentId: input.documentId,
-      title: extraction.title,
+      notebookId: input.notebookId,
+      documentId: primary.documentId,
+      title,
       model: engine.name,
       error: message,
-      sourceExtractionId: extraction.id,
+      sourceExtractionId: primary.extractionId,
+      sourceManifest: manifest,
+      generationKey: input.idempotencyKey,
     });
     throw new QuizGenerationError("insufficient_evidence", message);
   }
@@ -255,9 +385,12 @@ export async function generateQuiz(
       .insert(quizzes)
       .values({
         workspaceId: auth.workspaceId,
-        documentId: input.documentId,
-        sourceExtractionId: extraction.id,
-        title: extraction.title.slice(0, MAX_QUIZ_TITLE_CHARS),
+        notebookId: input.notebookId,
+        documentId: primary.documentId,
+        sourceExtractionId: primary.extractionId,
+        sourceManifest: manifest,
+        generationKey: input.idempotencyKey,
+        title: title.slice(0, MAX_QUIZ_TITLE_CHARS),
         status: "ready",
         questionCount: verified.questions.length,
         model: engine.name,
@@ -284,9 +417,10 @@ export async function generateQuiz(
         action: "learning.quiz_generated",
         subjectType: "quiz",
         subjectId: row.id,
-        summary: `Generated a ${verified.questions.length}-question quiz from "${extraction.title}"`,
+        summary: `Generated a ${verified.questions.length}-question quiz from ${sources.length} source${sources.length === 1 ? "" : "s"}`,
         metadata: {
-          documentId: input.documentId,
+          documentIds: selectedIds,
+          sourceCount: manifest.length,
           droppedQuestions: verified.droppedQuestions,
           model: engine.name,
           promptVersion: QUIZ_PROMPT_VERSION,

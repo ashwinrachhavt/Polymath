@@ -7,10 +7,9 @@ import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace"
 import type { AuthContext } from "@/domains/identity/resolve";
 
 /*
- * A URL capture is a promise to read the page. The capture row lands with the
- * URL, an outbox row is written in the same transaction, and the handler fills
- * the capture's text from Firecrawl (sites) or the transcript API (YouTube).
- * A fetch that fails leaves the reason on the capture; it does not retry blind.
+ * URL captures stay raw until the user requests Firecrawl. That request writes
+ * the outbox row, and the handler fills fetched text from Firecrawl or YouTube.
+ * A failed read leaves its reason on the capture for an explicit retry.
  */
 
 const scrape = vi.fn();
@@ -54,6 +53,7 @@ beforeEach(() => {
 });
 
 async function runHandlerFor(captureId: string) {
+  await commands.retryCaptureUrl(auth, { captureId });
   const events = await db.select().from(outboxEvents).where(eq(outboxEvents.topic, "capture.url_content_requested"));
   const event = events.find((e) => (e.payload as { captureId?: string }).captureId === captureId);
   if (!event) throw new Error(`no url content event for capture ${captureId}`);
@@ -73,8 +73,12 @@ async function runHandlerDirect(captureId: string, url: string) {
 }
 
 suite("capture url content", () => {
-  it("enqueues url_content_requested in the same transaction as the capture", async () => {
+  it("enqueues url_content_requested only after an explicit read request", async () => {
     const capture = await commands.createCapture(auth, { text: `https://example.com/enqueue-${Date.now()}` });
+    const before = await db.select().from(outboxEvents).where(eq(outboxEvents.topic, "capture.url_content_requested"));
+    expect(before.some((e) => (e.payload as { captureId?: string }).captureId === capture.id)).toBe(false);
+
+    await commands.retryCaptureUrl(auth, { captureId: capture.id });
     const events = await db.select().from(outboxEvents).where(eq(outboxEvents.topic, "capture.url_content_requested"));
     const mine = events.find((e) => (e.payload as { captureId?: string }).captureId === capture.id);
     expect(mine).toBeTruthy();
@@ -82,9 +86,11 @@ suite("capture url content", () => {
   });
 
   it("a text capture enqueues nothing", async () => {
-    const before = (await db.select().from(outboxEvents).where(eq(outboxEvents.topic, "capture.url_content_requested"))).length;
+    const before = (await db.select().from(outboxEvents).where(eq(outboxEvents.topic, "capture.url_content_requested")))
+      .length;
     await commands.createCapture(auth, { text: `Just a thought ${Date.now()}` });
-    const after = (await db.select().from(outboxEvents).where(eq(outboxEvents.topic, "capture.url_content_requested"))).length;
+    const after = (await db.select().from(outboxEvents).where(eq(outboxEvents.topic, "capture.url_content_requested")))
+      .length;
     expect(after).toBe(before);
   });
 
@@ -106,8 +112,11 @@ suite("capture url content", () => {
       url: `https://example.com/grab-${Date.now()}`,
       source: "companion",
     });
-    const events = await db.select().from(outboxEvents).where(eq(outboxEvents.topic, "capture.url_content_requested"));
-    expect(events.some((e) => (e.payload as { captureId?: string }).captureId === capture.id)).toBe(true);
+    const eventsBeforeRequest = await db
+      .select()
+      .from(outboxEvents)
+      .where(eq(outboxEvents.topic, "capture.url_content_requested"));
+    expect(eventsBeforeRequest.some((e) => (e.payload as { captureId?: string }).captureId === capture.id)).toBe(false);
 
     await runHandlerFor(capture.id);
     const [row] = await db.select().from(captures).where(eq(captures.id, capture.id));

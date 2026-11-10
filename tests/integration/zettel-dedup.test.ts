@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { and, eq } from "drizzle-orm";
-import { artifacts, documents, documentExtractions, embeddings } from "@/domains/knowledge/schema";
+import { artifacts, claims, documents, documentExtractions, embeddings } from "@/domains/knowledge/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
@@ -99,6 +99,14 @@ async function seedIdea(auth: ReturnType<typeof ownerAuth>, title: string, d: nu
       updatedBy: auth.userId,
     })
     .returning();
+  await db.insert(claims).values({
+    workspaceId: auth.workspaceId,
+    artifactId: idea.id,
+    statement: "The tenant pays rent on the first of each month.",
+    status: "proposed",
+    createdBy: auth.userId,
+    updatedBy: auth.userId,
+  });
   const c = 1 - d;
   const s = Math.sqrt(1 - c * c);
   await db.insert(embeddings).values({

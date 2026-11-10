@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { io } from "next/cache";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -26,9 +27,12 @@ import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { timeAgo } from "@/lib/time";
 import { listLinkableRecords, resolveLinkTitles } from "@/app/(workspace)/projects-links";
 import { DraftWorkbench } from "../../draft-workbench";
+import { getQuizForSitting } from "@/domains/learning/queries";
+import { getArtifactFeedback } from "@/domains/knowledge/artifact-feedback";
+import { QuizRunner } from "../../../learn/[documentId]/quiz-runner";
 import NotebookSurface, { type GeneratedArtifact } from "./notebook-surface";
 
-export const metadata = { title: "Notebook · Polymath" };
+export const metadata: Metadata = { title: "Notebook · Polymath" };
 
 /*
  * A notebook is a project (NotebookLM parity). This route lives under
@@ -50,7 +54,17 @@ export const metadata = { title: "Notebook · Polymath" };
 
 const FINISHED = ["succeeded", "failed", "cancelled"];
 
-async function NotebookData({ projectId, draftId, chatId }: { projectId: string; draftId?: string; chatId?: string }) {
+async function NotebookData({
+  projectId,
+  draftId,
+  chatId,
+  quizId,
+}: {
+  projectId: string;
+  draftId?: string;
+  chatId?: string;
+  quizId?: string;
+}) {
   await io();
   const auth = await getAuthContext();
   const project = await getProjectDetail(auth, projectId);
@@ -92,6 +106,15 @@ async function NotebookData({ projectId, draftId, chatId }: { projectId: string;
   const generatedPromise = documentIdsPromise.then((documentIds) =>
     listGeneratedArtifacts(auth.workspaceId, documentIds),
   );
+  const quizPromise = Promise.all([
+    quizId ? getQuizForSitting(auth, quizId) : Promise.resolve(null),
+    documentIdsPromise,
+  ]).then(([quiz, documentIds]) => {
+    if (!quiz || (quiz.notebookId !== null && quiz.notebookId !== projectId)) return null;
+    const pinnedIds =
+      quiz.sourceManifest.length > 0 ? quiz.sourceManifest.map((source) => source.documentId) : [quiz.documentId];
+    return pinnedIds.every((id) => documentIds.includes(id)) ? quiz : null;
+  });
   // The Studio Runs panel lists generation/research runs. A conversation is a
   // run too, but it belongs to the chat's own history, not this panel.
   const runsPromise = listProjectRuns(auth, projectId).then((runs) =>
@@ -114,19 +137,22 @@ async function NotebookData({ projectId, draftId, chatId }: { projectId: string;
         : { draftDetail: null, linkTitles: {}, linkable: null },
   );
 
-  const [sources, vault, chats, labels, chatView, generatedRows, runs, runDrafts, workbench] = await Promise.all([
-    sourcesPromise,
-    listAttachableDocuments(auth),
-    chatsPromise,
-    labelsPromise,
-    chatViewPromise,
-    generatedPromise,
-    runsPromise,
-    runDraftsPromise,
-    workbenchPromise,
-  ]);
+  const [sources, vault, chats, labels, chatView, generatedRows, runs, runDrafts, workbench, learningQuiz] =
+    await Promise.all([
+      sourcesPromise,
+      listAttachableDocuments(auth),
+      chatsPromise,
+      labelsPromise,
+      chatViewPromise,
+      generatedPromise,
+      runsPromise,
+      runDraftsPromise,
+      workbenchPromise,
+      quizPromise,
+    ]);
   const { activeChat, activeChatLive, activeThread, lastAnswer } = chatView;
   const { draftDetail, linkTitles, linkable } = workbench;
+  const quizFeedback = learningQuiz ? await getArtifactFeedback(auth, { kind: "quiz", id: learningQuiz.id }) : null;
 
   const generated: GeneratedArtifact[] = generatedRows.map((row) => ({
     artifactId: row.id,
@@ -165,6 +191,12 @@ async function NotebookData({ projectId, draftId, chatId }: { projectId: string;
         runs={runs.map((run) => ({ id: run.id, state: run.state, objective: run.objective }))}
         runDrafts={Object.fromEntries(runDrafts)}
       />
+      {learningQuiz ? (
+        <section aria-label="Notebook quiz" className="page-content mt-6">
+          <h2 className="mb-3 text-lg font-medium">{learningQuiz.title}</h2>
+          <QuizRunner quiz={learningQuiz} rating={quizFeedback} />
+        </section>
+      ) : null}
       {draftDetail && linkable ? (
         <section aria-label="Draft workbench" className="page-content mt-6">
           <DraftWorkbench
@@ -188,7 +220,7 @@ export default function NotebookPage({
   searchParams,
 }: {
   params: Promise<{ projectId: string }>;
-  searchParams: Promise<{ draft?: string; chat?: string }>;
+  searchParams: Promise<{ draft?: string; chat?: string; quiz?: string }>;
 }) {
   // Both promises are unwrapped inside the boundary (the notes page's
   // pattern): awaiting searchParams — or making this page component async —
@@ -207,12 +239,12 @@ async function NotebookSearchParams({
   searchParams,
 }: {
   params: Promise<{ projectId: string }>;
-  searchParams: Promise<{ draft?: string; chat?: string }>;
+  searchParams: Promise<{ draft?: string; chat?: string; quiz?: string }>;
 }) {
   const [{ projectId }, search] = await Promise.all([params, searchParams]);
   return (
     <Suspense fallback={<Skeleton className="m-6 h-64 w-full" />}>
-      <NotebookData projectId={projectId} draftId={search.draft} chatId={search.chat} />
+      <NotebookData projectId={projectId} draftId={search.draft} chatId={search.chat} quizId={search.quiz} />
     </Suspense>
   );
 }

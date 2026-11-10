@@ -174,29 +174,14 @@ export async function createCapture(
         },
         tx,
       );
-      // Only a page or a bare address promises the page's content, so only
-      // those fetch: a selection is the words the person chose, and fetching
-      // the page around them would add text they did not capture. A page grab
-      // from the companion carries its own text, but that text is flattened
-      // innerText, not markdown - the fetch fills `fetchedText` with the page's
-      // real structure beside it (the grab stays the working text and survives
-      // in rawPayload). The fetch is long work, so it parks in the outbox
-      // instead of holding the request open.
-      if (capture.url && (mode === "page" || mode === "url-reference")) {
+      // Keep the raw capture first. Firecrawl runs only when the owner asks.
+      if (capture.text) {
         await enqueueOutbox(tx, auth, {
-          topic: CAPTURE_URL_CONTENT_TOPIC,
-          payload: { captureId: capture.id, url: capture.url },
-          dispatchKey: `capture-url-content:${capture.id}`,
+          topic: CAPTURE_ENRICHMENT_TOPIC,
+          payload: { captureId: capture.id },
+          dispatchKey: `capture-enrichment:${capture.id}`,
         });
       }
-      // Enrichment runs after URL content lands, so the ladder classifies
-      // the fetched reading text, not just the address.
-      await enqueueOutbox(tx, auth, {
-        topic: CAPTURE_ENRICHMENT_TOPIC,
-        payload: { captureId: capture.id },
-        dispatchKey: `capture-enrichment:${capture.id}`,
-        ...(capture.kind === "url" ? { availableAt: new Date(Date.now() + 30_000) } : {}),
-      });
       return capture;
     });
     return value;
@@ -958,10 +943,10 @@ export async function retryCaptureUrl(
         if (!capture) throw new NotFoundError("That capture no longer exists. Reload the inbox.");
         if (!capture.url) throw new ConflictError("That capture has no address to read.");
         if (capture.createdBy !== auth.userId && auth.role !== "owner") {
-          // A capture someone else owns is indistinguishable from one that is
-          // not there: the same rule every tenant-scoped read follows.
           throw new NotFoundError("That capture no longer exists. Reload the inbox.");
         }
+        if (capture.fetchOutcome === "pending" || capture.fetchOutcome === "acquired") return { enqueued: false };
+
         const [updated] = await tx
           .update(captures)
           .set({
@@ -972,13 +957,17 @@ export async function retryCaptureUrl(
             updatedBy: auth.userId,
           })
           .where(and(eq(captures.workspaceId, auth.workspaceId), eq(captures.id, capture.id)))
-          .returning({ id: captures.id });
+          .returning({ id: captures.id, version: captures.version });
         if (!updated) throw new NotFoundError("That capture no longer exists. Reload the inbox.");
         const event = await enqueueOutbox(tx, auth, {
           topic: CAPTURE_URL_CONTENT_TOPIC,
           payload: { captureId: capture.id, url: capture.url },
-          // A repeated key enqueues nothing, so each retry gets its own.
-          dispatchKey: `capture-url-retry:${capture.id}:${Date.now()}`,
+          dispatchKey: `capture-url-enrichment:${capture.id}:v${updated.version}`,
+        });
+        await enqueueOutbox(tx, auth, {
+          topic: CAPTURE_ENRICHMENT_TOPIC,
+          payload: { captureId: capture.id },
+          dispatchKey: `capture-enrichment:${capture.id}:url-v${updated.version}`,
         });
         await recordAudit(
           auth,
@@ -986,7 +975,7 @@ export async function retryCaptureUrl(
             action: "capture.url_retry_requested",
             subjectType: "capture",
             subjectId: capture.id,
-            summary: "Page fetch retried",
+            summary: "Page enrichment requested",
           },
           tx,
         );
