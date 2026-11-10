@@ -106,7 +106,23 @@ describe("notes page", () => {
     vi.mocked(extractWikiLinkTitles).mockReturnValueOnce(["Alpha", "Nowhere|Shown", "quarterly plan"]);
     vi.mocked(getLinkPreviews).mockResolvedValueOnce([{ id: "a1", title: "alpha", firstParagraph: "" }]);
     const html = renderToStaticMarkup(await NotesSurface({ searchParams: params({ id: "b" }) }));
-    expect(html).toContain('data-missing="Nowhere"');
+    expect(html).toContain('data-missing="nowhere"');
+  });
+
+  it("never names a title past the preview lookup's cap as missing", async () => {
+    vi.mocked(getNote).mockResolvedValue(noteRow as never);
+    const titles = Array.from({ length: 55 }, (_, i) => `Link ${i + 1}`);
+    vi.mocked(extractWikiLinkTitles).mockReturnValueOnce(titles);
+    // Link 52 is a real note, but the capped lookup never asked for it.
+    vi.mocked(getLinkPreviews).mockResolvedValueOnce(
+      titles
+        .slice(0, 50)
+        .filter((t) => t !== "Link 2")
+        .map((title, i) => ({ id: `n${i}`, title, firstParagraph: "" })),
+    );
+    const html = renderToStaticMarkup(await NotesSurface({ searchParams: params({ id: "b" }) }));
+    expect(html).toContain('data-missing="link 2"');
+    expect(html).not.toContain("link 52");
   });
 
   it("with no notes at all, offers a new note instead of redirecting", async () => {

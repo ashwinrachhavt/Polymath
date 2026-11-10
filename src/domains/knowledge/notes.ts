@@ -6,6 +6,7 @@ import { outboxEvents } from "@/domains/audit/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { escapeLike } from "@/lib/list-params";
+import { linkPreviewKeys } from "./link-preview-keys";
 import {
   ARTIFACT_EMBEDDING_OWNER_TYPE,
   embedArtifact,
@@ -86,7 +87,6 @@ export function extractWikiLinkTitles(markdown: string): string[] {
 
 export type LinkPreview = { title: string; id: string; firstParagraph: string };
 
-const MAX_PREVIEW_TITLES = 50;
 const PREVIEW_CHARS = 280;
 
 /*
@@ -117,7 +117,7 @@ function firstParagraphOf(markdown: string, title: string): string {
  * as the editor does; of several notes with one title, the oldest wins.
  */
 export async function getLinkPreviews(auth: AuthContext, titles: string[]): Promise<LinkPreview[]> {
-  const wanted = [...new Set(titles.map((t) => t.trim().toLowerCase()).filter(Boolean))].slice(0, MAX_PREVIEW_TITLES);
+  const wanted = linkPreviewKeys(titles);
   if (wanted.length === 0) return [];
   const titleKey = sql`lower(btrim(${artifacts.title}))`;
   const rows = await withTransaction((tx) =>

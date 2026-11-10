@@ -12,6 +12,7 @@ import {
   type NoteContent,
 } from "@/domains/knowledge/notes";
 import { noteContentToMarkdown } from "@/domains/knowledge/note-content";
+import { linkPreviewKeys } from "@/domains/knowledge/link-preview-keys";
 import { listNoteComments } from "@/domains/knowledge/note-comments";
 import { relatedNotes } from "@/domains/knowledge/relations";
 import { getAuthContext } from "@/lib/auth";
@@ -109,14 +110,12 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
     getLinkPreviews(auth, linkedTitles),
   ]);
 
-  // A linked title is missing only if it named no note at this render. Links
-  // added later, and a link to this note itself, read as ordinary links.
+  // A linked title is missing only if this render looked it up (the lookup is
+  // capped) and found no note. Links added later, titles past the cap, and a
+  // link to this note itself read as ordinary links.
   const ownTitle = selected.title.trim().toLowerCase();
   const previewed = new Set(linkedPreviews.map((p) => p.title.trim().toLowerCase()));
-  const missingLinkTitles = linkedTitles.filter((t) => {
-    const key = t.toLowerCase();
-    return key !== ownTitle && !previewed.has(key);
-  });
+  const missingLinkTitles = linkPreviewKeys(linkedTitles).filter((key) => key !== ownTitle && !previewed.has(key));
 
   return (
     <div className={noteLayout.screen}>
