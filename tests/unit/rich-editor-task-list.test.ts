@@ -4,6 +4,7 @@ import { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { TaskItem, TaskList } from "@tiptap/extension-list";
 import { Markdown } from "@tiptap/markdown";
+import { richEditorMarkdown } from "@/components/products/polymath/markdown-preservation";
 
 /*
  * The note editor used to lock any note with `- [ ]` into a raw source
@@ -46,5 +47,29 @@ describe("rich editor task lists", () => {
     });
     editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { checked: true }));
     expect(editor.getMarkdown().trim()).toBe("- [x] todo");
+  });
+});
+
+/*
+ * StarterKit's TrailingNode appends an empty paragraph after a final list,
+ * quote or code block on the first transaction after mount (the editor's
+ * link-preview refresh is one). Serialized raw, that added "\n\n" and an
+ * untouched note autosaved changed text.
+ */
+describe("rich editor note text", () => {
+  it.each([
+    "- venue shortlist\n- invite list",
+    "- [ ] todo\n- [x] done",
+    "1. one\n2. two",
+    "> quote",
+    "```\ncode\n```",
+    "Intro\n\n- item",
+  ])("an untouched note keeps its text: %j", (markdown) => {
+    const editor = make(markdown);
+    const updates: string[] = [];
+    editor.on("update", () => updates.push(richEditorMarkdown(editor.getMarkdown())));
+    editor.view.dispatch(editor.state.tr.setMeta("refresh", true));
+    expect(updates.every((text) => text === markdown)).toBe(true);
+    expect(richEditorMarkdown(editor.getMarkdown())).toBe(markdown);
   });
 });

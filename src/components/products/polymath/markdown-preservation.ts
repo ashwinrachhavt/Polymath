@@ -1,3 +1,5 @@
+import { unescapeWikiLinks } from "@/domains/knowledge/note-content";
+
 export type MarkdownEditorMode = "rich" | "source";
 
 /*
@@ -156,4 +158,16 @@ export function markdownSourceReason(content: string): string | undefined {
 
 export function markdownEditorMode(content: string, preferred: MarkdownEditorMode = "rich"): MarkdownEditorMode {
   return markdownSourceReason(content) ? "source" : preferred;
+}
+
+/*
+ * The note text a rich-editor serialization stands for. StarterKit's
+ * TrailingNode keeps an empty paragraph after a note that ends in a list,
+ * quote or code block, so there is always a line to click into below it. That
+ * paragraph is editor scaffolding, yet it serializes as a trailing "\n\n", and
+ * the first transaction after mount rewrote an untouched note with it.
+ * Trailing blank lines carry no Markdown meaning, so they are dropped here.
+ */
+export function richEditorMarkdown(serialized: string): string {
+  return unescapeWikiLinks(serialized).replace(/\n+$/, "");
 }

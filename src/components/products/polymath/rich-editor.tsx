@@ -12,7 +12,6 @@ import { WIKI_LINK_OPEN, WikiLinks, refreshWikiPreviews, type WikiLinkOpen } fro
 import type { LinkPreview } from "@/domains/knowledge/notes";
 import { InlineCompletion } from "./inline-completion";
 import { setAutocompleteEnabled, useAutocomplete } from "./autocomplete-client";
-import { unescapeWikiLinks } from "@/domains/knowledge/note-content";
 import { Bold, Italic, List, ListOrdered, Quote, Undo2, Redo2 } from "lucide-react";
 import { filterBlockCommands, slashQuery, type BlockCommand } from "@/components/workspace/slash-commands";
 import { Button } from "@/components/ui/button";
@@ -20,7 +19,12 @@ import { useWorkspace } from "@/components/workspace/workspace-provider";
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { markdownEditorMode, markdownSourceReason, type MarkdownEditorMode } from "./markdown-preservation";
+import {
+  markdownEditorMode,
+  markdownSourceReason,
+  richEditorMarkdown,
+  type MarkdownEditorMode,
+} from "./markdown-preservation";
 import { uploadCaptureFile } from "@/lib/capture-upload";
 import { SearchField } from "@/components/workspace/ui";
 import { artifactHref } from "./artifact-controls";
@@ -567,7 +571,7 @@ function RichMarkdownEditor({
       });
     },
     onUpdate: ({ editor }) => {
-      onChange(unescapeWikiLinks(editor.getMarkdown()));
+      onChange(richEditorMarkdown(editor.getMarkdown()));
       const { from } = editor.state.selection;
       const query = editor.state.selection.empty
         ? slashQuery(editor.state.doc.textBetween(Math.max(0, from - 40), from, "\n"))
@@ -622,7 +626,7 @@ function RichMarkdownEditor({
     if (editor && linkPreviews) refreshWikiPreviews(editor, linkPreviews, missingLinkTitles);
   }, [editor, linkPreviews, missingLinkTitles]);
   useEffect(() => {
-    if (editor && unescapeWikiLinks(editor.getMarkdown()) !== content)
+    if (editor && richEditorMarkdown(editor.getMarkdown()) !== content)
       editor.commands.setContent(content, { contentType: "markdown", emitUpdate: false });
   }, [content, editor]);
   const formatButtons = [
