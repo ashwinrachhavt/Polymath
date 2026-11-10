@@ -66,8 +66,6 @@ const OWNED = new Set([
   "src/domains/gamification/commands.ts",
   "src/domains/integrations/queries.ts",
   "src/domains/integrations/commands.ts",
-  "src/domains/opportunities/queries.ts",
-  "src/domains/opportunities/commands.ts",
 ]);
 
 describe("cross-workspace isolation: 06-opportunities-gamification-integrations", () => {
