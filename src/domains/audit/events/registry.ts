@@ -217,6 +217,7 @@ const TIER_1: Tier1Spec[] = [
   { action: "capture.unparked", category: "knowledge", verbPhrase: "unparked a capture" },
   { action: "capture.archived", category: "knowledge", verbPhrase: "archived a capture" },
   { action: "capture.restored", category: "knowledge", verbPhrase: "restored a capture" },
+  { action: "capture.kind_set", category: "knowledge", verbPhrase: "set what a capture is" },
   { action: "capture.converted", category: "knowledge", verbPhrase: "converted a capture", operation: "outcome" },
   {
     action: "capture.zettels_created",
@@ -293,6 +294,7 @@ const TIER_2_ACTIONS: { action: string; category: EventCategory }[] = [
   { action: "artifact.revision.approved", category: "knowledge" },
   { action: "briefing_seed.committed", category: "work" },
   { action: "briefing_seed.dismissed", category: "work" },
+  { action: "capture.enrich_requested", category: "knowledge" },
   { action: "capture.extracted", category: "knowledge" },
   { action: "capture.url_retry_requested", category: "knowledge" },
   { action: "company.created", category: "work" },

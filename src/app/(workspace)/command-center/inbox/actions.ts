@@ -16,10 +16,14 @@ import {
   setCaptureState,
   updateCaptureText,
 } from "@/domains/capture/commands";
+import { readCaptureEnrichment, requestCaptureEnrich } from "@/domains/capture/enrich";
+import { ENRICH_PENDING_LABEL } from "@/domains/capture/enrich-state";
+import { CAPTURE_KINDS, setCaptureKind, type CaptureKind } from "@/domains/capture/kind-label";
 import { unparkCapture } from "@/domains/capture/parking";
 import { getAuthContext } from "@/lib/auth";
 import { capturesTag, tasksTag } from "@/lib/cache-tags";
 import { requireRole } from "@/lib/auth/guards";
+import type { WorkState } from "@/components/work-status";
 import type { Result } from "@/lib/result";
 
 /* Inbox actions (A02). Every write carries the version the caller rendered. */
@@ -201,4 +205,65 @@ export async function retryCaptureUrlAction(input: { captureId: string }): Promi
   }
   revalidate(auth);
   return { ok: true };
+}
+
+const setKindInput = z.object({ captureId: z.string().uuid(), kind: z.enum(CAPTURE_KINDS) });
+
+/**
+ * The person's correction of a capture's kind label. It is stored with source
+ * "user", so later enrichment never overwrites it. No version: the label is
+ * its own axis, apart from the text an open editor holds.
+ */
+export async function setCaptureKindAction(input: { captureId: string; kind: CaptureKind }): Promise<Result> {
+  const parsed = setKindInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "That kind is not one the inbox knows. Reload and try again." };
+  const auth = await authorize();
+  try {
+    const found = await setCaptureKind(auth, parsed.data);
+    if (!found) return { ok: false, error: "That capture could not be found. Reload the inbox." };
+  } catch (error) {
+    return fail(error);
+  }
+  revalidate(auth);
+  return { ok: true };
+}
+
+const enrichInput = z.object({ captureId: z.string().uuid() });
+
+/**
+ * Enrich a link capture: queue one fetch-and-summarize run. Long-running, so
+ * the click only queues it; the detail pane watches the stored state. A click
+ * while a run is pending, or after the summary landed, changes nothing.
+ */
+export async function enrichCaptureAction(input: { captureId: string }): Promise<Result> {
+  const parsed = enrichInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "That capture could not be found. Reload the inbox." };
+  const auth = await authorize();
+  let enqueued: boolean;
+  try {
+    ({ enqueued } = await requestCaptureEnrich(auth, parsed.data));
+  } catch (error) {
+    if (error instanceof ConflictError || error instanceof NotFoundError) return { ok: false, error: error.message };
+    return fail(error);
+  }
+  if (enqueued) revalidate(auth);
+  return { ok: true };
+}
+
+/** The detail pane's poll while an Enrich run is pending: a read, never a revalidation. */
+export async function captureEnrichStatusAction(input: {
+  captureId: string;
+}): Promise<{ ok: true; state: WorkState } | { ok: false; error: string }> {
+  const parsed = enrichInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "That capture could not be found. Reload the inbox." };
+  const auth = await authorize();
+  const enrichment = await readCaptureEnrichment(auth, parsed.data.captureId);
+  if (!enrichment) return { ok: false, error: "That capture could not be found. Reload the inbox." };
+  const state: WorkState =
+    enrichment.status === "pending"
+      ? { phase: "working", label: ENRICH_PENDING_LABEL }
+      : enrichment.status === "failed"
+        ? { phase: "failed", label: enrichment.error }
+        : { phase: "done", label: "Summary ready." };
+  return { ok: true, state };
 }

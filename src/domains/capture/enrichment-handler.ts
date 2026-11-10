@@ -36,6 +36,7 @@ import {
 import type { ExtractionProvider } from "@/integrations/extraction/provider";
 import { OCR_IMAGE_MIMES, openRouterVisionProviderFromEnv } from "@/integrations/extraction/openrouter-vision";
 import { captures } from "./schema";
+import { labelCaptureKind } from "./kind-label";
 import { workingText } from "./mode";
 import { LLM_MAX_INPUT_CHARS, LLM_THRESHOLD_CHARS, MAX_TAGS, classifyCapture } from "./classification";
 /*
@@ -136,9 +137,16 @@ export const runCaptureEnrichment = async (event: ClaimedOutboxEvent, deps: Capt
 
   const [capture] = await db.select().from(captures).where(eq(captures.id, captureId)).limit(1);
   if (!capture || capture.workspaceId !== event.workspaceId) return;
-  if (capture.processingState !== "unprocessed" && capture.processingState !== "classifying") return;
   // Parked (ASH-305): set aside, so no new model call or proposal. Unpark re-queues this.
   if (capture.parkedAt) return;
+  // An enriched capture whose kind label never landed (a Jev error after the
+  // ladder finished, or a capture enriched before labels existed) gets only
+  // the label on redelivery; the ladder's work is not redone.
+  if (capture.processingState === "enriched" && capture.kindSource === null) {
+    await labelKind(event.workspaceId, captureId, deps);
+    return;
+  }
+  if (capture.processingState !== "unprocessed" && capture.processingState !== "classifying") return;
 
   // ASH-318: a URL capture is classified on its fetched page, not its address.
   // While the fetch is still outstanding (pending or retrying, so not yet
@@ -160,7 +168,15 @@ export const runCaptureEnrichment = async (event: ClaimedOutboxEvent, deps: Capt
     await releaseEnrichmentLease(token, captureId);
     throw cause;
   }
+  // After the rules tier has written the structure: the kind label reads it.
+  await labelKind(event.workspaceId, captureId, deps);
 };
+
+/** The kind label, as the workspace owner (background work obeys the same boundary). */
+async function labelKind(workspaceId: string, captureId: string, deps: CaptureEnrichmentDeps) {
+  const ownerAuth = await workspaceOwnerAuth(workspaceId);
+  if (ownerAuth) await labelCaptureKind(ownerAuth, captureId, { judger: deps.judger });
+}
 
 /*
  * An address-only URL capture keeps its recorded fetch failure: enrichment
