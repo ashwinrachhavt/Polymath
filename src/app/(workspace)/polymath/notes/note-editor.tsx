@@ -33,6 +33,8 @@ import {
   startNoteAIAction,
 } from "./actions";
 import { X, History, Info, Link2, Plus, MessageSquare } from "lucide-react";
+import { MarginNotes } from "@/components/products/polymath/margin-notes";
+import type { LinkPreview } from "@/domains/knowledge/notes";
 import { NotionAppendAction } from "./notion-append";
 import { NoteCommentsPanel, type PanelComment } from "./note-comments-panel";
 
@@ -390,6 +392,7 @@ export function NoteEditor({
   backlinks,
   related,
   comments,
+  linkedPreviews,
 }: {
   noteId: string;
   /** Null while the current version is meaning-searchable or nothing is committed. */
@@ -422,6 +425,8 @@ export function NoteEditor({
   }[];
   related: { id: string; title: string; kind: string; score: number; excerpt: string | null; alreadyLinked: boolean }[];
   comments: PanelComment[];
+  /** First lines of the notes this one links to, shown in the margin beside the citing text. */
+  linkedPreviews: LinkPreview[];
 }) {
   const localKey = `polymath-note-local-${noteId}`;
   const findLinkTargets = useCallback(
@@ -590,6 +595,8 @@ export function NoteEditor({
   }, []);
 
   const noteColumnRef = useRef<HTMLDivElement>(null);
+  const [editorRoot, setEditorRoot] = useState<HTMLElement | null>(null);
+  useEffect(() => setEditorRoot(noteColumnRef.current), []);
   // Scroll-away chrome: once the reader is into the document, the header rows
   // recede; scroll back or hover to return them. The scroller is the suite
   // screen ancestor — the note column never scrolls itself.
@@ -754,7 +761,7 @@ export function NoteEditor({
           initial={{ opacity: 0, y: 4 }}
           animate={{ opacity: 1, y: 0 }}
           transition={motionTransition}
-          className="mx-auto flex min-h-[var(--canvas-min)] w-full max-w-[var(--measure-prose)] flex-col px-6 pb-24 pt-12"
+          className="mx-auto flex min-h-[var(--canvas-min)] w-full max-w-[var(--measure-prose)] flex-col px-6 pb-24 pt-12 lg:mr-0 lg:ml-[max(1rem,min(calc((100%_-_720px)/2),calc(100%_-_976px)))]"
         >
           {/* The header zone: chrome fades in on pointer hover, always on for
               keyboard focus and coarse pointers. */}
@@ -928,7 +935,7 @@ export function NoteEditor({
               {openCommentCount > 0 ? `Comments ${openCommentCount}` : "Comments"}
             </Button>
           </div>
-          <div ref={noteColumnRef} data-note-title={title} className="mt-8 flex flex-1 flex-col">
+          <div ref={noteColumnRef} data-note-title={title} className="relative mt-8 flex flex-1 flex-col">
             <RichEditor
               chrome="minimal"
               autocomplete
@@ -940,6 +947,7 @@ export function NoteEditor({
               ai={{ pending: aiBusy, onAction: startAI, open: aiMenuOpen, onOpenChange: setAiMenuOpen }}
               onStructuredPasteDropped={() => setSourceHint(true)}
             />
+            <MarginNotes previews={linkedPreviews} editorRoot={editorRoot} />
             {sourceHint && editorMode === "rich" && (
               <div role="status" className="mt-2 flex items-center gap-2 text-body-dense text-muted-foreground">
                 <span>The paste lost its structure.</span>
@@ -1034,7 +1042,7 @@ export function NoteEditor({
           {/* Backlinks are part of reading the note, not a property of it:
               they sit at the foot of the document, always visible, so the
               reader sees what this note is part of. */}
-          <section aria-label="Backlinks" className="mt-14 border-t border-border pt-6">
+          <section id="note-backlinks" aria-label="Backlinks" className="mt-14 border-t border-border pt-6">
             <h2 className="text-xs font-medium text-muted-foreground">
               Backlinks <span className="tabular-nums">{backlinks.length}</span>
             </h2>

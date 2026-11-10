@@ -84,6 +84,59 @@ export function extractWikiLinkTitles(markdown: string): string[] {
   return [...titles];
 }
 
+export type LinkPreview = { title: string; id: string; firstParagraph: string };
+
+const MAX_PREVIEW_TITLES = 50;
+const PREVIEW_CHARS = 280;
+
+/** Plain text of the first non-empty paragraph, markup stripped, capped for a margin card. */
+function firstParagraphOf(markdown: string): string {
+  const paragraph = markdown.split(/\n\s*\n/).find((block) => block.trim()) ?? "";
+  const text = paragraph
+    .replace(/^\s{0,3}(#{1,6}|>|[-*+]|\d+\.)\s+/gm, "")
+    .replace(/\[\[([^\]|]*)\|([^\]]*)\]\]/g, "$2")
+    .replace(/\[\[([^\]]*)\]\]/g, "$1")
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/[*_`~]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return text.length > PREVIEW_CHARS ? `${text.slice(0, PREVIEW_CHARS - 1).trimEnd()}…` : text;
+}
+
+/** The first paragraph of each linked note, matched by trimmed, case-insensitive title within the workspace. */
+export async function getLinkPreviews(auth: AuthContext, titles: string[]): Promise<LinkPreview[]> {
+  const wanted = [...new Set(titles.map((t) => t.trim().toLowerCase()).filter(Boolean))].slice(0, MAX_PREVIEW_TITLES);
+  if (wanted.length === 0) return [];
+  const rows = await withTransaction((tx) =>
+    tx
+      .select({ id: artifacts.id, title: artifacts.title, content: artifactVersions.content })
+      .from(artifacts)
+      .leftJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
+      .where(
+        and(
+          eq(artifacts.workspaceId, auth.workspaceId),
+          inArray(artifacts.kind, [...LINKABLE_KINDS]),
+          isNull(artifacts.archivedAt),
+          inArray(sql`lower(btrim(${artifacts.title}))`, wanted),
+        ),
+      )
+      .orderBy(artifacts.createdAt, artifacts.id),
+  );
+  const seen = new Set<string>();
+  const previews: LinkPreview[] = [];
+  for (const row of rows) {
+    const key = row.title.trim().toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    previews.push({
+      title: row.title,
+      id: row.id,
+      firstParagraph: firstParagraphOf(noteContentToMarkdown(row.content as NoteContent | null)),
+    });
+  }
+  return previews;
+}
+
 function markdownOf(content: NoteContent, plainText?: string): string {
   if (typeof plainText === "string") return plainText;
   return noteContentToMarkdown(content);

@@ -29,6 +29,8 @@ vi.mock("@/domains/knowledge/notes", () => ({
   listNoteVersions: vi.fn(async () => []),
   listNoteOutlinks: vi.fn(async () => []),
   listNoteBacklinks: vi.fn(async () => []),
+  extractWikiLinkTitles: vi.fn(() => [] as string[]),
+  getLinkPreviews: vi.fn(async () => []),
 }));
 vi.mock("@/domains/knowledge/note-comments", () => ({ listNoteComments: vi.fn(async () => []) }));
 vi.mock("@/domains/knowledge/relations", () => ({ relatedNotes: vi.fn(async () => []) }));

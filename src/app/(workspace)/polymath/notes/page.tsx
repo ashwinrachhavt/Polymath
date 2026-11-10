@@ -3,6 +3,8 @@ import { Suspense } from "react";
 import { io } from "next/cache";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+  extractWikiLinkTitles,
+  getLinkPreviews,
   getNote,
   listNoteBacklinks,
   listNoteOutlinks,
@@ -87,12 +89,17 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
   }
   // The inspector's versions, links, related notes and margin comments all
   // key off the same note and do not depend on each other.
-  const [versions, outlinks, backlinks, related, comments] = await Promise.all([
+  // Titles come from the markdown the editor opens with; an alias after "|" is display text.
+  const linkedTitles = extractWikiLinkTitles(noteMarkdown(selected.draft?.content ?? selected.content)).map((t) =>
+    t.split("|")[0].trim(),
+  );
+  const [versions, outlinks, backlinks, related, comments, linkedPreviews] = await Promise.all([
     listNoteVersions(auth, selected.id),
     listNoteOutlinks(auth, selected.id),
     listNoteBacklinks(auth, selected.id),
     relatedNotes(auth, selected.id),
     listNoteComments(auth, selected.id).catch(() => []),
+    getLinkPreviews(auth, linkedTitles),
   ]);
 
   return (
@@ -117,6 +124,7 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
           updatedAt={selected.updatedAt.toISOString()}
           savedAt={(selected.draft?.updatedAt ?? selected.updatedAt).toISOString()}
           versions={versions.map((v) => ({ ...v, createdAt: v.createdAt.toISOString() }))}
+          linkedPreviews={linkedPreviews.filter((p) => p.id !== selected.id)}
           outlinks={outlinks}
           backlinks={backlinks}
           related={related}
