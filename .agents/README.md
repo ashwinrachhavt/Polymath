@@ -4,8 +4,8 @@ Read [BRIEF.md](BRIEF.md) for desired outcomes. For any code change, also read [
 
 | Task                                                             | Read                                             |
 | ---------------------------------------------------------------- | ------------------------------------------------ |
-| General implementation, design, readability, code review           | [Engineering](conventions/engineering.md)        |
-| React, Next.js, UI state, browser behavior                          | [Frontend](conventions/frontend.md)              |
+| General implementation, design, readability, code review         | [Engineering](conventions/engineering.md)        |
+| React, Next.js, UI state, browser behavior                       | [Frontend](conventions/frontend.md)              |
 | TypeScript, boundary validation, optional fields, error handling | [TypeScript](conventions/typescript.md)          |
 | HTTP routes, server actions, webhooks, tool authorization        | [API and protection](conventions/api.md)         |
 | Schema changes, relationships, migrations, database queries      | [Data and queries](conventions/data.md)          |
