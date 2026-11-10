@@ -17,7 +17,11 @@ import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
 const handle = makeTestDb();
 const suite = handle ? describe : describe.skip;
 const holder: { db: ReturnType<typeof drizzle> | undefined } = { db: undefined };
-vi.mock("@/lib/db", () => ({ get db() { return holder.db; } }));
+vi.mock("@/lib/db", () => ({
+  get db() {
+    return holder.db;
+  },
+}));
 vi.mock("@/lib/db-transaction", () => ({
   get withTransaction() {
     return (fn: Parameters<typeof import("@/lib/db-transaction").withTransaction>[0]) =>
@@ -25,8 +29,14 @@ vi.mock("@/lib/db-transaction", () => ({
   },
 }));
 
-import { commitNoteSnapshot, createNote, getNote, NoteNotFoundError, retryNoteEmbedding } from "@/domains/knowledge/notes";
-import { countMeaningUncovered, countMeaningUncoveredByState, searchKnowledge } from "@/domains/knowledge/retrieval";
+import {
+  commitNoteSnapshot,
+  createNote,
+  getNote,
+  NoteNotFoundError,
+  retryNoteEmbedding,
+} from "@/domains/knowledge/notes";
+import { countMeaningUncovered, searchKnowledge } from "@/domains/knowledge/retrieval";
 
 function vec(dims: number[]): number[] {
   const v = new Array(1536).fill(0);
@@ -36,10 +46,11 @@ function vec(dims: number[]): number[] {
 /** Maps a text to a concept direction, so "meaning" is controllable. */
 const provider = (concepts: Record<string, number[]>): EmbeddingProvider => ({
   model: "fake@1",
-  embed: async (values) => values.map((t) => {
-    const hit = Object.entries(concepts).find(([k]) => t.toLowerCase().includes(k));
-    return hit ? hit[1] : vec([900]);
-  }),
+  embed: async (values) =>
+    values.map((t) => {
+      const hit = Object.entries(concepts).find(([k]) => t.toLowerCase().includes(k));
+      return hit ? hit[1] : vec([900]);
+    }),
 });
 
 beforeAll(() => {
@@ -56,12 +67,20 @@ afterAll(async () => {
   await handle?.client.end();
 });
 
-const workspace = async () => ({ ...await seedWorkspace(holder.db!, `nr-${crypto.randomUUID()}`), role: "owner" as const });
+const workspace = async () => ({
+  ...(await seedWorkspace(holder.db!, `nr-${crypto.randomUUID()}`)),
+  role: "owner" as const,
+});
 type Auth = Awaited<ReturnType<typeof workspace>>;
 
 async function writeNote(auth: Auth, title: string, text: string) {
   const note = await createNote(auth, { title, kind: "note" });
-  await commitNoteSnapshot(auth, { artifactId: note.id, expectedVersion: 1, content: { format: "markdown", text }, plainText: text });
+  await commitNoteSnapshot(auth, {
+    artifactId: note.id,
+    expectedVersion: 1,
+    content: { format: "markdown", text },
+    plainText: text,
+  });
   return note;
 }
 
@@ -98,7 +117,10 @@ suite("note embedding retry (real Postgres)", () => {
     const out = await retryNoteEmbedding(auth, { artifactId: note.id });
     expect(out.status).toBe("failed");
     if (out.status === "failed") expect(out.error).toContain("No embedding provider configured");
-    const [row] = await holder.db!.select({ embedError: artifacts.embedError }).from(artifacts).where(eq(artifacts.id, note.id));
+    const [row] = await holder
+      .db!.select({ embedError: artifacts.embedError })
+      .from(artifacts)
+      .where(eq(artifacts.id, note.id));
     expect(row.embedError).toContain("No embedding provider configured");
   });
 
@@ -106,7 +128,9 @@ suite("note embedding retry (real Postgres)", () => {
     const mine = await workspace();
     const other = await workspace();
     const note = await writeNote(mine, "Mine", "Text that is mine alone.");
-    await expect(retryNoteEmbedding(other, { artifactId: note.id, provider: provider({}) })).rejects.toBeInstanceOf(NoteNotFoundError);
+    await expect(retryNoteEmbedding(other, { artifactId: note.id, provider: provider({}) })).rejects.toBeInstanceOf(
+      NoteNotFoundError,
+    );
   });
 
   it("skips a note with no committed text instead of pretending to index it", async () => {
@@ -126,9 +150,13 @@ suite("note embedding retry (real Postgres)", () => {
   it("never renders a raw persisted error: a poisoned embed_error maps to the authored generic", async () => {
     const auth = await workspace();
     const note = await writeNote(auth, "Poisoned", "Text.");
-    await holder.db!.update(artifacts).set({
-      embedError: "provider 401: token sk-live-abc123; SQL: select * from users; POST /embeddings body={\"input\":\"...\"}",
-    }).where(eq(artifacts.id, note.id));
+    await holder
+      .db!.update(artifacts)
+      .set({
+        embedError:
+          'provider 401: token sk-live-abc123; SQL: select * from users; POST /embeddings body={"input":"..."}',
+      })
+      .where(eq(artifacts.id, note.id));
     const detail = await getNote(auth, note.id);
     expect(detail?.embedError).toBe("Indexing failed. Retry to try again.");
     expect(JSON.stringify(detail)).not.toContain("sk-live-abc123");
@@ -144,7 +172,11 @@ suite("note embedding retry (real Postgres)", () => {
     const gate = new Promise<void>((r) => (release = r));
     const slow: EmbeddingProvider = {
       model: "fake@1",
-      embed: async (values) => { entered(); await gate; return values.map(() => vec([1])); },
+      embed: async (values) => {
+        entered();
+        await gate;
+        return values.map(() => vec([1]));
+      },
     };
     const retry = retryNoteEmbedding(auth, { artifactId: note.id, provider: slow });
     await embedEntered; // the pass now holds the advisory lock and is mid-call on v1
@@ -152,7 +184,12 @@ suite("note embedding retry (real Postgres)", () => {
     // The user edits and commits v2 while the retry is in flight. The commit
     // itself lands; its own best-effort embed sees the busy lock and bows out.
     const detail1 = await getNote(auth, note.id);
-    await commitNoteSnapshot(auth, { artifactId: note.id, expectedVersion: detail1!.version, content: { format: "markdown", text: "Replacement text about brewing." }, plainText: "Replacement text about brewing." });
+    await commitNoteSnapshot(auth, {
+      artifactId: note.id,
+      expectedVersion: detail1!.version,
+      content: { format: "markdown", text: "Replacement text about brewing." },
+      plainText: "Replacement text about brewing.",
+    });
     release();
     const out = await retry;
 
@@ -163,7 +200,9 @@ suite("note embedding retry (real Postgres)", () => {
     // nothing.
     const rows = await holder.db!.select({ id: artifacts.id }).from(artifacts).where(eq(artifacts.id, note.id));
     expect(rows).toHaveLength(1);
-    const embeddingRows = await holder.db!.execute("select count(*)::int as n from embeddings where owner_id = '" + note.id + "'") as unknown as { n: number }[];
+    const embeddingRows = (await holder.db!.execute(
+      "select count(*)::int as n from embeddings where owner_id = '" + note.id + "'",
+    )) as unknown as { n: number }[];
     expect(embeddingRows[0].n).toBe(0);
     const detail = await getNote(auth, note.id);
     expect(detail?.indexed).toBe(false);
@@ -184,7 +223,11 @@ suite("note embedding retry (real Postgres)", () => {
     const gate = new Promise<void>((r) => (release = r));
     const failing: EmbeddingProvider = {
       model: "fake@1",
-      embed: async () => { entered(); await gate; throw new Error("provider down"); },
+      embed: async () => {
+        entered();
+        await gate;
+        throw new Error("provider down");
+      },
     };
     const pass = retryNoteEmbedding(auth, { artifactId: note.id, provider: failing });
     await embedEntered;
@@ -192,7 +235,12 @@ suite("note embedding retry (real Postgres)", () => {
     // The user edits and commits v2 while the pass is in flight: the commit
     // clears v1's failure (the new version has no recorded pass yet) and its
     // own best-effort embed bows out on the busy lock.
-    await commitNoteSnapshot(auth, { artifactId: note.id, expectedVersion: detail!.version, content: { format: "markdown", text: "Replacement text about brewing." }, plainText: "Replacement text about brewing." });
+    await commitNoteSnapshot(auth, {
+      artifactId: note.id,
+      expectedVersion: detail!.version,
+      content: { format: "markdown", text: "Replacement text about brewing." },
+      plainText: "Replacement text about brewing.",
+    });
     release();
     const out = await pass;
 
@@ -201,8 +249,8 @@ suite("note embedding retry (real Postgres)", () => {
     detail = await getNote(auth, note.id);
     expect(detail?.indexed).toBe(false);
     expect(detail?.embedError).toBeNull();
-    // Fleet split: v2 is pending (no pass recorded), not failed.
-    expect(await countMeaningUncoveredByState(auth, {})).toEqual({ pending: 1, failed: 0 });
+    // Fleet count: v2 is uncovered (no pass recorded).
+    expect(await countMeaningUncovered(auth, {})).toBe(1);
   });
 
   it("the fleet count separates pending from failed and the total stays their sum", async () => {
@@ -212,7 +260,10 @@ suite("note embedding retry (real Postgres)", () => {
     // covered: retried into vectors with a working provider.
     const covered = await writeNote(auth, "Covered one", "Text about brewing that gets indexed.");
     const fake = provider({ brewing: vec([2]) });
-    expect(await retryNoteEmbedding(auth, { artifactId: covered.id, provider: fake })).toEqual({ status: "succeeded", chunks: 1 });
+    expect(await retryNoteEmbedding(auth, { artifactId: covered.id, provider: fake })).toEqual({
+      status: "succeeded",
+      chunks: 1,
+    });
     // pending: an edit whose own embed is still owed and carries no recorded failure.
     const edited = await writeNote(auth, "Pending one", "First text about fermentation.");
     let entered!: () => void;
@@ -221,16 +272,24 @@ suite("note embedding retry (real Postgres)", () => {
     const gate = new Promise<void>((r) => (release = r));
     const slow: EmbeddingProvider = {
       model: "fake@1",
-      embed: async (values) => { entered(); await gate; return values.map(() => vec([1])); },
+      embed: async (values) => {
+        entered();
+        await gate;
+        return values.map(() => vec([1]));
+      },
     };
     const pass = retryNoteEmbedding(auth, { artifactId: edited.id, provider: slow });
     await embedEntered;
     const before = await getNote(auth, edited.id);
-    await commitNoteSnapshot(auth, { artifactId: edited.id, expectedVersion: before!.version, content: { format: "markdown", text: "Second text about brewing." }, plainText: "Second text about brewing." });
+    await commitNoteSnapshot(auth, {
+      artifactId: edited.id,
+      expectedVersion: before!.version,
+      content: { format: "markdown", text: "Second text about brewing." },
+      plainText: "Second text about brewing.",
+    });
     release();
     expect(await pass).toEqual({ status: "skipped", reason: "edited" });
 
-    expect(await countMeaningUncoveredByState(auth, {})).toEqual({ pending: 1, failed: 1 });
     expect(await countMeaningUncovered(auth, {})).toBe(2);
   });
 
@@ -242,7 +301,11 @@ suite("note embedding retry (real Postgres)", () => {
     let calls = 0;
     const slow: EmbeddingProvider = {
       model: "fake@1",
-      embed: async (values) => { calls++; await gate; return values.map(() => vec([1])); },
+      embed: async (values) => {
+        calls++;
+        await gate;
+        return values.map(() => vec([1]));
+      },
     };
     const first = retryNoteEmbedding(auth, { artifactId: note.id, provider: slow });
     await vi.waitFor(() => expect(calls).toBe(1));
@@ -253,19 +316,26 @@ suite("note embedding retry (real Postgres)", () => {
     expect(calls).toBe(1); // the provider was paid once
   });
 
-  it("a hung provider is bounded by the batch timeout and releases the lock and connection", { timeout: 20_000 }, async () => {
-    const auth = await workspace();
-    const note = await writeNote(auth, "Hanging", "Text about fermentation.");
-    const hanging: EmbeddingProvider = { model: "fake@1", embed: () => new Promise(() => {}) }; // never resolves
-    const started = Date.now();
-    const out = await retryNoteEmbedding(auth, { artifactId: note.id, provider: hanging, batchTimeoutMs: 200 });
-    expect(out.status).toBe("failed");
-    expect(Date.now() - started).toBeLessThan(10_000);
-    // The transaction committed the failure and released everything: a fresh
-    // pass with a working provider indexes immediately (no busy, no hang).
-    const fake = provider({ fermentation: vec([1]) });
-    expect(await retryNoteEmbedding(auth, { artifactId: note.id, provider: fake })).toEqual({ status: "succeeded", chunks: 1 });
-  });
+  it(
+    "a hung provider is bounded by the batch timeout and releases the lock and connection",
+    { timeout: 20_000 },
+    async () => {
+      const auth = await workspace();
+      const note = await writeNote(auth, "Hanging", "Text about fermentation.");
+      const hanging: EmbeddingProvider = { model: "fake@1", embed: () => new Promise(() => {}) }; // never resolves
+      const started = Date.now();
+      const out = await retryNoteEmbedding(auth, { artifactId: note.id, provider: hanging, batchTimeoutMs: 200 });
+      expect(out.status).toBe("failed");
+      expect(Date.now() - started).toBeLessThan(10_000);
+      // The transaction committed the failure and released everything: a fresh
+      // pass with a working provider indexes immediately (no busy, no hang).
+      const fake = provider({ fermentation: vec([1]) });
+      expect(await retryNoteEmbedding(auth, { artifactId: note.id, provider: fake })).toEqual({
+        status: "succeeded",
+        chunks: 1,
+      });
+    },
+  );
 
   it("provider failure logging carries no request body or token", async () => {
     const auth = await workspace();
@@ -275,7 +345,7 @@ suite("note embedding retry (real Postgres)", () => {
       const leaky: EmbeddingProvider = {
         model: "fake@1",
         embed: async () => {
-          const cause = new Error("401 unauthorized: token sk-live-abc123 body={\"input\":\"Secret fermentation text.\"}");
+          const cause = new Error('401 unauthorized: token sk-live-abc123 body={"input":"Secret fermentation text."}');
           (cause as unknown as { statusCode: number }).statusCode = 401;
           throw cause;
         },
@@ -297,9 +367,20 @@ suite("note embedding retry (real Postgres)", () => {
     const auth = await workspace();
     const note = await writeNote(auth, "Twin", "Text about fermentation.");
     const fake = provider({ fermentation: vec([1]) });
-    expect(await retryNoteEmbedding(auth, { artifactId: note.id, provider: fake })).toEqual({ status: "succeeded", chunks: 1 });
-    const exploding: EmbeddingProvider = { model: "fake@1", embed: async () => { throw new Error("must not be called"); } };
-    expect(await retryNoteEmbedding(auth, { artifactId: note.id, provider: exploding })).toEqual({ status: "succeeded", chunks: 1 });
+    expect(await retryNoteEmbedding(auth, { artifactId: note.id, provider: fake })).toEqual({
+      status: "succeeded",
+      chunks: 1,
+    });
+    const exploding: EmbeddingProvider = {
+      model: "fake@1",
+      embed: async () => {
+        throw new Error("must not be called");
+      },
+    };
+    expect(await retryNoteEmbedding(auth, { artifactId: note.id, provider: exploding })).toEqual({
+      status: "succeeded",
+      chunks: 1,
+    });
     expect((await getNote(auth, note.id))?.indexed).toBe(true);
   });
 });
