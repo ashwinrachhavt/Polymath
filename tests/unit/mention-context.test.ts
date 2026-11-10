@@ -31,7 +31,7 @@ const person: MentionEntity = {
   id: "p0000000-0000-0000-0000-000000000002",
   kind: "person",
   title: "Dana Whitfield",
-  href: "/command-center/relationships/contacts?id=p0000000-0000-0000-0000-000000000002",
+  href: "/command-center/relationships/people?id=p0000000-0000-0000-0000-000000000002",
 };
 
 describe("mention context", () => {

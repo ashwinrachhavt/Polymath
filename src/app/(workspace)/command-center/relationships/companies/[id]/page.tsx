@@ -37,7 +37,7 @@ async function CompanyProfileSurface({ params }: { params: Promise<{ id: string 
           description="This link does not match a company in this workspace."
           action={
             <Button asChild variant="outline">
-              <Link href="/command-center/relationships/contacts">Open contacts</Link>
+              <Link href="/command-center/relationships/people">Open people</Link>
             </Button>
           }
         />
@@ -51,10 +51,10 @@ async function CompanyProfileSurface({ params }: { params: Promise<{ id: string 
       title={company.name}
       actions={
         <Link
-          href="/command-center/relationships/contacts"
+          href="/command-center/relationships/people"
           className="text-body-dense font-medium underline-offset-4 hover:underline"
         >
-          Open contacts
+          Open people
         </Link>
       }
     >
@@ -101,7 +101,7 @@ async function CompanyProfileSurface({ params }: { params: Promise<{ id: string 
                   >
                     <div className="min-w-0">
                       <Link
-                        href={`/command-center/relationships/contacts?id=${person.contactId}`}
+                        href={`/command-center/relationships/people?id=${person.contactId}`}
                         className="block max-w-[16rem] truncate text-body-dense font-medium underline-offset-4 hover:underline"
                       >
                         {person.fullName}
