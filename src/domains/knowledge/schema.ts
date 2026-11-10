@@ -1188,7 +1188,8 @@ export const documentReadingEvents = pgTable(
   ],
 );
 
-// No longer written since the Library reader was removed (2026-11-10); only knowledge debt (debt.ts) still reads it.
+// Since the Library reader was removed (2026-11-10), only opens are recorded: recordDocumentOpen (document-opens.ts)
+// bumps open_count and last_opened_at when the Vault's document detail mounts; knowledge debt (debt.ts) reads it.
 export const documentReadingState = pgTable(
   "document_reading_state",
   {
