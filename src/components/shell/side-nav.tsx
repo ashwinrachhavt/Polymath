@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronsLeft, ChevronsRight, Pin, Search } from "lucide-react";
+import { ChevronsLeft, ChevronsRight, PanelLeftOpen, Pin, Search } from "lucide-react";
 import { cn } from "cn";
 import { OPEN_COMMAND_SEARCH } from "./command-layer-mount";
 import { destinationForPath, destinations, homeHref, isConversationSurface, type Destination } from "@/lib/navigation";
+import { readPinned, subscribeToPin, writePinned } from "@/lib/sidebar-pin";
 
 /*
  * The shell's left rail: the Polymath wordmark, then one flat list of the
@@ -22,32 +23,17 @@ import { destinationForPath, destinations, homeHref, isConversationSurface, type
  *
  * On a focus page (isFocusSurface) the rail gets out of the way: it waits
  * off-canvas, a 12px zone at the left edge slides it in over the page, and
- * it hides 250ms after the pointer leaves. `[` or the pin control pins it
- * open again; the pin persists in localStorage. data-state names which of
+ * it hides 250ms after the pointer leaves. A button at the top left, `[`, or
+ * the pin control inside the rail pins it open again; the button is the way
+ * in for touch (no hover zone) and keyboard (a hidden rail is inert). The pin
+ * persists in this browser (lib/sidebar-pin.ts), mirrored onto <html> so a
+ * pinned rail is laid out from the first paint. data-state names which of
  * the four states is on screen: docked, hidden, peek or pinned.
  */
 
 const COLLAPSED_KEY = "axiom-sidenav-collapsed";
-const PINNED_KEY = "polymath.sidebar.pinned";
 const PEEK_HIDE_DELAY_MS = 250;
 const subscribeToHydration = () => () => {};
-
-/* The pin is a tiny external store over localStorage, so every reader sees a
-   write at once and another tab's change arrives through "storage". */
-const pinListeners = new Set<() => void>();
-function subscribeToPin(listener: () => void) {
-  pinListeners.add(listener);
-  window.addEventListener("storage", listener);
-  return () => {
-    pinListeners.delete(listener);
-    window.removeEventListener("storage", listener);
-  };
-}
-const readPinned = () => window.localStorage.getItem(PINNED_KEY) === "1";
-function writePinned(pinned: boolean) {
-  window.localStorage.setItem(PINNED_KEY, pinned ? "1" : "0");
-  for (const listener of pinListeners) listener();
-}
 
 /** `[` is a character while the person is writing, a shortcut otherwise. */
 function isTypingTarget(target: EventTarget | null) {
@@ -56,6 +42,11 @@ function isTypingTarget(target: EventTarget | null) {
     (target.matches("input, textarea, select") ||
       target.closest("[contenteditable]:not([contenteditable='false'])") !== null)
   );
+}
+
+/** True when keyboard focus sits inside `element`. */
+function holdsFocus(element: HTMLElement | null) {
+  return element?.contains(document.activeElement) ?? false;
 }
 
 export function SideNav({ focus = false }: { focus?: boolean }) {
@@ -73,6 +64,16 @@ export function SideNav({ focus = false }: { focus?: boolean }) {
   const pinned = useSyncExternalStore(subscribeToPin, readPinned, () => false);
   const [peeking, setPeeking] = useState(false);
   const hideTimer = useRef<number | undefined>(undefined);
+  const navRef = useRef<HTMLElement>(null);
+  const openerRef = useRef<HTMLButtonElement>(null);
+  const pinRef = useRef<HTMLButtonElement>(null);
+  // A mouse or pen over the rail. Touch has no hover, and a keyboard user's
+  // pointer can be anywhere, so neither counts as "on the rail".
+  const pointerOnRail = useRef(false);
+  // Pinning removes the opener, and unpinning hides the rail (inert): either
+  // way the focused control leaves, and focus would fall to <body>. It moves
+  // to the control that toggles back instead.
+  const handOffFocus = useRef(false);
 
   const state = !focus ? "docked" : pinned ? "pinned" : peeking ? "peek" : "hidden";
   const overlay = state === "hidden" || state === "peek";
@@ -102,13 +103,22 @@ export function SideNav({ focus = false }: { focus?: boolean }) {
       event.preventDefault();
       window.clearTimeout(hideTimer.current);
       setPeeking(false);
-      writePinned(!readPinned());
+      const pin = !readPinned();
+      handOffFocus.current = holdsFocus(pin ? openerRef.current : navRef.current);
+      writePinned(pin);
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [focus]);
 
   useEffect(() => () => window.clearTimeout(hideTimer.current), []);
+
+  useLayoutEffect(() => {
+    if (!handOffFocus.current) return;
+    handOffFocus.current = false;
+    if (state === "hidden") openerRef.current?.focus();
+    if (state === "pinned") pinRef.current?.focus();
+  }, [state]);
 
   function showPeek() {
     window.clearTimeout(hideTimer.current);
@@ -120,11 +130,14 @@ export function SideNav({ focus = false }: { focus?: boolean }) {
     hideTimer.current = window.setTimeout(() => setPeeking(false), PEEK_HIDE_DELAY_MS);
   }
 
-  // Unpinning from the control leaves the pointer on the rail, so it stays
-  // as a peek and hides when the pointer leaves, like any other peek.
+  // Unpinning with a mouse on the rail keeps it as a peek that hides when
+  // the pointer leaves, like any other peek. Unpinning by keyboard or touch
+  // hides it at once: no mouseleave would ever come to hide a peek.
   function togglePin() {
     window.clearTimeout(hideTimer.current);
-    setPeeking(pinned);
+    const keepPeek = pinned && pointerOnRail.current;
+    setPeeking(keepPeek);
+    handOffFocus.current = !keepPeek && holdsFocus(pinned ? navRef.current : openerRef.current);
     writePinned(!pinned);
   }
 
@@ -174,24 +187,56 @@ export function SideNav({ focus = false }: { focus?: boolean }) {
           data-peek-zone
           aria-hidden
           onMouseEnter={showPeek}
-          className="fixed inset-y-0 left-0 z-40 hidden w-3 pointer-fine:md:block"
+          className="sidebar-pinned:hidden fixed inset-y-0 left-0 z-40 hidden w-3 pointer-fine:md:block"
         />
+      ) : null}
+      {/* The way back to the rail for touch and keyboard, at the top left.
+          A peeking rail (z-40) covers it. Below md the bottom bar is the
+          navigation and the rail never shows, so neither does this. */}
+      {focus && !pinned ? (
+        <button
+          ref={openerRef}
+          type="button"
+          onClick={togglePin}
+          aria-keyshortcuts="["
+          aria-label="Show sidebar"
+          title="Show sidebar ([)"
+          data-sidebar-opener
+          className={cn(
+            "sidebar-pinned:hidden border-border bg-background/90 text-muted-foreground hover:bg-accent hover:text-foreground fixed top-2 left-2 z-30 hidden size-8 items-center justify-center rounded-md border transition-colors outline-none md:flex",
+            "focus-visible:ring-ring focus-visible:ring-3",
+          )}
+        >
+          <PanelLeftOpen aria-hidden className="size-4" />
+        </button>
       ) : null}
       {/* Hovering a docked rail also counts as a peek: following one of its
           links into a focus page leaves the rail under the pointer until the
           pointer leaves it. */}
       <nav
+        ref={navRef}
         aria-label="Workspace"
         data-state={state}
         inert={state === "hidden"}
         onMouseEnter={showPeek}
         onMouseLeave={hidePeekSoon}
+        onPointerEnter={(event) => {
+          pointerOnRail.current = event.pointerType !== "touch";
+        }}
+        onPointerLeave={() => {
+          pointerOnRail.current = false;
+        }}
         className={cn(
           "group/nav border-sidebar-border bg-sidebar hidden h-dvh shrink-0 border-r md:block",
           overlay
             ? "fixed inset-y-0 left-0 z-40 shadow-[var(--shadow)] transition-transform duration-200 ease-out motion-reduce:transition-none"
             : "sticky top-0",
           state === "hidden" && "-translate-x-full",
+          // Server markup is always "hidden" (it cannot read the pin). For a
+          // pinned person <html data-sidebar-pinned> lays it out as the pinned
+          // rail until hydration swaps in the real state: no shift.
+          state === "hidden" &&
+            "sidebar-pinned:sticky sidebar-pinned:bottom-auto sidebar-pinned:z-auto sidebar-pinned:translate-x-0 sidebar-pinned:shadow-none",
           iconRail ? "w-[52px]" : "w-60",
         )}
       >
@@ -238,6 +283,7 @@ export function SideNav({ focus = false }: { focus?: boolean }) {
              */}
             {focus ? (
               <button
+                ref={pinRef}
                 type="button"
                 onClick={togglePin}
                 aria-pressed={pinned}

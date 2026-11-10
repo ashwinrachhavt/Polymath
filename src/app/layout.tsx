@@ -4,6 +4,7 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 import { MotionProvider } from "@/components/motion-config";
 import { ThemeProvider } from "@/components/theme-provider";
 import { APPEARANCE_BOOT_SCRIPT } from "@/lib/appearance";
+import { SIDEBAR_PIN_BOOT_SCRIPT } from "@/lib/sidebar-pin";
 import "./globals.css";
 
 // Text is set in the platform's own sans (see --font-system in globals.css):
@@ -19,6 +20,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <head>
         {/* Applies the saved page colour and accent before first paint. */}
         <script dangerouslySetInnerHTML={{ __html: APPEARANCE_BOOT_SCRIPT }} />
+        {/* Marks a pinned focus-page rail before first paint, so the page
+            never narrows after hydration (see lib/sidebar-pin.ts). */}
+        <script dangerouslySetInnerHTML={{ __html: SIDEBAR_PIN_BOOT_SCRIPT }} />
       </head>
       {/* Auth providers sit inside <body>; cacheComponents requires it. */}
       <body className="flex min-h-full flex-col">

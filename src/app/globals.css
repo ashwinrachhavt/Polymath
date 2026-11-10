@@ -14,6 +14,11 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* The person pinned the focus-page rail; set on <html> before first paint by
+   lib/sidebar-pin.ts, so server-rendered markup lays out like the pinned rail
+   until React reads the pin. */
+@custom-variant sidebar-pinned (&:is([data-sidebar-pinned] *));
+
 /*
  * Vendored from the shadcn Tailwind preset so the `shadcn` package itself can
  * stay out of runtime dependencies (its CLI runs via `pnpm dlx`). The union
