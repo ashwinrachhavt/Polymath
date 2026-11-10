@@ -284,7 +284,7 @@ test("unknown apps screens render a noindex not-found state", async ({ page }) =
 for (const [from, to] of [
   ["/polymath/sources", "/projects"],
   ["/polymath/dossiers", "/projects"],
-  ["/polymath/wiki", "/polymath/knowledge"],
+  ["/polymath/wiki", "/artifacts"],
   ["/command-center/briefing", "/neuralflow/work?view=today"],
   ["/command-center/opportunities", "/command-center/relationships/people"],
 ] as const) {

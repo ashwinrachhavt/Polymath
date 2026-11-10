@@ -124,7 +124,7 @@ article version; re-ingesting unchanged text writes nothing. `lintWiki` is
 read-only: it reports archived-but-registered pages, articles whose source was
 archived, empty topics and a missing skeleton; it never auto-fixes. Polymath
 runs the loop through the `wiki.read` / `wiki.ingest` / `wiki.lint`
-capabilities; the surface is /polymath/wiki.
+capabilities; wiki pages open read-only at /artifacts/<id> (/polymath/wiki redirects to /artifacts).
 
 ## Party resolution and assertions (ASH-128)
 
