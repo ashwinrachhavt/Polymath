@@ -113,7 +113,9 @@ export function parseCaptureContextLenient(raw: unknown): { context: CaptureCont
   const kept: Record<string, unknown> = {};
   const dropped: string[] = [];
   for (const [key, value] of Object.entries(cleaned)) {
-    const parsed = shape[key]?.safeParse(value);
+    // Own keys only: "constructor" or "toString" from a request body must be
+    // dropped like any unknown field, not resolved on Object.prototype.
+    const parsed = Object.hasOwn(shape, key) ? shape[key].safeParse(value) : undefined;
     if (parsed?.success && parsed.data !== undefined) kept[key] = parsed.data;
     else dropped.push(key);
   }

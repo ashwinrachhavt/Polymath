@@ -16,6 +16,10 @@ import { parseCaptureContextLenient } from "@/domains/capture/context";
  * bare address is a url-reference that dedupes on (workspace, source, url) and
  * answers 409 rather than making a second row. Omitting mode infers it from
  * what arrived, so an older companion build keeps working.
+ * An optional `context` (see domains/capture/context.ts) is validated field by
+ * field: what the server accepts is stored, and anything else is dropped and
+ * named in an additive `contextDropped: string[]` member of the 201 body. A
+ * bad context is never a 422 - the words are always saved.
  * CORS is scoped to the companion's origin; see src/lib/cors.ts.
  */
 

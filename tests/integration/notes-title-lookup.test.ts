@@ -1,4 +1,6 @@
+import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { artifacts } from "@/domains/knowledge/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
@@ -36,5 +38,13 @@ suite("findNotesByTitle", () => {
     const found = await notes.findNotesByTitle(mine, ["  evergreen notes ", "No such note", ""]);
     expect(found.map((note) => note.id)).toEqual([wanted.id]);
     expect(await notes.findNotesByTitle(mine, [])).toEqual([]);
+  });
+
+  it("skips archived cards and kinds a [[link]] cannot point at", async () => {
+    const mine = await seed("titles-archived");
+    const gone = await notes.createNote(mine, { title: "Old Idea" });
+    await handle!.db.update(artifacts).set({ archivedAt: new Date() }).where(eq(artifacts.id, gone.id));
+    await notes.createNote(mine, { title: "Old Idea", kind: "transcript" });
+    expect(await notes.findNotesByTitle(mine, ["old idea"])).toEqual([]);
   });
 });

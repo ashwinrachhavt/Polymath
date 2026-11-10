@@ -32,6 +32,13 @@ describe("capture context", () => {
     expect(dropped.sort()).toEqual(["newerField", "source", "why"]);
   });
 
+  it("drops keys named like Object.prototype members instead of throwing", () => {
+    const raw = JSON.parse('{"passage":"p","constructor":1,"__proto__":{"a":1},"toString":"x","hasOwnProperty":2}');
+    const { context, dropped } = parseCaptureContextLenient(raw);
+    expect(context).toEqual({ passage: "p" });
+    expect(dropped.sort()).toEqual(["__proto__", "constructor", "hasOwnProperty", "toString"]);
+  });
+
   it("treats blank strings as not sent rather than invalid", () => {
     expect(parseCaptureContextLenient({ source: { title: " ", url: "https://example.com/a" } })).toEqual({
       context: { source: { url: "https://example.com/a" } },

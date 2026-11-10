@@ -14,9 +14,9 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
 export const WIKI_LINK_OPEN = "wikilink:open";
 
 const WIKI = /\[\[([^\]\n]+)\]\]/g;
-const key = new PluginKey<DecorationSet>("wikiLinks");
+const key = new PluginKey("wikiLinks");
 
-function decorate(doc: ProseMirrorNode): DecorationSet {
+function decorate(doc: ProseMirrorNode, editable: boolean): DecorationSet {
   const decorations: Decoration[] = [];
   doc.descendants((node, pos) => {
     if (!node.isText || !node.text) return;
@@ -29,7 +29,8 @@ function decorate(doc: ProseMirrorNode): DecorationSet {
         Decoration.inline(start + 2, end - 2, {
           class: "wiki-link",
           "data-wiki-title": title,
-          title: "Cmd/Ctrl-click to open",
+          // Only while editing does opening need the modifier.
+          ...(editable ? { title: "Cmd/Ctrl-click to open" } : {}),
         }),
         Decoration.inline(end - 2, end, { class: "wiki-link-bracket" }),
       );
@@ -41,15 +42,21 @@ function decorate(doc: ProseMirrorNode): DecorationSet {
 export const WikiLinks = Extension.create({
   name: "wikiLinks",
   addProseMirrorPlugins() {
+    const editor = this.editor;
+    // Rebuilt when the document or the editable flag changes; the flag can
+    // flip without a transaction, so the set is cached here, not in plugin state.
+    let cache: { doc: ProseMirrorNode; editable: boolean; set: DecorationSet } | null = null;
     return [
       new Plugin({
         key,
-        state: {
-          init: (_, state) => decorate(state.doc),
-          apply: (tr, old) => (tr.docChanged ? decorate(tr.doc) : old),
-        },
         props: {
-          decorations: (state) => key.getState(state),
+          decorations: (state) => {
+            const editable = editor.isEditable;
+            if (!cache || cache.doc !== state.doc || cache.editable !== editable) {
+              cache = { doc: state.doc, editable, set: decorate(state.doc, editable) };
+            }
+            return cache.set;
+          },
           handleClick: (view, _pos, event) => {
             const target = (event.target as HTMLElement | null)?.closest<HTMLElement>("[data-wiki-title]");
             const title = target?.dataset.wikiTitle;
