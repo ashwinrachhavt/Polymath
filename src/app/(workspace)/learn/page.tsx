@@ -1,155 +1,83 @@
 import Link from "next/link";
-import { io } from "next/cache";
-import { Suspense } from "react";
-import { EmptyState } from "@/components/empty-state";
-import { WorkStatus } from "@/components/work-status";
-import { Empty, Panel, Screen, Stat } from "@/components/workspace/ui";
-import { getRewardsOverview } from "@/domains/gamification/queries";
-import { getLearnLibrary, type LearnLibraryRow } from "@/domains/learning/queries";
+import { connection } from "next/server";
+import type { Metadata } from "next";
 import { getAuthContext } from "@/lib/auth";
-import { GenerateQuizButton } from "./quiz-action";
+import { getLearnLibrary } from "@/domains/learning/queries";
+import { getFlashcardDueQueue } from "@/domains/learning/flashcards";
 
-export const metadata = { title: "Learn · Polymath" };
+export const metadata: Metadata = { title: "Learning · Polymath" };
 
-/*
- * The learning library (learn-harness replication): every captured document
- * with its learning state, and the stones the loop has earned. The balance
- * is derived from the reward ledger at render - never a stored number - and
- * the rail carries no chip for it (ASH-164: a badge from one source over a
- * page fed by another is a number that lies).
- */
-
-const attemptedDate = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
-
-/** The state a row shows: never a number for a quiz the user cannot retake. */
-function learningState(row: LearnLibraryRow): string {
-  if (!row.quizzable) return "Still reading this document";
-  if (!row.quizId) return "Not quizzed";
-  if (row.bestCorrect === null) return "Not attempted yet";
-  return `Best score ${row.bestCorrect}/${row.questionCount}`;
-}
-
-/**
- * Raw SQL aggregates bypass drizzle's column mapping, so an attempt
- * timestamp arrives as the driver's text form or a Date depending on the
- * pg wire round-trip. A display hint must never take the screen down over
- * either, so format only what parses and hide the rest.
- */
-function formatAttempted(value: string | Date | null): string | null {
-  if (value === null) return null;
-  const time = new Date(value).getTime();
-  return Number.isFinite(time) ? attemptedDate.format(time) : null;
-}
-
-function LibraryList({ rows }: { rows: LearnLibraryRow[] }) {
-  return (
-    <ul className="flex flex-col">
-      {rows.map((row) => {
-        const attempted = formatAttempted(row.lastAttemptedAt);
-        return (
-          <li
-            key={row.documentId}
-            className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md px-2 py-2 hover:bg-muted"
-          >
-            <Link
-              href={`/learn/${row.documentId}`}
-              className="min-w-0 flex-1 truncate text-body-dense font-medium underline-offset-4 hover:underline"
-            >
-              {row.title}
-            </Link>
-            <span className="text-xs text-muted-foreground">{learningState(row)}</span>
-            {attempted ? <span className="text-xs text-muted-foreground">last attempted {attempted}</span> : null}
-            {row.lastFailure ? (
-              <WorkStatus
-                state={{ phase: "failed", label: `Last generation failed: ${row.lastFailure}` }}
-                className="w-full"
-              />
-            ) : null}
-            {row.quizzable ? (
-              row.quizId ? (
-                <Link
-                  href={`/learn/${row.documentId}`}
-                  className="text-body-dense font-medium underline-offset-4 hover:underline"
-                >
-                  Retake
-                </Link>
-              ) : (
-                <GenerateQuizButton documentId={row.documentId} />
-              )
-            ) : (
-              <GenerateQuizButton documentId={row.documentId} disabled />
-            )}
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
-async function LearnSurface() {
-  await io();
+export default async function LearnPage() {
+  await connection();
   const auth = await getAuthContext();
-  const [rows, overview] = await Promise.all([getLearnLibrary(auth), getRewardsOverview(auth)]);
-  const quizzable = rows.filter((row) => row.quizzable).length;
-
-  const stats = (
-    <div className="grid gap-4 sm:grid-cols-2">
-      <Stat label="Stones earned" value={overview.totalPoints} hint="Derived from the ledger, never stored" />
-      <Stat
-        label="Documents ready to quiz"
-        value={`${quizzable} of ${rows.length}`}
-        hint="A document is ready once its text is read"
-      />
-    </div>
-  );
-
-  if (rows.length === 0) {
-    return (
-      <Screen title="Learn">
-        {stats}
-        <EmptyState
-          title="Nothing to learn from yet"
-          description="Capture an article in the vault and it will show up here, ready to become a quiz."
-          action={
-            <Link
-              href="/polymath/knowledge"
-              className="inline-flex h-7 items-center rounded-md border border-border px-2.5 text-body-dense font-medium underline-offset-4 hover:underline"
-            >
-              Open the vault
-            </Link>
-          }
-        />
-      </Screen>
-    );
-  }
+  const [library, dueCards] = await Promise.all([getLearnLibrary(auth), getFlashcardDueQueue(auth, 40)]);
+  const quizzes = library.filter((item) => item.quizId);
 
   return (
-    <Screen title="Learn" description="Every captured document, ready to become a quiz. Finishing one earns stones.">
-      {stats}
-
-      <Panel title="Your documents" description="Generate a quiz from what you captured, or retake the latest one.">
-        <LibraryList rows={rows} />
-        {!rows.some((row) => row.quizzable) ? (
-          <Empty
-            title="No document is ready yet"
-            description="Quizzes are built from a document's read text. Ones still being read show an honest state above."
-          />
-        ) : null}
-      </Panel>
-    </Screen>
-  );
-}
-
-export default function LearnPage() {
-  return (
-    <Suspense
-      fallback={
-        <p role="status" className="p-6 text-body-dense text-muted-foreground">
-          Opening the learning library…
+    <main className="page-content mx-auto w-full max-w-4xl">
+      <header className="mb-6">
+        <h1 className="text-2xl font-medium">Up next</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Continue a quiz or review flashcards due across your Notebooks.
         </p>
-      }
-    >
-      <LearnSurface />
-    </Suspense>
+      </header>
+      <section aria-labelledby="due-flashcards-title" className="panel rounded-xl p-4">
+        <h2 id="due-flashcards-title" className="font-medium">
+          Flashcards due
+        </h2>
+        {dueCards.length === 0 ? (
+          <p className="mt-2 text-sm text-muted-foreground">No flashcards are due right now.</p>
+        ) : (
+          <ul className="mt-3 divide-y divide-border">
+            {dueCards.map((item) => (
+              <li key={item.flashcardId} className="py-3 first:pt-0 last:pb-0">
+                <Link
+                  href={"/projects/" + item.notebookId + "/notebook/flashcards?deck=" + item.deckId}
+                  className="font-medium underline-offset-4 hover:underline"
+                >
+                  {item.notebookTitle}: {item.deckTitle}
+                </Link>
+                <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{item.prompt}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      <section aria-labelledby="quiz-title" className="panel mt-4 rounded-xl p-4">
+        <h2 id="quiz-title" className="font-medium">
+          Quizzes
+        </h2>
+        {quizzes.length === 0 ? (
+          <p className="mt-2 text-sm text-muted-foreground">
+            No quizzes ready yet. Create one from selected sources inside a Notebook.
+          </p>
+        ) : (
+          <ul className="mt-3 divide-y divide-border">
+            {quizzes.map((item) => (
+              <li key={item.quizId} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
+                <div className="min-w-0">
+                  <p className="truncate font-medium">{item.title}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {item.bestCorrect === null
+                      ? "Not started"
+                      : "Best score " + item.bestCorrect + "/" + item.questionCount}
+                  </p>
+                </div>
+                <Link href={"/learn/" + item.documentId} className="shrink-0 text-sm underline underline-offset-4">
+                  Continue
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      <p className="mt-4 text-sm text-muted-foreground">
+        Create quizzes and flashcards from pinned sources in a{" "}
+        <Link href="/projects" className="underline underline-offset-4">
+          Notebook
+        </Link>
+        .
+      </p>
+    </main>
   );
 }

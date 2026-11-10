@@ -139,7 +139,7 @@ suite("record search for attach", () => {
     const deckResults = await searchRecordsForAttach(auth, `pitch ${stamp}`);
     expect(new Map(deckResults.map((r) => [r.id, r])).get(deckId)).toMatchObject({
       kind: "artifact",
-      href: `/polymath/artifacts/${deckId}`,
+      href: `/artifacts/${deckId}`,
     });
   });
 

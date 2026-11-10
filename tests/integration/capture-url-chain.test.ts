@@ -61,6 +61,8 @@ async function seed(tag: string) {
   const { userId, workspaceId } = await seedWorkspace(db, `url-chain-${tag}-${Date.now()}`);
   const auth = ownerAuth(userId, workspaceId);
   const capture = await commands.createCapture(auth, { text: `https://example.com/${tag}-${Date.now()}` });
+  // The chain starts only after the user explicitly requests the optional read.
+  await commands.retryCaptureUrl(auth, { captureId: capture.id });
   return { workspaceId, capture };
 }
 

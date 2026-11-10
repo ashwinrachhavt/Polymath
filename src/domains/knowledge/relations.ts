@@ -1,8 +1,8 @@
-import { and, eq, inArray, ne, notInArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, ne, notInArray, or, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
-import { artifactLinks, artifacts } from "./schema";
+import { artifactLinks, artifactVersions, artifacts } from "./schema";
 import { SUGGESTED_LINKS_PER_DETAIL_PAGE } from "./zettel-capacity";
 
 /*
@@ -279,28 +279,48 @@ export type GraphEdge = { id: string; source: string; target: string; linkType: 
 
 const GRAPH_NODE_LIMIT = 150;
 
-export async function listCardGraph(auth: AuthContext): Promise<{ nodes: GraphNode[]; edges: GraphEdge[] }> {
-  const result = await db.execute(sql`
-    select a.id, a.title, a.kind,
-           (select v.plain_text from artifact_versions v where v.id = a.current_version_id) as excerpt
-    from artifacts a
-    where a.workspace_id = ${auth.workspaceId}
-      and a.kind in ('note', 'zettel', 'document', 'memo', 'report', 'transcript')
-      and a.archived_at is null
-    order by a.updated_at desc
-    limit ${GRAPH_NODE_LIMIT}
-  `);
-  const nodes = (result as unknown as { id: string; title: string; kind: string; excerpt: string | null }[]).map(
-    (r) => ({
-      id: r.id,
-      title: r.title,
-      kind: r.kind,
-      excerpt: firstLine(r.excerpt),
-    }),
-  );
-  if (!nodes.length) return { nodes, edges: [] };
-  const ids = nodes.map((n) => n.id);
+export async function listCardGraph(
+  auth: AuthContext,
+  options: { documentIds?: string[] } = {},
+): Promise<{ nodes: GraphNode[]; edges: GraphEdge[] }> {
+  const filters = [
+    eq(artifacts.workspaceId, auth.workspaceId),
+    inArray(artifacts.kind, ["note", "zettel", "document", "memo", "report", "transcript"]),
+    sql`artifacts.archived_at is null`,
+  ];
+  if (options.documentIds) {
+    if (options.documentIds.length === 0) return { nodes: [], edges: [] };
+    const sourceRows = await db
+      .select({ artifactId: artifactLinks.artifactId })
+      .from(artifactLinks)
+      .where(
+        and(
+          eq(artifactLinks.workspaceId, auth.workspaceId),
+          eq(artifactLinks.targetType, "document"),
+          eq(artifactLinks.linkType, "source"),
+          inArray(artifactLinks.targetId, options.documentIds),
+        ),
+      );
+    const sourceArtifactIds = [...new Set(sourceRows.map((row) => row.artifactId))];
+    if (sourceArtifactIds.length === 0) return { nodes: [], edges: [] };
+    filters.push(inArray(artifacts.id, sourceArtifactIds));
+  }
   const rows = await db
+    .select({
+      id: artifacts.id,
+      title: artifacts.title,
+      kind: artifacts.kind,
+      excerpt: artifactVersions.plainText,
+    })
+    .from(artifacts)
+    .leftJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
+    .where(and(...filters))
+    .orderBy(desc(artifacts.updatedAt), desc(artifacts.id))
+    .limit(GRAPH_NODE_LIMIT);
+  const nodes = rows.map((row) => ({ id: row.id, title: row.title, kind: row.kind, excerpt: firstLine(row.excerpt) }));
+  if (!nodes.length) return { nodes, edges: [] };
+  const ids = nodes.map((node) => node.id);
+  const edges = await db
     .select({
       id: artifactLinks.id,
       source: artifactLinks.artifactId,
@@ -314,13 +334,10 @@ export async function listCardGraph(auth: AuthContext): Promise<{ nodes: GraphNo
         eq(artifactLinks.workspaceId, auth.workspaceId),
         inArray(artifactLinks.artifactId, ids),
         inArray(artifactLinks.targetId, ids),
-        // Legacy veto tombstones: the dismiss state machine is gone, but a
-        // row a person once rejected must not resurface as a graph edge.
-        // Transitional — a data purge of 'dismissed' rows retires this filter.
         ne(artifactLinks.linkType, "dismissed"),
       ),
     );
-  return { nodes, edges: rows };
+  return { nodes, edges };
 }
 
 /**

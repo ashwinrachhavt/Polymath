@@ -90,9 +90,9 @@ policy from the stored document, the chat Source registry, the eve seams for
 assessor and executor, and the engine over them. Three drain triggers move
 effects:
 
-1. **Inline after commit.** The send path (`startSuperagentConversation`,
-   used by the chat-actions route) ticks the engine and chains bounded
-   dispatch passes so a warm pipeline returns a reply in the same request.
+1. **Inline after commit.** The legacy sessionless-chat continuation path ticks
+   the engine and chains bounded dispatch passes after a follow-up is stored.
+   New Polymath chat starts an interactive Eve run directly.
 2. **The dispatch endpoint.** `POST /api/internal/outbox` (bearer-guarded)
    sweeps then drains — the operator's lever when inline work is cold.
 3. **Cron recovery.** The existing cron route sweeps (tick + the ticket-run

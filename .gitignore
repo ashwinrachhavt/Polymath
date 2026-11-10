@@ -61,9 +61,6 @@ npm-debug.log*
 # Local queue worker pid/log (make queue-up).
 .run/
 .playwright-mcp/
-# gstack's local state; only the pregate config is shared.
-.gstack/*
-!.gstack/pregate.json
 mockups/
 
 # Agent scratch: the SDD workspace (ledger, briefs, review packages) and the
@@ -97,7 +94,7 @@ mockups/
 # exception to the new snapshot, `git add -f` it, and `git rm --cached`
 # the old one.
 src/db/migrations/meta/*_snapshot.json
-!src/db/migrations/meta/0290_snapshot.json
+!src/db/migrations/meta/0298_snapshot.json
 
 # graphify knowledge graph (local build artifacts)
 graphify-out/

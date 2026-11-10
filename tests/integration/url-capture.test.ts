@@ -13,7 +13,11 @@ const suite = handle ? describe : describe.skip;
 const holder: { db: ReturnType<typeof drizzle> | undefined } = { db: undefined };
 const provider = vi.hoisted(() => ({ extract: vi.fn<() => Promise<ExtractionResult>>() }));
 const blobs = vi.hoisted(() => new Map<string, Uint8Array>());
-vi.mock("@/lib/db", () => ({ get db() { return holder.db; } }));
+vi.mock("@/lib/db", () => ({
+  get db() {
+    return holder.db;
+  },
+}));
 vi.mock("@/lib/db-transaction", () => ({
   get withTransaction() {
     return (fn: Parameters<typeof import("@/lib/db-transaction").withTransaction>[0]) =>
@@ -52,8 +56,14 @@ beforeAll(async () => {
         <body><h1>Renewal</h1><p>The rent is 1400.</p><script>track()</script></body></html>`;
       return void res.writeHead(200, { "content-type": "text/html; charset=utf-8" }).end(page);
     }
-    if (req.url === "/download.bin") return void res.writeHead(200, { "content-type": "application/octet-stream" }).end(Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x14]));
-    if (req.url === "/empty.html") return void res.writeHead(200, { "content-type": "text/html" }).end("<html><body><script>only()</script></body></html>");
+    if (req.url === "/download.bin")
+      return void res
+        .writeHead(200, { "content-type": "application/octet-stream" })
+        .end(Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x14]));
+    if (req.url === "/empty.html")
+      return void res
+        .writeHead(200, { "content-type": "text/html" })
+        .end("<html><body><script>only()</script></body></html>");
     if (req.url === "/flaky.pdf") {
       return void (hits["/flaky.pdf"] === 1 ? res.writeHead(503).end() : res.writeHead(200).end(PDF));
     }
@@ -62,7 +72,12 @@ beforeAll(async () => {
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 });
-afterAll(async () => { server.closeAllConnections(); server.close(); vi.unstubAllEnvs(); await handle?.client.end(); });
+afterAll(async () => {
+  server.closeAllConnections();
+  server.close();
+  vi.unstubAllEnvs();
+  await handle?.client.end();
+});
 beforeEach(() => {
   hits = {};
   vi.stubEnv("DOCLING_SERVE_URL", "http://docling.fixture");
@@ -71,7 +86,7 @@ beforeEach(() => {
 });
 
 async function workspace() {
-  return { ...await seedWorkspace(holder.db!, `url-${crypto.randomUUID()}`), role: "owner" as const };
+  return { ...(await seedWorkspace(holder.db!, `url-${crypto.randomUUID()}`)), role: "owner" as const };
 }
 const docsFor = (workspaceId: string) =>
   holder.db!.select().from(documents).where(eq(documents.workspaceId, workspaceId));
@@ -86,7 +101,10 @@ suite("URL capture (real Postgres)", () => {
     expect(doc.fileId).not.toBeNull();
     const [file] = await holder.db!.select().from(files).where(eq(files.id, doc.fileId!));
     expect(file).toMatchObject({ origin: "url", status: "uploaded" });
-    const [extraction] = await holder.db!.select().from(documentExtractions).where(eq(documentExtractions.documentId, doc.id));
+    const [extraction] = await holder
+      .db!.select()
+      .from(documentExtractions)
+      .where(eq(documentExtractions.documentId, doc.id));
     expect(extraction.status).toBe("succeeded");
   });
 
@@ -144,7 +162,9 @@ suite("URL capture (real Postgres)", () => {
     const all = await docsFor(auth.workspaceId);
     expect(all).toHaveLength(1);
     expect(all[0].fileId).not.toBeNull();
-    const [latest] = await holder.db!.select().from(documentExtractions)
+    const [latest] = await holder
+      .db!.select()
+      .from(documentExtractions)
       .where(and(eq(documentExtractions.documentId, all[0].id), eq(documentExtractions.status, "succeeded")));
     expect(latest.text).toBe("rent: 1200");
   });
@@ -154,11 +174,18 @@ suite("URL capture (real Postgres)", () => {
     const result = await captureUrl(auth, { url: `${base}/page.html`, fetchOptions });
     expect(result).toMatchObject({ ok: true, created: true, extraction: { ok: true } });
     const [doc] = await docsFor(auth.workspaceId);
-    expect(doc).toMatchObject({ sourceUrl: `${base}/page.html`, mimeType: "text/markdown", title: "Lease renewal notes" });
+    expect(doc).toMatchObject({
+      sourceUrl: `${base}/page.html`,
+      mimeType: "text/markdown",
+      title: "Lease renewal notes",
+    });
     expect(doc.fileId).not.toBeNull();
     const [file] = await holder.db!.select().from(files).where(eq(files.id, doc.fileId!));
     expect(file).toMatchObject({ origin: "url", status: "uploaded", filename: "page.md" });
-    const [extraction] = await holder.db!.select().from(documentExtractions).where(eq(documentExtractions.documentId, doc.id));
+    const [extraction] = await holder
+      .db!.select()
+      .from(documentExtractions)
+      .where(eq(documentExtractions.documentId, doc.id));
     expect(extraction).toMatchObject({ status: "succeeded", extractor: "plain-text@local" });
     expect(extraction.text).toBe("# Renewal\n\nThe rent is 1400.");
     expect(provider.extract).not.toHaveBeenCalled();
@@ -210,27 +237,44 @@ suite("URL capture (real Postgres)", () => {
 
   it("refuses a private address before creating anything", async () => {
     const auth = await workspace();
-    expect(await captureUrl(auth, { url: "http://169.254.169.254/latest/meta-data" })).toMatchObject({ ok: false, documentId: null });
+    expect(await captureUrl(auth, { url: "http://169.254.169.254/latest/meta-data" })).toMatchObject({
+      ok: false,
+      documentId: null,
+    });
     expect(await docsFor(auth.workspaceId)).toHaveLength(0);
   });
 });
 
 /*
- * A failed inbox fetch is retried on the capture itself. Re-pasting the
- * address is a duplicate and enqueues nothing, so a retry is its own command:
- * a fresh dispatch key (the original is already dispatched and would dedupe
- * into nothing), the reason cleared, and the outcome back to pending.
+ * A raw URL capture does not read the page. The user explicitly requests the
+ * first read, and a failed dispatched read can then be explicitly retried.
  */
 suite("inbox capture fetch retry", () => {
   it("re-enqueues a failed fetch and clears the reason", async () => {
     const auth = await workspace();
     const capture = await commands.createCapture(auth, { text: `https://example.com/broken-${crypto.randomUUID()}` });
-    await holder.db!.update(captures)
-      .set({ processingState: "failed", failureReason: "The page could not be read: timeout.", fetchOutcome: "provider-unavailable" })
+    await commands.retryCaptureUrl(auth, { captureId: capture.id });
+    const fetches = await holder
+      .db!.select()
+      .from(outboxEvents)
+      .where(eq(outboxEvents.topic, "capture.url_content_requested"));
+    const firstFetch = fetches.find((event) => (event.payload as { captureId?: string }).captureId === capture.id);
+    expect(firstFetch).toBeDefined();
+    await holder.db!.update(outboxEvents).set({ status: "dispatched" }).where(eq(outboxEvents.id, firstFetch!.id));
+    await holder
+      .db!.update(captures)
+      .set({
+        processingState: "failed",
+        failureReason: "The page could not be read: timeout.",
+        fetchOutcome: "provider-unavailable",
+      })
       .where(eq(captures.id, capture.id));
     const result = await commands.retryCaptureUrl(auth, { captureId: capture.id });
     expect(result.enqueued).toBe(true);
-    const events = await holder.db!.select().from(outboxEvents).where(eq(outboxEvents.topic, "capture.url_content_requested"));
+    const events = await holder
+      .db!.select()
+      .from(outboxEvents)
+      .where(eq(outboxEvents.topic, "capture.url_content_requested"));
     expect(events.filter((e) => (e.payload as { captureId?: string }).captureId === capture.id)).toHaveLength(2);
     const [after] = await holder.db!.select().from(captures).where(eq(captures.id, capture.id));
     expect(after.failureReason).toBeNull();
@@ -240,25 +284,32 @@ suite("inbox capture fetch retry", () => {
   it("refuses to retry a capture with no address", async () => {
     const auth = await workspace();
     const capture = await commands.createCapture(auth, { text: "a thought" });
-    await expect(commands.retryCaptureUrl(auth, { captureId: capture.id }))
-      .rejects.toMatchObject({ code: "conflict" });
+    await expect(commands.retryCaptureUrl(auth, { captureId: capture.id })).rejects.toMatchObject({ code: "conflict" });
   });
 
   it("refuses a capture from another workspace", async () => {
     const owner = await workspace();
     const other = await workspace();
     const capture = await commands.createCapture(owner, { text: `https://example.com/cross-${crypto.randomUUID()}` });
-    await expect(commands.retryCaptureUrl(other, { captureId: capture.id }))
-      .rejects.toMatchObject({ code: "not_found" });
+    await expect(commands.retryCaptureUrl(other, { captureId: capture.id })).rejects.toMatchObject({
+      code: "not_found",
+    });
   });
 
   it("replays a repeated idempotency key without a second event", async () => {
     const auth = await workspace();
     const capture = await commands.createCapture(auth, { text: `https://example.com/once-${crypto.randomUUID()}` });
     const key = crypto.randomUUID();
-    expect(await commands.retryCaptureUrl(auth, { captureId: capture.id, idempotencyKey: key })).toEqual({ enqueued: true });
-    expect(await commands.retryCaptureUrl(auth, { captureId: capture.id, idempotencyKey: key })).toEqual({ enqueued: true });
-    const events = await holder.db!.select().from(outboxEvents).where(eq(outboxEvents.topic, "capture.url_content_requested"));
-    expect(events.filter((e) => (e.payload as { captureId?: string }).captureId === capture.id)).toHaveLength(2);
+    expect(await commands.retryCaptureUrl(auth, { captureId: capture.id, idempotencyKey: key })).toEqual({
+      enqueued: true,
+    });
+    expect(await commands.retryCaptureUrl(auth, { captureId: capture.id, idempotencyKey: key })).toEqual({
+      enqueued: true,
+    });
+    const events = await holder
+      .db!.select()
+      .from(outboxEvents)
+      .where(eq(outboxEvents.topic, "capture.url_content_requested"));
+    expect(events.filter((e) => (e.payload as { captureId?: string }).captureId === capture.id)).toHaveLength(1);
   });
 });

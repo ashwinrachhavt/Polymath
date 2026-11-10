@@ -72,8 +72,9 @@ beforeEach(() => {
 
 afterEach(() => vi.unstubAllEnvs());
 
-/** The fetch's own event, so a URL capture can be enriched without waiting for a scrape. */
+/** Explicitly request the optional Firecrawl read, then settle its outbox event. */
 async function settleUrlFetch(captureId: string) {
+  await commands.retryCaptureUrl(auth, { captureId });
   const events = await db.select().from(outboxEvents).where(eq(outboxEvents.topic, "capture.url_content_requested"));
   const urlEvent = events.find((e) => (e.payload as { captureId: string }).captureId === captureId);
   if (!urlEvent) throw new Error("no url fetch event enqueued");
@@ -103,9 +104,17 @@ async function getCapture(id: string) {
 }
 
 suite("capture enrichment ladder", () => {
-  it("enqueues enrichment for a text capture immediately and a URL capture delayed", async () => {
+  it("queues URL classification only after an explicit read request", async () => {
     const text = await commands.createCapture(auth, { text: "A short thought." });
     const page = await commands.createCapture(auth, { text: "https://example.com/article" });
+    const fetchEventsBeforeRequest = await db
+      .select()
+      .from(outboxEvents)
+      .where(eq(outboxEvents.topic, "capture.url_content_requested"));
+    expect(
+      fetchEventsBeforeRequest.filter((e) => (e.payload as { captureId: string }).captureId === page.id),
+    ).toHaveLength(0);
+    await commands.retryCaptureUrl(auth, { captureId: page.id });
 
     const events = await db.select().from(outboxEvents).where(eq(outboxEvents.topic, handler.CAPTURE_ENRICHMENT_TOPIC));
     const byCapture = new Map(events.map((e) => [(e.payload as { captureId: string }).captureId, e]));
@@ -113,10 +122,10 @@ suite("capture enrichment ladder", () => {
     const urlEvent = byCapture.get(page.id);
     expect(textEvent).toBeDefined();
     expect(urlEvent).toBeDefined();
-    // The URL capture's enrichment waits for the scrape (due in the future);
-    // the text capture's is due now.
+    // URL classification is queued with the explicit read request. Its handler
+    // parks behind the URL-fetch event until that event has completed.
     expect(textEvent!.availableAt.getTime()).toBeLessThanOrEqual(Date.now() + 1000);
-    expect(urlEvent!.availableAt.getTime()).toBeGreaterThan(Date.now() + 10_000);
+    expect(urlEvent!.availableAt.getTime()).toBeLessThanOrEqual(Date.now() + 1000);
   });
 
   it("runs Tier 0+1 only on short text: no model call, row lands enriched", async () => {

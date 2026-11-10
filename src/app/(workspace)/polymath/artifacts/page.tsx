@@ -1,7 +1,6 @@
 import Link from "next/link";
-import { Suspense } from "react";
+import { redirect } from "next/navigation";
 import { io } from "next/cache";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Empty, Panel, Screen, Status } from "@/components/workspace/ui";
 import { pageArtifacts } from "@/domains/knowledge/artifacts";
 import { getAuthContext } from "@/lib/auth";
@@ -150,22 +149,6 @@ export async function ArtifactsSurface({ searchParams }: { searchParams: Promise
   );
 }
 
-export default function ArtifactsPage({ searchParams }: { searchParams: Promise<RawSearchParams> }) {
-  return (
-    <Suspense fallback={<ArtifactsSkeleton />}>
-      <ArtifactsSurface searchParams={searchParams} />
-    </Suspense>
-  );
-}
-
-function ArtifactsSkeleton() {
-  return (
-    <div role="status" aria-label="Loading Artifacts" className="flex flex-1 flex-col gap-4 p-6">
-      <Skeleton className="h-6 w-40" />
-      <Skeleton className="h-9 w-full max-w-sm" />
-      <Skeleton className="h-12 w-full" />
-      <Skeleton className="h-12 w-full" />
-      <Skeleton className="h-12 w-2/3" />
-    </div>
-  );
+export default function ArtifactsPage() {
+  redirect("/artifacts");
 }

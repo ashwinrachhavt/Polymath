@@ -13,4 +13,4 @@ export {
   unavailableDecisions,
   writeStateValue,
 } from "./queries";
-export { workAssessments, workDecisions, workEffects, workTickets, workTriggers } from "./schema";
+export { workAssessments, workEffects, workTriggers } from "./schema";

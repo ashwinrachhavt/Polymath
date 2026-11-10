@@ -5,6 +5,8 @@ import { useMemo, useRef, useState, useSyncExternalStore, useTransition } from "
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/workspace/ui";
 import { CoachMark } from "@/components/shell/coach-mark";
+import { ArtifactFeedback } from "@/app/(workspace)/artifacts/[artifactId]/artifact-feedback";
+import type { ArtifactRating } from "@/domains/knowledge/artifact-feedback";
 import type { QuizForSitting } from "@/domains/learning/queries";
 import { completeQuizAttemptAction, type StoneAnnouncement } from "../actions";
 
@@ -57,12 +59,20 @@ type SittingResult = {
  * that resets by remounting with a fresh key - React's documented reset, so
  * a retake needs no manual field-by-field unwind.
  */
-export function QuizRunner({ quiz }: { quiz: QuizForSitting }) {
+export function QuizRunner({ quiz, rating }: { quiz: QuizForSitting; rating: ArtifactRating | null }) {
   const [sitting, setSitting] = useState(0);
-  return <Sitting key={sitting} quiz={quiz} onRetake={() => setSitting((s) => s + 1)} />;
+  return <Sitting key={sitting} quiz={quiz} rating={rating} onRetake={() => setSitting((s) => s + 1)} />;
 }
 
-function Sitting({ quiz, onRetake }: { quiz: QuizForSitting; onRetake: () => void }) {
+function Sitting({
+  quiz,
+  rating,
+  onRetake,
+}: {
+  quiz: QuizForSitting;
+  rating: ArtifactRating | null;
+  onRetake: () => void;
+}) {
   const hydrated = useHydrated();
   const shuffled = useMemo(
     () => quiz.questions.map((q) => (hydrated ? fisherYates(q.choices) : q.choices)),
@@ -184,6 +194,7 @@ function Sitting({ quiz, onRetake }: { quiz: QuizForSitting; onRetake: () => voi
           })}
         </ul>
 
+        <ArtifactFeedback target={{ kind: "quiz", id: quiz.id }} rating={rating} />
         <div className="mt-4 flex gap-2">
           <Button type="button" size="sm" variant="outline" onClick={retake}>
             Retake
@@ -277,7 +288,7 @@ function Sitting({ quiz, onRetake }: { quiz: QuizForSitting; onRetake: () => voi
           <p className="mt-2 text-body-dense leading-relaxed text-muted-foreground">{question.explanation}</p>
           {question.evidence.quote ? (
             <p className="mt-2 border-l-2 border-border pl-3 text-xs italic leading-relaxed text-muted-foreground">
-              From the document: {question.evidence.quote}
+              From {question.evidence.source?.title ?? "the document"}: {question.evidence.quote}
             </p>
           ) : null}
           <div className="mt-3">

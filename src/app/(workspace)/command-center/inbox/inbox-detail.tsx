@@ -349,7 +349,16 @@ export function InboxDetail({
                 Retry
               </Button>
             </div>
-          ) : capture.fetchOutcome === "acquired" ? null : (
+          ) : capture.fetchOutcome === "acquired" ? null : capture.fetchOutcome === null ? (
+            <div className="max-w-[70ch]">
+              <p className="text-body-dense text-muted-foreground">
+                This capture keeps the original link. Read and enrich the page when you need its contents.
+              </p>
+              <Button className="mt-2" size="sm" variant="outline" disabled={pending} onClick={retryFetch}>
+                Read and enrich page
+              </Button>
+            </div>
+          ) : (
             <p className="max-w-[70ch] text-body-dense text-muted-foreground">
               Reading the page now. The text lands here when it arrives.
             </p>

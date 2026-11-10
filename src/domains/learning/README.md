@@ -1,24 +1,14 @@
 # learning
 
-Owns: quizzes, quiz questions, quiz attempts, and the quiz generation flow
-
-Turns a captured document's succeeded extraction into a short graded quiz;
-completing an attempt earns a stone through the gamification ledger. Tables
-are in `schema.ts` and nowhere else; UI code reads them through this domain's
-queries rather than joining across domains.
+Owns quiz, Explain It, flashcard, and graph-recall records plus source pinning, server grading, and personal recall schedules. Notebook owns source selection and learning creation. `/learn` is the cross-Notebook Up Next queue; legacy `/learn/:documentId` routes remain readable for existing quizzes. Tables are in `schema.ts`; server actions call this domain and UI reads through its queries.
 
 ## The trust boundary
 
-The model proposes questions, the domain disposes (`generate-quiz.ts`):
-`verifyQuiz` re-locates every question's evidence quote in the extraction
-(normalized matching — markdown links, citation markers, and whitespace are
-tolerated; paraphrase is not, see `locate-quote.ts`) and drops what it
-cannot prove. Fewer than three proven questions
+The model proposes questions, the domain verifies them (`generate-quiz.ts`). Each question names one source in the immutable quiz manifest. `verifyQuizAcrossSources` re-locates the question's evidence quote in that exact extraction (normalized matching tolerates markdown links, citation markers, and whitespace; paraphrase is not accepted, see `locate-quote.ts`) and drops what it cannot prove. Fewer than three proven questions
 is an honest typed failure (`insufficient_evidence`), never a padded quiz.
 This is the reading summary's discipline (ASH-292) with one deviation: there
 is no generate-then-accept split, because a quiz is low-stakes, regenerable,
-quota-gated content. Regeneration writes a new quiz row; the latest ready one
-wins.
+quota-gated content. A quiz request key replays a completed generation instead of adding another row. Starting a deliberate new quiz uses a new key.
 
 ## Grading and the award
 
@@ -34,7 +24,6 @@ idempotency key `quiz_attempt:<attemptId>`, 10 points), the same-transaction
 twin of the daily Quartz. Replaying an attempt's idempotency key returns the
 original attempt; the ledger's unique index makes a double award impossible.
 
-## Non-goals (v1)
+## Other learning modes
 
-No mid-quiz persistence (a refresh restarts the sitting), no multi-select,
-no free-text grading, no spaced repetition.
+Explain It sessions pin exact extraction versions, evaluate free responses against those sources, store cited evidence, and adapt the next question. A missing or conflicting quote yields an explicit uncertain result. Flashcard content is shared, but due dates and Again/Hard/Good/Easy ratings are private per user. The relationship-recall exercise grades only against saved non-machine graph links and stores attempts separately from the link records. React Flow synthesis reuses the existing Zettel command and source links.

@@ -7,7 +7,6 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import { EmbeddingUnconfiguredError } from "@/integrations/embeddings/provider";
 import type { ZettelExtractor } from "@/integrations/zettels/extractor";
 import { extractDocument } from "@/domains/knowledge/extraction";
-import { embedArtifact } from "@/domains/knowledge/embedding";
 import { createZettelsFromSource, type ZettelCardsResult } from "@/domains/knowledge/zettels";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
@@ -221,7 +220,6 @@ export async function runZettelGenerationRequested(
 
   let documentId = capture.convertedType === "document" ? capture.convertedId : null;
   if (!documentId) {
-    // Converted to something the owner chose is a decision, not a failure.
     if (capture.convertedType) return { created: 0, unreadChars: 0 };
     if (!zettelSourceText(capture)) return { created: 0, unreadChars: 0 };
     try {
@@ -229,8 +227,6 @@ export async function runZettelGenerationRequested(
       documentId = filed.documentId;
     } catch (cause) {
       if (!(cause instanceof ConflictError) && !(cause instanceof StaleWriteError)) throw cause;
-      // A racing conversion or an edit won: re-read the row rather than retry
-      // blind against a version that no longer exists.
       const [again] = await db
         .select({ convertedType: captures.convertedType, convertedId: captures.convertedId, version: captures.version })
         .from(captures)
@@ -239,8 +235,6 @@ export async function runZettelGenerationRequested(
       if (again?.convertedType === "document") {
         documentId = again.convertedId;
       } else if (again && !again.convertedType && cause instanceof StaleWriteError) {
-        // The text changed under us; one retry against the new version is
-        // honest - the owner's edit is what should be read.
         const filed = await convertCaptureToDocument(auth, { captureId: capture.id, expectedVersion: again.version });
         documentId = filed.documentId;
       }
@@ -251,57 +245,30 @@ export async function runZettelGenerationRequested(
   const extraction = await extractDocument(auth, { documentId });
   if (!extraction.ok) throw new Error(extraction.error);
 
-  /*
-   * The pass and its audit are one transaction, so the audit row commits with
-   * the cards it describes and two racing passes cannot both see zero.
-   */
-  const outcome = await withTransaction(
-    async (tx): Promise<{ created: number; unreadChars: number; cards: ZettelCardsResult["created"] }> => {
-      let pass: ZettelCardsResult;
-      try {
-        pass = await createZettelsFromSource(auth, { documentId, extractor: deps.extractor, tx });
-      } catch (cause) {
-        // No model configured is a skip, not a failure: retrying five times cannot
-        // conjure a key, and the inbox disables the control in that state anyway.
-        if (cause instanceof EmbeddingUnconfiguredError) return { created: 0, unreadChars: 0, cards: [] };
-        throw cause;
-      }
-
-      if (pass.created.length > 0) {
-        await recordAudit(
-          auth,
-          {
-            action: "capture.zettels_created",
-            subjectType: "capture",
-            subjectId: capture.id,
-            summary: `Created ${pass.created.length} zettel${pass.created.length === 1 ? "" : "s"}`,
-            metadata: {
-              documentId,
-              readChars: pass.readChars,
-              unreadChars: pass.unreadChars,
-              unreadSections: pass.unreadSections,
-              skippedRepeats: pass.skippedRepeats,
-              skippedDuplicates: pass.skippedDuplicates,
-              skippedSpans: pass.skippedSpans,
-            },
-          },
-          tx,
-        );
-      }
-      return { created: pass.created.length, unreadChars: pass.unreadChars, cards: pass.created };
-    },
-  );
-  // Whoever owns the commit owns the embeds: the new cards join the semantic
-  // graph best-effort after the transaction lands, and a failed or
-  // unconfigured embedding pass never blocks the cards themselves.
-  for (const card of outcome.cards) {
-    try {
-      await embedArtifact(auth, { artifactId: card.artifactId });
-    } catch (cause) {
-      console.error(
-        `embedArtifact after zettel creation failed: ${cause instanceof Error ? cause.message : String(cause)}`,
-      );
-    }
+  let pass: ZettelCardsResult;
+  try {
+    pass = await createZettelsFromSource(auth, { documentId, extractor: deps.extractor });
+  } catch (cause) {
+    if (cause instanceof EmbeddingUnconfiguredError) return { created: 0, unreadChars: 0 };
+    throw cause;
   }
-  return { created: outcome.created, unreadChars: outcome.unreadChars };
+
+  if (pass.created.length > 0) {
+    await recordAudit(auth, {
+      action: "capture.zettels_created",
+      subjectType: "capture",
+      subjectId: capture.id,
+      summary: `Created ${pass.created.length} zettel${pass.created.length === 1 ? "" : "s"}`,
+      metadata: {
+        documentId,
+        readChars: pass.readChars,
+        unreadChars: pass.unreadChars,
+        unreadSections: pass.unreadSections,
+        skippedRepeats: pass.skippedRepeats,
+        skippedDuplicates: pass.skippedDuplicates,
+        skippedSpans: pass.skippedSpans,
+      },
+    });
+  }
+  return { created: pass.created.length, unreadChars: pass.unreadChars };
 }

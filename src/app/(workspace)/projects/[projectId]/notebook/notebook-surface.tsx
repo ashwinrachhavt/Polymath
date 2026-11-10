@@ -22,6 +22,7 @@ import { researchDossierCompanyAction } from "../../actions";
 import { startNotebookRun } from "./chat-run-actions";
 import { retryNotebookSourceAction } from "./add-source-actions";
 import { AddSources } from "./add-sources";
+import { LearningStudio } from "./learning-studio";
 
 /*
  * The notebook surface, laid out the way NotebookLM reads: sources on the left,
@@ -480,6 +481,13 @@ export default function NotebookSurface({
             </div>
           </form>
         </div>
+
+        <LearningStudio
+          projectId={notebook.projectId}
+          sources={sources
+            .filter((source) => source.readiness === "ready")
+            .map(({ documentId, title }) => ({ documentId, title }))}
+        />
 
         <div className="panel rounded-xl p-3">
           <h2 className="text-body-dense font-medium">Runs</h2>

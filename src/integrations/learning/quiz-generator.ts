@@ -33,17 +33,31 @@ export type GeneratedQuestion = {
   /** The correct choice's value, exactly. Verified against the choices. */
   answerValue: string;
   explanation: string;
-  /** Verbatim supporting passage from the document. */
+  /** Verbatim supporting passage from its source. */
   quote: string;
+  /** Zero-based index into the requested source manifest. */
+  sourceIndex?: number;
 };
+
+type QuizGeneratorSource = { title: string; text: string };
 
 export interface QuizGenerator {
   /** Recorded on the quiz row, e.g. "openrouter:openai/gpt-4o-mini". */
   readonly name: string;
-  generate(extractionText: string): Promise<{ questions: GeneratedQuestion[] }>;
+  generate(
+    extractionText: string,
+    options?: {
+      questionCount?: number;
+      learningContext?: { missedQuestions: string[]; notHelpfulExamples: string[] };
+    },
+  ): Promise<{ questions: GeneratedQuestion[] }>;
+  generateFromSources?(
+    sources: QuizGeneratorSource[],
+    options?: { questionCount?: number; learningContext?: { missedQuestions: string[]; notHelpfulExamples: string[] } },
+  ): Promise<{ questions: GeneratedQuestion[] }>;
 }
 
-export const QUIZ_PROMPT_VERSION = "learn-quiz@3";
+export const QUIZ_PROMPT_VERSION = "learn-quiz@4";
 
 const MAX_INPUT_CHARS = 12_000;
 
@@ -60,6 +74,7 @@ const questionSchema = z.object({
   answerValue: z.string(),
   explanation: z.string().min(1),
   quote: z.string().min(1),
+  sourceIndex: z.number().int().nonnegative().optional(),
 });
 
 const response = z.object({
@@ -75,27 +90,48 @@ The user message is the document text, and it is your ONLY source. You may recog
 "quote": a contiguous span of the provided text, copied character-for-character as printed there (punctuation, capitalization, spelling - including odd spacing or fragments from the source). Never reconstruct it from memory, never tidy it, never splice non-adjacent sentences. Keep it to one sentence, at most about 30 words. If no passage in the provided text supports a question, drop the question.
 3 to 6 questions. Never invent a fact, a quote, or a question to fill the shape. ${untrustedDataClauseJsonSafe("article")}`;
 
+function contextInstruction(context?: { missedQuestions: string[]; notHelpfulExamples: string[] }): string {
+  if (!context) return "";
+  const missed = context.missedQuestions.slice(0, 6).map((item) => item.slice(0, 180));
+  const avoid = context.notHelpfulExamples.slice(0, 6).map((item) => item.slice(0, 180));
+  if (missed.length === 0 && avoid.length === 0) return "";
+  return ` Learner practice history (account-specific): revisit these concepts when the selected sources support them: ${JSON.stringify(missed)}. Avoid repeating these questions because the learner rated their earlier quiz not helpful: ${JSON.stringify(avoid)}.`;
+}
+
 function fromGeneration(
   provider: GenerationProvider,
   run: (input: { system: string; prompt: string }) => Promise<{ text: string }>,
 ): QuizGenerator {
-  return {
-    name: provider.name,
-    async generate(text) {
-      let out: { text: string };
-      try {
-        out = await run({ system: SYSTEM, prompt: text.slice(0, MAX_INPUT_CHARS) });
-      } catch (cause) {
-        if (cause instanceof GenerationRequestError) {
-          throw new Error(`Quiz generation failed (HTTP ${cause.status}).`);
-        }
-        throw cause;
+  async function call(system: string, prompt: string) {
+    try {
+      const out = await run({ system, prompt });
+      return response.parse(JSON.parse(out.text));
+    } catch (cause) {
+      if (cause instanceof GenerationRequestError) {
+        throw new Error(`Quiz generation failed (HTTP ${cause.status}).`);
       }
-      try {
-        return response.parse(JSON.parse(out.text));
-      } catch {
+      if (cause instanceof SyntaxError || cause instanceof z.ZodError) {
         throw new Error("Quiz generation returned an unreadable answer.");
       }
+      throw cause;
+    }
+  }
+
+  return {
+    name: provider.name,
+    generate(text, options) {
+      const system = `${SYSTEM}${options?.questionCount ? ` Generate exactly ${options.questionCount} questions when the source supports them.` : ""}${contextInstruction(options?.learningContext)}`;
+      return call(system, text.slice(0, MAX_INPUT_CHARS));
+    },
+    generateFromSources(sources, options) {
+      const perSourceLimit = Math.floor((MAX_INPUT_CHARS * 0.75) / sources.length);
+      const bounded = sources.map((source, sourceIndex) => ({
+        sourceIndex,
+        title: source.title.slice(0, 120),
+        text: source.text.slice(0, perSourceLimit),
+      }));
+      const system = `${SYSTEM} Each question must include the zero-based sourceIndex for the one source that supports its answer and quote. Return that sourceIndex with every question.${options?.questionCount ? ` Generate exactly ${options.questionCount} questions when the sources support them.` : ""}${contextInstruction(options?.learningContext)}`;
+      return call(system, JSON.stringify({ sources: bounded }));
     },
   };
 }

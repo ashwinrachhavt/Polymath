@@ -64,14 +64,7 @@ succeeded extraction and asks an extractor (default: OpenRouter, `ZETTEL_MODEL`,
 needs `OPENROUTER_API_KEY`) for candidate notes. Each candidate is a title, a
 claim in the extractor's own words of whatever length the idea needs, and an
 optional verbatim quote. The domain re-locates the quote in the extraction text
-and drops anything that is not verbatim, so a card's evidence is real. The
-triggering action — a Zettelize click, an enrichment stage, a tool call — is
-the permission: the card is written now, no proposal row and no review step.
-The card is an artifact of kind `zettel` (ASH-174/ASH-184), so a note and a
-zettel are the same kind of thing — versioned, linkable, listed together in
-the notebook. It carries a `source`-typed `artifact_links` edge back to its
-document with the quote as context. A near-duplicate of an existing card is
-skipped, not minted. Cards live on the Ideas screen (/polymath/ideas).
+and drops anything that is not verbatim, so a card's evidence is real. Successful extraction automatically starts a bounded Zettel pass. Generated artifacts are marked `generated`, and their claims remain `proposed` until reviewed. The source quote must be found in the extraction before a card is written. Exact source spans are idempotent. Very close global matches reuse the existing Zettel and attach the new source as evidence. Ambiguous vector-near matches receive a model comparison; distinct ideas and contradictions remain separate. A missing embedding provider does not block reading. Cards use the `zettel` artifact kind and keep source provenance in `artifact_links`.
 
 ## The note link graph
 
@@ -207,4 +200,3 @@ The read model behind the document library UI: `library.ts` for reads,
   a `document_export_packets` record (append-only; manifest edits do not
   mutate past packets). POST `/api/v1/exports/manifests/:id/packet`
   assembles (member), GET `/api/v1/exports/packets/:id` downloads (viewer).
-

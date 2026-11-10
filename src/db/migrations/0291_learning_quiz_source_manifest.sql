@@ -1,0 +1,1 @@
+ALTER TABLE "quizzes" ADD COLUMN "source_manifest" jsonb DEFAULT '[]'::jsonb NOT NULL;

@@ -4,6 +4,7 @@ import { io } from "next/cache";
 import { Suspense } from "react";
 import { Panel, Screen } from "@/components/workspace/ui";
 import { getLearnLibrary, getQuizForSitting } from "@/domains/learning/queries";
+import { getArtifactFeedback } from "@/domains/knowledge/artifact-feedback";
 import { getAuthContext } from "@/lib/auth";
 import { GenerateQuizButton } from "../quiz-action";
 import { QuizRunner } from "./quiz-runner";
@@ -64,6 +65,7 @@ async function QuizShell({ documentId }: { documentId: string }) {
     );
   }
 
+  const rating = await getArtifactFeedback(auth, { kind: "quiz", id: quiz.id });
   return (
     <Screen
       title={row.title}
@@ -74,7 +76,7 @@ async function QuizShell({ documentId }: { documentId: string }) {
       }
       actions={<GenerateQuizButton documentId={row.documentId} label="Regenerate" afterGenerate="refresh" />}
     >
-      <QuizRunner quiz={quiz} />
+      <QuizRunner quiz={quiz} rating={rating} />
       <Link href="/learn" className="text-body-dense font-medium underline-offset-4 hover:underline">
         Back to Learn
       </Link>
