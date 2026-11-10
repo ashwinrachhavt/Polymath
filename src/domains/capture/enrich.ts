@@ -47,6 +47,14 @@ const MAX_TOKENS = 900;
 /** The model chooses among the notebooks touched most recently. */
 const NOTEBOOK_CHOICES = 50;
 
+/** How long a request may stay pending before a new click replaces it. */
+export const STALE_PENDING_MS = 10 * 60_000;
+
+function isStalePending(requestedAt: string): boolean {
+  const at = Date.parse(requestedAt);
+  return Number.isNaN(at) || Date.now() - at > STALE_PENDING_MS;
+}
+
 export type CaptureEnrichResult =
   | { status: "enriched"; summary: string; keyPoints: string[]; suggestedNotebookId: string | null }
   | { status: "failed"; error: string }
@@ -60,8 +68,8 @@ export type CaptureEnrichDeps = {
 
 /**
  * The Enrich click. Only the capture's author or a workspace owner may ask, as
- * for a page re-read. A second click while a request is pending, or after a
- * summary landed, enqueues nothing.
+ * for a page re-read. A second click while a request is pending (and not stale),
+ * or after a summary landed, enqueues nothing.
  */
 export async function requestCaptureEnrich(
   auth: AuthContext,
@@ -80,7 +88,12 @@ export async function requestCaptureEnrich(
 
     const current = readEnrichment(capture.rawPayload);
     if (current?.status === "done") return { enqueued: false };
-    const failures = current?.failures ?? 0;
+    // A pending request that never settled (its event dead-lettered) would
+    // block every click under the same key. Past the threshold it counts as a
+    // failed run, so the retry gets a new key; the old run, if it ever
+    // finishes, is fenced out by requestedAt.
+    const stale = current?.status === "pending" && isStalePending(current.requestedAt);
+    const failures = (current?.failures ?? 0) + (stale ? 1 : 0);
     const event = await enqueueOutbox(tx, auth, {
       topic: CAPTURE_ENRICH_TOPIC,
       payload: { captureId: capture.id },

@@ -216,6 +216,23 @@ suite("opt-in Enrich for link captures", () => {
     expect(events[0].dispatchKey).toBe(`enrich:${captureId}`);
   });
 
+  it("a pending request older than the stale threshold is retried under a new key", async () => {
+    const captureId = await linkCapture();
+    expect(await actions.enrichCaptureAction({ captureId })).toEqual({ ok: true });
+    const old = new Date(Date.now() - 11 * 60_000).toISOString();
+    await db
+      .update(captures)
+      .set({
+        rawPayload: sql`jsonb_set(${captures.rawPayload}, '{enrichment,requestedAt}', ${JSON.stringify(old)}::jsonb)`,
+      })
+      .where(eq(captures.id, captureId));
+
+    expect(await actions.enrichCaptureAction({ captureId })).toEqual({ ok: true });
+    const events = await enrichEvents(captureId);
+    expect(events).toHaveLength(2);
+    expect(events.map((e) => e.dispatchKey).sort()).toEqual([`enrich:${captureId}`, `enrich:${captureId}:retry-1`]);
+  });
+
   it("refuses a capture with no link and a capture from another workspace", async () => {
     const text = await commands.createCapture(auth, { text: "A thought with no link in it." });
     const noLink = await actions.enrichCaptureAction({ captureId: text.id });

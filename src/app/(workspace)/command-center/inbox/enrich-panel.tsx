@@ -16,6 +16,7 @@ import { captureEnrichStatusAction, enrichCaptureAction } from "./actions";
  */
 
 const GIVE_UP_MS = 3 * 60_000;
+const GIVE_UP_LABEL = "Still working on the summary in the background. Reopen this capture later to see it.";
 
 async function readEnrichStatus(ids: string[]): Promise<Record<string, WorkState>> {
   const [captureId] = ids;
@@ -46,7 +47,7 @@ export function EnrichPanel({
     ids: pollIds,
     read: readEnrichStatus,
     giveUpMs: GIVE_UP_MS,
-    giveUpLabel: "Still working on the summary in the background. Reopen this capture later to see it.",
+    giveUpLabel: GIVE_UP_LABEL,
   });
   const polled = states[captureId];
   const settled = polled?.phase === "done" || polled?.phase === "failed";
@@ -95,7 +96,14 @@ export function EnrichPanel({
   return (
     <section aria-label="Enrich this link" className="mt-6 max-w-[70ch] border-border border-t pt-6">
       {view?.status === "pending" ? (
-        <WorkStatus state={polled ?? { phase: "working", label: ENRICH_PENDING_LABEL }} />
+        <>
+          <WorkStatus state={polled ?? { phase: "working", label: ENRICH_PENDING_LABEL }} />
+          {polled?.label === GIVE_UP_LABEL ? (
+            <Button className="mt-2" size="sm" variant="outline" disabled={pending} onClick={requestEnrich}>
+              Try again
+            </Button>
+          ) : null}
+        </>
       ) : view?.status === "failed" ? (
         <>
           <WorkStatus state={{ phase: "failed", label: view.error }} />
