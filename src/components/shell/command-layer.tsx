@@ -19,7 +19,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { additionalDestinationsIn, destinations, type AppSlug } from "@/lib/navigation";
+import { destinations } from "@/lib/navigation";
 import { useWorkspace } from "@/components/workspace/workspace-provider";
 import { ImportDrop } from "@/components/workspace/import-drop";
 import { MAX_UPLOAD_LABEL } from "@/lib/file-validation";
@@ -168,17 +168,10 @@ export function CommandLayer({
     return () => window.removeEventListener("keydown", listener);
   }, []);
 
-  const navigation = [
-    ...destinations,
-    ...["command-center", "neuralflow", "polymath"].flatMap((slug) => additionalDestinationsIn(slug as AppSlug)),
-  ].map((destination) => ({
+  const navigation = destinations.map((destination) => ({
     key: destination.href,
     label: destination.label,
-    context: destination.href.startsWith("/apps/")
-      ? "Preview tool"
-      : destination.group === "shared"
-        ? "Shared workspace"
-        : "Polymath",
+    context: destination.group === "shared" ? "Shared workspace" : "Polymath",
     icon: destination.icon,
     href: destination.href,
   }));

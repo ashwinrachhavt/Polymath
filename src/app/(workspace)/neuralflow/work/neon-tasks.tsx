@@ -350,10 +350,10 @@ export async function NeonTasks({
               <Link className="py-1 hover:text-foreground hover:underline" href="/command-center/inbox">
                 Brain dump
               </Link>
-              <Link className="py-1 hover:text-foreground hover:underline" href="/apps/neuralflow/reports">
+              <Link className="py-1 hover:text-foreground hover:underline" href="/neuralflow/reports">
                 Weekly review
               </Link>
-              <Link className="py-1 hover:text-foreground hover:underline" href="/apps/neuralflow/rewards">
+              <Link className="py-1 hover:text-foreground hover:underline" href="/neuralflow/rewards">
                 Stone collection
               </Link>
             </nav>

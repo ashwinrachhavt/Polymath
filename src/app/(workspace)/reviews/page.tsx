@@ -31,8 +31,7 @@ export const metadata = { title: "Reviews · Polymath" };
  * inspected (CAS on the rendered version, idempotent on the minted key).
  * Approving a capability with a provider executor runs that exact revision
  * once; the attempt, not the proposal, carries the outcome. Calendar changes
- * keep their own one-tap screen and are only decided here. The browser-preview
- * rehearsal stays under /apps/command-center.
+ * keep their own one-tap screen and are only decided here.
  */
 
 const BASE = "/reviews";

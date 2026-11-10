@@ -672,8 +672,12 @@ function RichMarkdownEditor({
           className="space-y-3"
           onSubmit={(e) => {
             e.preventDefault();
-            if (url && !/^(https?:\/\/|\/apps\/)/.test(url)) {
-              notify("Use an http, https or /apps/ link. Other schemes are not allowed.");
+            // A relative link is a Polymath path ("/polymath/notes?id=..."); "//host" and
+            // "/\host" are another site in disguise, so they are refused with the other schemes.
+            if (url && !/^(https?:\/\/|\/(?![/\\]))/.test(url)) {
+              notify(
+                "Use an http or https link, or a Polymath path such as /polymath/notes. Other schemes are not allowed.",
+              );
               return;
             }
             if (url) editor?.chain().focus().extendMarkRange("link").setLink({ href: url }).run();

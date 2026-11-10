@@ -6,7 +6,6 @@ import type { Recurrence, Task, TaskStatus } from "./types";
  * the Command Center queue. Pure functions only: no React, no storage.
  */
 
-export const taskStatuses: TaskStatus[] = ["INBOX", "BACKLOG", "READY", "IN_PROGRESS", "WAITING", "DONE"];
 export const statusLabels: Record<TaskStatus, string> = {
   INBOX: "Inbox",
   BACKLOG: "Backlog",

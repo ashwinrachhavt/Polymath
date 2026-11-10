@@ -227,7 +227,7 @@ export async function syncGoogleCalendarAction(input: {
   const auth = await authorize();
   try {
     const r = await syncGoogleCalendarAccount(auth, { externalAccountId: input.accountId });
-    revalidatePath("/apps/neuralflow/tasks");
+    revalidatePath("/neuralflow/work");
     revalidate();
     return { ok: true, summary: `${r.created} new, ${r.updated} updated, ${r.cancelled} cancelled` };
   } catch (error) {
