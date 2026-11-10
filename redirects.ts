@@ -19,17 +19,24 @@ export function nextConfigRedirects({
   // shadowing them sent the header's Reviews shield to the legacy preview.
   // The rest keep their pre-split bookmark compatibility.
   const paths: Record<string, string> = {
-    briefing: "/apps/command-center/briefing", inbox: "/apps/command-center/inbox",
-    work: "/apps/neuralflow/tasks", focus: "/apps/neuralflow/focus",
+    briefing: "/apps/command-center/briefing",
+    inbox: "/command-center/inbox",
+    work: "/neuralflow/work",
+    focus: "/neuralflow/focus",
     // /polymath keeps its workspace page: the run UI (start a run, recent
     // runs) is server-rendered there. The lens chat screen stays at
     // /apps/polymath/chat for lens navigation.
     // Knowledge and Dossiers have real Neon-backed workspace screens, so their
     // legacy bare paths go there, not to the sample lens preview.
-    knowledge: "/polymath/knowledge", dossiers: "/polymath/dossiers",
-    relationships: "/apps/command-center/contacts", opportunities: "/apps/command-center/opportunities",
+    knowledge: "/polymath/knowledge",
+    dossiers: "/polymath/dossiers",
+    // Opportunities has no UI; People is the closest real destination.
+    relationships: "/command-center/relationships/people",
+    opportunities: "/command-center/relationships/people",
+    supervision: "/reviews",
   };
-  const redirects = Object.entries(paths).map(([source, destination]) => ({ source: `/${source}`, destination, permanent: false }))
+  const redirects = Object.entries(paths)
+    .map(([source, destination]) => ({ source: `/${source}`, destination, permanent: false }))
     .concat([
       // 2026-10-29 rename: every pre-rename bookmark lands on its renamed
       // route. The app-switcher prefix moved at the same time.

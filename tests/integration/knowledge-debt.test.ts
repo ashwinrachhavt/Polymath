@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   artifactLinks,
@@ -16,7 +17,8 @@ import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace"
  * signal names the right rows (zero-link notes, unsupported claims,
  * descriptionless open tasks, never-opened documents), exclusions hold
  * (archived notes, rejected claims, done tasks, opened documents), links
- * count in either direction, and tenancy isolates the report.
+ * count in either direction, tenancy isolates the report, and a Vault open
+ * (recordDocumentOpen) clears the never-opened signal.
  *
  * Skipped unless TEST_DATABASE_URL points at a migrated scratch database.
  */
@@ -133,5 +135,19 @@ suite("knowledge debt", () => {
     for (const section of Object.values(report)) {
       expect(section.total).toBe(1);
     }
+
+    // Opening the unread document in the Vault takes it off the list; a
+    // foreign or unknown id writes nothing.
+    const opens = await import("@/domains/knowledge/document-opens");
+    expect(await opens.recordDocumentOpen(auth, unreadDoc.id)).toBe(true);
+    expect(await opens.recordDocumentOpen(auth, unreadDoc.id)).toBe(true);
+    expect(await opens.recordDocumentOpen(ownerAuth(userId, other.workspaceId), unreadDoc.id)).toBe(false);
+    const [state] = await db
+      .select({ openCount: documentReadingState.openCount })
+      .from(documentReadingState)
+      .where(eq(documentReadingState.documentId, unreadDoc.id));
+    expect(state.openCount).toBe(2);
+    const after = await debt.getKnowledgeDebt(auth);
+    expect(after.neverOpenedDocuments.items).toEqual([]);
   });
 });

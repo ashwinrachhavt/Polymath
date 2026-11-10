@@ -61,7 +61,7 @@ export type EmbeddingRetrySweep = {
  * The bounded pass over the uncovered population. The provider resolves up
  * front: its model defines coverage, and without one there is nothing to
  * embed with and no model to be covered under, so that is an error, not an
- * empty sweep. Selection mirrors countMeaningUncoveredByState's predicates
+ * empty sweep. Selection mirrors countMeaningUncovered's predicates
  * (text present, current version, no vectors for it) with the same-model
  * guard added, and orders freshest-first so a bounded pass heals what a
  * person most likely still wants first.

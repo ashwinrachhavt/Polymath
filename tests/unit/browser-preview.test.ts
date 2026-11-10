@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { createPreviewWorkspace, previewWorkspace as workspace } from "@/components/workspace/workspace-provider";
-import { products, productHref } from "@/lib/products";
 
 describe("browser-only UI preview", () => {
   beforeEach(() => workspace.resetPreview());
@@ -46,7 +45,12 @@ describe("browser-only UI preview", () => {
     expect(versions.map((v) => v.version)).toEqual([1, 2]);
   });
   it("invalidates local approval whenever the reviewed payload changes", () => {
-    const review = workspace.addReview({ title: "Send the brief", kind: "Email", risk: "External write", payload: "Original payload" });
+    const review = workspace.addReview({
+      title: "Send the brief",
+      kind: "Email",
+      risk: "External write",
+      payload: "Original payload",
+    });
     if (!review) throw new Error("Expected a review");
     workspace.updateReview(review.id, { status: "Approved locally" });
     workspace.updateReview(review.id, { payload: "Revised payload", status: "Approved locally" });
@@ -62,14 +66,16 @@ describe("browser-only UI preview", () => {
     expect(workspace.getSnapshot().rewards).toHaveLength(1);
   });
   it("persists the local focus lifecycle in the same workspace snapshot", () => {
-    workspace.updateFocus({ taskId: "task-architecture", startedAt: 12345, remaining: 1500, duration: 1500, status: "paused", completed: 0 });
+    workspace.updateFocus({
+      taskId: "task-architecture",
+      startedAt: 12345,
+      remaining: 1500,
+      duration: 1500,
+      status: "paused",
+      completed: 0,
+    });
     expect(workspace.getSnapshot().focus?.status).toBe("paused");
     workspace.updateFocus(null);
     expect(workspace.getSnapshot().focus).toBeNull();
-  });
-  it("has unique product routes for every visible destination", () => {
-    const routes = products.flatMap((p) => p.destinations.map((d) => productHref(p, d.slug)));
-    expect(new Set(routes).size).toBe(routes.length);
-    expect(products.map((p) => p.id)).toEqual(["command-center", "neuralflow", "polymath"]);
   });
 });

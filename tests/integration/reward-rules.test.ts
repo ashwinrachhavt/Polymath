@@ -175,14 +175,7 @@ suite("reward rules", () => {
       label: "Quartz",
       points: 10,
     });
-    await commands.updateRewardDefinition(auth, {
-      key: "quartz",
-      kind: "points",
-      label: "Quartz",
-      points: 10,
-      expectedVersion: definition.version,
-      active: false,
-    });
+    await db.update(rewardDefinitions).set({ active: false }).where(eq(rewardDefinitions.id, definition.id));
     const task = await work.createOwnerTask(auth, { title: "Quiet task" });
     await work.completeTask(auth, { taskId: task.id });
     expect(await ledgerFor(auth.workspaceId)).toHaveLength(0);

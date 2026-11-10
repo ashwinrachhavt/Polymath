@@ -157,7 +157,7 @@ suite("embedding retry driver (real Postgres)", () => {
 
     // The commit's own embed saw no provider: the failure is recorded and the
     // fleet counter names it failed - the exact population nothing re-drove.
-    expect(await retrieval.countMeaningUncoveredByState(auth, {})).toEqual({ pending: 0, failed: 1 });
+    expect(await retrieval.countMeaningUncovered(auth, {})).toBe(1);
 
     const sweep = await driver.sweepUncoveredEmbeddings(auth, {
       provider: conceptProvider("fake@1", { fermentation: vec([1]) }),
@@ -184,7 +184,7 @@ suite("embedding retry driver (real Postgres)", () => {
       .from(artifacts)
       .where(eq(artifacts.id, note.id));
     expect(artifact.embedError).toBeNull();
-    expect(await retrieval.countMeaningUncoveredByState(auth, {})).toEqual({ pending: 0, failed: 0 });
+    expect(await retrieval.countMeaningUncovered(auth, {})).toBe(0);
     const found = await retrieval.searchKnowledge(auth, {
       query: "fermentation",
       mode: "meaning",
@@ -323,7 +323,7 @@ suite("embedding retry driver (real Postgres)", () => {
     // Strip the recorded failure: text present, no vectors, no error - the
     // exact shape of a pass skipped mid-race (the "edited" outcome).
     await db.update(artifacts).set({ embedError: null }).where(eq(artifacts.id, note.id));
-    expect(await retrieval.countMeaningUncoveredByState(auth, {})).toEqual({ pending: 1, failed: 0 });
+    expect(await retrieval.countMeaningUncovered(auth, {})).toBe(1);
 
     const sweep = await driver.sweepUncoveredEmbeddings(auth, { provider: conceptProvider("fake@1", {}) });
     expect(sweep).toMatchObject({ scanned: 1, enqueued: 1 });

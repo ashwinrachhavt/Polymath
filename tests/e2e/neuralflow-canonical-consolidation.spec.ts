@@ -45,10 +45,7 @@ test("every Work view reads the same canonical Neon task", async ({ page }) => {
   await page.getByRole("link", { name: "Meetings", exact: true }).click();
   await expect(page).toHaveURL(/\/neuralflow\/work\?view=today$/);
   const related = page.getByRole("navigation", { name: "Related tools", exact: true });
-  await expect(related.getByRole("link", { name: "Weekly review" })).toHaveAttribute(
-    "href",
-    "/apps/neuralflow/reports",
-  );
+  await expect(related.getByRole("link", { name: "Weekly review" })).toHaveAttribute("href", "/neuralflow/reports");
   await related.getByRole("link", { name: "Brain dump" }).click();
   await expect(page).toHaveURL(/\/command-center\/inbox$/);
   await page.goBack();
@@ -56,7 +53,7 @@ test("every Work view reads the same canonical Neon task", async ({ page }) => {
     .getByRole("navigation", { name: "Related tools", exact: true })
     .getByRole("link", { name: "Stone collection" })
     .click();
-  await expect(page).toHaveURL(/\/apps\/neuralflow\/rewards$/);
+  await expect(page).toHaveURL(/\/neuralflow\/rewards$/);
 });
 
 test("a canonical task deep link opens its detail and starts a focus session from Work", async ({ page }) => {
@@ -100,7 +97,7 @@ test("a non-canonical task parameter opens nothing and the canonical list still 
 test("the stone collection is the durable catalog: definitions are saved, and defining one changes no balance", async ({
   page,
 }) => {
-  await page.goto("/apps/neuralflow/rewards");
+  await page.goto("/neuralflow/rewards");
   await waitSettled(page);
   await expect(page.getByRole("heading", { name: "Stone collection", exact: true })).toBeVisible();
   // The Field wrapper labels the kind <select> by its whole contents, so

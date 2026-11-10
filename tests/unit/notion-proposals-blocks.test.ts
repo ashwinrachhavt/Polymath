@@ -70,7 +70,7 @@ describe("notion proposal integrity", () => {
 
 describe("record cards", () => {
   it("maps a kind to its real route and refuses to invent one", () => {
-    expect(recordPath("document", "abc")).toBe("/polymath/library/abc");
+    expect(recordPath("document", "abc")).toBe("/polymath/knowledge?doc=abc");
     expect(recordPath("artifact", "abc")).toBe("/artifacts/abc");
     expect(recordPath("note", "abc")).toBe("/polymath/notes?id=abc");
     expect(recordPath("notathing" as never, "abc")).toBeNull();

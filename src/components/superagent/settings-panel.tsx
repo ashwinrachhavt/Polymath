@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { savePolicyAction } from "@/app/(workspace)/supervision/actions";
+import { savePolicyAction } from "@/app/(workspace)/reviews/agent-actions";
 import { cn } from "cn";
 
 /**

@@ -1,5 +1,4 @@
 import type { LucideIcon } from "lucide-react";
-import { products, productHref } from "@/lib/products";
 import {
   Activity,
   BookOpen,
@@ -10,7 +9,6 @@ import {
   LayoutDashboard,
   LayoutList,
   Library,
-  ScanEye,
   Lightbulb,
   Moon,
   NotebookPen,
@@ -37,7 +35,7 @@ import {
  * URLs keep their historic prefixes; nothing else cares.
  */
 
-export type AppSlug = "command-center" | "neuralflow" | "polymath";
+type AppSlug = "command-center" | "neuralflow" | "polymath";
 
 export type Destination = {
   href: string;
@@ -167,13 +165,6 @@ export const destinations: Destination[] = [
     group: "command-center",
   },
   {
-    href: "/supervision",
-    label: "Supervision",
-    purpose: "See what the agent is doing and what needs a person.",
-    icon: ScanEye,
-    group: "shared",
-  },
-  {
     href: "/reviews",
     label: "Reviews",
     purpose: "Decide what happens next.",
@@ -208,17 +199,11 @@ const featureRoutes: Record<string, string> = {
   // /polymath/notebook URL stays as a redirect bridge, so the prefix resolves
   // to the Notes destination for as long as that bridge exists.
   "/polymath/notebook": "/polymath/notes",
-  "/apps/command-center/briefing": "/neuralflow/work?view=today",
-  "/apps/command-center/inbox": "/command-center/inbox",
-  "/apps/command-center/contacts": "/command-center/relationships/people",
   "/command-center/relationships": "/command-center/relationships/people",
-  "/apps/command-center/conversations": "/command-center/conversations",
-  "/apps/command-center/integrations": "/command-center/integrations",
-  "/apps/command-center/reviews": "/reviews",
-  "/apps/command-center/activity": "/activity",
-  "/apps/command-center/settings": "/settings",
-  "/apps/neuralflow/tasks": "/neuralflow/work",
-  "/apps/polymath/dossiers": "/projects",
+  // Reports and the stone collection moved out of the retired /apps preview;
+  // both are opened from Work, so Work stays the highlighted destination.
+  "/neuralflow/reports": "/neuralflow/work",
+  "/neuralflow/rewards": "/neuralflow/work",
   "/polymath/dossiers": "/projects",
   "/polymath/artifacts": "/artifacts",
   // Ideas became a top-level surface; the zettel, card, area and sitting
@@ -231,26 +216,9 @@ const featureRoutes: Record<string, string> = {
   "/polymath/knowledge/areas": "/polymath/ideas",
 };
 
-export const featureDestinations: Destination[] = products.flatMap((product) =>
-  product.destinations.map((destination) => ({
-    href: productHref(product, destination.slug),
-    label: destination.label,
-    purpose: destination.description,
-    icon: destination.icon,
-    group: product.id,
-  })),
-);
-
-/** Preview tools: reachable from More and the command layer, not the rail. */
-export function additionalDestinationsIn(group: AppSlug) {
-  return featureDestinations.filter((destination) => destination.group === group && !featureRoutes[destination.href]);
-}
-
 export function destinationForPath(pathname: string): Destination | undefined {
   const canonical = featureRoutes[pathname] ?? pathname;
-  const exact =
-    destinations.find((destination) => destination.href === canonical) ??
-    featureDestinations.find((destination) => destination.href === pathname);
+  const exact = destinations.find((destination) => destination.href === canonical);
   if (exact) return exact;
   return destinations
     .filter((destination) => canonical.startsWith(`${destination.href}/`))
@@ -258,11 +226,11 @@ export function destinationForPath(pathname: string): Destination | undefined {
 }
 
 export function isBrowserPreviewPath(pathname: string) {
-  // The browser preview lives under /apps/ plus the shared screens still
-  // rendered from the preview store. Everything under a historic prefix
-  // (/command-center, /neuralflow, /polymath), /reviews and /activity read
-  // canonical records, so they never carry the preview banner (ASH-165).
-  return pathname.startsWith("/apps/") || pathname === "/settings";
+  // Settings is the one screen still rendered from the browser preview
+  // store (the /apps preview tools are retired and redirect to real
+  // screens). Everything else reads canonical records, so it never carries
+  // the preview banner (ASH-165).
+  return pathname === "/settings";
 }
 
 /**

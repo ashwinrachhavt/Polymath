@@ -26,8 +26,8 @@ export const metadata = { title: "Notes · Polymath" };
 /*
  * Notes on the canonical artifact rows (ASH-141 / B04): the autosaving editor,
  * checkpoints, history and draft recovery all read and write the same artifact
- * tables generated work uses. The /polymath/notebook URL and the
- * /apps/polymath notebook screen redirect here.
+ * tables generated work uses. The /polymath/notebook URL and the retired
+ * /apps/polymath/notebook preview address redirect here.
  *
  * The page is one note, always editable, in one centered column. Bare
  * /polymath/notes renders the most recent note in place (a redirect from

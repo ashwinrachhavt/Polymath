@@ -21,6 +21,7 @@ import { listRunAttributions } from "@/domains/agents/queries";
 import { getAuthContext } from "@/lib/auth";
 import { offsetFor, parseListParams, type RawSearchParams } from "@/lib/list-params";
 import { decisionOnlyFor } from "./decision-scope";
+import { AgentSection, readReviewView, readStage, ReviewTabs } from "./agent-section";
 import { ReviewsQueue, type QueueCardData } from "./reviews-queue";
 
 export const metadata = { title: "Reviews · Polymath" };
@@ -31,8 +32,7 @@ export const metadata = { title: "Reviews · Polymath" };
  * inspected (CAS on the rendered version, idempotent on the minted key).
  * Approving a capability with a provider executor runs that exact revision
  * once; the attempt, not the proposal, carries the outcome. Calendar changes
- * keep their own one-tap screen and are only decided here. The browser-preview
- * rehearsal stays under /apps/command-center.
+ * keep their own one-tap screen and are only decided here.
  */
 
 const BASE = "/reviews";
@@ -143,6 +143,7 @@ async function Reviews({ searchParams }: { searchParams: Promise<RawSearchParams
   return (
     <Screen
       title="Reviews"
+      actions={<ReviewTabs active="proposals" />}
       description={`${statusCounts.pending} ${statusCounts.pending === 1 ? "proposal needs" : "proposals need"} your judgment. Approving binds the exact payload you inspected; the card says what happens next.`}
     >
       {/* The mockup's segmented tabs with counts: status is the page's primary
@@ -201,6 +202,13 @@ async function Reviews({ searchParams }: { searchParams: Promise<RawSearchParams
   );
 }
 
+async function ReviewsRoute({ searchParams }: { searchParams: Promise<RawSearchParams> }) {
+  const raw = await searchParams;
+  const view = readReviewView(raw.view);
+  if (view !== "proposals") return <AgentSection view={view} stage={readStage(raw.stage)} />;
+  return <Reviews searchParams={searchParams} />;
+}
+
 export default function ReviewsPage({ searchParams }: { searchParams: Promise<RawSearchParams> }) {
   return (
     <Suspense
@@ -210,7 +218,7 @@ export default function ReviewsPage({ searchParams }: { searchParams: Promise<Ra
         </p>
       }
     >
-      <Reviews searchParams={searchParams} />
+      <ReviewsRoute searchParams={searchParams} />
     </Suspense>
   );
 }

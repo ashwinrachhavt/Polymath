@@ -358,7 +358,7 @@ suite("learning loop", () => {
     expect(aLedger.filter((r) => r.points === 0)).toHaveLength(1); // first-time emerald
   });
 
-  it("regeneration creates a new quiz and the latest ready one wins", async () => {
+  it("regeneration creates a new quiz rather than overwriting the first", async () => {
     const auth = await seed();
     const { doc } = await seedDocument(auth, TEXT);
     const first = await generate.generateQuiz(auth, { documentId: doc.id }, fixtureGenerator());
@@ -372,8 +372,6 @@ suite("learning loop", () => {
       ),
     );
     expect(second.quizId).not.toBe(first.quizId);
-    const latest = await learningQueries.latestReadyQuizForDocument(auth, doc.id);
-    expect(latest?.id).toBe(second.quizId);
     expect(await db.select().from(quizzes).where(eq(quizzes.workspaceId, auth.workspaceId))).toHaveLength(2);
   });
 

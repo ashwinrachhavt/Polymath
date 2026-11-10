@@ -137,8 +137,7 @@ export function captureLinkLabel(row: { text: string | null; url: string | null 
  * routed to its canonical inbox destination. Tenant-scoped like every other
  * read here; a deleted capture lands on the inbox's empty-selection state.
  * The route is the durable /command-center/inbox (server-rendered, UUID-
- * validated ?id= selection) - NOT /apps/command-center/inbox, which is the
- * browser-only preview shell with sample data.
+ * validated ?id= selection).
  */
 export async function searchCapturesForLink(auth: AuthContext, query: string, limit = 3) {
   const like = `%${escapeLike(query.trim())}%`;

@@ -88,7 +88,14 @@ describe("cross-workspace isolation: 07-spending-superagent-work", () => {
     //   joined artifact id is walked instead.
     // - spend_settlements: no seeded row (settleSpend appends them); covered
     //   by the foreign fingerprint.
-    const ID_LESS_PROJECTIONS = new Set(["audit_events", "superagent_state", "day_artifact_pins", "spend_settlements"]);
+    // - model_rate_cards: table kept, no reader after the removal audit.
+    const ID_LESS_PROJECTIONS = new Set([
+      "audit_events",
+      "superagent_state",
+      "day_artifact_pins",
+      "spend_settlements",
+      "model_rate_cards",
+    ]);
     const unobserved = Object.keys(TABLE_REGISTRY)
       .filter((k) => ["model_rate_cards", "spending_reservations", "superagent_state", "tasks"].includes(k))
       .filter((key) => {

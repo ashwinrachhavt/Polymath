@@ -66,8 +66,6 @@ const OWNED = new Set([
   "src/domains/gamification/commands.ts",
   "src/domains/integrations/queries.ts",
   "src/domains/integrations/commands.ts",
-  "src/domains/opportunities/queries.ts",
-  "src/domains/opportunities/commands.ts",
 ]);
 
 describe("cross-workspace isolation: 06-opportunities-gamification-integrations", () => {
@@ -91,7 +89,7 @@ describe("cross-workspace isolation: 06-opportunities-gamification-integrations"
     //   by the foreign fingerprint.
     const ID_LESS_PROJECTIONS = new Set(["audit_events", "superagent_state", "day_artifact_pins", "spend_settlements"]);
     const unobserved = Object.keys(TABLE_REGISTRY)
-      .filter((k) => ["opportunities", "reward_definitions", "external_accounts"].includes(k))
+      .filter((k) => ["reward_definitions", "external_accounts"].includes(k))
       .filter((key) => {
         if (ID_LESS_PROJECTIONS.has(key)) return false;
         const ids = [...(a.rows[key]?.ids ?? []), ...(b.rows[key]?.ids ?? [])];
