@@ -157,6 +157,8 @@ export const InlineCompletion = Extension.create<InlineCompletionOptions>({
             ]);
           },
           handleKeyDown(view, event) {
+            // Mid-composition, Tab and Esc belong to the IME.
+            if (event.isComposing || view.composing) return false;
             const shown = key.getState(view.state);
             if (!shown) return false;
             const plain = !event.shiftKey && !event.altKey;

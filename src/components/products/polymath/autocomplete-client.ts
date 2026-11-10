@@ -15,6 +15,7 @@ export type AutocompleteStatus = "ready" | "unavailable" | "paused";
 
 const STORAGE_KEY = "polymath.autocomplete";
 const PAUSE_MS = 5 * 60_000;
+const RATE_LIMIT_PAUSE_MS = 20_000;
 
 let pausedUntil = 0;
 let unavailable = false;
@@ -76,8 +77,13 @@ export const fetchCompletion: CompleteFn = async (request, signal) => {
     return "";
   }
   if (response.status === 429) {
-    pausedUntil = Date.now() + PAUSE_MS;
+    // The per-minute brake reopens in seconds; only a spent allowance waits long.
+    const problem = (await response.json().catch(() => null)) as { code?: unknown } | null;
+    const wait = problem?.code === "rate_limited" ? RATE_LIMIT_PAUSE_MS : PAUSE_MS;
+    pausedUntil = Date.now() + wait;
     notify();
+    // Nothing else changes when the pause lapses, so say so then.
+    setTimeout(notify, wait + 50);
     return "";
   }
   if (!response.ok) return "";

@@ -36,18 +36,22 @@ Rules:
 
 Reply with only the continuation text.`;
 
+/** Note text is data: a pasted "</before>" must not close the delimiter and speak as the prompt. */
+const untag = (value: string) => value.replace(/<(\/?)(before|after)>/gi, "‹$1$2›");
+
 export function completionPrompt(input: { title?: string; before: string; after: string }): string {
   return [
     input.title?.trim() ? `Note title: ${input.title.trim()}` : null,
-    `Text before the cursor:\n<before>${input.before}</before>`,
-    `Text after the cursor:\n<after>${input.after}</after>`,
+    `Text before the cursor:\n<before>${untag(input.before)}</before>`,
+    `Text after the cursor:\n<after>${untag(input.after)}</after>`,
     "Continuation:",
   ]
     .filter(Boolean)
     .join("\n\n");
 }
 
-const META_REPLY = /^(sure|here(?:'s| is)|i['’]m sorry|i cannot|i can['’]t|as an ai|continuation:)/i;
+const META_REPLY = /^(sure\b|here(?:'s| is)\b|i['’]m sorry\b|i cannot\b|i can['’]t\b|as an ai\b|continuation:)/i;
+const TAIL_WORD = /([\p{L}\p{N}][\p{L}\p{N}'’-]*)$/u;
 const HAS_WORD = /[\p{L}\p{N}]/u;
 
 /**
@@ -60,14 +64,18 @@ export function cleanCompletion(raw: string, before: string, after: string): str
   // A fenced or quoted reply is the continuation wrapped, not part of it.
   text = text.replace(/^\s*```[a-z]*\n?/i, "").replace(/\n?```\s*$/, "");
   text = text.replace(/^\s*<\/?(?:before|after)>/i, "");
-  if (META_REPLY.test(text.trim())) return "";
+  // A reply that echoes the writer's own last word ("I" -> "I cannot recall")
+  // is a continuation even when it reads like a refusal.
+  const echoed = TAIL_WORD.exec(before)?.[1];
+  const echoes = Boolean(echoed && text.trimStart().toLowerCase().startsWith(echoed.toLowerCase()));
+  if (!echoes && META_REPLY.test(text.trim())) return "";
   // One line: a suggestion never starts a new block.
   text = text.replace(/^\n+/, "").split("\n")[0] ?? "";
 
   // Join the reply to the text exactly. `tail` is the word the cursor sits in
   // or just after; the model was asked to start by echoing it.
   const lead = text.trimStart();
-  const tail = /([\p{L}\p{N}][\p{L}\p{N}'’-]*)$/u.exec(before)?.[1] ?? "";
+  const tail = echoed ?? "";
   const afterOpener = before === "" || /[\s([{"“‘'/—–-]$/.test(before);
   if (tail && lead.toLowerCase().startsWith(tail.toLowerCase())) {
     // Echoed: what follows joins as written, whether it finishes the word
