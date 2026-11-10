@@ -10,9 +10,8 @@ import { allowLoopbackOnly, installFetchGuard } from "./helpers/fetch-guard";
  * still fail closed here, the evals model host included.
  *
  * What this rejects: every fetch to a non-loopback host, before the
- * underlying transport is called. The evals guard (eve/polymath/evals/
- * network-guard.ts) stacks cleanly on top of this one and restores back to
- * it; see tests/helpers/fetch-guard.ts for why the two are separate modules.
+ * underlying transport is called. See tests/helpers/fetch-guard.ts for the
+ * lifecycle.
  *
  * What no fetch guard can reject — a test boundary, not a sandbox:
  *   - raw HTTP via `node:http`/`node:https` or undici used directly

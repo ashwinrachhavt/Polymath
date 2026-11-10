@@ -1,0 +1,5 @@
+# Drizzle migration snapshots (~700 KB each): generated, one tracked at a
+# time. No textual diff, collapsed in GitHub PRs.
+src/db/migrations/meta/*_snapshot.json -diff linguist-generated=true
+# graphify knowledge graph output, if it is ever committed.
+graphify-out/** -diff linguist-generated=true

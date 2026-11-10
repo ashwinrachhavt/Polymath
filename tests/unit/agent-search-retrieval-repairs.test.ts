@@ -1,16 +1,10 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from "vitest";
-import {
-  AGENT_SEARCH_PER_DOCUMENT_LIMIT,
-  AGENT_SEARCH_SINGLE_LEG_MAX_RANK,
-  isEvidence,
-  rrfMerge,
-  type ScoredHit,
-} from "@/domains/knowledge/agent-search";
+import { AGENT_SEARCH_PER_DOCUMENT_LIMIT, rrfMerge } from "@/domains/knowledge/agent-search";
 import type { ChunkHit } from "@/domains/knowledge/search";
 
 /*
- * Regression pins for issue #533 findings 1, 3, 4 (fusion identity is pinned
+ * Regression pins for issue #533 findings 1 and 4 (fusion identity is pinned
  * in the integration suite where Postgres ranks real rows).
  */
 
@@ -54,49 +48,7 @@ describe("finding 1: one document may contribute several distinct passages", () 
   });
 });
 
-// EXPERIMENTAL, HARNESS-ONLY (issue #533 finding 3 is NOT repaired in
-// production): these pin the behavior of the candidate rank-provenance rule
-// the eval harness measures. searchDocumentsForAgent still admits by the
-// fused-score floor - the candidate regressed precision and never abstained
-// on the draft set, so it must not ship without validated improvement.
-describe("finding 3 (experimental candidate, harness-only): rank provenance vs fused score", () => {
-  const scored = (legs: ("fts" | "vector")[], bestRank: { fts?: number; vector?: number }): ScoredHit => ({
-    ...hit("x"),
-    fusedScore: 0.1,
-    legs,
-    bestRank,
-  });
-
-  it("admits what both legs saw, at any rank", () => {
-    expect(isEvidence(scored(["fts", "vector"], { fts: 40, vector: 49 }))).toBe(true);
-  });
-
-  it("admits a single-leg hit at the top of its leg - the old floor dropped rank 1", () => {
-    expect(isEvidence(scored(["fts"], { fts: 0 }))).toBe(true);
-    expect(isEvidence(scored(["vector"], { vector: AGENT_SEARCH_SINGLE_LEG_MAX_RANK }))).toBe(true);
-  });
-
-  it("counterexample: rank provenance can override score ordering", () => {
-    // A single-leg hit at rank 3 OUTSCORES a dual-leg hit both legs placed
-    // at rank 100 (30/63 > 2 * 30/160), yet admission flips: the dual-leg
-    // hit is evidence (two independent retrievers agree) and the single-leg
-    // hit is not. Score ordering and evidence admission are separate
-    // decisions - this is the case the old fused-score floor got backwards.
-    const deep = rrfMerge([hit("both", { chunkIndex: 7 })], [hit("both", { chunkIndex: 7 })], 10, { legsRun: 2 });
-    // Manufacture the deep-rank provenance directly: rrfMerge of rank-0
-    // lists cannot place a hit at rank 100, so assert the rule itself.
-    const deepDual: ScoredHit = { ...hit("both", { chunkIndex: 7 }), fusedScore: 2 * (60 / 2 / (60 + 100)), legs: ["fts", "vector"], bestRank: { fts: 100, vector: 100 } };
-    const shallowSingle: ScoredHit = { ...hit("solo"), fusedScore: 60 / 1 / (60 + 3), legs: ["fts"], bestRank: { fts: 3 } };
-    expect(shallowSingle.fusedScore).toBeGreaterThan(deepDual.fusedScore);
-    expect(isEvidence(deepDual)).toBe(true);
-    expect(isEvidence(shallowSingle)).toBe(false);
-    expect(deep.length).toBe(1);
-  });
-
-  it("drops a single-leg hit past the provisional rank bound", () => {
-    expect(isEvidence(scored(["fts"], { fts: AGENT_SEARCH_SINGLE_LEG_MAX_RANK + 1 }))).toBe(false);
-  });
-
+describe("fusion provenance", () => {
   it("rrfMerge records which legs saw each hit and their best ranks", () => {
     const merged = rrfMerge([hit("a"), hit("b")], [hit("b"), hit("a")], 10, { legsRun: 2 });
     const a = merged.find((h) => h.documentId === "a")!;

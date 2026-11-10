@@ -41,21 +41,10 @@ const config = {
     // The eve agent trees are compiled by the eve runner against root src —
     // through relative paths and the root tsconfig's @/ alias — so their
     // module graphs reach into src/domains and mark everything they consume
-    // live. Their evals are runner inputs, not imports.
+    // live.
     "eve/polymath/agent/**",
     "eve/specialist/agent/**",
-    "eve/polymath/evals/**",
   ],
-
-  // evals-langgraph is its own loose package: its entries come from its own
-  // package scripts and langgraph.json, and its dependencies intentionally
-  // resolve from the root install (see its README), so the root sweep has
-  // nothing to say about it.
-  ignore: ["evals-langgraph/**"],
-
-  // evals-langgraph runs `langgraphjs dev` with the binary resolving from the
-  // root node_modules/.bin — the root declaration is its install point.
-  ignoreDependencies: ["@langchain/langgraph-cli"],
 
   // Optional ground-truth layer of the langfuse-redis healthcheck unit test:
   // the real-server case skips itself where the binaries are absent, so they

@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_ALLOWED_TOOLS } from "@/domains/agents/commands";
 import { CAPABILITIES, LIMITS, PROVIDER_TOOLS, type Capability } from "@/domains/integrations/capabilities";
-import { CAPABILITY_RISK } from "../../eve/polymath/evals/axiom-policy";
 import { deriveInstantCapability, resolveInstantCapability } from "@/domains/integrations/instant-tools";
 import catalogJsonRaw from "@/domains/integrations/instant-catalog.generated.json";
 
@@ -24,26 +23,12 @@ function gainedInstantNames(): string[] {
 
 /*
  * The capability catalog is the one place a provider capability is defined.
- * These tests pin the three names that have drifted apart before: the
- * capability spelled in a policy snapshot, the risk class the evals read, and
- * the MCP tool name a model calls. A mismatch here is a tool that is visible,
- * classified, and still unrouteable - or worse, routed under a class nobody
- * approved.
- *
- * The risk table is imported, never edited: it is the frozen vocabulary the
- * evals assert against, so this catalog has to agree with it, not the reverse.
+ * These tests pin the names that have drifted apart before: the capability
+ * spelled in a policy snapshot and the MCP tool name a model calls.
  */
 
 const entries = Object.entries(CAPABILITIES);
 const capabilities = Object.keys(CAPABILITIES) as Capability[];
-
-/*
- * Every capability the catalog names must have a row in the frozen risk table.
- * A capability with no row fails closed in every classifier that reads the
- * table, which ships as a tool that can never be granted. This list is empty on
- * purpose: a new unclassified capability fails here rather than at runtime.
- */
-const UNCLASSIFIED: string[] = [];
 
 describe("provider capability catalog", () => {
   it("has entries and every one is named for its own provider", () => {
@@ -76,19 +61,6 @@ describe("provider capability catalog", () => {
       // grouped even when the catalog row spells the provider with a dash.
       expect(capability.startsWith(`${spec.provider.replaceAll("-", "")}.`), capability).toBe(true);
     }
-  });
-
-  it("agrees with the risk table wherever the table has a row", () => {
-    for (const [capability, spec] of entries) {
-      if (UNCLASSIFIED.includes(capability)) continue;
-      expect(CAPABILITY_RISK[capability], `${capability} must be in the risk table`).toBeDefined();
-      expect(spec.riskClass, capability).toBe(CAPABILITY_RISK[capability]);
-    }
-  });
-
-  it("classifies every capability in the frozen risk table", () => {
-    const missing = capabilities.filter((capability) => CAPABILITY_RISK[capability] === undefined);
-    expect(missing).toEqual(UNCLASSIFIED);
   });
 
   it("keeps the two frozen names", () => {
@@ -206,10 +178,8 @@ describe("the default profile's tools all resolve", () => {
     }
   });
 
-  it("defers only capabilities the risk table already knows", () => {
-    // A deferred name that is not in the risk table is a typo, not a gap.
+  it("never defers a capability the catalog already serves", () => {
     for (const capability of DEFERRED_PROVIDER_CAPABILITIES) {
-      expect(CAPABILITY_RISK[capability], capability).toBeDefined();
       expect(capabilities).not.toContain(capability);
     }
   });

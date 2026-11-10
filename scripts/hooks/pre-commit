@@ -9,6 +9,23 @@ set -e
 
 fails=0
 
+# No oversized files: a stray snapshot, dump, recording or build output bloats
+# the repo forever once pushed. 1 MB comfortably fits the tracked drizzle
+# snapshot (~0.7 MB) and the lockfile. Override for one commit with
+# ALLOW_LARGE_FILES=1 if a large file is genuinely intended.
+if [ "${ALLOW_LARGE_FILES:-0}" != "1" ]; then
+  large=$(git diff --cached --name-only --diff-filter=AM | while IFS= read -r f; do
+    size=$(git cat-file -s ":$f" 2>/dev/null || echo 0)
+    if [ "$size" -gt 1048576 ]; then printf '  %s (%s KB)\n' "$f" "$((size / 1024))"; fi
+  done || true)
+  if [ -n "$large" ]; then
+    echo "ERROR: staged files over 1 MB:" >&2
+    printf '%s\n' "$large" >&2
+    echo "Unstage them (git restore --staged <file>), or set ALLOW_LARGE_FILES=1 if intended." >&2
+    fails=1
+  fi
+fi
+
 # Lint and format the files actually going into this commit. Whole-tree lint
 # here would be too slow to live in a commit, so CI's check-lint leg keeps
 # the full `pnpm lint` gate. Skipped silently when prettier is not yet

@@ -8,9 +8,6 @@ opencode.json
 !.env.example
 .env.axiom
 
-# gstack local artifacts
-.gstack/*
-!.gstack/pregate.json
 
 # private — personal job/outreach tracking, never public
 outreach/
@@ -104,3 +101,7 @@ evals/retrieval/results/
 .claude/
 .codex/
 .cursor/
+.gstack/
+.serena/
+# Docs are kept locally, not in the repo.
+docs/
