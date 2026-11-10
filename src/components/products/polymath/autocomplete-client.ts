@@ -8,7 +8,7 @@ import { useSyncExternalStore } from "react";
  * asking instead of failing on every pause.
  */
 
-export type CompletionRequest = { title?: string; before: string; after: string };
+type CompletionRequest = { title?: string; before: string; after: string };
 export type CompleteFn = (request: CompletionRequest, signal: AbortSignal) => Promise<string>;
 
 export type AutocompleteStatus = "ready" | "unavailable" | "paused";

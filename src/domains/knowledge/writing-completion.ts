@@ -17,7 +17,7 @@ import { drizzleQuotaStore, withQuota, type QuotaStore } from "@/integrations/pr
 
 /** How much of the note the model sees around the cursor. */
 export const COMPLETION_BEFORE_CHARS = 2_000;
-export const COMPLETION_AFTER_CHARS = 400;
+const COMPLETION_AFTER_CHARS = 400;
 const MAX_TOKENS = 48;
 const MAX_WORDS = 24;
 const MAX_CHARS = 180;
