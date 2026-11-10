@@ -22,7 +22,6 @@ const RECORD_KINDS = [
   "company",
   "person",
   "organization",
-  "opportunity",
   "space",
 ] as const;
 
@@ -44,7 +43,6 @@ const LABELS: Partial<Record<RecordKind, string>> = {
   company: "Company",
   person: "Person",
   organization: "Organization",
-  opportunity: "Opportunity",
   space: "Space",
 };
 
@@ -57,7 +55,7 @@ function isRecordKind(value: unknown): value is RecordKind {
 const PATHS: Record<RecordKind, (id: string) => string> = {
   task: () => "/work",
   note: (id) => `/polymath/notes?id=${id}`,
-  document: (id) => `/polymath/library/${id}`,
+  document: (id) => `/polymath/knowledge?doc=${id}`,
   source: () => "/polymath/knowledge",
   project: (id) => `/projects/${id}`,
   artifact: (id) => `/artifacts/${id}`,
@@ -65,11 +63,10 @@ const PATHS: Record<RecordKind, (id: string) => string> = {
   thread: (id) => `/command-center/conversations/${id}`,
   zettel: () => "/polymath/ideas",
   event: () => "/calendar",
-  contact: () => "/command-center/relationships/contacts",
+  contact: () => "/command-center/relationships/people",
   company: () => "/command-center/relationships/companies",
   person: () => "/command-center/relationships/people",
   organization: () => "/command-center/relationships/companies",
-  opportunity: () => "/command-center/opportunities",
   space: () => "/polymath",
 };
 
@@ -108,7 +105,6 @@ const KEY_KINDS: Record<string, RecordKind> = {
   contacts: "contact",
   companies: "company",
   people: "person",
-  opportunities: "opportunity",
 };
 
 function asRecordReference(entry: unknown, fallbackKind?: RecordKind): RecordReference | null {

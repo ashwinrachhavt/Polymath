@@ -255,10 +255,121 @@ test("the learning loop: library states, a sitting with instant feedback, and on
   // The balance the surface derives from that ledger: the rewards page
   // shows it through the gamification domain's queries.
   const earned = Number(stonesBefore) + 10;
-  await page.goto("/apps/neuralflow/rewards");
+  await page.goto("/neuralflow/rewards");
   await waitSettled(page);
   await expect(page.locator("#content").first().getByText("Points earned")).toBeVisible();
   await expect(page.getByText(String(earned)).first()).toBeVisible();
   await openLearn(page);
   await expect(page.locator("#content").first().getByText("Best score 2/3")).toBeVisible();
+});
+
+/*
+ * Learn this (consolidation Task 4.2): from a Notebook with one ready source,
+ * the one primary action opens a sheet, Flashcards then Create with no count
+ * chosen makes a deck sized from the source, and the deck appears in Results
+ * and opens in place - no run to go and find, no navigation. CI runs this
+ * against GENERATION_PROVIDER=fixture, whose flashcard answer quotes the
+ * source's own sentences, so the verifier keeps every card.
+ */
+
+const NOTEBOOK_TITLE = "Learn this e2e notebook";
+const NOTEBOOK_SOURCE_TITLE = "Learn this e2e source";
+const NOTEBOOK_SOURCE_URL = "https://example.com/learn-this-e2e";
+const NOTEBOOK_SOURCE_TEXT = [
+  "The review queue settles each proposal with the gate's verdict.",
+  "Every settle writes a receipt and an audit row in the same transaction.",
+  "Agent surfaces cite each used library passage by its title.",
+  "A notebook pins the source versions it was built from.",
+  "Flashcards are scheduled per learner after each recall rating.",
+  "A quiz sitting earns a stone only when two thirds are correct.",
+].join(" ");
+
+async function seedNotebookWithReadySource(): Promise<string | null> {
+  const client = db();
+  if (!client) return null;
+  try {
+    const [owner] = await client<{ workspace_id: string }[]>`
+      select m.workspace_id
+      from memberships m join users u on u.id = m.user_id
+      where u.clerk_user_id = 'dev-user' and m.status = 'active'
+      limit 1`;
+    if (!owner) return null;
+    await removeSeededNotebook(client);
+    const [notebook] = await client<{ id: string }[]>`
+      insert into notebooks (workspace_id, title) values (${owner.workspace_id}, ${NOTEBOOK_TITLE}) returning id`;
+    const [source] = await client<{ id: string }[]>`
+      insert into sources (workspace_id, kind, title, url)
+      values (${owner.workspace_id}, 'url', ${NOTEBOOK_SOURCE_TITLE}, ${NOTEBOOK_SOURCE_URL})
+      returning id`;
+    await client`
+      insert into notebook_sources (workspace_id, notebook_id, source_id)
+      values (${owner.workspace_id}, ${notebook.id}, ${source.id})`;
+    const [doc] = await client<{ id: string }[]>`
+      insert into documents (workspace_id, title, mime_type, source_url)
+      values (${owner.workspace_id}, ${NOTEBOOK_SOURCE_TITLE}, 'text/plain', ${NOTEBOOK_SOURCE_URL})
+      returning id`;
+    // Read and indexed: the Sources pane says Ready, so Learn this uses it.
+    const [extraction] = await client<{ id: string }[]>`
+      insert into document_extractions (workspace_id, document_id, content_hash, status, text, spans, extractor, embedded_at)
+      values (${owner.workspace_id}, ${doc.id}, 'e2e-learn-this', 'succeeded', ${NOTEBOOK_SOURCE_TEXT}, '[]'::jsonb, 'e2e@1', now())
+      returning id`;
+    await client`update documents set active_extraction_id = ${extraction.id} where id = ${doc.id}`;
+    return notebook.id;
+  } finally {
+    await client.end();
+  }
+}
+
+async function removeSeededNotebook(client: postgres.Sql): Promise<void> {
+  // Decks, cards and reviews cascade from the notebook.
+  await client`delete from notebooks where title = ${NOTEBOOK_TITLE}`;
+  await client`delete from sources where url = ${NOTEBOOK_SOURCE_URL}`;
+  await client`delete from documents where source_url = ${NOTEBOOK_SOURCE_URL}`;
+}
+
+test("Learn this: one primary action makes flashcards that open in place", async ({ page }) => {
+  test.setTimeout(120_000);
+  const notebookId = await seedNotebookWithReadySource();
+  test.skip(!notebookId, "DATABASE_URL not configured (server and test).");
+  try {
+    // The project address opens its Notebook: no extra hop.
+    await page.goto(`/projects/${notebookId}`);
+    await expect(page).toHaveURL(new RegExp(`/projects/${notebookId}/notebook$`));
+    await waitSettled(page);
+    const content = page.locator("#content").first();
+
+    // One primary action on the Notebook, and it is Learn this.
+    const learnThis = content.getByRole("button", { name: "Learn this", exact: true });
+    await expect(learnThis).toBeVisible();
+    await expect(content.locator('[data-slot="button"][data-variant="default"]')).toHaveCount(1);
+
+    await learnThis.click();
+    const sheet = page.getByRole("dialog", { name: "Learn this" });
+    await expect(sheet.getByText("Uses your 1 ready source.")).toBeVisible();
+    await sheet.getByRole("radio", { name: /Flashcards/ }).check();
+    await sheet.getByRole("button", { name: "Create", exact: true }).click();
+
+    // The deck lands in Results as a card, sized from the source (5 or more).
+    const results = content.getByRole("region", { name: "Results" });
+    const deckCard = results.getByRole("article", { name: /flashcards/i });
+    await expect(deckCard).toBeVisible({ timeout: 60_000 });
+    const countText = await deckCard.getByText(/^\d+ cards$/).innerText();
+    expect(Number.parseInt(countText, 10)).toBeGreaterThanOrEqual(5);
+
+    // Opening it reviews the deck right here, on the Notebook.
+    await deckCard.getByRole("button", { name: "Open" }).click();
+    await expect(deckCard.getByText(/^Card 1 of \d+$/)).toBeVisible();
+    await deckCard.getByRole("button", { name: "Show answer" }).click();
+    await expect(deckCard.getByText("How well did you recall it?")).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`/projects/${notebookId}/notebook$`));
+  } finally {
+    const client = db();
+    if (client) {
+      try {
+        await removeSeededNotebook(client);
+      } finally {
+        await client.end();
+      }
+    }
+  }
 });

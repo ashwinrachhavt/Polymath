@@ -5,9 +5,9 @@ import { PersonStageCard, TicketsView } from "@/components/superagent/tickets-vi
 import { SettingsPanel } from "@/components/superagent/settings-panel";
 import { superviseTickets, type StageGroup } from "@/components/superagent/view";
 import type { Ticket } from "@/domains/superagent/core/model";
-import { savePolicyAction } from "@/app/(workspace)/supervision/actions";
+import { savePolicyAction } from "@/app/(workspace)/reviews/agent-actions";
 
-vi.mock("@/app/(workspace)/supervision/actions", () => ({
+vi.mock("@/app/(workspace)/reviews/agent-actions", () => ({
   savePolicyAction: vi.fn(async () => ({ ok: true })),
   dismissDecisionAction: vi.fn(async () => ({ ok: true })),
 }));
@@ -66,7 +66,7 @@ describe("PersonStageCard", () => {
     const card = screen.getByRole("link");
     expect(within(card).getByText("Ready for review")).toBeDefined();
     expect(within(card).getByText(String(group.tickets.length))).toBeDefined();
-    expect(card.getAttribute("href")).toBe("/supervision?view=tickets&stage=person-review");
+    expect(card.getAttribute("href")).toBe("/reviews?view=tickets&stage=person-review");
   });
 });
 

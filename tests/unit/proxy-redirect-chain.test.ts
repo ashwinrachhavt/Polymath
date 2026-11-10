@@ -9,7 +9,7 @@ import proxy from "@/proxy";
 
 vi.mock("@/lib/clerk", () => ({ clerkConfigured: true, devAuthBypass: false, proxyArmed: true }));
 vi.mock("@clerk/nextjs/server", async (importOriginal) => ({
-  ...await importOriginal<typeof import("@clerk/nextjs/server")>(),
+  ...(await importOriginal<typeof import("@clerk/nextjs/server")>()),
   clerkMiddleware: (handler: unknown) => handler,
 }));
 
@@ -29,13 +29,24 @@ describe("signed-out root redirect (QA F9)", () => {
   it("redirects / once to the landing funnel, keeping the post-sign-in destination the old two-hop chain ended at", async () => {
     const response = await runAs("/", false);
     expect(response?.status).toBe(307);
-    expect(response?.headers.get("location")).toBe(`https://axiom.test/landing?returnTo=${encodeURIComponent("/polymath")}`);
+    expect(response?.headers.get("location")).toBe(
+      `https://axiom.test/landing?returnTo=${encodeURIComponent("/polymath")}`,
+    );
   });
 
   it("sends a signed-in root on to the workspace", async () => {
     const response = await runAs("/", true);
     expect(response?.status).toBe(307);
     expect(response?.headers.get("location")).toBe("https://axiom.test/polymath");
+  });
+
+  it("lands legacy bookmarks on their real routes", () => {
+    const table = Object.fromEntries(nextConfigRedirects().map((entry) => [entry.source, entry.destination]));
+    expect(table["/inbox"]).toBe("/command-center/inbox");
+    expect(table["/work"]).toBe("/neuralflow/work");
+    expect(table["/focus"]).toBe("/neuralflow/focus");
+    expect(table["/relationships"]).toBe("/command-center/relationships/people");
+    expect(table["/opportunities"]).toBe("/command-center/relationships/people");
   });
 
   it("keeps the static / redirect only while the proxy is a pass-through", () => {
@@ -75,16 +86,26 @@ describe("unmatched paths get the real 404 (QA F8)", () => {
 });
 
 describe("real routes still gate exactly as before", () => {
-  it.each(["/onboarding", "/polymath", "/polymath/knowledge/zettels/a/b/c", "/reviews", "/settings/access", "/dev/onboarding-fixtures", "/apps/neuralflow/work", "/command-center/inbox", "/more", "/artifacts/some-id"])(
-    "redirects a signed-out visitor to the landing funnel on %s", async (path) => {
-      const response = await runAs(path, false);
-      expect(response?.status).toBe(307);
-      expect(response?.headers.get("location")).toBe(`https://axiom.test/landing?returnTo=${encodeURIComponent(path)}`);
-    },
-  );
+  it.each([
+    "/onboarding",
+    "/polymath",
+    "/polymath/knowledge/zettels/a/b/c",
+    "/reviews",
+    "/settings/access",
+    "/dev/onboarding-fixtures",
+    "/apps/neuralflow/work",
+    "/command-center/inbox",
+    "/more",
+    "/artifacts/some-id",
+  ])("redirects a signed-out visitor to the landing funnel on %s", async (path) => {
+    const response = await runAs(path, false);
+    expect(response?.status).toBe(307);
+    expect(response?.headers.get("location")).toBe(`https://axiom.test/landing?returnTo=${encodeURIComponent(path)}`);
+  });
 
   it.each(["/api/v1", "/api/v1/runs", "/api/internal", "/api/mcp", "/api/integrations/callback"])(
-    "classifies %s as a real route (gated or public — never 404)", (path) => {
+    "classifies %s as a real route (gated or public — never 404)",
+    (path) => {
       expect(isKnownRoute(path)).toBe(true);
     },
   );

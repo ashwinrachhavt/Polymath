@@ -34,9 +34,7 @@ export async function listOpenTasks(auth: Pick<AuthContext, "workspaceId">, limi
  * finished task is still a real destination. Tenant-scoped; an archived task
  * never matches, and a deleted one lands on the work page's empty state. The
  * route is the canonical /neuralflow/work (Neon-backed, UUID-validated ?task=
- * detail) - NOT taskHref's /apps/neuralflow/tasks, whose SelectedTask reads
- * the browser-local preview store and would report every canonical id as
- * "not found in this preview".
+ * detail).
  */
 export async function searchTasksForLink(auth: AuthContext, query: string, limit = 3) {
   const like = `%${escapeLike(query.trim())}%`;

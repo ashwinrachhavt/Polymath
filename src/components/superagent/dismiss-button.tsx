@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { dismissDecisionAction } from "@/app/(workspace)/supervision/actions";
+import { dismissDecisionAction } from "@/app/(workspace)/reviews/agent-actions";
 
 /**
  * Dismisses one unavailable Decision through the Engine — the sole writer

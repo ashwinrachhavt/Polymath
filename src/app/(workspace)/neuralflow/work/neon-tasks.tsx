@@ -368,10 +368,10 @@ export async function TaskSection({ show, selectedTask, raw = {}, basePath }: Ta
               <Link className="py-1 hover:text-foreground hover:underline" href="/command-center/inbox">
                 Brain dump
               </Link>
-              <Link className="py-1 hover:text-foreground hover:underline" href="/apps/neuralflow/reports">
+              <Link className="py-1 hover:text-foreground hover:underline" href="/neuralflow/reports">
                 Weekly review
               </Link>
-              <Link className="py-1 hover:text-foreground hover:underline" href="/apps/neuralflow/rewards">
+              <Link className="py-1 hover:text-foreground hover:underline" href="/neuralflow/rewards">
                 Stone collection
               </Link>
             </nav>
@@ -435,7 +435,7 @@ export async function TaskSection({ show, selectedTask, raw = {}, basePath }: Ta
                 )}
               </div>
             ) : null}
-            {detail ? <TaskEvidence items={provenance} taskId={detail.task.id} /> : null}
+            {detail ? <TaskEvidence items={provenance} /> : null}
           </Panel>
         ) : scope === "today" ? (
           <aside className="flex min-w-0 flex-col gap-4">

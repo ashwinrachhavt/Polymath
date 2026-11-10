@@ -15,6 +15,7 @@ import {
 import { mutable, primaryId, recorded, tenantId } from "../../db/columns";
 import { artifacts, documentExtractions, documents, notebooks } from "../knowledge/schema";
 import { users } from "../identity/schema";
+import type { GenerationOutcome } from "./item-count";
 
 /*
  * The learning domain (learn-harness replication): a captured document's
@@ -81,11 +82,16 @@ export const quizzes = pgTable(
     promptVersion: text("prompt_version"),
     /** Authored, honest failure reason for a failed generation. */
     error: text("error"),
+    /** The question count asked for; null on failed rows and quizzes made before counts were recorded. */
+    requestedCount: integer("requested_count"),
+    /** Why generation ended for a ready quiz; null on failed rows and quizzes made before. */
+    stoppedBy: text("stopped_by").$type<GenerationOutcome>(),
     ...mutable,
   },
   (t) => [
     index("quizzes_document_idx").on(t.workspaceId, t.documentId, t.createdAt),
     uniqueIndex("quizzes_generation_key").on(t.workspaceId, t.generationKey),
+    check("quizzes_stopped_by_check", sql`"stopped_by" in ('complete', 'source_exhausted', 'batch_failed')`),
   ],
 );
 
@@ -167,10 +173,18 @@ export const flashcardDecks = pgTable(
     generationKey: text("generation_key").notNull(),
     model: text("model").notNull(),
     promptVersion: text("prompt_version").notNull(),
+    /** The card count asked for; null on decks made before counts were recorded. */
+    requestedCount: integer("requested_count"),
+    /**
+     * Why generation ended. Null while batches are still adding cards (or if
+     * the run died mid-way); the cards already stored are usable either way.
+     */
+    stoppedBy: text("stopped_by").$type<GenerationOutcome>(),
     ...mutable,
   },
   (t) => [
     uniqueIndex("flashcard_decks_generation_key").on(t.workspaceId, t.generationKey),
+    check("flashcard_decks_stopped_by_check", sql`"stopped_by" in ('complete', 'source_exhausted', 'batch_failed')`),
     index("flashcard_decks_workspace_created_idx").on(t.workspaceId, t.createdAt),
   ],
 );

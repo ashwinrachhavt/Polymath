@@ -1,0 +1,1 @@
+CREATE INDEX "audit_events_flashcard_review_idx" ON "audit_events" USING btree ("workspace_id","actor_id","created_at") WHERE action = 'learning.flashcard_reviewed';

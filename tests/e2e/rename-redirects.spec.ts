@@ -20,9 +20,10 @@ test("/alfred root redirects to /polymath", async ({ page }) => {
   await expect(page).toHaveURL(/\/polymath$/);
 });
 
-test("/apps/alfred/* redirects to /apps/polymath/*", async ({ page }) => {
-  await page.goto("/apps/alfred/tasks");
-  await expect(page).toHaveURL(/\/apps\/polymath\/tasks$/);
+test("/apps/alfred/* redirects through /apps/polymath/* to the real screen", async ({ page }) => {
+  // The /apps preview tools are retired: /apps/polymath/notebook now lands on Notes.
+  await page.goto("/apps/alfred/notebook");
+  await expect(page).toHaveURL(/\/polymath\/notes$/);
 });
 
 test("a deep alfred route carries its path across", async ({ page }) => {

@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Timer } from "lucide-react";
-import { useWorkspace } from "@/components/workspace/workspace-provider";
 
 type LiveSession = { id: string; state: "running" | "paused"; title: string };
 
@@ -39,17 +38,12 @@ async function fetchLiveSession(): Promise<LiveSession | null> {
  * else. On canonical routes it reads the REAL session (domains/focus, through
  * /api/v1/focus/live) so a session started from a task detail follows you
  * across pages and disappears when it ends, linking to Focus, the screen that
- * owns the live controls. The browser-preview store has its own session on
- * /apps screens; that one is shown only there and links to its own screen, so
- * the two are never substituted for each other.
+ * owns the live controls. The browser-preview focus screen under /apps is
+ * retired, so the real session is the only one the dock ever shows.
  */
 export function FocusDock() {
   const pathname = usePathname();
-  // Only the /apps screens own the preview store's session. /settings and /activity
-  // are classified as preview for banner purposes, but they sit in the real shell
-  // beside real controls, so a real live session must follow the owner there too.
-  const preview = pathname.startsWith("/apps/");
-  return preview ? <PreviewDock pathname={pathname} /> : <LiveDock pathname={pathname} />;
+  return <LiveDock pathname={pathname} />;
 }
 
 function LiveDock({ pathname }: { pathname: string }) {
@@ -140,28 +134,6 @@ function LiveDock({ pathname }: { pathname: string }) {
           {stale ? `${session.title} (status may be out of date)` : session.title}
         </span>
         <span className="shrink-0 text-xs">Return to session</span>
-      </Link>
-    </aside>
-  );
-}
-
-function PreviewDock({ pathname }: { pathname: string }) {
-  const { state } = useWorkspace();
-  if (!state.focus || pathname === "/apps/neuralflow/focus") return null;
-  const task = state.tasks.find((record) => record.id === state.focus?.taskId);
-  return (
-    <aside
-      aria-label="Preview focus session"
-      className="sticky bottom-0 mt-auto border-t border-border bg-background/95 px-4 py-2 backdrop-blur"
-    >
-      <Link
-        href="/apps/neuralflow/focus"
-        className="flex min-h-8 items-center gap-3 rounded-md text-body-dense hover:text-app-accent"
-      >
-        <Timer aria-hidden className="size-4 shrink-0 text-app-accent" />
-        <span className="readout shrink-0 text-xs">Preview focus {state.focus.status}</span>
-        <span className="min-w-0 flex-1 truncate text-muted-foreground">{task?.title || "Untitled task"}</span>
-        <span className="shrink-0 text-xs">Return to preview</span>
       </Link>
     </aside>
   );

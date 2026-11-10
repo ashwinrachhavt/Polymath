@@ -4,10 +4,14 @@ import { redirectPastEnd } from "@/components/list/clamp";
 import { ListToolbar } from "@/components/list/list-toolbar";
 import { NoResults } from "@/components/list/no-results";
 import { Pagination } from "@/components/list/pagination";
-import { Empty, Screen } from "@/components/workspace/ui";
+import Link from "next/link";
+import { Empty, Panel, Screen, Status } from "@/components/workspace/ui";
+import { pageCompanies } from "@/domains/crm/queries";
+import { CompanyForm } from "../company-form";
+import { ResearchCompanyButton } from "../research-button";
 import { pageOrganizations } from "@/domains/identity/party-queries";
 import { getAuthContext } from "@/lib/auth";
-import { listHref, offsetFor, parseListParams } from "@/lib/list-params";
+import { listHref, offsetFor, parseListParams, parsePageNumber } from "@/lib/list-params";
 import { timeAgo } from "@/lib/time";
 import { PeopleTabs } from "../people-tabs";
 
@@ -28,12 +32,17 @@ async function Companies({ searchParams }: { searchParams: SearchParams }) {
   await io();
   const auth = await getAuthContext();
   const list = parseListParams(query);
-  const page = await pageOrganizations(auth, {
-    query: list.q,
-    limit: list.pageSize,
-    offset: offsetFor(list.page, list.pageSize),
-  });
+  const crmPage = parsePageNumber(query.cpage);
+  const [page, companyPageData] = await Promise.all([
+    pageOrganizations(auth, {
+      query: list.q,
+      limit: list.pageSize,
+      offset: offsetFor(list.page, list.pageSize),
+    }),
+    pageCompanies(auth, { limit: list.pageSize, offset: offsetFor(crmPage, list.pageSize) }),
+  ]);
   redirectPastEnd(BASE, query, list.page, list.pageSize, page.total);
+  redirectPastEnd(BASE, query, crmPage, list.pageSize, companyPageData.total, "cpage");
 
   return (
     <Screen title="Companies">
@@ -104,6 +113,42 @@ async function Companies({ searchParams }: { searchParams: SearchParams }) {
           <Pagination basePath={BASE} raw={query} page={list.page} pageSize={list.pageSize} total={page.total} />
         </div>
       </div>
+
+      <Panel title={`${companyPageData.total} ${companyPageData.total === 1 ? "company" : "companies"}`}>
+        <div className="mb-4">
+          <CompanyForm />
+        </div>
+        <div className="divide-y divide-border">
+          {companyPageData.items.map((company) => (
+            <div key={company.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0">
+              <div>
+                <Link
+                  href={`/command-center/relationships/companies/${company.id}`}
+                  className="text-body-dense font-medium underline-offset-4 hover:underline"
+                >
+                  {company.name}
+                </Link>
+                <p className="text-xs text-muted-foreground">{company.domain || "No domain recorded"}</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <Status>
+                  {company.contactCount} current contact{company.contactCount === 1 ? "" : "s"}
+                </Status>
+                <ResearchCompanyButton companyId={company.id} />
+              </div>
+            </div>
+          ))}
+        </div>
+        {!companyPageData.items.length ? <Empty title="No companies yet" /> : null}
+        <Pagination
+          basePath="/command-center/relationships/companies"
+          raw={query}
+          page={crmPage}
+          pageSize={list.pageSize}
+          total={companyPageData.total}
+          pageParam="cpage"
+        />
+      </Panel>
     </Screen>
   );
 }

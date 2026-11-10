@@ -30,10 +30,10 @@ export function CitationStrip({ citations }: { citations: ChatCitation[] }) {
       <ul className="space-y-2 border-t border-border px-3 py-2" aria-label="Citations">
         {citations.map((citation, index) => (
           <li key={`${citation.documentId}:${citation.span.start}`} id={`citation-${index}`} className="scroll-mt-4">
-            {/* The title opens the document at its library route, so a
+            {/* The title opens the document in the Vault, so a
               citation is a way into the source rather than a label. */}
             <Link
-              href={`/polymath/library/${citation.documentId}`}
+              href={`/polymath/knowledge?doc=${citation.documentId}`}
               className="font-medium underline decoration-transparent underline-offset-2 transition-colors hover:decoration-current"
             >
               {citation.title}

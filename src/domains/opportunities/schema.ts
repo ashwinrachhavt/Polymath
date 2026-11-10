@@ -1,23 +1,7 @@
+// Retired: no domain API reads or writes these tables any more; rows stay for old data.
 import { sql } from "drizzle-orm";
-import {
-  date,
-  index,
-  jsonb,
-  pgEnum,
-  pgTable,
-  text,
-  timestamp,
-  uniqueIndex,
-  uuid,
-} from "drizzle-orm/pg-core";
-import {
-  linkTargetKind,
-  linkTargetKindCheck,
-  mutable,
-  primaryId,
-  recorded,
-  tenantId,
-} from "../../db/columns";
+import { date, index, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { linkTargetKind, linkTargetKindCheck, mutable, primaryId, recorded, tenantId } from "../../db/columns";
 
 /*
  * One generic opportunity, optional typed extensions. A job application, a
@@ -48,11 +32,7 @@ export const opportunityOutcome = pgEnum("opportunity_outcome", [
   "declined",
   "expired",
 ]);
-export const extensionKind = pgEnum("extension_kind", [
-  "job_application",
-  "consulting_lead",
-  "partnership",
-]);
+export const extensionKind = pgEnum("extension_kind", ["job_application", "consulting_lead", "partnership"]);
 
 export const opportunities = pgTable(
   "opportunities",
@@ -148,6 +128,8 @@ export const opportunitiesDeadlines = pgTable(
   },
   (t) => [
     uniqueIndex("opportunity_deadlines_key").on(t.opportunityId, t.label),
-    index("opportunity_deadlines_due_idx").on(t.workspaceId, t.dueOn).where(sql`met_at is null`),
+    index("opportunity_deadlines_due_idx")
+      .on(t.workspaceId, t.dueOn)
+      .where(sql`met_at is null`),
   ],
 );

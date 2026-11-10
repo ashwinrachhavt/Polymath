@@ -1,8 +1,8 @@
 import type { WorkspaceState } from "./types";
 
 /*
- * The reward ledger is the only source of truth. Streaks, shards and charts are
- * derived from it and cached nowhere, so a reward cannot be counted twice and a
+ * The reward ledger is the only source of truth. Focus records are derived
+ * from it and cached nowhere, so a reward cannot be counted twice and a
  * projection can never disagree with the entries beneath it.
  */
 
@@ -35,54 +35,4 @@ export function focusRecords(rewards: WorkspaceState["rewards"]): FocusRecord[] 
       },
     ];
   });
-}
-
-/*
- * Consecutive recorded days ending on `today` or the day before it. The
- * previous-day allowance means an owner opening the product in the morning
- * still sees yesterday's streak instead of zero before they have worked.
- */
-export function focusStreak(rewards: WorkspaceState["rewards"], today: string) {
-  const days = new Set(focusRecords(rewards).map((record) => record.day));
-  if (!days.size) return { current: 0, longest: 0 };
-  const shift = (date: string, delta: number) => {
-    const parsed = new Date(`${date}T12:00:00`);
-    parsed.setDate(parsed.getDate() + delta);
-    return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}-${String(parsed.getDate()).padStart(2, "0")}`;
-  };
-  let current = 0;
-  let cursor = days.has(today) ? today : shift(today, -1);
-  while (days.has(cursor)) {
-    current += 1;
-    cursor = shift(cursor, -1);
-  }
-  const ordered = [...days].sort();
-  let longest = 1;
-  let run = 1;
-  for (let index = 1; index < ordered.length; index += 1) {
-    run = ordered[index] === shift(ordered[index - 1], 1) ? run + 1 : 1;
-    longest = Math.max(longest, run);
-  }
-  return { current, longest };
-}
-
-export function minutesByDay(rewards: WorkspaceState["rewards"], from: string, through: string) {
-  const records = focusRecords(rewards);
-  const days: { day: string; minutes: number; sessions: number }[] = [];
-  const seen = new Map<string, { minutes: number; sessions: number }>();
-  for (const record of records) {
-    if (record.day < from || record.day > through) continue;
-    const entry = seen.get(record.day) || { minutes: 0, sessions: 0 };
-    entry.minutes += record.minutes;
-    entry.sessions += 1;
-    seen.set(record.day, entry);
-  }
-  const cursor = new Date(`${from}T12:00:00`);
-  const last = new Date(`${through}T12:00:00`);
-  while (cursor <= last) {
-    const day = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}-${String(cursor.getDate()).padStart(2, "0")}`;
-    days.push({ day, ...(seen.get(day) || { minutes: 0, sessions: 0 }) });
-    cursor.setDate(cursor.getDate() + 1);
-  }
-  return days;
 }

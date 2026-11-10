@@ -7,25 +7,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * The shell's focus dock reads the REAL live session on canonical routes.
  * value: protects=a session started on Work shows on other pages and links
  * back; nothing shows on Work, when none is live, or after a failed read;
- * the preview store's session never appears on a canonical route and its own
- * dock links to its own screen; fails_when=the dock is driven by the preview
- * store on real routes, claims a session ended because a fetch failed, or
+ * fails_when=the dock claims a session ended because a fetch failed, or
  * shows a read from a previous page; seam=fetch and the pathname mocked at the
  * boundary; no_claim=owner/workspace scoping and liveness live in
  * getLiveFocusDock (integration tests own those) and visuals need a browser.
  */
 
 let pathname = "/command-center/inbox";
-const preview = {
-  focus: null as null | { taskId: string; status: string },
-  tasks: [{ id: "t1", title: "Preview task" }],
-};
 vi.mock("next/navigation", () => ({ usePathname: () => pathname }));
 vi.mock("next/link", () => ({
   default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) =>
     h("a", { href, ...rest }, children),
 }));
-vi.mock("@/components/workspace/workspace-provider", () => ({ useWorkspace: () => ({ state: preview }) }));
 
 let FocusDock: (typeof import("@/components/shell/focus-dock"))["FocusDock"];
 
@@ -33,7 +26,6 @@ const live = { id: "s1", state: "running", title: "Write the memo" };
 const respond = (body: unknown, ok = true) => vi.fn(async () => ({ ok, json: async () => body }) as Response);
 
 beforeEach(async () => {
-  preview.focus = null;
   pathname = "/command-center/inbox";
   // The dock keeps its bounded-fetch cache and debounce window at module
   // scope (spec W4), so each test loads a fresh module instance instead of
@@ -208,26 +200,5 @@ describe("FocusDock", () => {
       expect((await screen.findByLabelText("Focus session")).textContent).toContain("Write the memo");
       view.unmount();
     }
-  });
-
-  it("never shows the preview store's session on a canonical route", async () => {
-    preview.focus = { taskId: "t1", status: "running" };
-    vi.stubGlobal("fetch", respond({ session: null }));
-    render(h(FocusDock));
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(screen.queryByLabelText("Preview focus session")).toBeNull();
-    expect(screen.queryByLabelText("Focus session")).toBeNull();
-  });
-
-  it("on a preview route shows the preview session linking to its own screen, and never fetches the real one", () => {
-    pathname = "/apps/neuralflow/tasks";
-    preview.focus = { taskId: "t1", status: "running" };
-    const spy = respond({ session: live });
-    vi.stubGlobal("fetch", spy);
-    render(h(FocusDock));
-    const dock = screen.getByLabelText("Preview focus session");
-    expect(dock.textContent).toContain("Preview task");
-    expect(dock.querySelector("a")?.getAttribute("href")).toBe("/apps/neuralflow/focus");
-    expect(spy).not.toHaveBeenCalled();
   });
 });

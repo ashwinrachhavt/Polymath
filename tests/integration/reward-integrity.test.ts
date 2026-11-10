@@ -1,6 +1,5 @@
 import { and, eq, gt } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { auditEvents } from "@/domains/audit/schema";
 import { FOCUS_DAILY_CAP, LEARNING_DAILY_CAP } from "@/domains/gamification/rules";
 import { rewardDefinitions, rewardLedger } from "@/domains/gamification/schema";
 import { memberships, users } from "@/domains/identity/schema";
@@ -19,7 +18,6 @@ const handle = makeTestDb();
 const suite = handle ? describe : describe.skip;
 let db: NonNullable<typeof handle>["db"];
 let commands: typeof import("@/domains/gamification/commands");
-let queries: typeof import("@/domains/gamification/queries");
 let work: typeof import("@/domains/work/commands");
 let withTransaction: (typeof import("@/lib/db-transaction"))["withTransaction"];
 
@@ -27,7 +25,6 @@ beforeAll(async () => {
   if (!handle) return;
   ({ db } = handle);
   commands = await import("@/domains/gamification/commands");
-  queries = await import("@/domains/gamification/queries");
   work = await import("@/domains/work/commands");
   ({ withTransaction } = await import("@/lib/db-transaction"));
 });
@@ -210,76 +207,7 @@ suite("reward integrity (spec §6)", () => {
     expect(await awardRows(auth.workspaceId, "focus")).toHaveLength(FOCUS_DAILY_CAP);
   });
 
-  it("a reversal writes exactly one negative row referencing the original, and buys no shard credit", async () => {
-    const auth = await seed("reversal");
-    expect(await awardFocus(auth)).toBe(true);
-    const [awardRow] = await awardRows(auth.workspaceId, "focus");
-    expect(awardRow).toBeDefined();
-
-    const reversal = await commands.reverseLedgerEntry(auth.workspaceId, {
-      originalEntryId: awardRow!.id,
-      reason: "awarded twice by a replay bug",
-    });
-    expect(reversal.points).toBe(-awardRow!.points);
-    expect(reversal.reason).toBe("adjustment");
-    expect(reversal.subjectType).toBe("reward_ledger");
-    expect(reversal.subjectId).toBe(awardRow!.id);
-    expect(reversal.userId).toBe(auth.userId);
-
-    // The original row is untouched (append-only) and exactly one negative
-    // row exists: a second reversal is a conflict, not a second debit.
-    const rows = await db.select().from(rewardLedger).where(eq(rewardLedger.workspaceId, auth.workspaceId));
-    expect(rows).toHaveLength(2);
-    await expect(
-      commands.reverseLedgerEntry(auth.workspaceId, { originalEntryId: awardRow!.id, reason: "again" }),
-    ).rejects.toMatchObject({ code: "conflict" });
-
-    // The points total nets to zero, the reversal never counts as a stone,
-    // and the audit row says the system did it.
-    const overview = await queries.getRewardsOverview(auth);
-    expect(overview.totalPoints).toBe(0);
-    expect(overview.shards.stones).toBe(1); // the award row; without the exclusion it would be 2
-    const [audit] = await db
-      .select()
-      .from(auditEvents)
-      .where(and(eq(auditEvents.workspaceId, auth.workspaceId), eq(auditEvents.action, "reward.reversed")));
-    expect(audit.actorKind).toBe("system");
-    expect(audit.actorId).toBeNull();
-  });
-
-  it("reversal guards refuse unknown entries and zero-point rows", async () => {
-    const auth = await seed("reversal-guards");
-
-    await expect(
-      commands.reverseLedgerEntry(auth.workspaceId, { originalEntryId: crypto.randomUUID(), reason: "no such row" }),
-    ).rejects.toMatchObject({ code: "conflict" });
-
-    // A perfect sitting writes the 10-point award AND the zero-point Emerald;
-    // only the points-bearing row is reversible.
-    await withTransaction((tx) =>
-      commands.recordLearningReview(tx, auth, {
-        subjectId: crypto.randomUUID(),
-        idempotencyKey: `quiz_attempt:${crypto.randomUUID()}`,
-        correctCount: 3,
-        totalCount: 3,
-      }),
-    );
-    const emerald = await withTransaction((tx) => commands.recordEmerald(tx, auth, crypto.randomUUID()));
-    expect(emerald).toBe(true);
-    const [emeraldRow] = await db
-      .select({ id: rewardLedger.id })
-      .from(rewardLedger)
-      .innerJoin(rewardDefinitions, eq(rewardDefinitions.id, rewardLedger.rewardDefinitionId))
-      .where(and(eq(rewardLedger.workspaceId, auth.workspaceId), eq(rewardDefinitions.key, "emerald")));
-    await expect(
-      commands.reverseLedgerEntry(auth.workspaceId, {
-        originalEntryId: emeraldRow!.id,
-        reason: "no points to reverse",
-      }),
-    ).rejects.toMatchObject({ code: "conflict" });
-  });
-
-  it("definition prices are bounded to 0..10000 on create and update", async () => {
+  it("definition prices are bounded to 0..10000 on create", async () => {
     const auth = await seed("definition-bounds");
 
     await expect(
@@ -296,23 +224,5 @@ suite("reward integrity (spec §6)", () => {
       points: 10000,
     });
     expect(definition.points).toBe(10000);
-
-    await expect(
-      commands.updateRewardDefinition(auth, {
-        key: "edge",
-        kind: "points",
-        label: "Edge",
-        points: 10001,
-        expectedVersion: definition.version,
-      }),
-    ).rejects.toMatchObject({ code: "invalid_reward_definition" });
-    const bounded = await commands.updateRewardDefinition(auth, {
-      key: "edge",
-      kind: "points",
-      label: "Edge",
-      points: 0,
-      expectedVersion: definition.version,
-    });
-    expect(bounded.points).toBe(0);
   });
 });

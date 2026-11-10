@@ -1155,6 +1155,7 @@ export const wikiPages = pgTable(
 export const readingEventKinds = ["opened", "progress", "closed"] as const;
 export type ReadingEventKind = (typeof readingEventKinds)[number];
 
+// Unread and unwritten since the Library reader was removed (2026-11-10); kept so old rows stay readable.
 export const documentReadingEvents = pgTable(
   "document_reading_events",
   {
@@ -1187,6 +1188,8 @@ export const documentReadingEvents = pgTable(
   ],
 );
 
+// Since the Library reader was removed (2026-11-10), only opens are recorded: recordDocumentOpen (document-opens.ts)
+// bumps open_count and last_opened_at when the Vault's document detail mounts; knowledge debt (debt.ts) reads it.
 export const documentReadingState = pgTable(
   "document_reading_state",
   {
