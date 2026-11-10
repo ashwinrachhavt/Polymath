@@ -1,8 +1,5 @@
 # opportunities
 
-Owns: opportunities, stage history, typed extensions, links, deadlines
-
-Tables are in `schema.ts` and nowhere else — a domain owns its tables, and UI
-code reads them through this domain's queries rather than joining across domains
-. Enum values are the contract: add a value, never
-repurpose one.
+Retired. The commands, queries and UI are gone; only `schema.ts` remains so the
+tables and their stored rows stay readable (the workspace search and project
+links still read `opportunities`). Do not add new writers.

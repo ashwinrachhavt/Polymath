@@ -22,7 +22,6 @@ const RECORD_KINDS = [
   "company",
   "person",
   "organization",
-  "opportunity",
   "space",
 ] as const;
 
@@ -44,7 +43,6 @@ const LABELS: Partial<Record<RecordKind, string>> = {
   company: "Company",
   person: "Person",
   organization: "Organization",
-  opportunity: "Opportunity",
   space: "Space",
 };
 
@@ -69,7 +67,6 @@ const PATHS: Record<RecordKind, (id: string) => string> = {
   company: () => "/command-center/relationships/companies",
   person: () => "/command-center/relationships/people",
   organization: () => "/command-center/relationships/companies",
-  opportunity: () => "/command-center/opportunities",
   space: () => "/polymath",
 };
 
@@ -108,7 +105,6 @@ const KEY_KINDS: Record<string, RecordKind> = {
   contacts: "contact",
   companies: "company",
   people: "person",
-  opportunities: "opportunity",
 };
 
 function asRecordReference(entry: unknown, fallbackKind?: RecordKind): RecordReference | null {
