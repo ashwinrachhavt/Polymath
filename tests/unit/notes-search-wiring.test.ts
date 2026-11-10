@@ -3,9 +3,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /*
- * The notes page is one always-editable note. Bare /polymath/notes opens the
- * most recent note with content, and the retired view params (board, mode,
- * stack, layout, q) are accepted and ignored.
+ * The notes page is one always-editable note. Bare /polymath/notes renders the
+ * most recent note with content in place (no redirect, so no second render)
+ * and asks the client to put its id in the URL. A retired ?stack= opens its
+ * last note; the other retired view params (board, mode, layout, q) are ignored.
  */
 
 vi.mock("next/server", () => ({ connection: async () => undefined }));
@@ -39,7 +40,9 @@ vi.mock("@/app/(workspace)/polymath/notes/note-editor", () => ({
   NoteEditor: (props: { noteId: string }) => h("div", { "data-testid": "editor", "data-note": props.noteId }),
 }));
 vi.mock("@/app/(workspace)/polymath/notes/notebook-workspace", () => ({
-  NotebookWorkspace: (props: { children: ReactNode }) => h("div", null, props.children),
+  NotebookWorkspace: (props: { children: ReactNode; replaceUrl?: string }) =>
+    h("div", { "data-replace-url": props.replaceUrl }, props.children),
+  FindNoteButton: () => h("button", null, "Find a note"),
 }));
 
 import { NotesSurface } from "@/app/(workspace)/polymath/notes/page";
@@ -53,25 +56,44 @@ beforeEach(() => {
 });
 
 describe("notes page", () => {
-  it("bare /polymath/notes redirects to the latest note with content", async () => {
+  it("bare /polymath/notes renders the latest note with content in place", async () => {
     vi.mocked(listNotes).mockResolvedValue([
       { id: "a", excerpt: "" },
       { id: "b", excerpt: "text" },
     ] as never);
-    await expect(NotesSurface({ searchParams: params({}) })).rejects.toMatchObject({
-      digest: expect.stringContaining("/polymath/notes?id=b"),
-    });
-    expect(listNotes).toHaveBeenCalledWith(auth, 25);
+    vi.mocked(getNote).mockResolvedValue(noteRow as never);
+    const html = renderToStaticMarkup(await NotesSurface({ searchParams: params({}) }));
+    expect(html).toContain('data-note="b"');
+    expect(html).toContain('data-replace-url="/polymath/notes?id=b"');
+    expect(getNote).toHaveBeenCalledWith(auth, "b");
+    // Only plain notes: a bare visit never opens a zettel.
+    expect(listNotes).toHaveBeenCalledWith(auth, 25, ["note"]);
+  });
+
+  it("a note opened by id keeps its URL", async () => {
+    vi.mocked(getNote).mockResolvedValue(noteRow as never);
+    const html = renderToStaticMarkup(await NotesSurface({ searchParams: params({ id: "b" }) }));
+    expect(html).not.toContain("data-replace-url");
+    expect(listNotes).not.toHaveBeenCalled();
+  });
+
+  it("a retired ?stack= opens its last note", async () => {
+    vi.mocked(getNote).mockResolvedValue(noteRow as never);
+    const html = renderToStaticMarkup(await NotesSurface({ searchParams: params({ stack: "a,b" }) }));
+    expect(getNote).toHaveBeenCalledWith(auth, "b");
+    expect(html).toContain('data-replace-url="/polymath/notes?id=b"');
+  });
+
+  it("a missing note offers the finder and a new note, in words that fit any device", async () => {
+    const html = renderToStaticMarkup(await NotesSurface({ searchParams: params({ id: "gone" }) }));
+    expect(html).toContain("That note is not here");
+    expect(html).toContain("Find a note");
+    expect(html).not.toMatch(/Cmd|Ctrl/);
   });
 
   it("retired view params are ignored", async () => {
     vi.mocked(getNote).mockResolvedValue(noteRow as never);
-    const retiredParams: Record<string, string>[] = [
-      { board: "1", mode: "list" },
-      { stack: "x" },
-      { layout: "kanban" },
-      { q: "plan" },
-    ];
+    const retiredParams: Record<string, string>[] = [{ board: "1", mode: "list" }, { layout: "kanban" }, { q: "plan" }];
     for (const retired of retiredParams) {
       const html = renderToStaticMarkup(await NotesSurface({ searchParams: params({ id: "b", ...retired }) }));
       expect(html).toContain('data-note="b"');

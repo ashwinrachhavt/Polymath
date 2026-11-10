@@ -1,5 +1,4 @@
-import { redirect } from "next/navigation";
-import { Suspense } from "react";
+import { Suspense, type ReactNode } from "react";
 import { io } from "next/cache";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -18,7 +17,7 @@ import { relatedNotes } from "@/domains/knowledge/relations";
 import { getAuthContext } from "@/lib/auth";
 import type { RawSearchParams } from "@/lib/list-params";
 import { NewNoteButton, NoteEditor } from "./note-editor";
-import { NotebookWorkspace } from "./notebook-workspace";
+import { FindNoteButton, NotebookWorkspace } from "./notebook-workspace";
 
 export const metadata = { title: "Notes · Polymath" };
 
@@ -29,12 +28,35 @@ export const metadata = { title: "Notes · Polymath" };
  * /apps/polymath notebook screen redirect here.
  *
  * The page is one note, always editable, in one centered column. Bare
- * /polymath/notes opens the most recent note; Cmd+K finds any other. The old
- * view params (board, mode, stack, layout, q ...) are accepted and ignored.
+ * /polymath/notes renders the most recent note in place (a redirect from
+ * inside the stream would render twice) and the client writes its id into the
+ * URL. A retired ?stack=a,b opens its last note; the other old view params
+ * (board, mode, layout, q ...) are accepted and ignored.
  */
 
 export function noteMarkdown(content: NoteContent | null): string {
   return noteContentToMarkdown(content);
+}
+
+function requestedNoteId(raw: RawSearchParams): string | undefined {
+  if (typeof raw.id === "string") return raw.id;
+  if (typeof raw.stack === "string") return raw.stack.split(",").filter(Boolean).at(-1);
+}
+
+function NotesMessage({ title, body, children }: { title: string; body: string; children: ReactNode }) {
+  return (
+    <div className="suite-screen h-full overflow-y-auto">
+      <NotebookWorkspace>
+        <div className="mx-auto w-full max-w-[var(--measure-prose)] px-6 pb-16 pt-12">
+          <h1 className="text-lg" style={{ fontFamily: "var(--font-display)" }}>
+            {title}
+          </h1>
+          <p className="mt-2 text-body-dense text-muted-foreground">{body}</p>
+          <div className="mt-5 flex items-center gap-2">{children}</div>
+        </div>
+      </NotebookWorkspace>
+    </div>
+  );
 }
 
 // Per-request data; streams inside the Suspense boundary in the default export.
@@ -42,49 +64,33 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
   await io();
   const auth = await getAuthContext();
   const raw = await searchParams;
-  const id = typeof raw.id === "string" ? raw.id : undefined;
+  let id = requestedNoteId(raw);
+  if (!id) {
+    const recent = await listNotes(auth, 25, ["note"]);
+    id = (recent.find((note) => note.excerpt?.trim()) ?? recent[0])?.id;
+  }
 
   if (!id) {
-    const recent = await listNotes(auth, 25);
-    const latest = recent.find((note) => note.excerpt?.trim()) ?? recent[0];
-    if (latest) redirect(`/polymath/notes?id=${latest.id}`);
     return (
-      <div className="suite-screen h-full overflow-y-auto">
-        <NotebookWorkspace>
-          <div className="mx-auto w-full max-w-[var(--measure-prose)] px-6 pb-16 pt-12">
-            <h1 className="text-lg" style={{ fontFamily: "var(--font-display)" }}>
-              Write your first page.
-            </h1>
-            <p className="mt-2 text-body-dense text-muted-foreground">
-              It autosaves as you type, and every checkpoint becomes an immutable version.
-            </p>
-            <div className="mt-5">
-              <NewNoteButton />
-            </div>
-          </div>
-        </NotebookWorkspace>
-      </div>
+      <NotesMessage
+        title="Write your first page."
+        body="It autosaves as you type, and every checkpoint becomes an immutable version."
+      >
+        <NewNoteButton />
+      </NotesMessage>
     );
   }
 
   const selected = await getNote(auth, id);
   if (!selected) {
     return (
-      <div className="suite-screen h-full overflow-y-auto">
-        <NotebookWorkspace>
-          <div className="mx-auto w-full max-w-[var(--measure-prose)] px-6 pb-16 pt-12">
-            <h1 className="text-lg" style={{ fontFamily: "var(--font-display)" }}>
-              That note is not here
-            </h1>
-            <p className="mt-2 text-body-dense text-muted-foreground">
-              It may have been archived. Press Cmd+K to find another, or start a new one.
-            </p>
-            <div className="mt-5">
-              <NewNoteButton />
-            </div>
-          </div>
-        </NotebookWorkspace>
-      </div>
+      <NotesMessage
+        title="That note is not here"
+        body="It may have been archived. Find another note, or start a new one."
+      >
+        <FindNoteButton />
+        <NewNoteButton />
+      </NotesMessage>
     );
   }
   // The inspector's versions, links, related notes and margin comments all
@@ -104,7 +110,7 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
 
   return (
     <div className="suite-screen h-full overflow-y-auto">
-      <NotebookWorkspace>
+      <NotebookWorkspace replaceUrl={raw.id === selected.id ? undefined : `/polymath/notes?id=${selected.id}`}>
         <NoteEditor
           key={selected.id}
           noteId={selected.id}
@@ -156,7 +162,8 @@ function NotesSkeleton() {
   return (
     <div role="status" aria-label="Loading Notes" className="flex items-start gap-6">
       <div className="mx-auto w-full max-w-[var(--measure-prose)] flex-1 px-6 pt-12">
-        <Skeleton className="h-8 w-24" />
+        {/* The loaded header's actions sit at the right. */}
+        <Skeleton className="ml-auto h-8 w-32" />
         <Skeleton className="mt-8 h-9 w-2/3" />
         <div className="mt-10 flex flex-col gap-6">
           <Skeleton className="h-5 w-full" />

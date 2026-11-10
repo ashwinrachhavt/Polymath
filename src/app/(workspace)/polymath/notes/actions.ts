@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { IdempotencyConflictError } from "@/domains/audit/receipt";
 import {
+  LINKABLE_KINDS,
   NoteNotFoundError,
   VersionConflictError,
   autosaveNoteDraft,
@@ -88,7 +89,8 @@ export async function createNoteAction(input: z.input<typeof createInput>): Prom
   const parsed = createInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Give the note a title." };
   const auth = await authorize();
-  return guarded(async () => ({ artifactId: (await createNote(auth, parsed.data)).id }));
+  // Quiet: every caller navigates to the new note, which is the one render.
+  return guardedQuiet(async () => ({ artifactId: (await createNote(auth, parsed.data)).id }));
 }
 
 const autosaveInput = z.object({
@@ -302,6 +304,8 @@ const findInput = z.object({
   query: z.string().max(200),
   mode: z.enum(["keyword", "hybrid"]),
   excludeId: z.string().uuid().optional(),
+  // The note finder opens notes and zettels only; the [[ picker also links captures and tasks.
+  notesOnly: z.boolean().optional(),
 });
 
 /**
@@ -378,10 +382,11 @@ export async function findLinkTargetsAction(
   // tasks match too. Non-artifact targets carry a canonical href (captures
   // resolve at the inbox, tasks at the tasks page); the editor inserts those
   // as real links, since a [[wiki link]] edge can only point at note/zettel.
+  const notesOnly = parsed.data.notesOnly === true;
   const [knowledge, captureRows, taskRows] = await Promise.all([
-    searchKnowledge(auth, { query, mode: parsed.data.mode, limit: 9 }),
-    searchCapturesForLink(auth, query),
-    searchTasksForLink(auth, query),
+    searchKnowledge(auth, { query, mode: parsed.data.mode, limit: 9, kinds: notesOnly ? LINKABLE_KINDS : undefined }),
+    notesOnly ? [] : searchCapturesForLink(auth, query),
+    notesOnly ? [] : searchTasksForLink(auth, query),
   ]);
   const rows: { id: string; title: string; kind: string; href?: string }[] = [
     ...knowledge.hits.map((r) => ({ id: r.id, title: r.title, kind: r.kind })),

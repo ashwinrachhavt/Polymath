@@ -34,6 +34,7 @@ import {
 } from "./actions";
 import { X, History, Info, Link2, Plus, MessageSquare } from "lucide-react";
 import { MarginNotes } from "@/components/products/polymath/margin-notes";
+import { FindNoteButton } from "./notebook-workspace";
 import type { LinkPreview } from "@/domains/knowledge/notes";
 import { NotionAppendAction } from "./notion-append";
 import { NoteCommentsPanel, type PanelComment } from "./note-comments-panel";
@@ -767,6 +768,7 @@ export function NoteEditor({
               keyboard focus and coarse pointers. */}
           <div className={`header-zone -mx-6 flex h-8 items-center justify-end px-6 ${scrolled ? "is-scrolled" : ""}`}>
             <div className="header-actions flex items-center gap-1">
+              <FindNoteButton icon />
               <NewNoteButton icon />
               <Dialog>
                 <DialogTrigger asChild>
