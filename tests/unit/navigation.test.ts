@@ -4,6 +4,7 @@ import {
   featureDestinations,
   isBrowserPreviewPath,
   isConversationSurface,
+  isFocusSurface,
   destinations,
   destinationForPath,
 } from "@/lib/navigation";
@@ -150,6 +151,30 @@ describe("navigation", () => {
     expect(isConversationSurface("/command-center/day")).toBe(false);
     expect(isConversationSurface("/neuralflow/work")).toBe(false);
     expect(isConversationSurface("/more")).toBe(false);
+  });
+
+  /*
+   * Focus pages hide the rail so the page owns the width (spec 5): the note,
+   * a learning session, a conversation, a source being read. List and
+   * overview pages keep the docked rail.
+   */
+  it("focus surfaces", () => {
+    expect(isFocusSurface("/polymath/notes")).toBe(true);
+    expect(isFocusSurface("/learn/abc")).toBe(true);
+    expect(isFocusSurface("/projects/p/notebook/flashcards")).toBe(true);
+    expect(isFocusSurface("/projects/p/notebook/explain")).toBe(true);
+    expect(isFocusSurface("/projects/p/notebook/graph")).toBe(true);
+    expect(isFocusSurface("/command-center/conversations/c")).toBe(true);
+    expect(isFocusSurface("/polymath/abc123")).toBe(true);
+    expect(isFocusSurface("/polymath/library/doc-1")).toBe(true);
+
+    expect(isFocusSurface("/projects")).toBe(false);
+    expect(isFocusSurface("/command-center/inbox")).toBe(false);
+    expect(isFocusSurface("/polymath")).toBe(false);
+    expect(isFocusSurface("/projects/p/notebook")).toBe(false);
+    expect(isFocusSurface("/learn")).toBe(false);
+    expect(isFocusSurface("/polymath/library")).toBe(false);
+    expect(isFocusSurface("/command-center/conversations")).toBe(false);
   });
 
   it("rails exactly the twenty-two destinations in order", () => {
