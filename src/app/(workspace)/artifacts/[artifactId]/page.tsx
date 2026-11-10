@@ -7,6 +7,7 @@ import { getAuthContext } from "@/lib/auth";
 import { getArtifactFeedback } from "@/domains/knowledge/artifact-feedback";
 import { ArtifactFeedback } from "./artifact-feedback";
 import { getArtifactDetail } from "@/domains/knowledge/artifact-gallery";
+import { getWikiPageText } from "@/domains/knowledge/wiki";
 import { extractToc, type TocEntry } from "@/domains/knowledge/artifact-toc";
 import { ArtifactMarkdown } from "@/components/artifact-markdown";
 import { DebriefButton } from "../debrief-button";
@@ -21,17 +22,22 @@ import type { DeckContent, InfographicContent } from "@/domains/knowledge/artifa
 
 export const metadata = { title: "Artifact · Polymath" };
 
+const stamp = (d: Date) =>
+  d.toLocaleString("en", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+
 /*
  * One artifact, rendered like a document: back link, title, and the body with
  * a table-of-contents sidebar built from the markdown's headings. A deck or
  * infographic renders its structured views instead, with the TOC derived from
- * that structure.
+ * that structure. A wiki page (a "note" artifact the wiki_pages registry
+ * claims) is read-only here and carries its version stamp: the wiki agent
+ * rewrites it version by version, so edits stay with the wiki.
  */
 
 export async function ArtifactSurface({ artifactId }: { artifactId: string }) {
   await connection();
   const auth = await getAuthContext();
-  const artifact = await getArtifactDetail(auth, artifactId);
+  const [artifact, wiki] = await Promise.all([getArtifactDetail(auth, artifactId), getWikiPageText(auth, artifactId)]);
   const feedback = artifact ? await getArtifactFeedback(auth, { kind: "artifact", id: artifactId }) : null;
   if (!artifact) {
     return <div className="page-content text-body-dense text-muted-foreground">This artifact does not exist.</div>;
@@ -127,7 +133,12 @@ export async function ArtifactSurface({ artifactId }: { artifactId: string }) {
             />
           ) : (
             <>
-              <h1 className="mb-6 text-3xl font-medium">{artifact.title}</h1>
+              <h1 className={`${wiki ? "mb-2" : "mb-6"} text-3xl font-medium`}>{artifact.title}</h1>
+              {wiki ? (
+                <p className="mb-6 text-xs text-muted-foreground">
+                  Wiki page, version {wiki.versionNumber}, updated {stamp(wiki.updatedAt)}
+                </p>
+              ) : null}
               <ArtifactMarkdown text={artifact.markdown ?? artifact.plainText ?? ""} />
             </>
           )}
