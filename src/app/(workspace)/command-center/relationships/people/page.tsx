@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { Button } from "@/components/ui/button";
 import { ImportDialog } from "../import-dialog";
+import { PeopleTabs } from "../people-tabs";
 import { RelationshipStatusPill } from "@/components/list/status-pill";
 import { redirectPastEnd } from "@/components/list/clamp";
 import { ListToolbar } from "@/components/list/list-toolbar";
@@ -76,6 +77,8 @@ async function People({ searchParams }: { searchParams: SearchParams }) {
         </ImportDialog>
       }
     >
+      <PeopleTabs active="people" />
+
       <ListToolbar
         searchPlaceholder="Search name or email"
         filters={[

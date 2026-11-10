@@ -197,11 +197,12 @@ test("preview routes retain app context and all tools are reachable on a phone",
       .getByRole("navigation", { name: "Destinations", exact: true })
       .getByRole("link", { name: "Inbox", exact: true }),
   ).toHaveAttribute("aria-current", "page");
+  // Work keeps its route under Today, so the bar lights Today there.
   await page.goto("/neuralflow/work");
   await expect(
     page
       .getByRole("navigation", { name: "Destinations", exact: true })
-      .getByRole("link", { name: "Work", exact: true }),
+      .getByRole("link", { name: "Today", exact: true }),
   ).toHaveAttribute("aria-current", "page");
   await page
     .getByRole("navigation", { name: "Destinations", exact: true })
