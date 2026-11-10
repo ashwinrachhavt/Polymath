@@ -150,8 +150,8 @@ export async function searchWorkspace(query: string): Promise<WorkspaceRecord[]>
       kind: "document" as const,
       id: row.id,
       label: row.title,
-      context: "Document in Files",
-      href: `/polymath/files?doc=${row.id}`,
+      context: "Document in the Vault",
+      href: `/polymath/knowledge?doc=${row.id}`,
     })),
     ...taskRows.map((row) => ({
       kind: "task" as const,

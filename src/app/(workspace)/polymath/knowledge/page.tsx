@@ -29,6 +29,7 @@ import { statementForDocument } from "@/domains/knowledge/statement-import";
 import { judgeTransactions } from "@/domains/knowledge/transaction-rules";
 import { summarize, type Judgment } from "@/domains/knowledge/transaction-classify";
 import { StatementPanel, type StatementPanelData } from "./statement-panel";
+import { SummaryPanel } from "./summary-panel";
 import { DocumentVault } from "./vault";
 
 export const metadata = { title: "Knowledge · Polymath" };
@@ -138,6 +139,7 @@ export async function KnowledgeSurface({ searchParams }: { searchParams: Promise
         classification={classificationValue}
         statement={statement}
         judgments={judgments}
+        canSummarize={auth.role !== "viewer"}
       />
     );
   }
@@ -245,6 +247,7 @@ function ReviewWorkbench({
   classification,
   statement,
   judgments,
+  canSummarize,
 }: {
   review: NonNullable<Awaited<ReturnType<typeof getDocumentReview>>>;
   backHref: string;
@@ -253,6 +256,7 @@ function ReviewWorkbench({
   classification: Awaited<ReturnType<typeof getOpenClassification>> | null;
   statement: Awaited<ReturnType<typeof statementForDocument>>;
   judgments: Judgment[];
+  canSummarize: boolean;
 }) {
   const { document: doc, extraction, fieldProposals, parties, obligations } = review;
   const status = documentStatus(extraction, fieldProposals.filter((p) => p.status === "proposed").length);
@@ -326,6 +330,7 @@ function ReviewWorkbench({
             extractionSucceeded={extraction?.status === "succeeded"}
             statement={statementPanelData(statement, judgments)}
           />
+          {extraction?.status === "succeeded" ? <SummaryPanel documentId={doc.id} canSummarize={canSummarize} /> : null}
           {extraction?.status === "failed" && doc.sourceUrl ? <RetryCaptureButton url={doc.sourceUrl} /> : null}
           {doc.docType ? (
             <p className="text-muted-foreground text-xs">

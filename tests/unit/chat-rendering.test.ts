@@ -90,7 +90,7 @@ describe("record cards", () => {
     const html = renderToStaticMarkup(
       createElement(RecordCards, { records: [{ kind: "document", id: "doc-1", title: "Renewal terms" }] }),
     );
-    expect(html).toContain('href="/polymath/library/doc-1"');
+    expect(html).toContain('href="/polymath/knowledge?doc=doc-1"');
     expect(html).toContain("Renewal terms");
     expect(html).toContain("Document");
   });

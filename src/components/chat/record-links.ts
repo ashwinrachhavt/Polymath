@@ -57,7 +57,7 @@ function isRecordKind(value: unknown): value is RecordKind {
 const PATHS: Record<RecordKind, (id: string) => string> = {
   task: () => "/work",
   note: (id) => `/polymath/notes?id=${id}`,
-  document: (id) => `/polymath/library/${id}`,
+  document: (id) => `/polymath/knowledge?doc=${id}`,
   source: () => "/polymath/knowledge",
   project: (id) => `/projects/${id}`,
   artifact: (id) => `/artifacts/${id}`,

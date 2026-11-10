@@ -1155,6 +1155,7 @@ export const wikiPages = pgTable(
 export const readingEventKinds = ["opened", "progress", "closed"] as const;
 export type ReadingEventKind = (typeof readingEventKinds)[number];
 
+// Unread and unwritten since the Library reader was removed (2026-11-10); kept so old rows stay readable.
 export const documentReadingEvents = pgTable(
   "document_reading_events",
   {
@@ -1187,6 +1188,7 @@ export const documentReadingEvents = pgTable(
   ],
 );
 
+// No longer written since the Library reader was removed (2026-11-10); only knowledge debt (debt.ts) still reads it.
 export const documentReadingState = pgTable(
   "document_reading_state",
   {

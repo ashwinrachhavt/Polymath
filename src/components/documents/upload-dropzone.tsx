@@ -156,7 +156,7 @@ export function failureCopy(entries: { phase: FilePhase }[]): string {
   return failure?.kind === "error" ? `, failed: ${failure.message}` : "";
 }
 
-export function UploadDropzone({ libraryHref = "/polymath/library" }: { libraryHref?: string }) {
+export function UploadDropzone() {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const xhrs = useRef(new Map<string, XMLHttpRequest>());
@@ -300,7 +300,7 @@ export function UploadDropzone({ libraryHref = "/polymath/library" }: { libraryH
     setOpenError(null);
     const detail = await requestJson<{ excerpt?: string | null }>(`/api/v1/documents/${documentId}/preview`);
     // The preview route returns an excerpt by design; the full text lives in
-    // the library's reader. Link there rather than shipping the body twice.
+    // the Vault's document detail. Link there rather than shipping the body twice.
     // An empty panel on failure would read as "no text", so the panel carries
     // the failure's own copy instead; a cancelled request just closes quietly.
     if (detail.ok) setOpenBody(detail.data.excerpt ?? "");
@@ -427,24 +427,22 @@ export function UploadDropzone({ libraryHref = "/polymath/library" }: { libraryH
           ) : openBody ? (
             <div className="max-h-72 overflow-y-auto whitespace-pre-wrap break-words rounded-md bg-muted/40 p-3 text-body-dense leading-relaxed">
               {openBody}
-              <p className="text-muted-foreground mt-2 text-xs">
-                First 1,200 characters. The full text is in the library reader.
-              </p>
+              <p className="text-muted-foreground mt-2 text-xs">First 1,200 characters.</p>
             </div>
           ) : (
             <p className="text-muted-foreground text-xs">No readable text was extracted from this document.</p>
           )}
           <div className="mt-3">
-            <Link href={libraryHref} className="text-primary text-xs underline underline-offset-4">
-              Open the library
+            <Link href="/polymath/knowledge" className="text-primary text-xs underline underline-offset-4">
+              Open the Vault
             </Link>
           </div>
         </section>
       ) : null}
 
       {anyDone ? (
-        <Link href={libraryHref} className="text-primary w-fit text-xs underline underline-offset-4">
-          Open the library to keep reading
+        <Link href="/polymath/knowledge" className="text-primary w-fit text-xs underline underline-offset-4">
+          Open the Vault
         </Link>
       ) : null}
 

@@ -27,12 +27,9 @@ async function SelectedScreen({
   // second, browser-local copy of the same notes.
   if (screen === "notebook")
     redirect(initialId ? `/polymath/notes?id=${encodeURIComponent(initialId)}` : "/polymath/notes");
-  // D18 (ASH-144): the source library merged onto canonical documents at
-  // /polymath/library; the preview screen's browser-local sources hand off the
-  // same way the notebook's notes did.
-  if (screen === "library") redirect("/polymath/library");
-  // Files: the document engine as a file manager, a canonical route like the library.
-  if (screen === "files") redirect("/polymath/files");
+  // D18 (ASH-144): the source library and the Files explorer both merged into
+  // the Vault; the preview screens hand off the same way the notebook's notes did.
+  if (screen === "library" || screen === "files") redirect("/polymath/knowledge");
   // The canvas handshake: a canvasId names a canonical Postgres canvas, which
   // the preview screen cannot load (its drawings are browser-local). Hand off
   // to the canonical canvas route, the same way notebook/library hand off to

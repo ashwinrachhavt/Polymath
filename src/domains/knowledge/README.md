@@ -143,12 +143,12 @@ land in the `reviewed_assertions` ledger, never on the record itself.
   and the assertion still stands. Projection is idempotent.
 - `archiveDocument` (`documents.ts`) archives the document and retracts its
   assertions in one transaction - evidence never silently survives removal,
-  and reviewed rows are marked, never erased. The UI calls
-  `archiveDocumentAction` (member role).
+  and reviewed rows are marked, never erased. No UI calls it since the Files
+  explorer merged into the Vault (2026-11-10).
 
 ## Library backend (Box-feel file manager)
 
-The read model behind the document library UI: `library.ts` for reads,
+The read model behind the Vault (`/polymath/knowledge`): `library.ts` for reads,
 `folders.ts` for the tree, `exports.ts` for export manifests (ASH-130).
 
 - Folders (`folders.ts`): a name plus a parent; the root is "no folder".
@@ -178,8 +178,8 @@ The read model behind the document library UI: `library.ts` for reads,
   (document and chunk), review, reading state, wiki ingest, zettel
   proposals, and export-manifest drift - follows the pin through
   `currentExtractionSql` / `currentExtractionIdSubquery`. A newly created
-  extraction clears the pin (fresh bytes are newer truth). The UI calls the
-  `restoreDocumentVersionAction` server action (member role).
+  extraction clears the pin (fresh bytes are newer truth). No UI calls it
+  since the Files explorer merged into the Vault (2026-11-10).
 - Tags (`tags.ts`): free tags, normalized lowercase, one row per (document,
   tag); batch add/remove with idempotent re-tags. `listDocuments` takes a tag
   filter and returns each row's tags; `listTags` is the filter rail.

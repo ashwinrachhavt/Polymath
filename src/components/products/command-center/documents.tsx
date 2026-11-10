@@ -34,7 +34,7 @@ export default function Documents() {
         </Button>
       }
     >
-      <UploadDropzone libraryHref="/polymath/library" />
+      <UploadDropzone />
       {creating && (
         <Panel title="Create a manually entered document">
           <form
