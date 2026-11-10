@@ -170,11 +170,11 @@ suite("learning loop", () => {
 
     expect(calls.map((call) => call.questionCount)).toEqual([25, 5]);
     expect(calls[1].avoidPrompts).toHaveLength(25);
-    expect(out.questionCount).toBe(29);
+    expect(out).toMatchObject({ questionCount: 29, requested: 30, stoppedBy: "source_exhausted" });
     const stored = await db.select().from(quizQuestions).where(eq(quizQuestions.quizId, out.quizId));
     expect(stored).toHaveLength(29);
     const [quiz] = await db.select().from(quizzes).where(eq(quizzes.id, out.quizId));
-    expect(quiz.questionCount).toBe(29);
+    expect(quiz).toMatchObject({ questionCount: 29, requestedCount: 30, stoppedBy: "source_exhausted" });
 
     // A replay of the same request returns the stored quiz and count without a model call.
     const replay = await generate.generateQuiz(
@@ -182,7 +182,12 @@ suite("learning loop", () => {
       { documentId: doc.id, questionCount: 30, idempotencyKey },
       batching,
     );
-    expect(replay).toMatchObject({ quizId: out.quizId, questionCount: 29 });
+    expect(replay).toMatchObject({
+      quizId: out.quizId,
+      questionCount: 29,
+      requested: 30,
+      stoppedBy: "source_exhausted",
+    });
     expect(calls).toHaveLength(2);
   });
 

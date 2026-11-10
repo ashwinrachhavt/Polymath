@@ -37,7 +37,13 @@ export async function generateNotebookQuizAction(input: z.input<typeof inputSche
     });
     revalidatePath(`/projects/${parsed.data.projectId}/notebook`);
     revalidatePath("/learn");
-    return { ok: true as const, quizId: result.quizId };
+    return {
+      ok: true as const,
+      quizId: result.quizId,
+      questionCount: result.questionCount,
+      requested: result.requested,
+      stoppedBy: result.stoppedBy,
+    };
   } catch (error) {
     if (error instanceof QuizGenerationError) return { ok: false as const, error: GENERATION_COPY[error.code] };
     return { ok: false as const, error: actionError(error, "Could not generate a quiz from these sources.") };

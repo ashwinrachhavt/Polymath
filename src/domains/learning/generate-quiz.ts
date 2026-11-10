@@ -14,7 +14,13 @@ import {
 } from "@/integrations/learning/quiz-generator";
 import { quizzes, quizQuestions, type QuizEvidence, type QuizSourceSnapshot } from "./schema";
 import { quizGenerationContext } from "./generation-context";
-import { defaultItemCount, generateInBatches, MAX_ITEM_COUNT, MIN_ITEM_COUNT } from "./item-count";
+import {
+  defaultItemCount,
+  generateInBatches,
+  MAX_ITEM_COUNT,
+  MIN_ITEM_COUNT,
+  type GenerationOutcome,
+} from "./item-count";
 
 /*
  * The quiz generator's domain half (learn-harness replication). Producing a
@@ -283,9 +289,10 @@ async function recordFailedQuiz(
  * MIN_ITEM_COUNT to MAX_ITEM_COUNT; omitted, it scales with the sources
  * (defaultItemCount). Questions are made in batches without repeats, and the
  * quiz is written once at the end: grading needs every question answered, so
- * a quiz never grows after someone can sit it. Returns the number of
- * questions actually stored, which can be fewer than requested when the
- * sources run out. A generation that cannot prove at least
+ * a quiz never grows after someone can sit it. Returns the questions stored,
+ * the count requested and why the run stopped (GenerationOutcome), so the
+ * surface can tell sources that support no more from a later batch that
+ * failed; a replay returns the stored values. A generation that cannot prove at least
  * MIN_QUIZ_QUESTIONS questions writes a `failed` row with the typed error so
  * the surface can say something honest; a document with no succeeded
  * extraction throws before anything is written.
@@ -300,7 +307,13 @@ export async function generateQuiz(
     idempotencyKey?: string;
   },
   generator?: QuizGenerator,
-): Promise<{ quizId: string; questionCount: number; droppedQuestions: number }> {
+): Promise<{
+  quizId: string;
+  questionCount: number;
+  droppedQuestions: number;
+  requested: number;
+  stoppedBy: GenerationOutcome;
+}> {
   const selectedIds = input.documentIds ?? [input.documentId];
   if (selectedIds[0] !== input.documentId) {
     throw new QuizGenerationError(
@@ -336,6 +349,8 @@ export async function generateQuiz(
         error: quizzes.error,
         sourceManifest: quizzes.sourceManifest,
         notebookId: quizzes.notebookId,
+        requestedCount: quizzes.requestedCount,
+        stoppedBy: quizzes.stoppedBy,
       })
       .from(quizzes)
       .where(and(eq(quizzes.workspaceId, auth.workspaceId), eq(quizzes.generationKey, input.idempotencyKey)))
@@ -351,7 +366,14 @@ export async function generateQuiz(
         );
       }
       if (existing.status === "ready") {
-        return { quizId: existing.id, questionCount: existing.questionCount, droppedQuestions: 0 };
+        return {
+          quizId: existing.id,
+          questionCount: existing.questionCount,
+          droppedQuestions: 0,
+          // Quizzes made before counts were recorded read as complete.
+          requested: existing.requestedCount ?? existing.questionCount,
+          stoppedBy: existing.stoppedBy ?? "complete",
+        };
       }
       throw new QuizGenerationError("generation_failed", existing.error ?? GENERATION_COPY.generation_failed);
     }
@@ -366,8 +388,8 @@ export async function generateQuiz(
 
   let proposedQuestions = 0;
   let droppedQuestions = 0;
-  async function proposeVerifiedQuestions(count: number, avoidPrompts: string[]) {
-    const options = { questionCount: count, learningContext, avoidPrompts };
+  async function proposeVerifiedQuestions(count: number, avoidPrompts: string[], part: number) {
+    const options = { questionCount: count, learningContext, avoidPrompts, part };
     let raw: { questions: GeneratedQuestion[] };
     if (sources.length === 1) {
       raw = await engine.generate(primary.text, options);
@@ -382,12 +404,13 @@ export async function generateQuiz(
     const verified = verifyQuizAcrossSources(sources, raw.questions, count);
     proposedQuestions += raw.questions.length;
     droppedQuestions += verified.droppedQuestions;
-    return { proposed: raw.questions.length, items: verified.questions };
+    return verified.questions;
   }
 
   let questions: VerifiedQuestion[];
+  let stoppedBy: GenerationOutcome;
   try {
-    questions = await generateInBatches(questionCount, proposeVerifiedQuestions);
+    ({ items: questions, stoppedBy } = await generateInBatches(questionCount, proposeVerifiedQuestions));
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : "Quiz generation failed.";
     await recordFailedQuiz(auth, {
@@ -431,6 +454,8 @@ export async function generateQuiz(
         title: title.slice(0, MAX_QUIZ_TITLE_CHARS),
         status: "ready",
         questionCount: questions.length,
+        requestedCount: questionCount,
+        stoppedBy,
         model: engine.name,
         promptVersion: QUIZ_PROMPT_VERSION,
         createdBy: auth.userId,
@@ -460,6 +485,8 @@ export async function generateQuiz(
           documentIds: selectedIds,
           sourceCount: manifest.length,
           droppedQuestions,
+          requested: questionCount,
+          stoppedBy,
           model: engine.name,
           promptVersion: QUIZ_PROMPT_VERSION,
         },
@@ -469,5 +496,5 @@ export async function generateQuiz(
     return row;
   });
 
-  return { quizId: quiz.id, questionCount: questions.length, droppedQuestions };
+  return { quizId: quiz.id, questionCount: questions.length, droppedQuestions, requested: questionCount, stoppedBy };
 }

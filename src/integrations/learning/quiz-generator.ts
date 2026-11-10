@@ -9,6 +9,7 @@ import {
 } from "@/integrations/generation/provider";
 import { providerEntry } from "@/integrations/providers/registry";
 import { drizzleQuotaStore, withQuota, type QuotaStore } from "@/integrations/providers/quota";
+import { sourceWindow } from "./source-window";
 
 /*
  * Turns a document's text into a short graded quiz (learn-harness
@@ -45,6 +46,8 @@ type QuizGeneratorOptions = {
   learningContext?: { missedQuestions: string[]; notHelpfulExamples: string[] };
   /** Prompts an earlier batch of this quiz already asked; the model writes new ones. */
   avoidPrompts?: string[];
+  /** Which window of a long source this call reads (sourceWindow); batch k reads window k. */
+  part?: number;
 };
 
 export interface QuizGenerator {
@@ -57,7 +60,7 @@ export interface QuizGenerator {
   ): Promise<{ questions: GeneratedQuestion[] }>;
 }
 
-export const QUIZ_PROMPT_VERSION = "learn-quiz@5";
+export const QUIZ_PROMPT_VERSION = "learn-quiz@6";
 
 const MAX_INPUT_CHARS = 12_000;
 
@@ -127,14 +130,14 @@ function fromGeneration(
     name: provider.name,
     generate(text, options) {
       const system = `${SYSTEM}${options?.questionCount ? ` Generate exactly ${options.questionCount} questions when the source supports them.` : ""}${contextInstruction(options?.learningContext)}${avoidInstruction(options?.avoidPrompts)}`;
-      return call(system, text.slice(0, MAX_INPUT_CHARS));
+      return call(system, sourceWindow(text, MAX_INPUT_CHARS, options?.part));
     },
     generateFromSources(sources, options) {
       const perSourceLimit = Math.floor((MAX_INPUT_CHARS * 0.75) / sources.length);
       const bounded = sources.map((source, sourceIndex) => ({
         sourceIndex,
         title: source.title.slice(0, 120),
-        text: source.text.slice(0, perSourceLimit),
+        text: sourceWindow(source.text, perSourceLimit, options?.part),
       }));
       const system = `${SYSTEM} Each question must include the zero-based sourceIndex for the one source that supports its answer and quote. Return that sourceIndex with every question.${options?.questionCount ? ` Generate exactly ${options.questionCount} questions when the sources support them.` : ""}${contextInstruction(options?.learningContext)}${avoidInstruction(options?.avoidPrompts)}`;
       return call(system, JSON.stringify({ sources: bounded }));

@@ -9,6 +9,7 @@ import {
 } from "@/integrations/generation/provider";
 import { providerEntry } from "@/integrations/providers/registry";
 import { drizzleQuotaStore, withQuota, type QuotaStore } from "@/integrations/providers/quota";
+import { sourceWindow } from "./source-window";
 
 type GeneratedFlashcard = {
   prompt: string;
@@ -26,10 +27,12 @@ export interface FlashcardGenerator {
       learningContext?: { missedQuestions: string[]; notHelpfulExamples: string[] };
       /** Prompts an earlier batch of this deck already made; the model writes new ones. */
       avoidPrompts?: string[];
+      /** Which window of a long source this call reads (sourceWindow); batch k reads window k. */
+      part?: number;
     },
   ): Promise<{ cards: GeneratedFlashcard[] }>;
 }
-export const FLASHCARD_PROMPT_VERSION = "learning-flashcards@2";
+export const FLASHCARD_PROMPT_VERSION = "learning-flashcards@3";
 const MAX_INPUT_CHARS = 12000;
 
 const response = z.object({
@@ -75,13 +78,13 @@ function fromGeneration(
       const bounded = sources.map((source, sourceIndex) => ({
         sourceIndex,
         title: source.title.slice(0, 120),
-        text: source.text.slice(0, perSourceLimit),
+        text: sourceWindow(source.text, perSourceLimit, options.part),
       }));
       const system =
         SYSTEM +
-        " Return up to " +
+        " Return exactly " +
         options.cardCount +
-        " useful cards. Include the zero-based sourceIndex on every card." +
+        " cards when the sources support them. Include the zero-based sourceIndex on every card." +
         contextInstruction(options.learningContext) +
         avoidInstruction(options.avoidPrompts);
       try {

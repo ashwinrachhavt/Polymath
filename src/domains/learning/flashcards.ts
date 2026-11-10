@@ -19,7 +19,13 @@ import {
   type FlashcardGenerator,
 } from "@/integrations/learning/flashcard-generator";
 import { flashcardGenerationContext } from "./generation-context";
-import { defaultItemCount, generateInBatches, MAX_ITEM_COUNT, MIN_ITEM_COUNT } from "./item-count";
+import {
+  defaultItemCount,
+  generateInBatches,
+  MAX_ITEM_COUNT,
+  MIN_ITEM_COUNT,
+  type GenerationOutcome,
+} from "./item-count";
 
 /** The fewest verified cards that make a deck worth keeping. */
 const MIN_FLASHCARDS = 3;
@@ -38,19 +44,34 @@ export class FlashcardError extends Error {
 }
 
 /**
+ * Why a deck's generation ended, or `in_progress` while its batches are still
+ * adding cards. A deck left unfinished longer than ABANDONED_AFTER_MS (the
+ * run died part-way) reads as `batch_failed`: its stored cards stay usable.
+ */
+export type DeckGenerationState = GenerationOutcome | "in_progress";
+
+/** Well past the longest batched run; an unfinished deck older than this was abandoned. */
+const ABANDONED_AFTER_MS = 10 * 60 * 1000;
+
+/**
  * Generate a source-grounded deck. `cardCount` is an exact request from
  * MIN_ITEM_COUNT to MAX_ITEM_COUNT; omitted, it scales with the sources
  * (defaultItemCount). Cards are made in batches and stored after each one,
- * so the first cards are usable while later batches run; the deck row is
- * written once MIN_FLASHCARDS cards are verified. Returns the number of
- * cards actually stored, which can be fewer than requested when the sources
- * run out. Replaying an idempotency key returns the stored deck and count.
+ * so the first cards are usable while later batches run.
+ *
+ * The deck row, its first cards and the audit row are written in one
+ * transaction once MIN_FLASHCARDS cards are verified; the deck's `stoppedBy`
+ * stays null until the run ends, so a replay can tell a finished deck from
+ * one still being made. Returns the cards stored, the count requested and
+ * why the run stopped, so the surface can say "Made 8; the sources support
+ * no more" apart from "Made 25; a later batch failed". Replaying an
+ * idempotency key returns the stored deck in the same shape.
  */
 export async function generateFlashcardDeck(
   auth: AuthContext,
   input: { notebookId: string; documentIds: string[]; cardCount?: number; idempotencyKey: string },
   generator?: FlashcardGenerator,
-): Promise<{ deckId: string; cardCount: number }> {
+): Promise<{ deckId: string; cardCount: number; requested: number; stoppedBy: DeckGenerationState }> {
   if (
     input.documentIds.length < 1 ||
     input.documentIds.length > 8 ||
@@ -80,7 +101,13 @@ export async function generateFlashcardDeck(
     title,
   }));
   const [prior] = await db
-    .select({ id: flashcardDecks.id, sourceManifest: flashcardDecks.sourceManifest })
+    .select({
+      id: flashcardDecks.id,
+      sourceManifest: flashcardDecks.sourceManifest,
+      requestedCount: flashcardDecks.requestedCount,
+      stoppedBy: flashcardDecks.stoppedBy,
+      updatedAt: flashcardDecks.updatedAt,
+    })
     .from(flashcardDecks)
     .where(
       and(eq(flashcardDecks.workspaceId, auth.workspaceId), eq(flashcardDecks.generationKey, input.idempotencyKey)),
@@ -94,7 +121,13 @@ export async function generateFlashcardDeck(
       .select({ count: sql<number>`count(*)::int` })
       .from(flashcards)
       .where(and(eq(flashcards.workspaceId, auth.workspaceId), eq(flashcards.deckId, prior.id)));
-    return { deckId: prior.id, cardCount: count };
+    const abandoned = Date.now() - prior.updatedAt.getTime() > ABANDONED_AFTER_MS;
+    return {
+      deckId: prior.id,
+      cardCount: count,
+      requested: prior.requestedCount ?? count,
+      stoppedBy: prior.stoppedBy ?? (abandoned ? "batch_failed" : "in_progress"),
+    };
   }
 
   const cardCount = input.cardCount ?? defaultItemCount(sources.reduce((sum, source) => sum + source.text.length, 0));
@@ -103,17 +136,17 @@ export async function generateFlashcardDeck(
   const title =
     sources.length === 1 ? sources[0].title + " flashcards" : sources[0].title + " + " + (sources.length - 1) + " more";
 
-  async function proposeVerifiedCards(count: number, avoidPrompts: string[]) {
+  async function proposeVerifiedCards(count: number, avoidPrompts: string[], part: number) {
     let proposed;
     try {
       proposed = await engine.generateFromSources(
         sources.map(({ title, text }) => ({ title, text })),
-        { cardCount: count, learningContext, avoidPrompts },
+        { cardCount: count, learningContext, avoidPrompts, part },
       );
     } catch {
       throw new FlashcardError("generation_failed", "Flashcards could not be generated. Try again.");
     }
-    const verified = proposed.cards.flatMap((card): VerifiedCard[] => {
+    return proposed.cards.flatMap((card): VerifiedCard[] => {
       const source = sources[card.sourceIndex];
       if (!source || !card.prompt.trim() || !card.answer.trim()) return [];
       const span = locateQuoteNormalized(source.text, card.quote);
@@ -131,7 +164,6 @@ export async function generateFlashcardDeck(
         },
       ];
     });
-    return { proposed: proposed.cards.length, items: verified };
   }
 
   // Cards wait in memory until MIN_FLASHCARDS are verified, so a source that
@@ -140,7 +172,16 @@ export async function generateFlashcardDeck(
   async function storeNewCards(made: readonly VerifiedCard[]) {
     if (made.length < MIN_FLASHCARDS) return;
     await withTransaction(async (tx) => {
-      const deckId = deck.id ?? (await insertDeck(tx));
+      let deckId = deck.id;
+      if (deckId) {
+        // Each batch bumps the deck, so a replay can tell a live run from an abandoned one.
+        await tx
+          .update(flashcardDecks)
+          .set({ updatedAt: new Date(), updatedBy: auth.userId })
+          .where(and(eq(flashcardDecks.id, deckId), eq(flashcardDecks.workspaceId, auth.workspaceId)));
+      } else {
+        deckId = await insertDeck(tx);
+      }
       await tx.insert(flashcards).values(
         made.slice(deck.stored).map((card, index) => ({
           workspaceId: auth.workspaceId,
@@ -168,14 +209,26 @@ export async function generateFlashcardDeck(
         generationKey: input.idempotencyKey,
         model: engine.name,
         promptVersion: FLASHCARD_PROMPT_VERSION,
+        requestedCount: cardCount,
         createdBy: auth.userId,
         updatedBy: auth.userId,
       })
       .returning({ id: flashcardDecks.id });
+    await recordAudit(
+      auth,
+      {
+        action: "learning.flashcards_generated",
+        subjectType: "flashcard_deck",
+        subjectId: row.id,
+        summary: "Started a deck of up to " + cardCount + " source-grounded flashcards",
+        metadata: { sourceCount: manifest.length, requested: cardCount, promptVersion: FLASHCARD_PROMPT_VERSION },
+      },
+      tx,
+    );
     return row.id;
   }
 
-  const made = await generateInBatches(cardCount, proposeVerifiedCards, storeNewCards);
+  const { items, stoppedBy } = await generateInBatches(cardCount, proposeVerifiedCards, storeNewCards);
   const deckId = deck.id;
   if (!deckId) {
     throw new FlashcardError(
@@ -183,15 +236,11 @@ export async function generateFlashcardDeck(
       "Not enough distinct flashcards could be verified against the selected sources.",
     );
   }
-
-  await recordAudit(auth, {
-    action: "learning.flashcards_generated",
-    subjectType: "flashcard_deck",
-    subjectId: deckId,
-    summary: "Generated " + made.length + " source-grounded flashcards",
-    metadata: { sourceCount: manifest.length, cardCount: made.length, promptVersion: FLASHCARD_PROMPT_VERSION },
-  });
-  return { deckId, cardCount: made.length };
+  await db
+    .update(flashcardDecks)
+    .set({ stoppedBy, updatedAt: new Date(), updatedBy: auth.userId })
+    .where(and(eq(flashcardDecks.id, deckId), eq(flashcardDecks.workspaceId, auth.workspaceId)));
+  return { deckId, cardCount: items.length, requested: cardCount, stoppedBy };
 }
 
 export async function getFlashcardDeck(

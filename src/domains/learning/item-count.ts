@@ -49,41 +49,56 @@ export function dedupeByPrompt<T extends { prompt: string }>(items: T[]): T[] {
 }
 
 /**
+ * Why a batched run ended:
+ * - `complete`: it made every item requested.
+ * - `source_exhausted`: the model ran out of distinct, verifiable items, so the
+ *   sources support no more.
+ * - `batch_failed`: a later model call failed (quota, timeout, unreadable
+ *   answer), so more items may exist. The items made before it are kept.
+ */
+export type GenerationOutcome = "complete" | "source_exhausted" | "batch_failed";
+
+/**
  * Makes up to `total` distinct items, one batch at a time.
  *
- * - `propose(count, avoidPrompts)` makes one model call for `count` items and
- *   returns how many the model proposed plus the ones that survived
- *   verification. `avoidPrompts` lists every prompt already kept, so a later
- *   call can steer away from repeats; repeats that still come back are dropped.
+ * - `propose(count, avoidPrompts, batch)` makes one model call for `count`
+ *   items and returns the ones that survived verification. `avoidPrompts`
+ *   lists every prompt already kept, so a later call can steer away from
+ *   repeats; repeats that still come back are dropped. `batch` is the call's
+ *   zero-based index, so the caller can show each call a different part of a
+ *   long source.
  * - `keep(made)` runs after each batch that added items, before the next
  *   call, with everything kept so far, so a caller can persist as it goes.
+ *   A batch's items count as made only once `keep` succeeds.
  *
- * A batch that comes back short or adds nothing new means the source has no
- * more to give, so the run stops there. A failed first call throws; a failed
- * later call ends the run with what the earlier calls made.
+ * A batch that adds fewer than half the items it asked for means the source
+ * has little more to give, so the run stops there. A failure in the first
+ * batch throws; a failure in a later one ends the run with what the earlier
+ * batches made and the outcome `batch_failed`.
  */
 export async function generateInBatches<T extends { prompt: string }>(
   total: number,
-  propose: (count: number, avoidPrompts: string[]) => Promise<{ proposed: number; items: T[] }>,
+  propose: (count: number, avoidPrompts: string[], batch: number) => Promise<T[]>,
   keep: (made: readonly T[]) => Promise<void> = async () => {},
-): Promise<T[]> {
+): Promise<{ items: T[]; stoppedBy: GenerationOutcome }> {
   const made: T[] = [];
-  for (const count of planBatches(total)) {
-    let batch: { proposed: number; items: T[] };
+  for (const [batch, count] of planBatches(total).entries()) {
+    let fresh: T[];
     try {
-      batch = await propose(
+      const proposed = await propose(
         count,
         made.map((item) => item.prompt),
+        batch,
       );
+      fresh = dedupeByPrompt([...made, ...proposed]).slice(made.length, made.length + count);
+      if (fresh.length > 0) await keep([...made, ...fresh]);
     } catch (cause) {
       if (made.length === 0) throw cause;
       console.error("[learning] a later generation batch failed; keeping the items already made", cause);
-      break;
+      return { items: made, stoppedBy: "batch_failed" };
     }
-    const fresh = dedupeByPrompt([...made, ...batch.items]).slice(made.length, made.length + count);
     made.push(...fresh);
-    if (fresh.length > 0) await keep(made);
-    if (batch.proposed < count || fresh.length === 0) break;
+    if (fresh.length * 2 < count) break;
   }
-  return made;
+  return { items: made, stoppedBy: made.length >= total ? "complete" : "source_exhausted" };
 }
