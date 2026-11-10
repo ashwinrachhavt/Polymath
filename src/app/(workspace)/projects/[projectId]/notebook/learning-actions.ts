@@ -11,14 +11,14 @@ import { requireRole } from "@/lib/auth/guards";
 const inputSchema = z.object({
   projectId: z.uuid(),
   documentIds: z.array(z.uuid()).min(1).max(8),
-  questionCount: z.number().int().min(3).max(6),
+  questionCount: z.number().int().min(5).max(100).optional(),
   idempotencyKey: z.uuid(),
 });
 
 export async function generateNotebookQuizAction(input: z.input<typeof inputSchema>) {
   const parsed = inputSchema.safeParse(input);
   if (!parsed.success)
-    return { ok: false as const, error: "Choose one to eight ready sources and three to six questions." };
+    return { ok: false as const, error: "Choose one to eight ready sources and 5 to 100 questions." };
 
   const auth = await getAuthContext();
   requireRole(auth, "member");

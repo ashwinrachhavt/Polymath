@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { MIN_QUIZ_QUESTIONS, MAX_QUIZ_QUESTIONS, verifyQuiz } from "@/domains/learning/generate-quiz";
+import { MIN_QUIZ_QUESTIONS, verifyQuiz } from "@/domains/learning/generate-quiz";
+import { MAX_ITEM_COUNT } from "@/domains/learning/item-count";
 import { locateQuoteNormalized } from "@/domains/learning/locate-quote";
 import type { GeneratedQuestion } from "@/integrations/learning/quiz-generator";
 
@@ -77,11 +78,10 @@ describe("verifyQuiz", () => {
 
   it("caps the quiz at the maximum question count", () => {
     const quote = "The deposit is held in escrow.";
-    const out = verifyQuiz(
-      TEXT,
-      Array.from({ length: 9 }, (_, i) => question({ quote, prompt: `Question ${i}?` })),
-    );
-    expect(out.questions).toHaveLength(MAX_QUIZ_QUESTIONS);
+    const raw = Array.from({ length: MAX_ITEM_COUNT + 3 }, (_, i) => question({ quote, prompt: `Question ${i}?` }));
+    expect(verifyQuiz(TEXT, raw).questions).toHaveLength(MAX_ITEM_COUNT);
+    // A batch passes its own size as the limit.
+    expect(verifyQuiz(TEXT, raw, 6).questions).toHaveLength(6);
   });
 
   it("keeps every verbatim substring as evidence with its exact span, and drops single-character mutations (fuzz)", () => {

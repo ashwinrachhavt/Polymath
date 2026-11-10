@@ -10,6 +10,10 @@ This is the reading summary's discipline (ASH-292) with one deviation: there
 is no generate-then-accept split, because a quiz is low-stakes, regenerable,
 quota-gated content. A quiz request key replays a completed generation instead of adding another row. Starting a deliberate new quiz uses a new key.
 
+## How many items
+
+Quizzes and flashcard decks take an exact count from 5 to 100, or scale with the selected sources when none is given (`item-count.ts`: about one item per 600 characters, 20 to 50 for a substantial source, never padded for a short one). Generation runs in sequential batches of at most 25. Each later batch is told the prompts already made, repeats are dropped by prompt, and a batch that comes back short ends the run, so a thin source gives fewer items rather than an error. Flashcards are stored after every batch. A quiz is stored once at the end, because grading needs every question answered and a quiz never grows after someone can sit it.
+
 ## Grading and the award
 
 `gradeAttempt` (`grading.ts`) is a pure fold: value-keyed (display-order

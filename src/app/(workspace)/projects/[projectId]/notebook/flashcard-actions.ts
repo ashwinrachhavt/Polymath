@@ -12,13 +12,13 @@ const projectIdSchema = z.uuid();
 const generateSchema = z.object({
   projectId: z.uuid(),
   documentIds: z.array(z.uuid()).min(1).max(8),
-  cardCount: z.number().int().min(3).max(15),
+  cardCount: z.number().int().min(5).max(100).optional(),
   idempotencyKey: z.uuid(),
 });
 
 export async function generateNotebookFlashcardsAction(input: z.input<typeof generateSchema>) {
   const parsed = generateSchema.safeParse(input);
-  if (!parsed.success) return { ok: false as const, error: "Choose one to eight ready sources and 3 to 15 cards." };
+  if (!parsed.success) return { ok: false as const, error: "Choose one to eight ready sources and 5 to 100 cards." };
   const auth = await getAuthContext();
   requireRole(auth, "member");
   try {

@@ -21,10 +21,15 @@ export interface FlashcardGenerator {
   readonly name: string;
   generateFromSources(
     sources: FlashcardGeneratorSource[],
-    options: { cardCount: number; learningContext?: { missedQuestions: string[]; notHelpfulExamples: string[] } },
+    options: {
+      cardCount: number;
+      learningContext?: { missedQuestions: string[]; notHelpfulExamples: string[] };
+      /** Prompts an earlier batch of this deck already made; the model writes new ones. */
+      avoidPrompts?: string[];
+    },
   ): Promise<{ cards: GeneratedFlashcard[] }>;
 }
-export const FLASHCARD_PROMPT_VERSION = "learning-flashcards@1";
+export const FLASHCARD_PROMPT_VERSION = "learning-flashcards@2";
 const MAX_INPUT_CHARS = 12000;
 
 const response = z.object({
@@ -38,7 +43,7 @@ const response = z.object({
       }),
     )
     .min(1)
-    .max(20),
+    .max(25),
 });
 
 const SYSTEM =
@@ -51,6 +56,12 @@ function contextInstruction(context?: { missedQuestions: string[]; notHelpfulExa
   const avoid = context.notHelpfulExamples.slice(0, 6).map((item) => item.slice(0, 180));
   if (missed.length === 0 && avoid.length === 0) return "";
   return ` Learner practice history (account-specific): make useful recall cards for these difficult concepts when the selected sources support them: ${JSON.stringify(missed)}. Do not repeat these cards because the learner rated their earlier deck not helpful: ${JSON.stringify(avoid)}.`;
+}
+
+function avoidInstruction(prompts: string[] = []): string {
+  if (prompts.length === 0) return "";
+  const bounded = prompts.map((prompt) => prompt.slice(0, 120));
+  return ` This deck already has these cards, so write different ones that test other concepts: ${JSON.stringify(bounded)}.`;
 }
 
 function fromGeneration(
@@ -71,7 +82,8 @@ function fromGeneration(
         " Return up to " +
         options.cardCount +
         " useful cards. Include the zero-based sourceIndex on every card." +
-        contextInstruction(options.learningContext);
+        contextInstruction(options.learningContext) +
+        avoidInstruction(options.avoidPrompts);
       try {
         const result = await run({ system, prompt: JSON.stringify({ sources: bounded }) });
         return response.parse(JSON.parse(result.text));

@@ -131,7 +131,7 @@ export function LearningStudio({ projectId, sources }: { projectId: string; sour
               }}
               className="h-7 rounded-md border border-border bg-background px-2 text-body-dense"
             >
-              {[3, 4, 5, 6].map((count) => (
+              {[5, 10, 25, 50].map((count) => (
                 <option key={count} value={count}>
                   {count}
                 </option>
@@ -167,7 +167,7 @@ export function LearningStudio({ projectId, sources }: { projectId: string; sour
                 }}
                 className="h-7 rounded-md border border-border bg-background px-2 text-body-dense"
               >
-                {[3, 5, 8, 10, 15].map((count) => (
+                {[5, 10, 25, 50].map((count) => (
                   <option key={count} value={count}>
                     {count}
                   </option>
