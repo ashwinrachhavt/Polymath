@@ -1,90 +1,105 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { WorkStatus } from "@/components/work-status";
+import { MAX_ITEM_COUNT, MIN_ITEM_COUNT } from "@/domains/learning/item-count";
 import { generateNotebookQuizAction } from "./learning-actions";
 import { generateNotebookFlashcardsAction } from "./flashcard-actions";
 import { startNotebookExplainItAction } from "./explain-actions";
 
+/*
+ * The Notebook's one learning action. Learn this opens a sheet with three
+ * choices; the default sends every ready source and no count, so the server
+ * sizes the set from the sources. Adjust holds the source checkboxes and an
+ * exact count. What is made appears in Results on this page: the action's
+ * revalidation re-renders the Notebook, so nothing navigates.
+ */
+
 type LearningSource = { documentId: string; title: string };
+type Kind = "quiz" | "flashcards" | "explain";
+
+/** The most sources one request reads; the actions enforce the same cap. */
+const MAX_SOURCES = 8;
+
+const CHOICES: Array<{ kind: Kind; label: string; blurb: string; noun: string | null }> = [
+  { kind: "quiz", label: "Quiz", blurb: "Questions with instant feedback.", noun: "questions" },
+  { kind: "flashcards", label: "Flashcards", blurb: "Cards you rate to schedule reviews.", noun: "flashcards" },
+  { kind: "explain", label: "Explain It", blurb: "Teach it back in your own words.", noun: null },
+];
+
+function sourcesLine(chosen: number, ready: number): string {
+  if (chosen === ready) return ready === 1 ? "Uses your 1 ready source." : `Uses all ${ready} ready sources.`;
+  return `Uses ${chosen} of ${ready} ready sources.`;
+}
 
 export function LearningStudio({ projectId, sources }: { projectId: string; sources: LearningSource[] }) {
-  const router = useRouter();
-  const [selectedIds, setSelectedIds] = useState<string[]>(sources[0] ? [sources[0].documentId] : []);
-  const [questionCount, setQuestionCount] = useState(5);
+  const [open, setOpen] = useState(false);
+  const [kind, setKind] = useState<Kind>("quiz");
+  // Only the user's changes are held; everything else follows the ready sources,
+  // so a source that finishes later is included and a removed one drops out.
+  const [deselected, setDeselected] = useState<string[]>([]);
+  const [added, setAdded] = useState<string[]>([]);
+  const defaultIds = sources.slice(0, MAX_SOURCES).map((source) => source.documentId);
+  const selectedIds = sources
+    .map((source) => source.documentId)
+    .filter((id) => (defaultIds.includes(id) ? !deselected.includes(id) : added.includes(id)));
+  const [countText, setCountText] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [requestKey, setRequestKey] = useState<string | null>(null);
-  const [cardCount, setCardCount] = useState(10);
-  const [flashcardError, setFlashcardError] = useState<string | null>(null);
-  const [flashcardRequestKey, setFlashcardRequestKey] = useState<string | null>(null);
-  const [explainError, setExplainError] = useState<string | null>(null);
-  const [explainRequestKey, setExplainRequestKey] = useState<string | null>(null);
+  const [summary, setSummary] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  // A retry of the same request replays its key; any change makes a new one.
+  const attempt = useRef<{ signature: string; key: string } | null>(null);
+
+  const choice = CHOICES.find((item) => item.kind === kind) ?? CHOICES[0];
+  const trimmed = countText.trim();
+  const count = trimmed === "" ? undefined : Number(trimmed);
+  const countValid =
+    count === undefined || (Number.isInteger(count) && count >= MIN_ITEM_COUNT && count <= MAX_ITEM_COUNT);
+  const problem =
+    sources.length === 0
+      ? "A source must finish reading before it can be studied."
+      : selectedIds.length === 0
+        ? "Choose at least one source."
+        : selectedIds.length > MAX_SOURCES
+          ? `Choose up to ${MAX_SOURCES} sources.`
+          : choice.noun && !countValid
+            ? `Choose a number from ${MIN_ITEM_COUNT} to ${MAX_ITEM_COUNT}, or leave it blank.`
+            : null;
 
   function toggleSource(documentId: string) {
-    setRequestKey(null);
-    setFlashcardRequestKey(null);
-    setExplainRequestKey(null);
-    setSelectedIds((current) =>
-      current.includes(documentId) ? current.filter((id) => id !== documentId) : [...current, documentId],
-    );
+    const on = selectedIds.includes(documentId);
+    if (defaultIds.includes(documentId)) {
+      setDeselected((current) => (on ? [...current, documentId] : current.filter((id) => id !== documentId)));
+    } else {
+      setAdded((current) => (on ? current.filter((id) => id !== documentId) : [...current, documentId]));
+    }
   }
 
-  function createQuiz() {
+  function create() {
+    if (problem) return;
     setError(null);
+    const documentIds = sources.map((s) => s.documentId).filter((id) => selectedIds.includes(id));
+    const itemCount = choice.noun ? count : undefined;
+    const signature = JSON.stringify([kind, documentIds, itemCount]);
+    if (attempt.current?.signature !== signature) attempt.current = { signature, key: crypto.randomUUID() };
+    const idempotencyKey = attempt.current.key;
     startTransition(async () => {
-      const idempotencyKey = requestKey ?? crypto.randomUUID();
-      setRequestKey(idempotencyKey);
-      const result = await generateNotebookQuizAction({
-        projectId,
-        documentIds: selectedIds,
-        questionCount,
-        idempotencyKey,
-      });
+      const result =
+        kind === "quiz"
+          ? await generateNotebookQuizAction({ projectId, documentIds, questionCount: itemCount, idempotencyKey })
+          : kind === "flashcards"
+            ? await generateNotebookFlashcardsAction({ projectId, documentIds, cardCount: itemCount, idempotencyKey })
+            : await startNotebookExplainItAction({ projectId, documentIds, idempotencyKey });
+      attempt.current = null;
       if (!result.ok) {
         setError(result.error);
-        setRequestKey(null);
         return;
       }
-      router.push(`/projects/${projectId}/notebook?quiz=${result.quizId}`);
-    });
-  }
-
-  function startExplainIt() {
-    setExplainError(null);
-    startTransition(async () => {
-      const idempotencyKey = explainRequestKey ?? crypto.randomUUID();
-      setExplainRequestKey(idempotencyKey);
-      const result = await startNotebookExplainItAction({ projectId, documentIds: selectedIds, idempotencyKey });
-      if (!result.ok) {
-        setExplainError(result.error);
-        setExplainRequestKey(null);
-        return;
-      }
-      router.push("/projects/" + projectId + "/notebook/explain?session=" + result.sessionId);
-    });
-  }
-
-  function createFlashcards() {
-    setFlashcardError(null);
-    startTransition(async () => {
-      const idempotencyKey = flashcardRequestKey ?? crypto.randomUUID();
-      setFlashcardRequestKey(idempotencyKey);
-      const result = await generateNotebookFlashcardsAction({
-        projectId,
-        documentIds: selectedIds,
-        cardCount,
-        idempotencyKey,
-      });
-      if (!result.ok) {
-        setFlashcardError(result.error);
-        setFlashcardRequestKey(null);
-        return;
-      }
-      router.push("/projects/" + projectId + "/notebook/flashcards?deck=" + result.deckId);
+      setSummary(result.summary);
+      setOpen(false);
     });
   }
 
@@ -98,118 +113,106 @@ export function LearningStudio({ projectId, sources }: { projectId: string; sour
           Up next
         </Link>
       </div>
-      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Build a quiz from selected notebook sources.</p>
-      {sources.length === 0 ? (
-        <p className="mt-2 text-xs text-muted-foreground">A source must finish reading before it can be studied.</p>
-      ) : (
-        <>
-          <fieldset className="mt-2 flex max-h-48 flex-col gap-1 overflow-y-auto">
-            <legend className="sr-only">Quiz sources</legend>
-            {sources.map((source) => (
+      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+        Study from this notebook&apos;s sources with a quiz, flashcards or Explain It.
+      </p>
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <Button
+          onClick={() => {
+            setError(null);
+            setOpen(true);
+          }}
+        >
+          Learn this
+        </Button>
+        <Link
+          href={"/projects/" + projectId + "/notebook/graph"}
+          className="text-xs text-muted-foreground underline-offset-4 hover:underline"
+        >
+          Open idea graph
+        </Link>
+      </div>
+      {summary ? (
+        <p role="status" className="mt-2 text-xs leading-relaxed text-muted-foreground">
+          {summary}
+        </p>
+      ) : null}
+
+      <Sheet open={open} onOpenChange={(next) => (pending ? undefined : setOpen(next))}>
+        <SheetContent side="right" className="overflow-y-auto p-4">
+          <SheetHeader className="p-0">
+            <SheetTitle>Learn this</SheetTitle>
+            <SheetDescription>
+              {sources.length === 0 ? "No ready sources yet." : sourcesLine(selectedIds.length, sources.length)}
+            </SheetDescription>
+          </SheetHeader>
+          <div role="radiogroup" aria-label="What to make" className="flex flex-col gap-1">
+            {CHOICES.map((item) => (
               <label
-                key={source.documentId}
-                className="flex items-start gap-2 rounded px-1 py-1 text-xs hover:bg-muted"
+                key={item.kind}
+                className={`flex cursor-pointer items-start gap-2 rounded-md px-2 py-2 hover:bg-muted ${
+                  kind === item.kind ? "bg-muted" : ""
+                }`}
               >
                 <input
-                  type="checkbox"
-                  checked={selectedIds.includes(source.documentId)}
-                  onChange={() => toggleSource(source.documentId)}
-                  className="mt-0.5"
+                  type="radio"
+                  name="learn-kind"
+                  value={item.kind}
+                  checked={kind === item.kind}
+                  onChange={() => setKind(item.kind)}
+                  className="mt-1"
                 />
-                <span className="min-w-0 break-words">{source.title}</span>
+                <span className="min-w-0 text-body-dense font-medium">
+                  {item.label}
+                  <span className="block text-xs font-normal text-muted-foreground">{item.blurb}</span>
+                </span>
               </label>
             ))}
-          </fieldset>
-          <label className="mt-2 flex items-center justify-between gap-2 text-xs">
-            <span>Questions</span>
-            <select
-              aria-label="Number of quiz questions"
-              value={questionCount}
-              onChange={(event) => {
-                setRequestKey(null);
-                setQuestionCount(Number(event.target.value));
-              }}
-              className="h-7 rounded-md border border-border bg-background px-2 text-body-dense"
-            >
-              {[3, 4, 5, 6].map((count) => (
-                <option key={count} value={count}>
-                  {count}
-                </option>
+          </div>
+          <details className="rounded-md border border-border px-3 py-2">
+            <summary className="cursor-pointer text-body-dense">Adjust</summary>
+            <fieldset className="mt-2 flex max-h-48 flex-col gap-1 overflow-y-auto">
+              <legend className="sr-only">Sources</legend>
+              {sources.map((source) => (
+                <label
+                  key={source.documentId}
+                  className="flex items-start gap-2 rounded px-1 py-1 text-xs hover:bg-muted"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.includes(source.documentId)}
+                    onChange={() => toggleSource(source.documentId)}
+                    className="mt-0.5"
+                  />
+                  <span className="min-w-0 break-words">{source.title}</span>
+                </label>
               ))}
-            </select>
-          </label>
-          <Button
-            className="mt-2 w-full"
-            size="sm"
-            variant="outline"
-            disabled={pending || selectedIds.length === 0 || selectedIds.length > 8}
-            onClick={createQuiz}
-          >
-            {pending ? "Building quiz…" : "Create quiz"}
+            </fieldset>
+            {choice.noun ? (
+              <label className="mt-3 flex items-center justify-between gap-2 text-xs">
+                <span>How many {choice.noun}</span>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={MIN_ITEM_COUNT}
+                  max={MAX_ITEM_COUNT}
+                  value={countText}
+                  placeholder="Automatic"
+                  onChange={(event) => setCountText(event.target.value)}
+                  className="h-8 w-24 rounded-md border border-border bg-background px-2 text-body-dense"
+                />
+              </label>
+            ) : (
+              <p className="mt-3 text-xs text-muted-foreground">Explain It sets its own length.</p>
+            )}
+          </details>
+          {problem ? <p className="text-xs text-muted-foreground">{problem}</p> : null}
+          {error ? <WorkStatus state={{ phase: "failed", label: error }} /> : null}
+          <Button disabled={pending || problem !== null} onClick={create}>
+            {pending ? "Creating…" : "Create"}
           </Button>
-          {selectedIds.length > 8 ? (
-            <p className="mt-1 text-xs text-muted-foreground">Select up to eight sources.</p>
-          ) : null}
-          {error ? <WorkStatus state={{ phase: "failed", label: error }} className="mt-2" /> : null}
-          <div className="mt-4 border-t border-border pt-3">
-            <h3 className="text-body-dense font-medium">Flashcards</h3>
-            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-              Generate cards on request, then rate recall to schedule your personal review queue.
-            </p>
-            <label className="mt-2 flex items-center justify-between gap-2 text-xs">
-              <span>Cards</span>
-              <select
-                aria-label="Number of flashcards"
-                value={cardCount}
-                onChange={(event) => {
-                  setFlashcardRequestKey(null);
-                  setCardCount(Number(event.target.value));
-                }}
-                className="h-7 rounded-md border border-border bg-background px-2 text-body-dense"
-              >
-                {[3, 5, 8, 10, 15].map((count) => (
-                  <option key={count} value={count}>
-                    {count}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <Button
-              className="mt-2 w-full"
-              size="sm"
-              variant="outline"
-              disabled={pending || selectedIds.length === 0 || selectedIds.length > 8}
-              onClick={createFlashcards}
-            >
-              {pending ? "Making flashcards…" : "Generate flashcards"}
-            </Button>
-            {flashcardError ? <WorkStatus state={{ phase: "failed", label: flashcardError }} className="mt-2" /> : null}
-          </div>
-          <div className="mt-4 border-t border-border pt-3">
-            <h3 className="text-body-dense font-medium">Explain It</h3>
-            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-              Explain a concept in your own words. Follow-up questions adapt to your answer and cite the selected
-              sources.
-            </p>
-            <Button
-              className="mt-2 w-full"
-              size="sm"
-              variant="outline"
-              disabled={pending || selectedIds.length === 0 || selectedIds.length > 8}
-              onClick={startExplainIt}
-            >
-              {pending ? "Starting…" : "Start Explain It"}
-            </Button>
-            {explainError ? <WorkStatus state={{ phase: "failed", label: explainError }} className="mt-2" /> : null}
-          </div>
-          <Link
-            href={"/projects/" + projectId + "/notebook/graph"}
-            className="mt-4 block rounded-md border border-border px-3 py-2 text-center text-sm hover:bg-muted"
-          >
-            Open idea graph
-          </Link>
-        </>
-      )}
+        </SheetContent>
+      </Sheet>
     </section>
   );
 }

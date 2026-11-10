@@ -36,23 +36,6 @@ async function ownedProject(auth: AuthContext, projectId: string) {
   return project;
 }
 
-/**
- * The context prefix a project-scoped session or automation run is injected
- * with: custom instructions, then memory. One builder, so a session started
- * from the page and one started by the ticker read the same prompt shape.
- */
-export function buildProjectContextPrefix(
-  project: { title: string; instructions: string | null },
-  memories: Array<{ content: string }>,
-): string {
-  const parts: string[] = [`Project: ${project.title}.`];
-  if (project.instructions?.trim()) parts.push(`Project instructions:\n${project.instructions.trim()}`);
-  if (memories.length > 0) {
-    parts.push(`What this project remembers:\n${memories.map((m) => `- ${m.content}`).join("\n")}`);
-  }
-  return parts.join("\n\n");
-}
-
 // --- Automations ---
 
 export async function listAutomations(auth: AuthContext, projectId: string) {

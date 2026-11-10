@@ -142,6 +142,55 @@ suite("learning loop", () => {
     }
   });
 
+  it("a 30-question request runs two batches, tells the second what exists, and drops a repeat", async () => {
+    const auth = await seed();
+    const { doc } = await seedDocument(auth, TEXT);
+    const [template] = leaseQuestions();
+    const calls: Array<{ questionCount?: number; avoidPrompts: string[] }> = [];
+    const batching = {
+      name: "fixture:quiz",
+      generate: async (
+        _text: string,
+        options?: { questionCount?: number; avoidPrompts?: string[] },
+      ): Promise<{ questions: ReturnType<typeof leaseQuestions> }> => {
+        calls.push({ questionCount: options?.questionCount, avoidPrompts: options?.avoidPrompts ?? [] });
+        const offset = (calls.length - 1) * 25;
+        const questions = Array.from({ length: options?.questionCount ?? 0 }, (_, i) => ({
+          ...template,
+          prompt: `Rent question ${offset + i}?`,
+        }));
+        // The second batch repeats a first-batch prompt in different case.
+        if (calls.length === 2) questions[0] = { ...template, prompt: "RENT question 0?" };
+        return { questions };
+      },
+    };
+
+    const idempotencyKey = crypto.randomUUID();
+    const out = await generate.generateQuiz(auth, { documentId: doc.id, questionCount: 30, idempotencyKey }, batching);
+
+    expect(calls.map((call) => call.questionCount)).toEqual([25, 5]);
+    expect(calls[1].avoidPrompts).toHaveLength(25);
+    expect(out).toMatchObject({ questionCount: 29, requested: 30, stoppedBy: "source_exhausted" });
+    const stored = await db.select().from(quizQuestions).where(eq(quizQuestions.quizId, out.quizId));
+    expect(stored).toHaveLength(29);
+    const [quiz] = await db.select().from(quizzes).where(eq(quizzes.id, out.quizId));
+    expect(quiz).toMatchObject({ questionCount: 29, requestedCount: 30, stoppedBy: "source_exhausted" });
+
+    // A replay of the same request returns the stored quiz and count without a model call.
+    const replay = await generate.generateQuiz(
+      auth,
+      { documentId: doc.id, questionCount: 30, idempotencyKey },
+      batching,
+    );
+    expect(replay).toMatchObject({
+      quizId: out.quizId,
+      questionCount: 29,
+      requested: 30,
+      stoppedBy: "source_exhausted",
+    });
+    expect(calls).toHaveLength(2);
+  });
+
   it("refuses a document with no succeeded extraction and persists nothing", async () => {
     const auth = await seed();
     await seedDocument(auth, null, "failed");

@@ -9,6 +9,7 @@ import {
 } from "@/integrations/generation/provider";
 import { providerEntry } from "@/integrations/providers/registry";
 import { drizzleQuotaStore, withQuota, type QuotaStore } from "@/integrations/providers/quota";
+import { sourceWindow } from "./source-window";
 
 /*
  * Turns a document's text into a short graded quiz (learn-harness
@@ -40,24 +41,26 @@ export type GeneratedQuestion = {
 };
 
 type QuizGeneratorSource = { title: string; text: string };
+type QuizGeneratorOptions = {
+  questionCount?: number;
+  learningContext?: { missedQuestions: string[]; notHelpfulExamples: string[] };
+  /** Prompts an earlier batch of this quiz already asked; the model writes new ones. */
+  avoidPrompts?: string[];
+  /** Which window of a long source this call reads (sourceWindow); batch k reads window k. */
+  part?: number;
+};
 
 export interface QuizGenerator {
   /** Recorded on the quiz row, e.g. "openrouter:openai/gpt-4o-mini". */
   readonly name: string;
-  generate(
-    extractionText: string,
-    options?: {
-      questionCount?: number;
-      learningContext?: { missedQuestions: string[]; notHelpfulExamples: string[] };
-    },
-  ): Promise<{ questions: GeneratedQuestion[] }>;
+  generate(extractionText: string, options?: QuizGeneratorOptions): Promise<{ questions: GeneratedQuestion[] }>;
   generateFromSources?(
     sources: QuizGeneratorSource[],
-    options?: { questionCount?: number; learningContext?: { missedQuestions: string[]; notHelpfulExamples: string[] } },
+    options?: QuizGeneratorOptions,
   ): Promise<{ questions: GeneratedQuestion[] }>;
 }
 
-export const QUIZ_PROMPT_VERSION = "learn-quiz@4";
+export const QUIZ_PROMPT_VERSION = "learn-quiz@6";
 
 const MAX_INPUT_CHARS = 12_000;
 
@@ -78,17 +81,17 @@ const questionSchema = z.object({
 });
 
 const response = z.object({
-  questions: z.array(questionSchema).min(1).max(10),
+  questions: z.array(questionSchema).min(1).max(25),
 });
 
-const SYSTEM = `You write a short quiz over a document so a reader can check what they learned. Return JSON with exactly this shape: {"questions":[{"prompt","choices":[{"value","label"}],"answerValue","explanation","quote"}]}.
+const SYSTEM = `You write a quiz over a document so a reader can check what they learned. Return JSON with exactly this shape: {"questions":[{"prompt","choices":[{"value","label"}],"answerValue","explanation","quote"}]}.
 The user message is the document text, and it is your ONLY source. You may recognize the text from training - do not answer from memory anyway: every fact, every question, and every quote must come from the text you were given, exactly as printed there. If a question would need a part of the document that is not present in the text you received, drop it.
 "prompt": one question answerable ONLY from the document - never a question about the document itself.
 "choices": one correct option plus 2 to 4 wrong options. Each "label" is a bare claim - no justification inside an option; the reasoning belongs in "explanation". Write the correct claim first, then build each wrong option by mutating it from one specific, believable misconception, keeping the same sentence skeleton, length, and register, so the correct answer never leaks by format. Never "all of the above", never "none of the above". "value" is a short stable id for the option, unique within the question.
 "answerValue": the correct option's "value", exactly.
 "explanation": why the correct claim is true and the tempting wrong ones are not. Required.
 "quote": a contiguous span of the provided text, copied character-for-character as printed there (punctuation, capitalization, spelling - including odd spacing or fragments from the source). Never reconstruct it from memory, never tidy it, never splice non-adjacent sentences. Keep it to one sentence, at most about 30 words. If no passage in the provided text supports a question, drop the question.
-3 to 6 questions. Never invent a fact, a quote, or a question to fill the shape. ${untrustedDataClauseJsonSafe("article")}`;
+Never invent a fact, a quote, or a question to fill the shape; return fewer questions instead. ${untrustedDataClauseJsonSafe("article")}`;
 
 function contextInstruction(context?: { missedQuestions: string[]; notHelpfulExamples: string[] }): string {
   if (!context) return "";
@@ -96,6 +99,12 @@ function contextInstruction(context?: { missedQuestions: string[]; notHelpfulExa
   const avoid = context.notHelpfulExamples.slice(0, 6).map((item) => item.slice(0, 180));
   if (missed.length === 0 && avoid.length === 0) return "";
   return ` Learner practice history (account-specific): revisit these concepts when the selected sources support them: ${JSON.stringify(missed)}. Avoid repeating these questions because the learner rated their earlier quiz not helpful: ${JSON.stringify(avoid)}.`;
+}
+
+function avoidInstruction(prompts: string[] = []): string {
+  if (prompts.length === 0) return "";
+  const bounded = prompts.map((prompt) => prompt.slice(0, 120));
+  return ` This quiz already asks these questions, so write different ones that test other ideas: ${JSON.stringify(bounded)}.`;
 }
 
 function fromGeneration(
@@ -120,17 +129,17 @@ function fromGeneration(
   return {
     name: provider.name,
     generate(text, options) {
-      const system = `${SYSTEM}${options?.questionCount ? ` Generate exactly ${options.questionCount} questions when the source supports them.` : ""}${contextInstruction(options?.learningContext)}`;
-      return call(system, text.slice(0, MAX_INPUT_CHARS));
+      const system = `${SYSTEM}${options?.questionCount ? ` Generate exactly ${options.questionCount} questions when the source supports them.` : ""}${contextInstruction(options?.learningContext)}${avoidInstruction(options?.avoidPrompts)}`;
+      return call(system, sourceWindow(text, MAX_INPUT_CHARS, options?.part));
     },
     generateFromSources(sources, options) {
       const perSourceLimit = Math.floor((MAX_INPUT_CHARS * 0.75) / sources.length);
       const bounded = sources.map((source, sourceIndex) => ({
         sourceIndex,
         title: source.title.slice(0, 120),
-        text: source.text.slice(0, perSourceLimit),
+        text: sourceWindow(source.text, perSourceLimit, options?.part),
       }));
-      const system = `${SYSTEM} Each question must include the zero-based sourceIndex for the one source that supports its answer and quote. Return that sourceIndex with every question.${options?.questionCount ? ` Generate exactly ${options.questionCount} questions when the sources support them.` : ""}${contextInstruction(options?.learningContext)}`;
+      const system = `${SYSTEM} Each question must include the zero-based sourceIndex for the one source that supports its answer and quote. Return that sourceIndex with every question.${options?.questionCount ? ` Generate exactly ${options.questionCount} questions when the sources support them.` : ""}${contextInstruction(options?.learningContext)}${avoidInstruction(options?.avoidPrompts)}`;
       return call(system, JSON.stringify({ sources: bounded }));
     },
   };
@@ -139,7 +148,7 @@ function fromGeneration(
 /*
  * The default generator: the resolved generation provider, with quota
  * admission when the provider carries a metered allowance and the workspace
- * is known. One quiz is one request against the provider's daily cap.
+ * is known. Each batch of a quiz is one request against the provider's daily cap.
  */
 export function defaultQuizGenerator(
   workspaceId?: string,

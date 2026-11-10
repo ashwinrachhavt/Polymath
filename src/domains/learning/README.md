@@ -10,6 +10,14 @@ This is the reading summary's discipline (ASH-292) with one deviation: there
 is no generate-then-accept split, because a quiz is low-stakes, regenerable,
 quota-gated content. A quiz request key replays a completed generation instead of adding another row. Starting a deliberate new quiz uses a new key.
 
+## How many items
+
+Quizzes and flashcard decks take an exact count from 5 to 100, or scale with the selected sources when none is given (`item-count.ts`: about one item per 600 characters, 20 to 50 for a substantial source, never padded for a short one). Generation runs in sequential batches of at most 25. A model call sees at most 12,000 characters, so batch k of a long source reads its k-th window (`integrations/learning/source-window.ts`), spread evenly from start to end; quotes still verify against the full text. Each later batch is told the prompts already made, and repeats are dropped by prompt. A batch that adds fewer than half the items it asked for ends the run, so a thin source gives fewer items rather than an error.
+
+Every result says how many items were requested and why the run stopped: `complete`, `source_exhausted` (the sources support no more) or `batch_failed` (a later model call failed, so more may exist). Both are stored on the row (`requested_count`, `stopped_by`) and replays return them.
+
+Flashcards are stored after every batch. The deck row, its first cards and its audit row commit together; `stopped_by` stays null until the run ends, so a replay mid-run reads `in_progress`, and a deck left unfinished for more than 10 minutes (the run died) reads `batch_failed`. Either way its stored cards are a usable deck. A quiz is stored once at the end, because grading needs every question answered and a quiz never grows after someone can sit it.
+
 ## Grading and the award
 
 `gradeAttempt` (`grading.ts`) is a pure fold: value-keyed (display-order

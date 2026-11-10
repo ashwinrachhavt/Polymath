@@ -1,6 +1,6 @@
 {
-  "id": "31af4f3c-4567-4aed-9f08-2d748a843538",
-  "prevId": "9d5ae9db-e12d-44ec-9f59-b3129a08116a",
+  "id": "0caa1331-9764-465c-8d77-0f839bc84ae6",
+  "prevId": "31af4f3c-4567-4aed-9f08-2d748a843538",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -20088,6 +20088,18 @@
           "primaryKey": false,
           "notNull": true,
           "default": 1
+        },
+        "requested_count": {
+          "name": "requested_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "stopped_by": {
+          "name": "stopped_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -20165,7 +20177,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "flashcard_decks_stopped_by_check": {
+          "name": "flashcard_decks_stopped_by_check",
+          "value": "\"stopped_by\" in ('complete', 'source_exhausted', 'batch_failed')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.flashcard_reviews": {
@@ -21443,6 +21460,18 @@
           "primaryKey": false,
           "notNull": true,
           "default": 1
+        },
+        "requested_count": {
+          "name": "requested_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "stopped_by": {
+          "name": "stopped_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -21552,7 +21581,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "quizzes_stopped_by_check": {
+          "name": "quizzes_stopped_by_check",
+          "value": "\"stopped_by\" in ('complete', 'source_exhausted', 'batch_failed')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.opportunities": {

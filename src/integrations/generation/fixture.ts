@@ -115,7 +115,29 @@ function designBriefAnswer(): string {
   });
 }
 
-function answerFor(system: string): string {
+/**
+ * Flashcards from the source's own sentences: each card quotes one sentence
+ * verbatim, so the deck verifier keeps it. Honors the requested count and the
+ * prompts a deck already holds, and returns fewer cards when the text runs out.
+ */
+function flashcardAnswer(system: string, prompt: string): string {
+  const count = Number(/Return exactly (\d+) cards/.exec(system)?.[1] ?? "5");
+  const avoidJson = /write different ones that test other concepts: (\[[\s\S]*?\])\./.exec(system)?.[1];
+  const avoid = new Set<string>(avoidJson ? (JSON.parse(avoidJson) as string[]) : []);
+  const { sources } = JSON.parse(prompt) as { sources: Array<{ sourceIndex: number; title: string; text: string }> };
+  const cards: Array<{ prompt: string; answer: string; quote: string; sourceIndex: number }> = [];
+  for (const source of sources) {
+    for (const sentence of source.text.split(/(?<=\.)\s+/).filter((part) => part.length > 0)) {
+      const cardPrompt = `What does ${source.title} say here: "${sentence.split(" ").slice(0, 4).join(" ")}..."?`;
+      if (avoid.has(cardPrompt.slice(0, 120))) continue;
+      cards.push({ prompt: cardPrompt, answer: sentence, quote: sentence, sourceIndex: source.sourceIndex });
+    }
+  }
+  return JSON.stringify({ cards: cards.slice(0, count) });
+}
+
+function answerFor(system: string, prompt = ""): string {
+  if (system.includes("active-recall flashcards")) return flashcardAnswer(system, prompt);
   if (system.includes("debrief a meeting transcript")) return debriefAnswer();
   if (system.includes("meeting prep report")) return prepAnswer();
   if (system.includes("long-form writing")) return writingAnswer();
@@ -133,10 +155,10 @@ export function fixtureProvider(): GenerationProvider {
     name: "fixture:e2e",
     registryId: "fixture",
     async generate(input: GenerateInput): Promise<{ text: string }> {
-      return { text: answerFor(input.system ?? "") };
+      return { text: answerFor(input.system ?? "", input.prompt) };
     },
     async *stream(input: GenerateInput): AsyncGenerator<StreamChunk> {
-      const text = answerFor(input.system ?? "");
+      const text = answerFor(input.system ?? "", input.prompt);
       yield { type: "thinking", content: "Reading your draft…" };
       // Word-shaped chunks keep the stream contract honest for the reducer.
       for (const word of text.split(" ")) yield { type: "token", content: `${word} ` };

@@ -9,6 +9,7 @@ import {
 } from "@/integrations/generation/provider";
 import { providerEntry } from "@/integrations/providers/registry";
 import { drizzleQuotaStore, withQuota, type QuotaStore } from "@/integrations/providers/quota";
+import { sourceWindow } from "./source-window";
 
 type GeneratedFlashcard = {
   prompt: string;
@@ -21,10 +22,17 @@ export interface FlashcardGenerator {
   readonly name: string;
   generateFromSources(
     sources: FlashcardGeneratorSource[],
-    options: { cardCount: number; learningContext?: { missedQuestions: string[]; notHelpfulExamples: string[] } },
+    options: {
+      cardCount: number;
+      learningContext?: { missedQuestions: string[]; notHelpfulExamples: string[] };
+      /** Prompts an earlier batch of this deck already made; the model writes new ones. */
+      avoidPrompts?: string[];
+      /** Which window of a long source this call reads (sourceWindow); batch k reads window k. */
+      part?: number;
+    },
   ): Promise<{ cards: GeneratedFlashcard[] }>;
 }
-export const FLASHCARD_PROMPT_VERSION = "learning-flashcards@1";
+export const FLASHCARD_PROMPT_VERSION = "learning-flashcards@3";
 const MAX_INPUT_CHARS = 12000;
 
 const response = z.object({
@@ -38,7 +46,7 @@ const response = z.object({
       }),
     )
     .min(1)
-    .max(20),
+    .max(25),
 });
 
 const SYSTEM =
@@ -53,6 +61,12 @@ function contextInstruction(context?: { missedQuestions: string[]; notHelpfulExa
   return ` Learner practice history (account-specific): make useful recall cards for these difficult concepts when the selected sources support them: ${JSON.stringify(missed)}. Do not repeat these cards because the learner rated their earlier deck not helpful: ${JSON.stringify(avoid)}.`;
 }
 
+function avoidInstruction(prompts: string[] = []): string {
+  if (prompts.length === 0) return "";
+  const bounded = prompts.map((prompt) => prompt.slice(0, 120));
+  return ` This deck already has these cards, so write different ones that test other concepts: ${JSON.stringify(bounded)}.`;
+}
+
 function fromGeneration(
   provider: GenerationProvider,
   run: (input: { system: string; prompt: string }) => Promise<{ text: string }>,
@@ -64,14 +78,15 @@ function fromGeneration(
       const bounded = sources.map((source, sourceIndex) => ({
         sourceIndex,
         title: source.title.slice(0, 120),
-        text: source.text.slice(0, perSourceLimit),
+        text: sourceWindow(source.text, perSourceLimit, options.part),
       }));
       const system =
         SYSTEM +
-        " Return up to " +
+        " Return exactly " +
         options.cardCount +
-        " useful cards. Include the zero-based sourceIndex on every card." +
-        contextInstruction(options.learningContext);
+        " cards when the sources support them. Include the zero-based sourceIndex on every card." +
+        contextInstruction(options.learningContext) +
+        avoidInstruction(options.avoidPrompts);
       try {
         const result = await run({ system, prompt: JSON.stringify({ sources: bounded }) });
         return response.parse(JSON.parse(result.text));
