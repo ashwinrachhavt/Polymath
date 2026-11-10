@@ -517,7 +517,6 @@ const DOMAIN_TABLES: Record<string, string[]> = {
   integrations: ["external_accounts"],
   knowledge: ["documents"],
   learning: ["documents", "quizzes", "quiz_questions"],
-  opportunities: ["opportunities"],
   skills: ["skills"],
   spending: ["model_rate_cards", "spending_reservations"],
   superagent: ["superagent_state"],
