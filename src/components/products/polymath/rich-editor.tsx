@@ -8,6 +8,8 @@ import Placeholder from "@tiptap/extension-placeholder";
 import { Markdown } from "@tiptap/markdown";
 import { useRouter } from "next/navigation";
 import { WIKI_LINK_OPEN, WikiLinks } from "./wiki-links";
+import { InlineCompletion } from "./inline-completion";
+import { setAutocompleteEnabled, useAutocomplete } from "./autocomplete-client";
 import { unescapeWikiLinks } from "@/domains/knowledge/note-content";
 import { Bold, Italic, List, ListOrdered, Quote, Undo2, Redo2 } from "lucide-react";
 import { filterBlockCommands, slashQuery, type BlockCommand } from "@/components/workspace/slash-commands";
@@ -75,6 +77,7 @@ export default function RichEditor({
   chrome = "full",
   compact = false,
   editable = true,
+  autocomplete = false,
   mode: controlledMode,
   onModeChange,
   onStructuredPasteDropped,
@@ -88,6 +91,8 @@ export default function RichEditor({
   compact?: boolean;
   /** False renders the document for reading: no caret, no typing, no chrome. */
   editable?: boolean;
+  /** Ghost-text suggestions while writing (Tab accepts). Off unless the host asks. */
+  autocomplete?: boolean;
   mode?: MarkdownEditorMode;
   onModeChange?: (mode: MarkdownEditorMode) => void;
   /** A paste arrived with structure rich text cannot keep; it was inserted literally. */
@@ -119,15 +124,18 @@ export default function RichEditor({
   return (
     <div className={minimal ? "relative flex flex-1 flex-col" : "space-y-3"}>
       {minimal ? (
-        ai ? (
-          <div className="mb-2 flex justify-end">
-            <NoteAIMenu
-              selection={selection}
-              pending={ai.pending}
-              onAction={ai.onAction}
-              open={ai.open}
-              onOpenChange={ai.onOpenChange}
-            />
+        ai || autocomplete ? (
+          <div className="mb-2 flex items-center justify-end gap-1">
+            {autocomplete && mode === "rich" && editable ? <AutocompleteToggle /> : null}
+            {ai ? (
+              <NoteAIMenu
+                selection={selection}
+                pending={ai.pending}
+                onAction={ai.onAction}
+                open={ai.open}
+                onOpenChange={ai.onOpenChange}
+              />
+            ) : null}
           </div>
         ) : null
       ) : (
@@ -194,6 +202,7 @@ export default function RichEditor({
           onSelectionChange={ai ? setSelection : undefined}
           compact={compact}
           editable={editable}
+          autocomplete={autocomplete}
           onEmptySpace={ai?.onOpenChange ? () => ai.onOpenChange!(true) : undefined}
           floating={minimal}
           onStructuredPasteDropped={onStructuredPasteDropped}
@@ -265,6 +274,36 @@ function SlashMenu({
   );
 }
 
+/*
+ * The one quiet control for inline suggestions: says whether they are on, and
+ * why not when the server cannot offer them. The choice is the writer's and is
+ * kept per browser.
+ */
+function AutocompleteToggle() {
+  const { enabled, status } = useAutocomplete();
+  const unavailable = status === "unavailable";
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      className="text-muted-foreground"
+      aria-pressed={enabled && !unavailable}
+      disabled={unavailable}
+      title={
+        unavailable
+          ? "No model provider is configured for suggestions."
+          : status === "paused"
+            ? "Suggestions are paused for a few minutes (allowance or rate limit)."
+            : "Suggestions appear when you pause. Tab accepts, Cmd/Ctrl+→ accepts a word, Esc dismisses."
+      }
+      onClick={() => setAutocompleteEnabled(!enabled)}
+    >
+      {unavailable ? "Autocomplete unavailable" : enabled ? "Autocomplete on" : "Autocomplete off"}
+    </Button>
+  );
+}
+
 function RichMarkdownEditor({
   content,
   onChange,
@@ -274,10 +313,12 @@ function RichMarkdownEditor({
   floating,
   compact,
   editable = true,
+  autocomplete = false,
   onStructuredPasteDropped,
 }: {
   compact?: boolean;
   editable?: boolean;
+  autocomplete?: boolean;
   findLinkTargets?: FindLinkTargets;
   content: string;
   onChange: (content: string) => void;
@@ -364,6 +405,8 @@ function RichMarkdownEditor({
       Placeholder.configure({ placeholder: "Write. Press space for AI, / for a block, [[ to link a note." }),
       Markdown,
       WikiLinks,
+      // Fixed at mount: a host either offers suggestions in this editor or not.
+      ...(autocomplete ? [InlineCompletion] : []),
     ],
     content,
     contentType: "markdown",
