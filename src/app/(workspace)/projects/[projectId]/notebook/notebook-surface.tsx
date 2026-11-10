@@ -433,6 +433,20 @@ export default function NotebookSurface({
                 …
               </summary>
               <div className="absolute right-0 z-10 mt-1 w-64 rounded-md border border-border bg-popover p-3 text-popover-foreground shadow-md">
+                <nav aria-label="Project" className="mb-3 flex flex-col border-b border-border pb-2 text-body-dense">
+                  <Link
+                    href={`/projects/${notebook.projectId}/settings`}
+                    className="rounded-md px-1 py-1 hover:bg-muted"
+                  >
+                    Project settings
+                  </Link>
+                  <Link
+                    href={`/projects/${notebook.projectId}/agent-sessions`}
+                    className="rounded-md px-1 py-1 hover:bg-muted"
+                  >
+                    Agent sessions
+                  </Link>
+                </nav>
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();

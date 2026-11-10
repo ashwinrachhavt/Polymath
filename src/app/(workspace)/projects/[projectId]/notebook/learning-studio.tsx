@@ -38,9 +38,14 @@ function sourcesLine(chosen: number, ready: number): string {
 export function LearningStudio({ projectId, sources }: { projectId: string; sources: LearningSource[] }) {
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<Kind>("quiz");
-  const [selectedIds, setSelectedIds] = useState<string[]>(() =>
-    sources.slice(0, MAX_SOURCES).map((source) => source.documentId),
-  );
+  // Only the user's changes are held; everything else follows the ready sources,
+  // so a source that finishes later is included and a removed one drops out.
+  const [deselected, setDeselected] = useState<string[]>([]);
+  const [added, setAdded] = useState<string[]>([]);
+  const defaultIds = sources.slice(0, MAX_SOURCES).map((source) => source.documentId);
+  const selectedIds = sources
+    .map((source) => source.documentId)
+    .filter((id) => (defaultIds.includes(id) ? !deselected.includes(id) : added.includes(id)));
   const [countText, setCountText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
@@ -65,9 +70,12 @@ export function LearningStudio({ projectId, sources }: { projectId: string; sour
             : null;
 
   function toggleSource(documentId: string) {
-    setSelectedIds((current) =>
-      current.includes(documentId) ? current.filter((id) => id !== documentId) : [...current, documentId],
-    );
+    const on = selectedIds.includes(documentId);
+    if (defaultIds.includes(documentId)) {
+      setDeselected((current) => (on ? [...current, documentId] : current.filter((id) => id !== documentId)));
+    } else {
+      setAdded((current) => (on ? current.filter((id) => id !== documentId) : [...current, documentId]));
+    }
   }
 
   function create() {
