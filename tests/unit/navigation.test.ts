@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  additionalDestinationsIn,
-  featureDestinations,
   isBrowserPreviewPath,
   isConversationSurface,
   isFocusSurface,
@@ -17,23 +15,11 @@ import {
  * reference an app name that no longer exists in the interface.
  */
 describe("navigation", () => {
-  it("keeps preview routes resolving to their canonical destination", () => {
-    expect(destinationForPath("/apps/neuralflow/tasks")?.href).toBe("/neuralflow/work");
-    expect(destinationForPath("/apps/polymath/not-a-screen")).toBeUndefined();
-  });
-
-  it("keeps every preview tool reachable and on a real route", () => {
-    for (const slug of ["command-center", "neuralflow", "polymath"] as const) {
-      const additional = additionalDestinationsIn(slug);
-      expect(additional.length).toBeGreaterThan(0);
-      for (const destination of additional) {
-        expect(featureDestinations).toContain(destination);
-        expect(destination.href).toMatch(/^\/(apps\/)?(command-center|neuralflow|polymath)\//);
-      }
-    }
-    expect(additionalDestinationsIn("neuralflow").some((destination) => destination.label === "Stone collection")).toBe(
-      true,
-    );
+  it("highlights Work for the Reports and stone collection screens it links to", () => {
+    expect(destinationForPath("/neuralflow/reports")?.href).toBe("/neuralflow/work");
+    expect(destinationForPath("/neuralflow/rewards")?.href).toBe("/neuralflow/work");
+    // The retired /apps preview tools redirect away and name no destination.
+    expect(destinationForPath("/apps/neuralflow/tasks")).toBeUndefined();
   });
 
   it("does not label live routes as disconnected browser previews", () => {
@@ -43,8 +29,8 @@ describe("navigation", () => {
     expect(isBrowserPreviewPath("/polymath/notes")).toBe(false);
     expect(isBrowserPreviewPath("/polymath/artifacts")).toBe(false);
     expect(isBrowserPreviewPath("/neuralflow/work")).toBe(false);
-    expect(isBrowserPreviewPath("/apps/neuralflow")).toBe(true);
-    expect(isBrowserPreviewPath("/apps/polymath/notebook")).toBe(true);
+    // /apps only redirects now, so it never waits on the preview store.
+    expect(isBrowserPreviewPath("/apps/neuralflow")).toBe(false);
     expect(isBrowserPreviewPath("/reviews")).toBe(false);
     // /activity reads the real workspace audit feed; only /settings among the
     // shared screens still renders from the preview store.
@@ -73,7 +59,7 @@ describe("navigation", () => {
   });
 
   it("labels no destination with a former product name", () => {
-    for (const destination of [...destinations, ...featureDestinations]) {
+    for (const destination of destinations) {
       expect(destination.label).not.toMatch(/Command Center|NeuralFlow|Alfred/);
     }
   });
@@ -96,8 +82,7 @@ describe("navigation", () => {
    * The IA simplification removed seven destinations from the rail (Sources,
    * Wiki, Learning, Spending, Opportunities, Focus, and the old Notebook at
    * /polymath/notebook). The exact-order test above already fails if any of them
-   * returns, so no separate negative assertion is kept; /apps preview tools
-   * keep their donor labels, only the rail governs.
+   * returns, so no separate negative assertion is kept.
    */
 
   /*
@@ -177,7 +162,7 @@ describe("navigation", () => {
     expect(isFocusSurface("/command-center/conversations")).toBe(false);
   });
 
-  it("rails exactly the twenty-two destinations in order", () => {
+  it("rails exactly the twenty destinations in order", () => {
     // Conversations left the rail when its threads moved into the Assistant;
     // the route still resolves (old links keep working) but it is no longer a
     // destination. Today left when Briefing was removed: its outcomes and day
@@ -186,8 +171,7 @@ describe("navigation", () => {
     // back as their own routes when Briefing went, so each keeps a way in.
     // Ideas arrived as its own top-level surface, taking the zettel, card and
     // area routes that used to hide under the vault prefix. Learning now lives
-    // in Notebook. Supervision joined the rail from the base branch since the
-    // release forked. Focus returned when it stopped being a redirect into Work and
+    // in Notebook. Supervision merged into Reviews. Focus returned when it stopped being a redirect into Work and
     // became its own screen (spec §3); it sits beside Work, whose sessions it
     // runs.
     expect(destinations.map((destination) => destination.label)).toEqual([
@@ -207,7 +191,6 @@ describe("navigation", () => {
       "Connectors",
       "Day",
       "Shut down",
-      "Supervision",
       "Reviews",
       "Activity",
       "Spending",

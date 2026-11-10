@@ -4,9 +4,8 @@ import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 
 /*
- * Workspace-wide error boundary. apps/polymath and apps/command-center keep
- * their more specific boundaries; this one catches every other destination so
- * a broken screen never falls through to the root error and loses the shell.
+ * Workspace-wide error boundary: it catches every destination so a broken
+ * screen never falls through to the root error and loses the shell.
  */
 export default function WorkspaceError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   // The boundary is where a render crash becomes visible; log the real error

@@ -140,7 +140,7 @@ export async function buildSurfaceCard(auth: AuthContext, intent: NavigationInte
         href: SURFACE_HREF.library,
         items: docs.map((doc) => ({
           label: doc.title,
-          href: `/polymath/library/${doc.id}`,
+          href: `/polymath/knowledge?doc=${doc.id}`,
         })),
         emptyText: "The library is empty.",
       };

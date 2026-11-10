@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { BrowserRow } from "@/domains/knowledge/file-browser";
+import type { BrowserRow } from "@/domains/knowledge/file-rows";
 import type { AuthContext } from "@/domains/identity/resolve";
 import type { LibraryRow } from "@/domains/knowledge/library";
 
@@ -75,10 +75,7 @@ describe("getVaultDocuments", () => {
   it("reads one folder by id", async () => {
     const folderId = "11111111-1111-4111-8111-111111111111";
     await getVaultDocuments(auth, folderId);
-    expect(listDocuments).toHaveBeenCalledWith(
-      auth,
-      expect.objectContaining({ filters: { folder: folderId } }),
-    );
+    expect(listDocuments).toHaveBeenCalledWith(auth, expect.objectContaining({ filters: { folder: folderId } }));
   });
 
   it("carries the review key and count from the library row", async () => {

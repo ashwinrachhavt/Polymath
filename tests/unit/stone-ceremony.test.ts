@@ -24,10 +24,19 @@ class FakeAudioContext {
   currentTime = 0;
   destination = {};
   createOscillator() {
-    return { type: "", frequency: { value: 0 }, connect: () => ({ connect: () => ({}) }), start: chimeSpy, stop: () => {} };
+    return {
+      type: "",
+      frequency: { value: 0 },
+      connect: () => ({ connect: () => ({}) }),
+      start: chimeSpy,
+      stop: () => {},
+    };
   }
   createGain() {
-    return { gain: { setValueAtTime: () => {}, linearRampToValueAtTime: () => {}, exponentialRampToValueAtTime: () => {} }, connect: () => ({ connect: () => ({}) }) };
+    return {
+      gain: { setValueAtTime: () => {}, linearRampToValueAtTime: () => {}, exponentialRampToValueAtTime: () => {} },
+      connect: () => ({ connect: () => ({}) }),
+    };
   }
   close() {
     return Promise.resolve();
@@ -51,7 +60,7 @@ describe("StoneCeremony", () => {
     render(h(StoneCeremony, { onDismiss: () => {} }));
     expect(screen.getByRole("status").textContent).toContain("Quartz earned");
     expect(screen.getByRole("status").textContent).toContain("First completed task of the day.");
-    expect(screen.getByRole("link", { name: "View collection" }).getAttribute("href")).toBe("/apps/neuralflow/rewards");
+    expect(screen.getByRole("link", { name: "View collection" }).getAttribute("href")).toBe("/neuralflow/rewards");
   });
 
   it("echoes the person's own completion sentence as the reflection", () => {

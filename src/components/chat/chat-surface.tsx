@@ -239,7 +239,7 @@ export function ChatSurface({
     chat.connection === "connecting" || chat.connection === "streaming" || chat.connection === "reconnecting";
   /*
    * The stage chip: the run's own stage facts first (the same failed report
-   * the Supervision panel classifies), the transport state only as the live
+   * the Reviews agent views classifies), the transport state only as the live
    * fallback — a failed run reads the panel's word for failed even while its
    * stream is reconnecting.
    */

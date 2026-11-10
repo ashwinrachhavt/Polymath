@@ -6,7 +6,7 @@
  * raw payload.
  */
 
-export type RequestFailureKind =
+type RequestFailureKind =
   | "unauthenticated"
   | "forbidden"
   | "not_found"
@@ -44,8 +44,10 @@ const KIND_COPY: Record<RequestFailureKind, string> = {
   validation: "The request was not valid. Check the fields and try again.",
   rate_limited: "Too many requests. Wait a moment and try again.",
   server: "The server could not complete this. Try again; if it keeps failing, wait and retry later.",
-  network: "The request did not reach the server. Check your connection, then retry; if a change was being submitted, check the record before sending it again.",
-  timeout: "The server did not answer in time. Retry; if the change was a submission, check the record before sending it again.",
+  network:
+    "The request did not reach the server. Check your connection, then retry; if a change was being submitted, check the record before sending it again.",
+  timeout:
+    "The server did not answer in time. Retry; if the change was a submission, check the record before sending it again.",
   aborted: "The request was cancelled. If a change was being submitted, check the record before sending it again.",
   malformed: "The server answered, but the response could not be read. Retry; if it keeps happening, reload the page.",
 };
@@ -55,11 +57,7 @@ function copyFor(kind: RequestFailureKind, title: string | null): string {
 }
 
 function isAbortError(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    (error as { name?: unknown }).name === "AbortError"
-  );
+  return typeof error === "object" && error !== null && (error as { name?: unknown }).name === "AbortError";
 }
 
 /*
@@ -69,11 +67,7 @@ function isAbortError(error: unknown): boolean {
  * told the person to check a connection that was fine.
  */
 function isTimeoutError(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    (error as { name?: unknown }).name === "TimeoutError"
-  );
+  return typeof error === "object" && error !== null && (error as { name?: unknown }).name === "TimeoutError";
 }
 
 /*
@@ -84,10 +78,7 @@ function isTimeoutError(error: unknown): boolean {
  * draining; that rejects text() with an AbortError. It is a cancellation, not
  * an unreadable response, and must not be reported as `malformed`.
  */
-type BodyRead =
-  | { status: "ok"; value: unknown }
-  | { status: "malformed" }
-  | { status: "aborted" };
+type BodyRead = { status: "ok"; value: unknown } | { status: "malformed" } | { status: "aborted" };
 
 async function readBody(response: Response): Promise<BodyRead> {
   let text: string;
@@ -155,12 +146,8 @@ export async function requestJson<T>(
       ? (body.value as { title?: unknown; code?: unknown })
       : null;
   const kind = STATUS_KIND[response.status] ?? "server";
-  const title =
-    typeof problem?.title === "string" && problem.title.trim() !== "" ? problem.title : null;
-  const code =
-    typeof problem?.code === "string" && problem.code.trim() !== ""
-      ? problem.code
-      : undefined;
+  const title = typeof problem?.title === "string" && problem.title.trim() !== "" ? problem.title : null;
+  const code = typeof problem?.code === "string" && problem.code.trim() !== "" ? problem.code : undefined;
   const failure: RequestFailure = { kind, title: copyFor(kind, title) };
   if (code !== undefined) failure.code = code;
   return { ok: false, failure };

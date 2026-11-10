@@ -42,15 +42,10 @@ import type { Result } from "@/lib/result";
  */
 
 /*
- * Mutations can land from any of the three surfaces (people, companies, the
- * contact workspace), so all three revalidate.
+ * Mutations can land from either surface (people, companies), so both revalidate.
  */
 const revalidate = () => {
-  for (const path of [
-    "/command-center/relationships/people",
-    "/command-center/relationships/companies",
-    "/command-center/relationships/contacts",
-  ])
+  for (const path of ["/command-center/relationships/people", "/command-center/relationships/companies"])
     revalidatePath(path);
 };
 

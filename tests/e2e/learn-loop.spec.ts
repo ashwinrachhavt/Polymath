@@ -255,7 +255,7 @@ test("the learning loop: library states, a sitting with instant feedback, and on
   // The balance the surface derives from that ledger: the rewards page
   // shows it through the gamification domain's queries.
   const earned = Number(stonesBefore) + 10;
-  await page.goto("/apps/neuralflow/rewards");
+  await page.goto("/neuralflow/rewards");
   await waitSettled(page);
   await expect(page.locator("#content").first().getByText("Points earned")).toBeVisible();
   await expect(page.getByText(String(earned)).first()).toBeVisible();

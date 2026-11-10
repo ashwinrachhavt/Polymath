@@ -129,8 +129,6 @@ import * as integrationsCommands from "@/domains/integrations/commands";
 import * as knowledgeQueries from "@/domains/knowledge/queries";
 import * as learningQueries from "@/domains/learning/queries";
 import * as learningCommands from "@/domains/learning/commands";
-import * as opportunitiesQueries from "@/domains/opportunities/queries";
-import * as opportunitiesCommands from "@/domains/opportunities/commands";
 import * as skillsQueries from "@/domains/skills/queries";
 import * as skillsCommands from "@/domains/skills/commands";
 import * as spendingQueries from "@/domains/spending/queries";
@@ -180,8 +178,6 @@ const MODULES: ModuleEntry[] = [
   { name: "src/domains/knowledge/queries.ts", mod: knowledgeQueries, domain: "knowledge" },
   { name: "src/domains/learning/queries.ts", mod: learningQueries, domain: "learning" },
   { name: "src/domains/learning/commands.ts", mod: learningCommands, domain: "learning" },
-  { name: "src/domains/opportunities/queries.ts", mod: opportunitiesQueries, domain: "opportunities" },
-  { name: "src/domains/opportunities/commands.ts", mod: opportunitiesCommands, domain: "opportunities" },
   { name: "src/domains/skills/queries.ts", mod: skillsQueries, domain: "skills" },
   { name: "src/domains/skills/commands.ts", mod: skillsCommands, domain: "skills" },
   { name: "src/domains/spending/queries.ts", mod: spendingQueries, domain: "spending" },
@@ -521,7 +517,6 @@ const DOMAIN_TABLES: Record<string, string[]> = {
   integrations: ["external_accounts"],
   knowledge: ["documents"],
   learning: ["documents", "quizzes", "quiz_questions"],
-  opportunities: ["opportunities"],
   skills: ["skills"],
   spending: ["model_rate_cards", "spending_reservations"],
   superagent: ["superagent_state"],
@@ -834,52 +829,6 @@ const FUNCTION_SHAPES: Record<
       },
     ];
   },
-  "src/domains/opportunities/commands.ts": (caller, foreign) => [
-    {
-      shape: "(auth, create own company)",
-      args: [caller.auth, { title: "Iso probe", companyId: caller.rows.companies.ids[0] }],
-    },
-    {
-      shape: "(auth, create foreign company)",
-      args: [caller.auth, { title: "Iso probe", companyId: foreign.rows.companies.ids[0] }],
-    },
-    {
-      shape: "(auth, update own)",
-      args: [
-        caller.auth,
-        { opportunityId: caller.rows.opportunities.ids[0], expectedVersion: 1, title: "Iso probe updated" },
-      ],
-    },
-    {
-      shape: "(auth, update foreign)",
-      args: [
-        caller.auth,
-        { opportunityId: foreign.rows.opportunities.ids[0], expectedVersion: 1, title: "Iso probe updated" },
-      ],
-    },
-    {
-      shape: "(auth, stage own)",
-      args: [
-        caller.auth,
-        { opportunityId: caller.rows.opportunities.ids[0], expectedVersion: 2, toStage: "identified" },
-      ],
-    },
-    {
-      shape: "(auth, stage foreign)",
-      args: [
-        caller.auth,
-        { opportunityId: foreign.rows.opportunities.ids[0], expectedVersion: 2, toStage: "identified" },
-      ],
-    },
-    {
-      shape: "(auth, archive own)",
-      args: [caller.auth, { opportunityId: caller.rows.opportunities.ids[0], expectedVersion: 3 }],
-    },
-    {
-      shape: "(auth, archive foreign)",
-      args: [caller.auth, { opportunityId: foreign.rows.opportunities.ids[0], expectedVersion: 3 }],
-    },
-  ],
   "src/domains/crm/commands.ts": (caller, foreign) => [
     { shape: "(auth, create contact)", args: [caller.auth, { fullName: "Iso Probe" }] },
     {

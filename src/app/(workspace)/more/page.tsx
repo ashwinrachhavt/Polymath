@@ -1,27 +1,19 @@
 import Link from "next/link";
 import { PageHeader, Section } from "@/components/page-header";
-import { additionalDestinationsIn, destinations } from "@/lib/navigation";
+import { destinations } from "@/lib/navigation";
 
 export const metadata = { title: "More · Polymath" };
 
 /*
- * The full destination index: the rail's pages, then the preview tools and
- * shared services. One product means one list; the historic app prefixes
- * stay in URLs but name nothing in the interface.
+ * The full destination index: the rail's pages, then the shared services.
+ * One product means one list; the historic app prefixes stay in URLs but
+ * name nothing in the interface. The browser-local preview tools that used
+ * to close this list are retired (their /apps addresses redirect).
  */
 export default function MorePage() {
   const sections = [
     { key: "product" as const, label: "Destinations", items: destinations.filter((d) => d.group !== "shared") },
     { key: "shared" as const, label: "Workspace", items: destinations.filter((d) => d.group === "shared") },
-    {
-      key: "preview" as const,
-      label: "Preview tools",
-      items: [
-        ...additionalDestinationsIn("command-center"),
-        ...additionalDestinationsIn("neuralflow"),
-        ...additionalDestinationsIn("polymath"),
-      ],
-    },
   ];
 
   return (

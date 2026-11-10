@@ -128,19 +128,6 @@ export async function getLearnLibrary(auth: AuthContext): Promise<LearnLibraryRo
   });
 }
 
-/** The latest ready quiz for one document, or null when none exists. */
-export async function latestReadyQuizForDocument(auth: AuthContext, documentId: string) {
-  const [quiz] = await db
-    .select({ id: quizzes.id, questionCount: quizzes.questionCount, sourceExtractionId: quizzes.sourceExtractionId })
-    .from(quizzes)
-    .where(
-      and(eq(quizzes.workspaceId, auth.workspaceId), eq(quizzes.documentId, documentId), eq(quizzes.status, "ready")),
-    )
-    .orderBy(desc(quizzes.createdAt))
-    .limit(1);
-  return quiz ?? null;
-}
-
 /**
  * The quiz a sitting runs against, with its questions in ordinal order and
  * everything instant feedback needs: values, explanations, evidence. The

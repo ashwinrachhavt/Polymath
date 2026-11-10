@@ -175,18 +175,10 @@ test("a capture outside the current filter still renders in the detail pane and 
   await expect(page.getByText("No matches")).toBeVisible();
 });
 
-test("preview routes retain app context and all tools are reachable on a phone", async ({ page }) => {
-  // The representative preview route: notebook handed off to the canonical
-  // /polymath/notes surface (B04), so this leg uses the dictionary preview.
-  await page.goto("/apps/polymath/dictionary");
-  // No notebook-toolbar landmark here: the breadcrumb assertion retries
-  // until the dynamic screen mounts, and this test runs no axe sweep.
-  await waitSettled(page);
-  // One product: the breadcrumb names the open preview tool, and the rest of
-  // the workshop lives behind More.
-  await expect(page.getByRole("navigation", { name: "Breadcrumb", exact: true })).toContainText("Dictionary");
+test("every destination is reachable on a phone, and More lists no preview tools", async ({ page }) => {
+  // The browser-local preview tools are retired; More is the rail's full index.
   await page.goto("/more");
-  await expect(page.getByRole("link", { name: "Dictionary" })).toBeVisible();
+  await expect(page.getByText("Preview tools", { exact: true })).toHaveCount(0);
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/command-center/inbox");
@@ -209,8 +201,7 @@ test("preview routes retain app context and all tools are reachable on a phone",
     .click();
   await expect(page).toHaveURL(/\/more$/);
   const content = page.locator("#content");
-  await expect(content.getByRole("link", { name: /Stone collection/ })).toBeVisible();
-  await expect(content.getByRole("link", { name: /Document vault/ })).toBeVisible();
+  await expect(content.getByRole("link", { name: /Document Vault/ })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 

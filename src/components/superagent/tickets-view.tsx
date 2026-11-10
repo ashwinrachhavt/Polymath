@@ -96,7 +96,7 @@ export function TicketsView({ groups, stage }: { groups: StageGroup[]; stage?: S
 export function PersonStageCard({ group, className }: { group: StageGroup; className?: string }) {
   return (
     <Link
-      href={`/supervision?view=tickets&stage=${group.key}`}
+      href={`/reviews?view=tickets&stage=${group.key}`}
       className={cn(
         "panel hover:bg-muted/60 focus-visible:ring-ring flex items-center justify-between gap-3 rounded-xl p-4 outline-none transition-colors focus-visible:ring-2",
         className,
