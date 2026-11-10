@@ -89,52 +89,62 @@ export type LinkPreview = { title: string; id: string; firstParagraph: string };
 const MAX_PREVIEW_TITLES = 50;
 const PREVIEW_CHARS = 280;
 
-/** Plain text of the first non-empty paragraph, markup stripped, capped for a margin card. */
-function firstParagraphOf(markdown: string): string {
-  const paragraph = markdown.split(/\n\s*\n/).find((block) => block.trim()) ?? "";
+/*
+ * Plain text of the first non-empty paragraph, markup stripped, capped for a
+ * margin card. A leading heading that only repeats the card's title is skipped.
+ */
+function firstParagraphOf(markdown: string, title: string): string {
+  const body = markdown.replace(/^\s*#{1,6}\s+(.*)(\n|$)/, (line, heading: string) =>
+    heading.trim().toLowerCase() === title.trim().toLowerCase() ? "" : line,
+  );
+  const paragraph = body.split(/\n\s*\n/).find((block) => block.trim()) ?? "";
   const text = paragraph
     .replace(/^\s{0,3}(#{1,6}|>|[-*+]|\d+\.)\s+/gm, "")
+    .replace(/^\[[ xX]\]\s+/gm, "")
     .replace(/\[\[([^\]|]*)\|([^\]]*)\]\]/g, "$2")
     .replace(/\[\[([^\]]*)\]\]/g, "$1")
     .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/[*_`~]/g, "")
+    .replace(/(?<!\\)[*_`~]/g, "")
+    .replace(/\\([^\w\s])/g, "$1")
     .replace(/\s+/g, " ")
     .trim();
   return text.length > PREVIEW_CHARS ? `${text.slice(0, PREVIEW_CHARS - 1).trimEnd()}…` : text;
 }
 
-/** The first paragraph of each linked note, matched by trimmed, case-insensitive title within the workspace. */
+/*
+ * The first paragraph of each linked note, matched by trimmed, case-insensitive
+ * title within the workspace. It reads the autosaved draft when there is one,
+ * as the editor does; of several notes with one title, the oldest wins.
+ */
 export async function getLinkPreviews(auth: AuthContext, titles: string[]): Promise<LinkPreview[]> {
   const wanted = [...new Set(titles.map((t) => t.trim().toLowerCase()).filter(Boolean))].slice(0, MAX_PREVIEW_TITLES);
   if (wanted.length === 0) return [];
+  const titleKey = sql`lower(btrim(${artifacts.title}))`;
   const rows = await withTransaction((tx) =>
     tx
-      .select({ id: artifacts.id, title: artifacts.title, content: artifactVersions.content })
+      .selectDistinctOn([titleKey], {
+        id: artifacts.id,
+        title: artifacts.title,
+        content: sql<NoteContent | null>`coalesce(${workingDrafts.content}, ${artifactVersions.content})`,
+      })
       .from(artifacts)
       .leftJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
+      .leftJoin(workingDrafts, eq(workingDrafts.artifactId, artifacts.id))
       .where(
         and(
           eq(artifacts.workspaceId, auth.workspaceId),
           inArray(artifacts.kind, [...LINKABLE_KINDS]),
           isNull(artifacts.archivedAt),
-          inArray(sql`lower(btrim(${artifacts.title}))`, wanted),
+          inArray(titleKey, wanted),
         ),
       )
-      .orderBy(artifacts.createdAt, artifacts.id),
+      .orderBy(titleKey, artifacts.createdAt, artifacts.id),
   );
-  const seen = new Set<string>();
-  const previews: LinkPreview[] = [];
-  for (const row of rows) {
-    const key = row.title.trim().toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    previews.push({
-      title: row.title,
-      id: row.id,
-      firstParagraph: firstParagraphOf(noteContentToMarkdown(row.content as NoteContent | null)),
-    });
-  }
-  return previews;
+  return rows.map((row) => ({
+    title: row.title,
+    id: row.id,
+    firstParagraph: firstParagraphOf(noteContentToMarkdown(row.content), row.title),
+  }));
 }
 
 function markdownOf(content: NoteContent, plainText?: string): string {
