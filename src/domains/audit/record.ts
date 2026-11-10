@@ -26,15 +26,6 @@ export type AuditInput = {
 };
 
 /**
- * A system caller has no user: actorId is null and the audit row says so
- * (actorKind "system"). AuthContext still satisfies the door's context shape
- * (its userId string widens to null), but a request surface that wants to
- * audit as a person passes its AuthContext - the system shape stays a
- * deliberate choice at the call site, not something a request falls into.
- */
-export type SystemAuditContext = { workspaceId: string; userId: null };
-
-/**
  * The door's context is the minimal structural shape of an audit actor: the
  * workspace the row names and the user who acted (null for system callers).
  * AuthContext satisfies it structurally. One caller cannot: invitation

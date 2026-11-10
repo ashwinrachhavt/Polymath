@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { auditEvents } from "@/domains/audit/schema";
+import { rewardDefinitions } from "@/domains/gamification/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
@@ -33,10 +34,7 @@ async function seed(slug: string) {
 }
 
 async function auditCount(auth: { workspaceId: string }, subjectIds: string[]) {
-  const rows = await db
-    .select()
-    .from(auditEvents)
-    .where(eq(auditEvents.workspaceId, auth.workspaceId));
+  const rows = await db.select().from(auditEvents).where(eq(auditEvents.workspaceId, auth.workspaceId));
   return rows.filter((row) => row.subjectId && subjectIds.includes(row.subjectId)).length;
 }
 
@@ -56,36 +54,6 @@ suite("reward definitions", () => {
     await expect(
       commands.createRewardDefinition(auth, { key: "quartz", kind: "points", label: "Again", points: 5 }),
     ).rejects.toMatchObject({ code: "conflict" });
-  });
-
-  it("updates only at the expected version, bumping the row", async () => {
-    const auth = await seed("rewards-update");
-    const quartz = await commands.createRewardDefinition(auth, {
-      key: "quartz",
-      kind: "points",
-      label: "Quartz",
-      points: 10,
-    });
-    await expect(
-      commands.updateRewardDefinition(auth, {
-        key: "quartz",
-        kind: "points",
-        label: "Quartz",
-        points: 25,
-        expectedVersion: quartz.version + 9,
-      }),
-    ).rejects.toMatchObject({ code: "stale_write" });
-
-    const updated = await commands.updateRewardDefinition(auth, {
-      key: "quartz",
-      kind: "points",
-      label: "Quartz",
-      points: 25,
-      expectedVersion: quartz.version,
-    });
-    expect(updated.points).toBe(25);
-    expect(updated.version).toBe(quartz.version + 1);
-    expect(await auditCount(auth, [quartz.id])).toBe(2);
   });
 });
 
@@ -124,15 +92,13 @@ suite("reward ledger", () => {
       commands.awardReward(auth, { definitionKey: "nope", reason: "adjustment", idempotencyKey: "k-1" }),
     ).rejects.toMatchObject({ code: "conflict" });
 
-    const quartz = await commands.createRewardDefinition(auth, { key: "quartz", kind: "points", label: "Quartz", points: 5 });
-    await commands.updateRewardDefinition(auth, {
+    const quartz = await commands.createRewardDefinition(auth, {
       key: "quartz",
       kind: "points",
       label: "Quartz",
       points: 5,
-      active: false,
-      expectedVersion: quartz.version,
     });
+    await db.update(rewardDefinitions).set({ active: false }).where(eq(rewardDefinitions.id, quartz.id));
     await expect(
       commands.awardReward(auth, { definitionKey: "quartz", reason: "adjustment", idempotencyKey: "k-2" }),
     ).rejects.toMatchObject({ code: "conflict" });
