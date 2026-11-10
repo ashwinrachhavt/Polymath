@@ -68,27 +68,26 @@ function useAnchors(previews: LinkPreview[], editorRoot: HTMLElement | null): An
   return anchors;
 }
 
-/** True while the note's container fits measure + margin column; marks it with data-margin for CSS. */
+/*
+ * True while the note's container fits measure + margin column. The same
+ * threshold lives in globals.css as a container query (CSS cannot read
+ * var() in a query), so first paint is already in the right mode; a unit
+ * test keeps the two in step.
+ */
 function useMarginMode(editorRoot: HTMLElement | null): boolean {
   const [on, setOn] = useState(false);
   useEffect(() => {
     const container = editorRoot?.closest<HTMLElement>("[data-note-container]");
     if (!container) return;
     const check = () => {
-      const style = getComputedStyle(container);
       const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-      const measure = parseFloat(style.getPropertyValue("--measure-prose")) || 720;
-      const fits = container.clientWidth >= measure + (MARGIN_COLUMN_REM + MARGIN_GAP_REM) * rem;
-      container.dataset.margin = fits ? "on" : "off";
-      setOn(fits);
+      const measure = parseFloat(getComputedStyle(container).getPropertyValue("--measure-prose")) || 720;
+      setOn(container.clientWidth >= measure + (MARGIN_COLUMN_REM + MARGIN_GAP_REM) * rem);
     };
     check();
     const resize = new ResizeObserver(check);
     resize.observe(container);
-    return () => {
-      resize.disconnect();
-      delete container.dataset.margin;
-    };
+    return () => resize.disconnect();
   }, [editorRoot]);
   return on;
 }

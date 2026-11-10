@@ -35,6 +35,13 @@ function inlineNote(previews: LinkPreview[]): HTMLElement {
     const link = entry.appendChild(document.createElement("a"));
     link.href = `/polymath/notes?id=${preview.id}`;
     link.textContent = preview.title;
+    // A plain click opens in place through the host (client routing, no reload);
+    // modified clicks keep the href so open-in-new-tab still works.
+    link.addEventListener("click", (event) => {
+      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      event.preventDefault();
+      link.dispatchEvent(new CustomEvent(WIKI_LINK_OPEN, { detail: preview.title, bubbles: true }));
+    });
     if (preview.firstParagraph) entry.appendChild(document.createElement("p")).textContent = preview.firstParagraph;
   }
   return root;

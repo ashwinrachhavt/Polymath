@@ -2,7 +2,7 @@
 import { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { afterEach, describe, expect, it } from "vitest";
-import { WikiLinks, refreshWikiPreviews } from "@/components/products/polymath/wiki-links";
+import { WIKI_LINK_OPEN, WikiLinks, refreshWikiPreviews } from "@/components/products/polymath/wiki-links";
 
 /*
  * Value: protects=the inline fallback for margin notes sits right after the paragraph that cites the note;
@@ -45,5 +45,25 @@ describe("inline link notes", () => {
     expect(ed.view.dom.querySelector(".note-margin-inline")).toBeNull();
     refreshWikiPreviews(ed, [alpha]);
     expect(ed.view.dom.querySelectorAll(".note-margin-inline")).toHaveLength(1);
+  });
+});
+
+describe("inline link note clicks", () => {
+  function click(init: MouseEventInit) {
+    const ed = mount([alpha]);
+    const opened: string[] = [];
+    ed.view.dom.addEventListener(WIKI_LINK_OPEN, (e) => opened.push((e as CustomEvent<string>).detail));
+    const link = ed.view.dom.querySelector<HTMLAnchorElement>(".note-margin-inline a")!;
+    const event = new MouseEvent("click", { bubbles: true, cancelable: true, ...init });
+    link.dispatchEvent(event);
+    return { opened, prevented: event.defaultPrevented };
+  }
+
+  it("opens a plain click through the host instead of navigating", () => {
+    expect(click({})).toEqual({ opened: ["Alpha"], prevented: true });
+  });
+
+  it("leaves a meta-click to the browser", () => {
+    expect(click({ metaKey: true })).toEqual({ opened: [], prevented: false });
   });
 });

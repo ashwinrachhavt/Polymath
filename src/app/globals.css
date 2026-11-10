@@ -615,8 +615,21 @@
   margin-top: 0.25rem;
   padding-left: 1rem;
 }
-[data-margin="on"] .note-margin-inline {
-  display: none;
+/* The note container decides margin mode by its own width (sidebar and the
+   comments aside both take room). 1000px = --measure-prose (720px) + 17.5rem;
+   tests/unit/margin-notes-threshold.test.ts keeps it in step with the token.
+   In margin mode the column slides left only as far as the 16rem margin needs. */
+[data-note-container] {
+  container-type: inline-size;
+}
+@container (min-width: 1000px) {
+  .note-margin-inline {
+    display: none;
+  }
+  .note-column {
+    margin-right: 0;
+    margin-left: max(1rem, min((100% - var(--measure-prose)) / 2, 100% - var(--measure-prose) - 17rem));
+  }
 }
 /* [[Title]] links: the editor decorates them (wiki-links.ts) and the
    evergreen reader renders them as anchors; both read as one quiet link.
