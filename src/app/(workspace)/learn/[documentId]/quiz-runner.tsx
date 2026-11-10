@@ -50,6 +50,7 @@ type SittingResult = {
   correctCount: number;
   totalCount: number;
   stoneEarned: boolean;
+  emeraldEarned: boolean;
   replayed: boolean;
   announcement: StoneAnnouncement | null;
 };
@@ -131,6 +132,7 @@ function Sitting({
           correctCount: response.result.correctCount,
           totalCount: response.result.totalCount,
           stoneEarned: response.result.stoneEarned,
+          emeraldEarned: response.result.emeraldEarned,
           replayed: response.result.replayed,
           announcement: response.announcement,
         });
@@ -154,11 +156,13 @@ function Sitting({
         </p>
         <div className="relative mt-2">
           <p className="text-body-dense">
-            {result.stoneEarned
-              ? "+10 stones for finishing this quiz."
-              : result.replayed
-                ? "This sitting was already recorded - the stone it earned was not awarded twice."
-                : "No stone for this sitting."}
+            {result.emeraldEarned
+              ? "Every answer right: an emerald, plus +10 stones."
+              : result.stoneEarned
+                ? "+10 stones for finishing this quiz."
+                : result.replayed
+                  ? "This sitting was already recorded - the stone it earned was not awarded twice."
+                  : "No stone for this sitting."}
           </p>
           {result.announcement ? (
             <CoachMark

@@ -1,24 +1,13 @@
 import type { Metadata } from "next";
-import { Red_Hat_Display, Red_Hat_Mono } from "next/font/google";
 
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { MotionProvider } from "@/components/motion-config";
 import { ThemeProvider } from "@/components/theme-provider";
+import { APPEARANCE_BOOT_SCRIPT } from "@/lib/appearance";
 import "./globals.css";
 
-// One Red Hat variable family covers display and body text (spec W4): Red Hat
-// Display spans weights 300-900, so two families (Display + Text) meant two
-// font files preloaded per visit for faces that read the same at body sizes.
-const redHat = Red_Hat_Display({
-  variable: "--font-red-hat",
-  subsets: ["latin"],
-});
-
-const redHatMono = Red_Hat_Mono({
-  variable: "--font-red-hat-mono",
-  subsets: ["latin"],
-});
-
+// Text is set in the platform's own sans (see --font-system in globals.css):
+// no web-font download, so nothing reflows when a font arrives.
 export const metadata: Metadata = {
   title: "Polymath",
   description: "Personal command center and knowledge operating system.",
@@ -26,7 +15,11 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" suppressHydrationWarning className={`${redHat.variable} ${redHatMono.variable} h-full antialiased`}>
+    <html lang="en" suppressHydrationWarning className="h-full antialiased">
+      <head>
+        {/* Applies the saved page colour and accent before first paint. */}
+        <script dangerouslySetInnerHTML={{ __html: APPEARANCE_BOOT_SCRIPT }} />
+      </head>
       {/* Auth providers sit inside <body>; cacheComponents requires it. */}
       <body className="flex min-h-full flex-col">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>

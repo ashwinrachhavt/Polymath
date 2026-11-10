@@ -32,10 +32,7 @@ export function DraftControls({ draft }: { draft: { artifactId: string; status: 
     return (
       <p className="text-muted-foreground text-xs">
         Kept as a reviewed Studio draft, version {draft.version}.{" "}
-        <a
-          href={`/polymath/dossiers?draft=${draft.artifactId}`}
-          className="underline underline-offset-2 hover:text-foreground"
-        >
+        <a href={`/artifacts/${draft.artifactId}`} className="underline underline-offset-2 hover:text-foreground">
           Open it
         </a>
       </p>

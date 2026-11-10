@@ -1,0 +1,90 @@
+/*
+ * Appearance choices (Settings > Appearance). The defaults in globals.css /
+ * tokens.css are white paper and a graphite accent; these attribute presets
+ * override only the roles they change. <html data-paper data-accent> is set
+ * before first paint by the inline script in app/layout.tsx, so a choice
+ * never flashes the default first.
+ *
+ * Specificity: light rules are :root[data-…] (0,2,0) and come after
+ * tokens.css, so the dark variants use .dark:root[data-…] (0,3,0) to win
+ * back in dark mode.
+ */
+
+/* Paper: warm manila (the original Furrow page). */
+:root[data-paper="warm"] {
+  --paper: oklch(96% 0.011 85);
+  --paper-2: oklch(99.5% 0.005 85);
+  --paper-3: oklch(92% 0.016 85);
+  --ink: oklch(18% 0.006 60);
+  --ink-2: oklch(28% 0.008 60);
+  --ink-muted: oklch(44% 0.012 60);
+  --rule: oklch(88% 0.013 85);
+  --sheet: oklch(99.3% 0.004 85);
+  --grid: oklch(90% 0.014 85);
+  --grid-strong: oklch(85% 0.018 85);
+}
+.dark:root[data-paper="warm"] {
+  --paper: oklch(14% 0.008 85);
+  --paper-2: oklch(17% 0.008 85);
+  --paper-3: oklch(11% 0.01 85);
+  --ink: oklch(93% 0.006 85);
+  --ink-2: oklch(82% 0.008 80);
+  --ink-muted: oklch(58% 0.012 80);
+  --rule: oklch(24% 0.013 85);
+  --sheet: oklch(19% 0.004 85);
+  --grid: oklch(22% 0.014 85);
+  --grid-strong: oklch(27% 0.018 85);
+}
+
+/* Accents. Each keeps text on the button at AA contrast in its mode. */
+:root[data-accent="blue"] {
+  --signal: oklch(54% 0.17 255);
+  --signal-ink: oklch(99% 0 0);
+  --signal-soft: oklch(94% 0.03 255);
+  --focus: oklch(56% 0.17 255);
+}
+.dark:root[data-accent="blue"] {
+  --signal: oklch(72% 0.13 255);
+  --signal-ink: oklch(16% 0.02 255);
+  --signal-soft: oklch(28% 0.05 255);
+  --focus: oklch(72% 0.13 255);
+}
+
+:root[data-accent="green"] {
+  --signal: oklch(50% 0.12 155);
+  --signal-ink: oklch(99% 0 0);
+  --signal-soft: oklch(94% 0.03 155);
+  --focus: oklch(52% 0.12 155);
+}
+.dark:root[data-accent="green"] {
+  --signal: oklch(74% 0.12 155);
+  --signal-ink: oklch(16% 0.02 155);
+  --signal-soft: oklch(28% 0.04 155);
+  --focus: oklch(74% 0.12 155);
+}
+
+:root[data-accent="violet"] {
+  --signal: oklch(52% 0.17 295);
+  --signal-ink: oklch(99% 0 0);
+  --signal-soft: oklch(94% 0.03 295);
+  --focus: oklch(54% 0.17 295);
+}
+.dark:root[data-accent="violet"] {
+  --signal: oklch(74% 0.12 295);
+  --signal-ink: oklch(16% 0.02 295);
+  --signal-soft: oklch(28% 0.05 295);
+  --focus: oklch(74% 0.12 295);
+}
+
+:root[data-accent="rose"] {
+  --signal: oklch(56% 0.17 10);
+  --signal-ink: oklch(99% 0 0);
+  --signal-soft: oklch(94% 0.03 10);
+  --focus: oklch(56% 0.17 10);
+}
+.dark:root[data-accent="rose"] {
+  --signal: oklch(74% 0.13 10);
+  --signal-ink: oklch(16% 0.02 10);
+  --signal-soft: oklch(28% 0.05 10);
+  --focus: oklch(74% 0.13 10);
+}
