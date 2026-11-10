@@ -179,4 +179,35 @@ suite("POST /api/v1/captures extension extraction metadata", () => {
     const capture = (await res.json()).capture;
     expect(capture.rawPayload).toEqual({ text: "Plain words, no extraction." });
   });
+
+  // Value: protects=companion context lands in raw_payload.context and a bad one is a 422 problem;
+  // fails_when=the route stops passing context or accepts an invalid shape; why_new=no route case
+  // sent a context; seam=none; no_claim=Clerk mocked; createCapture's own rules are covered elsewhere
+  it("stores a companion's capture context beside the words", async () => {
+    const { userId, workspaceId } = await seedWorkspace(handle!.db, `capture-route-ctx-${Date.now()}`);
+    holder.auth = { userId, workspaceId, role: "owner" };
+    const context = {
+      source: { kind: "web", title: "An article", url: "https://example.com/a", version: "rev 2" },
+      passage: "the exact words",
+      surrounding: { before: "Before them,", after: "and after." },
+      why: { kind: "unknown" },
+    };
+    const res = await POST(
+      captureRequest({ text: "the exact words", url: "https://example.com/a", context }),
+      undefined,
+    );
+    expect(res.status).toBe(201);
+    expect((await res.json()).capture.rawPayload.context).toEqual(context);
+  });
+
+  it("answers 422 for a context it cannot accept, and stores nothing", async () => {
+    const { userId, workspaceId } = await seedWorkspace(handle!.db, `capture-route-badctx-${Date.now()}`);
+    holder.auth = { userId, workspaceId, role: "owner" };
+    for (const context of [{ folder: "inbox" }, { source: { url: "javascript:alert(1)" } }]) {
+      const res = await POST(captureRequest({ text: "words", context }), undefined);
+      expect(res.status).toBe(422);
+    }
+    const rows = await handle!.db.select().from(captures).where(eq(captures.workspaceId, workspaceId));
+    expect(rows).toHaveLength(0);
+  });
 });

@@ -119,10 +119,12 @@ export function CommandLayer({
         .map((result) => result[0]?.transcript ?? "")
         .join(" ")
         .trim();
+      // Clamped like the typed field: an answer past the schema's limit would
+      // make the server drop the whole context, passage and source included.
       if (heard)
         setWhy((current) => ({
           kind: "answer",
-          text: current?.kind === "answer" ? `${current.text} ${heard}` : heard,
+          text: (current?.kind === "answer" ? `${current.text} ${heard}` : heard).slice(0, WHY_MAX),
           via: "voice",
         }));
     };
@@ -291,10 +293,9 @@ export function CommandLayer({
     setSaveError("");
     setSaveErrorId(null);
     setPending(true);
+    // A selection the person replaced with their own words is still the
+    // passage they were looking at, so it is kept either way.
     const context: CaptureContext = { ...snapshot?.context, ...(why ? { why } : {}) };
-    // A selection the person replaced with their own words is still the passage
-    // they were looking at; one they cleared away entirely is not.
-    if (context.passage && !text.includes(context.passage.slice(0, 80)) && !text.trim()) delete context.passage;
     void quickCapture(text, crypto.randomUUID(), context)
       .then((result) => {
         if (!result.ok) {
@@ -587,7 +588,7 @@ export function CommandLayer({
                       id="capture-why"
                       value={why?.kind === "answer" ? why.text : ""}
                       disabled={why?.kind === "unknown"}
-                      maxLength={4000}
+                      maxLength={WHY_MAX}
                       onChange={(event) =>
                         setWhy(
                           event.target.value.trim() ? { kind: "answer", text: event.target.value, via: "text" } : null,
@@ -679,6 +680,8 @@ function CaptureProvenance({ snapshot }: { snapshot: CaptureSnapshot | null }) {
     </p>
   );
 }
+
+const WHY_MAX = 4_000;
 
 /* The Web Speech API is not in the DOM typings; this is the slice used here. */
 type SpeechRecognitionLike = {

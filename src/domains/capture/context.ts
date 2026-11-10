@@ -18,7 +18,13 @@ export const captureContextSchema = z
         kind: z.enum(["web", "app", "conversation", "document", "screenshot", "other"]).optional(),
         title: text(500).optional(),
         author: text(300).optional(),
-        url: z.string().url().max(2_000).optional(),
+        // http(s) only: a stored source becomes a link in the inbox.
+        url: z
+          .string()
+          .url()
+          .max(2_000)
+          .refine((value) => /^https?:\/\//i.test(value), "Only http(s) sources are kept.")
+          .optional(),
         /** When the source itself was published or last changed, if it says. */
         publishedAt: z.string().datetime({ offset: true }).optional(),
         /** A source-side version: a document revision, a commit, an edit id. */
