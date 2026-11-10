@@ -100,7 +100,7 @@ describe("destinations", () => {
     { subjectType: "task", subjectId: "task1", href: "/neuralflow/work?task=task1" },
     { subjectType: "contact", subjectId: "c1", href: "/command-center/relationships/contacts?id=c1" },
     { subjectType: "company", subjectId: "co1", href: "/command-center/relationships/companies/co1" },
-    { subjectType: "document", subjectId: "doc1", href: "/polymath/library/doc1" },
+    { subjectType: "document", subjectId: "doc1", href: "/polymath/knowledge?doc=doc1" },
     { subjectType: "run", subjectId: "run1", href: "/polymath/run1" },
   ];
   it.each(cases)("routes $subjectType to $href", ({ subjectType, subjectId, href }) => {

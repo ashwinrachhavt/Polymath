@@ -87,7 +87,7 @@ const SUBJECT_ROUTES: Record<string, (subjectId: string) => Destination> = {
   task: (id) => ({ label: "Open task", href: `/neuralflow/work?task=${id}` }),
   contact: (id) => ({ label: "Open contact", href: `/command-center/relationships/contacts?id=${id}` }),
   company: (id) => ({ label: "Open company", href: `/command-center/relationships/companies/${id}` }),
-  document: (id) => ({ label: "Open document", href: `/polymath/library/${id}` }),
+  document: (id) => ({ label: "Open document", href: `/polymath/knowledge?doc=${id}` }),
   run: (id) => ({ label: "Open run", href: `/polymath/${id}` }),
 };
 
@@ -146,7 +146,7 @@ const RESULT_ROUTES: Record<string, (resultId: string) => Destination> = {
   note: (id) => ({ label: "Open note", href: `/polymath/notes?id=${id}` }),
   draft: (id) => ({ label: "Open note", href: `/polymath/notes?id=${id}` }),
   task: (id) => ({ label: "Open task", href: `/neuralflow/work?task=${id}` }),
-  document: (id) => ({ label: "Open document", href: `/polymath/library/${id}` }),
+  document: (id) => ({ label: "Open document", href: `/polymath/knowledge?doc=${id}` }),
 };
 
 export function conversionResultDestination(payload: ConversionPayload): Destination | null {

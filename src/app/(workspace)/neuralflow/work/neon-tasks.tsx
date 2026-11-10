@@ -417,7 +417,7 @@ export async function NeonTasks({
                 )}
               </div>
             ) : null}
-            {detail ? <TaskEvidence items={provenance} taskId={detail.task.id} /> : null}
+            {detail ? <TaskEvidence items={provenance} /> : null}
           </Panel>
         ) : scope === "today" ? (
           <aside className="flex min-w-0 flex-col gap-4">

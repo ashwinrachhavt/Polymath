@@ -11,9 +11,7 @@
 
 export type SurfaceKind = "tasks" | "notes" | "calendar" | "runs" | "decisions" | "library";
 
-export type NavigationIntent =
-  | { kind: "surface"; surface: SurfaceKind }
-  | { kind: "open_note"; query: string };
+export type NavigationIntent = { kind: "surface"; surface: SurfaceKind } | { kind: "open_note"; query: string };
 
 const SURFACE_PHRASES: Array<[RegExp, SurfaceKind]> = [
   [/\b(open|show( me)?|see|view|list)( my| the)? (open )?tasks?\b/i, "tasks"],
@@ -49,7 +47,7 @@ export const SURFACE_HREF: Record<SurfaceKind, string> = {
   calendar: "/command-center/day",
   runs: "/activity",
   decisions: "/",
-  library: "/polymath/library",
+  library: "/polymath/knowledge",
 };
 
 export const SURFACE_LABEL: Record<SurfaceKind, string> = {

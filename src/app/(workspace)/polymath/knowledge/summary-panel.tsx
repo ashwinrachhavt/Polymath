@@ -7,7 +7,7 @@ import type { VerifiedReadingSummary } from "@/domains/knowledge/reading-summary
 import { acceptReadingSummaryAction, summarizeReadingAction } from "./summary-actions";
 
 /*
- * The summarize flow on the reader (ASH-292): one click runs the
+ * The summarize flow in the Vault's document detail (ASH-292): one click runs the
  * summarizer, the result stays a preview - the owner reads it, then
  * accepts (a linked note plus one zettel card per verified claim)
  * or discards it. Nothing is written before Accept; the accept key is

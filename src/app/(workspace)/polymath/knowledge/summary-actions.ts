@@ -9,7 +9,7 @@ import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 
 /*
- * The reader's summarize actions (ASH-292). Summarizing runs one generation
+ * The Vault document detail's summarize actions (ASH-292). Summarizing runs one generation
  * call against the workspace's quota and returns the verified summary -
  * nothing is written until the owner accepts. Accepting writes the note, the
  * source link, and one zettel card per verified claim in one idempotent
