@@ -5,6 +5,7 @@ import {
   BookOpen,
   Briefcase,
   CalendarDays,
+  GraduationCap,
   Inbox,
   Layers,
   LayoutDashboard,
@@ -115,6 +116,13 @@ export const destinations: Destination[] = [
     label: "Notebook",
     purpose: "Long-lived homes for a body of work, each with its own sources.",
     icon: Library,
+    group: "polymath",
+  },
+  {
+    href: "/learn",
+    label: "Learn",
+    purpose: "Review the flashcards that are due and take your quizzes.",
+    icon: GraduationCap,
     group: "polymath",
   },
   {

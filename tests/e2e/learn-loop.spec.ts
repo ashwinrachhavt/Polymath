@@ -181,10 +181,10 @@ test("the learning loop: library states, a sitting with instant feedback, and on
   // first #content (the pattern the other specs use).
   const content = page.locator("#content").first();
 
-  // The Up next queue (PR #557): quizzes with their best score and a
+  // The Learn queue (PR #557): quizzes with their best score and a
   // Continue link. A document still being read has no quiz, so it is not
   // queued; its honest state lives on its own quiz page.
-  await expect(content.getByRole("heading", { name: "Up next", level: 1 })).toBeVisible();
+  await expect(content.getByRole("heading", { name: "Learn", level: 1 })).toBeVisible();
   const quizzes = content.getByRole("region", { name: "Quizzes" });
   const docRow = quizzes.getByRole("listitem").filter({ has: page.getByText(DOC_TITLE, { exact: true }) });
   await expect(docRow).toContainText("Best score 1/3");

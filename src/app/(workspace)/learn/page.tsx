@@ -5,9 +5,11 @@ import type { Metadata } from "next";
 import { getAuthContext } from "@/lib/auth";
 import { getLearnLibrary } from "@/domains/learning/queries";
 import { getFlashcardDueQueue } from "@/domains/learning/flashcards";
+import { getUpNext } from "@/domains/learning/up-next";
+import { UpNextCard } from "@/app/(workspace)/polymath/up-next-card";
 import { Skeleton } from "@/components/ui/skeleton";
 
-export const metadata: Metadata = { title: "Learning · Polymath" };
+export const metadata: Metadata = { title: "Learn · Polymath" };
 
 // The queue reads per-request data, so it streams behind a skeleton instead of
 // blocking the whole navigation (cacheComponents: blocking-prerender-dynamic).
@@ -17,10 +19,11 @@ export default function LearnPage() {
       fallback={
         <div
           role="status"
-          aria-label="Loading Up next"
+          aria-label="Loading Learn"
           className="page-content mx-auto flex w-full max-w-4xl flex-col gap-4"
         >
           <Skeleton className="h-8 w-40" />
+          <Skeleton className="h-20 w-full" />
           <Skeleton className="h-28 w-full" />
           <Skeleton className="h-28 w-full" />
         </div>
@@ -34,17 +37,26 @@ export default function LearnPage() {
 async function LearnSurface() {
   await connection();
   const auth = await getAuthContext();
-  const [library, dueCards] = await Promise.all([getLearnLibrary(auth), getFlashcardDueQueue(auth, 40)]);
+  // Home's Up next card leads, so both pages agree on where Continue goes;
+  // the lists below are everything behind it.
+  const [upNext, library, dueCards] = await Promise.all([
+    getUpNext(auth),
+    getLearnLibrary(auth),
+    getFlashcardDueQueue(auth, 40),
+  ]);
   const quizzes = library.filter((item) => item.quizId);
 
   return (
     <main className="page-content mx-auto w-full max-w-4xl">
       <header className="mb-6">
-        <h1 className="text-2xl font-medium">Up next</h1>
+        <h1 className="text-2xl font-medium">Learn</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Continue a quiz or review flashcards due across your Notebooks.
         </p>
       </header>
+      <div className="mb-4">
+        <UpNextCard upNext={upNext} />
+      </div>
       <section aria-labelledby="due-flashcards-title" className="panel rounded-xl p-4">
         <h2 id="due-flashcards-title" className="font-medium">
           Flashcards due
