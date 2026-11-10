@@ -1,5 +1,5 @@
 import { and, eq, sql } from "drizzle-orm";
-import { recordAudit, type SystemAuditContext } from "@/domains/audit/record";
+import { recordAudit } from "@/domains/audit/record";
 import type { FocusStrictness } from "@/domains/focus/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { withTransaction } from "@/lib/db-transaction";
@@ -46,10 +46,6 @@ import { rewardDefinitions, rewardLedger, userProgress } from "./schema";
 
 export class ConflictError extends Error {
   readonly code = "conflict";
-}
-
-export class StaleWriteError extends Error {
-  readonly code = "stale_write";
 }
 
 export class InvalidRewardDefinitionError extends Error {
@@ -112,51 +108,6 @@ export async function createRewardDefinition(auth: AuthContext, input: RewardDef
     }
     throw cause;
   }
-}
-
-export async function updateRewardDefinition(
-  auth: AuthContext,
-  input: RewardDefinitionInput & { expectedVersion: number; active?: boolean },
-) {
-  assertBoundedPoints(input.points ?? 0);
-  return withTransaction(async (tx) => {
-    const [updated] = await tx
-      .update(rewardDefinitions)
-      .set({
-        kind: input.kind,
-        label: input.label,
-        description: input.description ?? null,
-        points: input.points ?? 0,
-        threshold: input.threshold ?? 1,
-        accessibilityLabel: input.accessibilityLabel ?? null,
-        ...(input.active !== undefined ? { active: input.active } : {}),
-        version: sql`${rewardDefinitions.version} + 1`,
-        updatedAt: new Date(),
-        updatedBy: auth.userId,
-      })
-      .where(
-        and(
-          eq(rewardDefinitions.workspaceId, auth.workspaceId),
-          eq(rewardDefinitions.key, input.key),
-          eq(rewardDefinitions.version, input.expectedVersion),
-        ),
-      )
-      .returning();
-    if (!updated) {
-      throw new StaleWriteError("The reward definition changed since you loaded it. Reload and try again.");
-    }
-    await recordAudit(
-      auth,
-      {
-        action: "reward_definition.updated",
-        subjectType: "reward_definition",
-        subjectId: updated.id,
-        summary: `Reward updated: ${updated.key}`,
-      },
-      tx,
-    );
-    return updated;
-  });
 }
 
 /**
@@ -838,66 +789,5 @@ export async function claimShard(auth: AuthContext) {
       if (isUniqueViolation(cause)) throw new ConflictError("That shard was already claimed.");
       throw cause;
     }
-  });
-}
-
-/*
- * Spec §6: the guarded, system-only way a reward un-happens. The ledger is
- * append-only, so a reversed award is a compensating negative adjustment
- * row that references the original - never a delete or an update.
- *
- * System-only is structural: the function takes a workspace id, not an
- * AuthContext, so no request surface can call it "as" a user, and the audit
- * row records actorKind "system". The guards refuse to reverse a reversal
- * (no chains), an entry with no user, or an entry carrying no points, and
- * the workspace-unique key `reversal:<entryId>` means exactly one negative
- * row can ever exist per original - a raced second reversal is a conflict,
- * not a second debit.
- */
-export async function reverseLedgerEntry(workspaceId: string, input: { originalEntryId: string; reason: string }) {
-  return withTransaction(async (tx) => {
-    const [original] = await tx
-      .select()
-      .from(rewardLedger)
-      .where(and(eq(rewardLedger.workspaceId, workspaceId), eq(rewardLedger.id, input.originalEntryId)))
-      .limit(1);
-    if (!original) throw new ConflictError("No such ledger entry in this workspace.");
-    if (original.subjectType === REVERSAL_SUBJECT_TYPE) {
-      throw new ConflictError("This entry is itself a reversal - reversals are not reversible.");
-    }
-    if (original.userId === null) throw new ConflictError("This entry has no user to reverse against.");
-    if (original.points <= 0) throw new ConflictError("This entry carries no points to reverse.");
-
-    const [reversal] = await tx
-      .insert(rewardLedger)
-      .values({
-        workspaceId,
-        rewardDefinitionId: original.rewardDefinitionId,
-        userId: original.userId,
-        reason: "adjustment",
-        subjectType: REVERSAL_SUBJECT_TYPE,
-        subjectId: original.id,
-        note: input.reason,
-        points: -original.points,
-        idempotencyKey: `reversal:${original.id}`,
-      })
-      .onConflictDoNothing({ target: [rewardLedger.workspaceId, rewardLedger.idempotencyKey] })
-      .returning();
-    if (!reversal) throw new ConflictError("This entry was already reversed.");
-
-    const auditAuth: SystemAuditContext = { workspaceId, userId: null };
-    await recordAudit(
-      auditAuth,
-      {
-        action: "reward.reversed",
-        subjectType: "reward_ledger",
-        subjectId: reversal.id,
-        summary: `Reward reversed: ${reversal.points} pts (${input.reason})`,
-        metadata: { originalEntryId: original.id, originalPoints: original.points },
-        actorKind: "system",
-      },
-      tx,
-    );
-    return reversal;
   });
 }
