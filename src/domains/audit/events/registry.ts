@@ -294,6 +294,7 @@ const TIER_2_ACTIONS: { action: string; category: EventCategory }[] = [
   { action: "artifact.revision.approved", category: "knowledge" },
   { action: "briefing_seed.committed", category: "work" },
   { action: "briefing_seed.dismissed", category: "work" },
+  { action: "capture.enrich_requested", category: "knowledge" },
   { action: "capture.extracted", category: "knowledge" },
   { action: "capture.url_retry_requested", category: "knowledge" },
   { action: "company.created", category: "work" },

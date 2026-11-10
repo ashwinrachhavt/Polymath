@@ -21,6 +21,8 @@ import type { PriorWriting } from "@/domains/knowledge/prior-writing";
 import dynamic from "next/dynamic";
 import { Select } from "@/components/ui/select";
 import type { CaptureKind } from "@/domains/capture/kind-label";
+import { readEnrichment } from "@/domains/capture/enrich-state";
+import { EnrichPanel } from "./enrich-panel";
 import {
   CAPTURE_KIND_NAMES,
   CaptureKindChip,
@@ -409,10 +411,10 @@ export function InboxDetail({
           ) : capture.fetchOutcome === "acquired" ? null : capture.fetchOutcome === null ? (
             <div className="max-w-[70ch]">
               <p className="text-body-dense text-muted-foreground">
-                This capture keeps the original link. Read and enrich the page when you need its contents.
+                This capture keeps the original link. Read the page when you need its text here.
               </p>
               <Button className="mt-2" size="sm" variant="outline" disabled={pending} onClick={retryFetch}>
-                Read and enrich page
+                Read page
               </Button>
             </div>
           ) : (
@@ -447,6 +449,16 @@ export function InboxDetail({
           </>
         )}
       </div>
+
+      {/* Opt-in: a link is fetched and summarized only when the person asks. */}
+      {capture.url && isHttpUrl(capture.url) ? (
+        <EnrichPanel
+          key={capture.id}
+          captureId={capture.id}
+          enrichment={readEnrichment(capture.rawPayload)}
+          canRequest={state !== "converted" && state !== "discarded"}
+        />
+      ) : null}
 
       <CaptureContextPanel rawPayload={capture.rawPayload} />
 
