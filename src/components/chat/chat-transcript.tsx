@@ -51,14 +51,14 @@ function thoughtSteps(blocks: ChatState["blocks"], tools: ChatState["tools"]): T
     ...tools
       .filter((tool) => !isDiagramTool(tool))
       .map((tool): ThoughtStep => ({
-      id: `tool:${tool.callId}`,
-      kind: "tool",
-      label: toolLabel(tool.label),
-      ...(tool.detail ? { detail: tool.detail } : {}),
-      status: tool.status === "running" ? "running" : tool.status === "ok" ? "complete" : "error",
-      tool: tool.label,
-      ...(tool.status !== "running" ? { records: collectRecords(tool.output) } : {}),
-    })),
+        id: `tool:${tool.callId}`,
+        kind: "tool",
+        label: toolLabel(tool.label),
+        ...(tool.detail ? { detail: tool.detail } : {}),
+        status: tool.status === "running" ? "running" : tool.status === "ok" ? "complete" : "error",
+        tool: tool.label,
+        ...(tool.status !== "running" ? { records: collectRecords(tool.output) } : {}),
+      })),
   ];
 }
 
@@ -150,12 +150,19 @@ export function ChatTranscript({
             block.kind === "user" ? (
               <div
                 key={block.id}
+                data-turn-id={block.id}
+                data-turn-role="user"
                 className="bg-muted/60 ml-auto w-fit max-w-[75%] rounded-md px-2.5 py-1 text-body leading-6"
               >
                 {inline(stripMentionContext(block.text))}
               </div>
             ) : block.kind === "reasoning" ? null : (
-              <div key={block.id} className="group/message prose-reading w-full font-[family-name:var(--font-reading)]">
+              <div
+                key={block.id}
+                data-turn-id={block.id}
+                data-turn-role="assistant"
+                className="group/message prose-reading w-full font-[family-name:var(--font-reading)]"
+              >
                 {/* A run's citations apply to its answer, so the markers in
                   the prose and the list below resolve in one numbering. */}
                 <CitedText text={block.text} citations={citations} />
