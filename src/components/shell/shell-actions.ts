@@ -2,7 +2,7 @@
 
 import { and, desc, eq, ilike, isNull, ne, or } from "drizzle-orm";
 import { revalidatePath, updateTag } from "next/cache";
-import { captureContextSchema } from "@/domains/capture/context";
+import { parseCaptureContextLenient } from "@/domains/capture/context";
 import { createCapture } from "@/domains/capture/commands";
 import { captures } from "@/domains/capture/schema";
 import { contacts } from "@/domains/crm/schema";
@@ -41,11 +41,10 @@ export async function quickCapture(
   requireRole(auth, "member");
   const value = text.trim();
   if (!value) return { ok: false, error: "Nothing to save." };
-  // Context is best-effort provenance: a malformed one is dropped, never a
-  // reason to lose the capture itself.
-  const parsed = context === undefined ? undefined : captureContextSchema.safeParse(context);
+  // Context is best-effort provenance: fields that do not validate are
+  // dropped, never a reason to lose the capture itself.
   try {
-    await createCapture(auth, { text: value, idempotencyKey, context: parsed?.success ? parsed.data : undefined });
+    await createCapture(auth, { text: value, idempotencyKey, context: parseCaptureContextLenient(context).context });
     updateTag(capturesTag(auth));
     revalidatePath("/command-center/inbox");
     return { ok: true, message: "Saved to your inbox." };

@@ -546,6 +546,46 @@ export async function listNotes(
   });
 }
 
+/**
+ * The linkable cards with these exact titles (case-insensitive), for a reader
+ * resolving [[Title]] links without holding the whole workspace index.
+ */
+export async function findNotesByTitle(auth: AuthContext, titles: string[]): Promise<NoteListItem[]> {
+  const wanted = [...new Set(titles.map((title) => title.trim().toLowerCase()).filter(Boolean))].slice(0, 500);
+  if (!wanted.length) return [];
+  return withTransaction(async (tx) => {
+    const rows = await tx
+      .select({
+        id: artifacts.id,
+        title: artifacts.title,
+        kind: artifacts.kind,
+        status: artifacts.status,
+        version: artifacts.version,
+        updatedAt: artifacts.updatedAt,
+        excerpt: noteExcerptSql,
+        tags: artifacts.tags,
+        draftArtifactId: workingDrafts.artifactId,
+      })
+      .from(artifacts)
+      .leftJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
+      .leftJoin(workingDrafts, eq(workingDrafts.artifactId, artifacts.id))
+      .where(
+        and(
+          eq(artifacts.workspaceId, auth.workspaceId),
+          inArray(artifacts.kind, [...LINKABLE_KINDS]),
+          isNull(artifacts.archivedAt),
+          inArray(sql<string>`lower(trim(${artifacts.title}))`, wanted),
+        ),
+      )
+      .orderBy(desc(artifacts.updatedAt));
+    return rows.map(({ draftArtifactId, ...row }) => ({
+      ...row,
+      tags: readTags(row.tags),
+      hasDraft: draftArtifactId !== null,
+    }));
+  });
+}
+
 /** One page of notes for the sidebar list; the total honours search and the drafts filter. */
 export async function pageNotes(
   auth: AuthContext,

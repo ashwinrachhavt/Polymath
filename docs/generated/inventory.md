@@ -31,7 +31,7 @@ Migrations: 125 files, highest `0298_learning_artifact_feedback`.
 
 ## Tests
 
-579 `.test.ts` and 52 `.spec.ts` files (unit: 345, integration: 231, e2e: 52).
+587 `.test.ts` and 52 `.spec.ts` files (unit: 352, integration: 232, e2e: 52).
 ## Domains
 
 25 folders; 19 own tables.
@@ -248,6 +248,7 @@ Totals: 94 versioned, 57 append-only, 6 versionless but guarded (each declared w
 - `/api/v1/files`
 - `/api/v1/focus/blocklist`
 - `/api/v1/focus/live`
+- `/api/v1/notes/complete`
 - `/api/v1/projects`
 - `/api/v1/projects/[projectId]/generate`
 - `/api/v1/records/search`

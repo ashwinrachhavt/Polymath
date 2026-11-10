@@ -35,7 +35,7 @@ export function CaptureContextPanel({ rawPayload }: { rawPayload: unknown }) {
       ) : null}
 
       <div>
-        <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Why it matters</h3>
+        <h3 className="text-body-dense font-medium text-muted-foreground">Why it matters</h3>
         {why?.kind === "answer" ? (
           <p className="mt-1.5 text-body-dense">
             {why.text}
@@ -50,10 +50,10 @@ export function CaptureContextPanel({ rawPayload }: { rawPayload: unknown }) {
 
       {passage ? (
         <div>
-          <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Highlighted passage</h3>
+          <h3 className="text-body-dense font-medium text-muted-foreground">Highlighted passage</h3>
           <p className="mt-1.5 text-body-dense leading-relaxed">
             {surrounding?.before ? <span className="text-muted-foreground">…{surrounding.before} </span> : null}
-            <mark className="rounded-sm bg-primary/15 px-0.5 text-foreground">{passage}</mark>
+            <mark className="rounded-sm bg-muted px-0.5 text-foreground">{passage}</mark>
             {surrounding?.after ? (
               <span className="text-muted-foreground">
                 {" "}

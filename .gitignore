@@ -61,7 +61,6 @@ npm-debug.log*
 # Local queue worker pid/log (make queue-up).
 .run/
 .playwright-mcp/
-.gstack/
 mockups/
 
 # Agent scratch: the SDD workspace (ledger, briefs, review packages) and the

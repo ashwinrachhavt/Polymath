@@ -43,14 +43,33 @@ function writingAnswer(): string {
   });
 }
 
-
 function companyProfileAnswer(): string {
   return JSON.stringify({
     cards: [
-      { kind: "overview", title: "Spending analytics for small teams", body: "Example builds spending analytics for small finance teams: statement imports, transaction categories and burn by vendor.", citations: [1] },
-      { kind: "offerings", title: "Per-seat pricing with a free tier", body: "Pricing is per seat, free for two seats; the product positions against spreadsheets rather than enterprise suites.", citations: [1, 2] },
-      { kind: "news", title: "Seed round to expand analytics", body: "Example raised $4M led by North Peak in October 2026 to expand its small-team spending analytics.", citations: [3] },
-      { kind: "watch", title: "Eleven-person team, broad promise", body: "An eleven-person Portland team covers imports, categorization and reporting; depth per surface is the open question.", citations: [2] },
+      {
+        kind: "overview",
+        title: "Spending analytics for small teams",
+        body: "Example builds spending analytics for small finance teams: statement imports, transaction categories and burn by vendor.",
+        citations: [1],
+      },
+      {
+        kind: "offerings",
+        title: "Per-seat pricing with a free tier",
+        body: "Pricing is per seat, free for two seats; the product positions against spreadsheets rather than enterprise suites.",
+        citations: [1, 2],
+      },
+      {
+        kind: "news",
+        title: "Seed round to expand analytics",
+        body: "Example raised $4M led by North Peak in October 2026 to expand its small-team spending analytics.",
+        citations: [3],
+      },
+      {
+        kind: "watch",
+        title: "Eleven-person team, broad promise",
+        body: "An eleven-person Portland team covers imports, categorization and reporting; depth per surface is the open question.",
+        citations: [2],
+      },
     ],
   });
 }
@@ -58,9 +77,24 @@ function companyProfileAnswer(): string {
 function personProfileAnswer(): string {
   return JSON.stringify({
     cards: [
-      { kind: "role", title: "Platform lead at Example", body: "Priya Nair leads the platform group at Example, owning pricing and billing infrastructure.", citations: [1] },
-      { kind: "mentions", title: "On pricing analytics", body: "On a September podcast she argued small teams want pricing answers inside the tools they already use, not another dashboard.", citations: [2] },
-      { kind: "talking-points", title: "Ask about the pricing launch", body: "Her team just shipped per-seat pricing; how the free tier converts is a natural opener.", citations: [1, 2] },
+      {
+        kind: "role",
+        title: "Platform lead at Example",
+        body: "Priya Nair leads the platform group at Example, owning pricing and billing infrastructure.",
+        citations: [1],
+      },
+      {
+        kind: "mentions",
+        title: "On pricing analytics",
+        body: "On a September podcast she argued small teams want pricing answers inside the tools they already use, not another dashboard.",
+        citations: [2],
+      },
+      {
+        kind: "talking-points",
+        title: "Ask about the pricing launch",
+        body: "Her team just shipped per-seat pricing; how the free tier converts is a natural opener.",
+        citations: [1, 2],
+      },
     ],
   });
 }
@@ -103,7 +137,8 @@ function answerFor(system: string): string {
   if (system.includes("Linear issue proposal")) return linearIssueAnswer();
   if (system.includes("research card into a design brief")) return designBriefAnswer();
   // The Bloom practice classification (plan §6): deterministic JSON.
-  if (system.includes("practice a note most invites")) return JSON.stringify({ level: 2, rationale: "The note states a usable claim." });
+  if (system.includes("practice a note most invites"))
+    return JSON.stringify({ level: 2, rationale: "The note states a usable claim." });
   throw new GenerationUnconfiguredError();
 }
 

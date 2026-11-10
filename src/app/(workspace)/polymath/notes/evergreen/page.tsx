@@ -2,7 +2,14 @@ import { Suspense } from "react";
 import { io } from "next/cache";
 import { z } from "zod";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getNote, listNoteBacklinks, listNotes } from "@/domains/knowledge/notes";
+import {
+  extractWikiLinkTitles,
+  findNotesByTitle,
+  getNote,
+  listNoteBacklinks,
+  listNotes,
+  type NoteListItem,
+} from "@/domains/knowledge/notes";
 import { noteContentToMarkdown } from "@/domains/knowledge/note-content";
 import { markdownToPlainText } from "@/lib/display-text";
 import { getAuthContext } from "@/lib/auth";
@@ -45,14 +52,15 @@ async function EvergreenSurface({ searchParams }: { searchParams: Promise<RawSea
     ),
   ]);
 
-  const index: StackIndexEntry[] = all.map((n) => ({
+  const toEntry = (n: NoteListItem): StackIndexEntry => ({
     id: n.id,
     title: n.title,
     kind: n.kind,
     tags: Array.isArray(n.tags) ? n.tags.filter((t): t is string => typeof t === "string") : [],
     updatedAt: n.updatedAt.toISOString(),
     excerpt: n.excerpt ? markdownToPlainText(n.excerpt).slice(0, 280) : null,
-  }));
+  });
+  const index = all.map(toEntry);
 
   const notes: StackNote[] = opened
     .filter((entry): entry is NonNullable<typeof entry> => entry !== null)
@@ -70,7 +78,17 @@ async function EvergreenSurface({ searchParams }: { searchParams: Promise<RawSea
       })),
     }));
 
-  return <EvergreenStack index={index} notes={notes} />;
+  // The index is capped, so a [[Title]] in an open pane may point past it:
+  // those titles are looked up directly, and a link never reads as a missing
+  // note just because the workspace is large.
+  const indexed = new Set(index.map((entry) => entry.title.trim().toLowerCase()));
+  const beyond = notes
+    .flatMap((note) => extractWikiLinkTitles(note.markdown))
+    .map((title) => title.split("|")[0].trim())
+    .filter((title) => title && !indexed.has(title.toLowerCase()));
+  const linked = beyond.length ? (await findNotesByTitle(auth, beyond)).map(toEntry) : [];
+
+  return <EvergreenStack index={index} notes={notes} linked={linked} />;
 }
 
 export default function EvergreenNotesPage(props: { searchParams: Promise<RawSearchParams> }) {

@@ -1,5 +1,5 @@
 {
-  "runner": "bash -c \"set -a; source .env; set +a; unset CI; pnpm exec vitest run {files}\"",
+  "runner": "bash -c \"unset CI; pnpm exec vitest run {files}\"",
   "dependencies": {
     ".claude/**": [],
     ".serena/**": [],

@@ -47,13 +47,22 @@ export function snapshotCaptureContext(): CaptureSnapshot {
     };
   }
 
-  // The surrounding text: the enclosing block, widened while it is no more
-  // than the selection itself.
-  let block: Element | null = element.closest(BLOCK) ?? element;
-  for (let i = 0; i < 3 && block?.parentElement && (block.textContent ?? "").length < selected.length + 40; i++) {
+  // The surrounding text: the enclosing block, widened while it is little more
+  // than the selection itself - never past a chat turn or out of <body>, where
+  // the page title and scripts would read as context.
+  let block: Element = element.closest(BLOCK) ?? element;
+  for (
+    let i = 0;
+    i < 3 &&
+    block.parentElement &&
+    block.parentElement !== document.body &&
+    !block.matches("[data-turn-id]") &&
+    (block.textContent ?? "").length < selected.length + 40;
+    i++
+  ) {
     block = block.parentElement;
   }
-  const whole = block?.textContent ?? "";
+  const whole = block.textContent ?? "";
   const at = whole.indexOf(selected.slice(0, 200));
   if (at >= 0) {
     const before = clip(whole.slice(Math.max(0, at - AROUND), at), 4_000);
