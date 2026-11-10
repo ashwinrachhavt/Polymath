@@ -11,9 +11,6 @@
     "format:check": "prettier --check .",
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
-    "bench:search": "tsx scripts/bench-search.ts",
-    "backfill:semantic-edges": "tsx --env-file=.env scripts/backfill-semantic-edges.ts",
-    "workbench:capture": "tsx --env-file-if-exists=.env scripts/workbench/capture.ts",
     "test:watch": "vitest",
     "e2e": "playwright test",
     "db:generate": "drizzle-kit generate",
@@ -22,7 +19,6 @@
     "seed:personal": "tsx --env-file=.env scripts/seed/companies.ts",
     "seed:parties": "tsx --env-file=.env scripts/seed/parties.ts",
     "seed:inventory": "tsx --env-file=.env scripts/seed/inventory.ts",
-    "companion:pair": "tsx --env-file=.env scripts/pair-companion.ts",
     "stones:generate": "tsx --env-file=.env scripts/stones/generate.ts",
     "check:migrations": "tsx scripts/check-migrations.ts",
     "check:registry": "tsx scripts/check-audit-registry.ts",
@@ -32,8 +28,7 @@
     "prepare": "git config core.hooksPath scripts/hooks 2>/dev/null || true",
     "seed:taxonomy": "tsx --env-file=.env scripts/seed-taxonomy.ts",
     "knip": "DATABASE_URL='postgresql://knip:unused@127.0.0.1:9/knip_never_connects' knip",
-    "test:ci": "sh scripts/reset-test-db.sh && vitest run",
-    "sandbox:trial": "tsx scripts/sandbox-trial.ts"
+    "test:ci": "sh scripts/reset-test-db.sh && vitest run"
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.108",

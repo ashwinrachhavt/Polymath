@@ -34,9 +34,6 @@ const config = {
     "scripts/eve-dev.ts",
     "scripts/outbox-worker.ts",
     "scripts/sync-instant-catalog.ts",
-    // Hand-run smoke probes; the extraction-providers unit test loads its
-    // module through a computed path knip cannot follow statically.
-    "scripts/smoke/**",
 
     // The eve agent trees are compiled by the eve runner against root src —
     // through relative paths and the root tsconfig's @/ alias — so their

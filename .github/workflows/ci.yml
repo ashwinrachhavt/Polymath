@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Full e2e suite nightly (see the e2e job); the other legs skip this event.
+  schedule:
+    - cron: "17 9 * * *"
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -30,14 +34,18 @@ jobs:
   #                  trailing a serial job.
   #   check-tests-unit — vitest unit + ui projects, hermetic: no database
   #                  service, shallow clone, no guard scripts.
-  #   check-tests-db — everything that needs the database and history: the
-  #                  guard scripts, the psql-applied migrations, the db
-  #                  project (integration + migration) and
-  #                  the schema-drift gate, on the pgvector service.
+  #   check-guards — the once-per-run repo gates: migration checkpoints,
+  #                  snapshot invariant, repo hygiene, audit registry, schema
+  #                  drift. Full history, no database.
+  #   check-tests-db — the psql-applied migrations and the db project
+  #                  (integration + migration), split in two shards, each on
+  #                  its own pgvector service.
+  # The nightly schedule runs only the e2e job; every other leg skips it.
   #   check-build  — production build + route-JS budget + boot smoke, on its
   #                  own pgvector service (boot smoke sets DATABASE_URL).
   check-lint:
     name: check / lint + typecheck
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -70,6 +78,7 @@ jobs:
 
   check-tests-unit:
     name: check / unit + ui tests
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -88,30 +97,14 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm vitest run --project unit --project ui
 
-  check-tests-db:
-    name: check / vitest + migration & drift gates
+  # Repo-invariant gates that must run exactly once per workflow run. None of
+  # them reads the database (drizzle-kit generate never connects), so they
+  # run here without a postgres service, in parallel with the db shards.
+  check-guards:
+    name: check / migration, snapshot & drift gates
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    services:
-      # The integration suites hold the invariants a mock cannot: idempotency,
-      # tenancy, version conflicts, the import's identity rules. Without a
-      # database every one of them describe.skips, so the gate would report
-      # green while proving nothing.
-      postgres:
-        image: pgvector/pgvector:pg17
-        env:
-          POSTGRES_USER: axiom
-          POSTGRES_PASSWORD: axiom
-          POSTGRES_DB: axiom_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U axiom"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    env:
-      TEST_DATABASE_URL: postgresql://axiom:axiom@localhost:5432/axiom_test
     steps:
       # Full history is load-bearing here, not gold-plating: check:migrations
       # reads the base ref's migration journal via `git show <base-sha>:...`
@@ -128,7 +121,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Guard append-only migration checkpoints
         env:
-          MIGRATION_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          MIGRATION_BASE: ${{ github.event.pull_request.base.sha || github.event.before || 'origin/main' }}
         run: pnpm check:migrations "$MIGRATION_BASE"
       # Exactly one tracked snapshot — the newest, matching the journal's last
       # entry — or drizzle-kit generate diffs against a stale schema, an empty
@@ -178,15 +171,6 @@ jobs:
           rm -f repo-hygiene-selftest-oversize.bin
           rm -rf dist
           echo "Hygiene guard self-test passed: oversize and blocklist probes both rejected."
-      # Applied directly, in journal order: drizzle-kit migrate has a
-      # pre-existing identifier-truncation issue on the early migrations.
-      - run: |
-          for f in src/db/migrations/*.sql; do
-            psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f "$f"
-          done
-      # The db project covers the integration, contract and migration suites
-      # (vitest.config.mts); unit and ui run in check-tests-unit.
-      - run: pnpm vitest run --project db
       # Schema drift gate: a domain schema edited without a generated
       # migration passes every other check here and breaks the next deploy or
       # migration replay. drizzle-kit generate never touches the database
@@ -223,8 +207,59 @@ jobs:
             exit 1
           fi
 
+  check-tests-db:
+    name: check / vitest db (${{ matrix.shard }}/2)
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Two parallel halves of the db project. Each shard has its own postgres
+    # service and applies the migration journal itself. The guard scripts and
+    # the schema-drift gate live in check-guards and run exactly once.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    services:
+      # The integration suites hold the invariants a mock cannot: idempotency,
+      # tenancy, version conflicts, the import's identity rules. Without a
+      # database every one of them describe.skips, so the gate would report
+      # green while proving nothing.
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: axiom
+          POSTGRES_PASSWORD: axiom
+          POSTGRES_DB: axiom_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U axiom"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://axiom:axiom@localhost:5432/axiom_test
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Applied directly, in journal order: drizzle-kit migrate has a
+      # pre-existing identifier-truncation issue on the early migrations.
+      - run: |
+          for f in src/db/migrations/*.sql; do
+            psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f "$f"
+          done
+      # The db project covers the integration, contract and migration suites
+      # (vitest.config.mts); unit and ui run in check-tests-unit.
+      - run: pnpm vitest run --project db --shard=${{ matrix.shard }}/2
+
   check-build:
     name: check / build + boot smoke
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
@@ -341,19 +376,35 @@ jobs:
           fi
           echo "Production boot smoke passed."
 
+  # e2e scope depends on the trigger:
+  #   pull_request            -> CORE specs only (smoke, learning loop, notes,
+  #                              inbox capture, redirects, onboarding gate,
+  #                              appearance, workspace switching), 2 shards.
+  #   push to main, nightly   -> the FULL suite, 3 shards (cron 09:17 UTC),
+  #     schedule, dispatch       plus the fixture-pinned invocations below.
+  # To run the full suite against a PR: Actions -> CI -> "Run workflow", pick
+  # the PR's branch. workflow_dispatch is not a pull_request event, so it
+  # takes the full path.
   e2e:
+    name: e2e (${{ github.event_name == 'pull_request' && 'core' || 'full' }}, shard ${{ matrix.shard }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # The Playwright image ships chromium and its OS libraries, so no
+    # per-run `playwright install --with-deps` (225s of apt on every shard).
+    # Keep the tag equal to @playwright/test in pnpm-lock.yaml.
+    # Job services are reached by service name, not localhost, from here.
+    container: mcr.microsoft.com/playwright:v1.64.1-noble
     strategy:
       fail-fast: false
-      # 3-way shard of the main suite (explicit per-leg file lists, below).
+      # 3-way shard of the full suite, 2-way of the core set (explicit per-leg
+      # file lists, below).
       # Legs are isolated runners - each gets its own
       # postgres service below and boots its own dev server - so a shard
       # shares nothing mutable with its siblings. fail-fast: false: a red
       # shard must not orphan the others' in-flight evidence; the artifact
       # uploads are always() for the same reason.
       matrix:
-        shard: [1, 2, 3]
+        shard: ${{ github.event_name == 'pull_request' && fromJSON('[1, 2]') || fromJSON('[1, 2, 3]') }}
     services:
       # The canonical routes read Postgres (identity resolution, run rows);
       # without a database the server renders error boundaries and the
@@ -375,8 +426,8 @@ jobs:
       # Per-shard private database: each leg provisions its own db (below) on
       # its own postgres service and boots its server against it — a shard
       # shares no ledger rows with its siblings or with a previous run.
-      DATABASE_URL: postgresql://axiom:axiom@localhost:5432/axiom_e2e_shard${{ matrix.shard }}
-      TEST_DATABASE_URL: postgresql://axiom:axiom@localhost:5432/axiom_e2e_shard${{ matrix.shard }}
+      DATABASE_URL: postgresql://axiom:axiom@postgres:5432/axiom_e2e_shard${{ matrix.shard }}
+      TEST_DATABASE_URL: postgresql://axiom:axiom@postgres:5432/axiom_e2e_shard${{ matrix.shard }}
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -384,22 +435,15 @@ jobs:
         with:
           node-version-file: .node-version
           cache: pnpm
-      # Next's dev server does not populate the production .next/cache path.
-      # The chromium download is ~20s of every run; the OS deps step below is
-      # a fast no-op once the image has them, and install skips what is cached.
-      - uses: actions/cache@v6
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ hashFiles('pnpm-lock.yaml') }}
       - run: pnpm install --frozen-lockfile
+      # The image has no psql, which scripts/reset-test-db.sh needs.
+      - run: apt-get update -qq && apt-get install -y -qq --no-install-recommends postgresql-client
       # Provision this shard's private database exactly the way local runs do
       # (tests/e2e/README.md): scripts/reset-test-db.sh drops, recreates and
       # migrates the db named by TEST_DATABASE_URL — raw SQL applied in journal
       # order, because drizzle-kit migrate has a pre-existing
       # identifier-truncation issue on 0000-0002.
       - run: sh scripts/reset-test-db.sh
-      # Only chromium is configured; downloading the rest is wasted minutes.
-      - run: pnpm exec playwright install --with-deps chromium
       # playwright.config.ts builds and starts the server itself. Each matrix
       # leg boots its own server and runs its explicit slice of the suite;
       # the fixture env is unchanged from the pre-shard invocation.
@@ -422,11 +466,18 @@ jobs:
       # assignment over per-file durations, and paste the three lists in
       # longest-first order.
       - run: |
-          case ${{ matrix.shard }} in
-            1) SPECS="tests/e2e/canvas-persistence.spec.ts tests/e2e/task-notes-editor.spec.ts tests/e2e/neuralflow.spec.ts tests/e2e/work-bulk-complete.spec.ts tests/e2e/voice-capture.spec.ts tests/e2e/layout-alignment.spec.ts tests/e2e/document-review-loop.spec.ts tests/e2e/onboarding-fixtures.spec.ts tests/e2e/interface-modes.spec.ts tests/e2e/capture-text-detail.spec.ts tests/e2e/home-decisions.spec.ts tests/e2e/list-toolbar.spec.ts tests/e2e/github-triage.spec.ts tests/e2e/daybook.spec.ts" ;;
-            2) SPECS="tests/e2e/smoke.spec.ts tests/e2e/weekly-outcome-narrative.spec.ts tests/e2e/neuralflow-canonical-consolidation.spec.ts tests/e2e/command-center.spec.ts tests/e2e/meeting-prep.spec.ts tests/e2e/library-writing.spec.ts tests/e2e/activity-feed.spec.ts tests/e2e/rename-redirects.spec.ts tests/e2e/sender-grants.spec.ts tests/e2e/connectors-tier-journey.spec.ts tests/e2e/conversational-navigation.spec.ts tests/e2e/inbox-pixels.spec.ts tests/e2e/ingestion-selection.spec.ts" ;;
-            3) SPECS="tests/e2e/shared-command-layer.spec.ts tests/e2e/notebook-neon.spec.ts tests/e2e/work-neon.spec.ts tests/e2e/design-brief.spec.ts tests/e2e/meeting-debrief.spec.ts tests/e2e/profile-research.spec.ts tests/e2e/crm-sender-switch.spec.ts tests/e2e/calendar-conflicts.spec.ts tests/e2e/qa-fixes.spec.ts tests/e2e/focus-dock.spec.ts tests/e2e/local-write-card.spec.ts tests/e2e/perf-budget.spec.ts tests/e2e/notion-diff.spec.ts" ;;
-          esac
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            case ${{ matrix.shard }} in
+              1) SPECS="tests/e2e/smoke.spec.ts tests/e2e/onboarding-gate.spec.ts tests/e2e/rename-redirects.spec.ts tests/e2e/interface-modes.spec.ts" ;;
+              2) SPECS="tests/e2e/learn-loop.spec.ts tests/e2e/notebook-neon.spec.ts tests/e2e/shared-command-layer.spec.ts tests/e2e/capture-text-detail.spec.ts tests/e2e/workspace-switching.spec.ts" ;;
+            esac
+          else
+            case ${{ matrix.shard }} in
+              1) SPECS="tests/e2e/canvas-persistence.spec.ts tests/e2e/task-notes-editor.spec.ts tests/e2e/neuralflow.spec.ts tests/e2e/work-bulk-complete.spec.ts tests/e2e/voice-capture.spec.ts tests/e2e/layout-alignment.spec.ts tests/e2e/document-review-loop.spec.ts tests/e2e/onboarding-fixtures.spec.ts tests/e2e/interface-modes.spec.ts tests/e2e/capture-text-detail.spec.ts tests/e2e/home-decisions.spec.ts tests/e2e/list-toolbar.spec.ts tests/e2e/github-triage.spec.ts tests/e2e/daybook.spec.ts" ;;
+              2) SPECS="tests/e2e/smoke.spec.ts tests/e2e/weekly-outcome-narrative.spec.ts tests/e2e/neuralflow-canonical-consolidation.spec.ts tests/e2e/command-center.spec.ts tests/e2e/meeting-prep.spec.ts tests/e2e/library-writing.spec.ts tests/e2e/activity-feed.spec.ts tests/e2e/rename-redirects.spec.ts tests/e2e/sender-grants.spec.ts tests/e2e/connectors-tier-journey.spec.ts tests/e2e/conversational-navigation.spec.ts tests/e2e/inbox-pixels.spec.ts tests/e2e/ingestion-selection.spec.ts" ;;
+              3) SPECS="tests/e2e/shared-command-layer.spec.ts tests/e2e/notebook-neon.spec.ts tests/e2e/work-neon.spec.ts tests/e2e/design-brief.spec.ts tests/e2e/meeting-debrief.spec.ts tests/e2e/profile-research.spec.ts tests/e2e/crm-sender-switch.spec.ts tests/e2e/calendar-conflicts.spec.ts tests/e2e/qa-fixes.spec.ts tests/e2e/focus-dock.spec.ts tests/e2e/local-write-card.spec.ts tests/e2e/perf-budget.spec.ts tests/e2e/notion-diff.spec.ts" ;;
+            esac
+          fi
           pnpm exec playwright test $SPECS
         env:
           PERF_BUDGET_ENFORCE: "1"
@@ -481,7 +532,7 @@ jobs:
       # the legs are isolated runners (own dev server, own postgres), so
       # overlapped canva journeys cannot touch another leg's workspace at
       # all. The invocation's own failure still fails the job on its merits.
-      - if: always() && matrix.shard == 3
+      - if: always() && github.event_name != 'pull_request' && matrix.shard == 3
         run: CANVA_IMPORT_PROVIDER=fixture GENERATION_PROVIDER=fixture OUTBOX_DISPATCH_SECRET=e2e-outbox PLAYWRIGHT_JSON_OUTPUT_NAME=e2e-report-fixture.json pnpm exec playwright test design-brief-canva-fixture --output=test-results-fixture
       # ASH-305: the shutdown ritual runs ALONE after the parallel suite. It
       # applies a real shutdown - parking captures, finishing sessions,
@@ -495,10 +546,10 @@ jobs:
       # run, still serial and alone on the workspace it writes to - each
       # leg owns its dev server and database, so the ritual cannot touch
       # the sibling leg's journeys.
-      - if: always() && matrix.shard == 1
+      - if: always() && github.event_name != 'pull_request' && matrix.shard == 1
         run: SHUTDOWN_RITUAL_E2E=1 GENERATION_PROVIDER=fixture TRANSCRIPTION_PROVIDER=fixture OUTBOX_DISPATCH_SECRET=e2e-outbox PLAYWRIGHT_JSON_OUTPUT_NAME=e2e-report-shutdown.json pnpm exec playwright test shutdown-ritual --output=test-results-shutdown
       - uses: actions/upload-artifact@v7
-        if: always() && matrix.shard == 1
+        if: always() && github.event_name != 'pull_request' && matrix.shard == 1
         with:
           name: "e2e-report-shutdown-${{ matrix.shard }}"
           path: e2e-report-shutdown.json
@@ -507,7 +558,7 @@ jobs:
       # ASH-305 integration gate: real-route shutdown pixels (desktop form,
       # desktop done, mobile done) captured by tests/e2e/shutdown-ritual.spec.ts.
       - uses: actions/upload-artifact@v7
-        if: always() && matrix.shard == 1
+        if: always() && github.event_name != 'pull_request' && matrix.shard == 1
         with:
           name: "shutdown-real-route-pixels-${{ matrix.shard }}"
           retention-days: 14
@@ -521,10 +572,10 @@ jobs:
       # skips itself without AGENT_SESSIONS_E2E. Own --output dir: Playwright
       # wipes it per invocation. De-serialized onto shard 3's tail like the
       # canva fixture (isolated runners; the legs share nothing).
-      - if: always() && matrix.shard == 3
+      - if: always() && github.event_name != 'pull_request' && matrix.shard == 3
         run: AGENT_SESSIONS_E2E=1 POLYMATH_AGENT_ARTIFACT_ROOTS="claude-code=/tmp/e2e-agent-roots/claude;codex=/tmp/e2e-agent-roots/codex" PLAYWRIGHT_JSON_OUTPUT_NAME=e2e-report-agent-sessions.json pnpm exec playwright test agent-sessions-fixture --output=test-results-agent-sessions
       - uses: actions/upload-artifact@v7
-        if: always() && matrix.shard == 3
+        if: always() && github.event_name != 'pull_request' && matrix.shard == 3
         with:
           name: "e2e-report-agent-sessions-${{ matrix.shard }}"
           path: e2e-report-agent-sessions.json
@@ -551,7 +602,7 @@ jobs:
       # would overwrite the main run's uploaded above. Only shard 3 runs
       # the fixture invocation, so only shard 3 has this report.
       - uses: actions/upload-artifact@v7
-        if: always() && matrix.shard == 3
+        if: always() && github.event_name != 'pull_request' && matrix.shard == 3
         with:
           name: "e2e-report-fixture-${{ matrix.shard }}"
           retention-days: 14
