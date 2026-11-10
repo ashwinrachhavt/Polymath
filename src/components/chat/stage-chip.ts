@@ -3,7 +3,7 @@
  * surface names the run's stage — the header when it renders, the quiet line
  * when it does not.
  *
- * The Supervision panel is the honest surface: it classifies the run's own
+ * The Reviews agent views is the honest surface: it classifies the run's own
  * report (`ticketStage`, docs/003) and speaks the stage table's words
  * (`STAGE_META`). The chip used to read the stream's transport state with a
  * private two-word vocabulary instead, so a failed run — its row failed while
@@ -56,7 +56,7 @@ export function stageChipStatus({ connection, runFailed, lastFailedTurn }: Stage
 }
 
 /**
- * The chip's words. Failed and working speak the Supervision panel's own
+ * The chip's words. Failed and working speak the Reviews agent views's own
  * vocabulary (`STAGE_META`) — one definition, two surfaces. Paused names the
  * transport, not a run stage: the stage table has no row for a dropped
  * connection, and "Reconnecting…" is the honest word for one. Waiting and

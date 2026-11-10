@@ -33,6 +33,7 @@ export function nextConfigRedirects({
     // Opportunities has no UI; People is the closest real destination.
     relationships: "/command-center/relationships/people",
     opportunities: "/command-center/relationships/people",
+    supervision: "/reviews",
   };
   const redirects = Object.entries(paths)
     .map(([source, destination]) => ({ source: `/${source}`, destination, permanent: false }))
