@@ -629,11 +629,10 @@ export type CapturedTestResult = { name: string; ok: boolean; runAt: string };
 
 /*
  * Workbench checkpoint: the repository state an agent-authored change landed
- * as, written by scripts/workbench/capture.ts at an explicit capture point.
- * Capture is mechanical — git status/diff/log plus a provided test-results
- * file; no hooks, no model. The diff bytes live in audit.blob_objects,
- * deduped by content_hash. Append-only: a re-capture at the same commit
- * writes a new row and reuses the blob; nothing here is ever updated.
+ * as. The capture script that wrote these rows was retired; the table and
+ * any stored rows are retained (migrations are immutable, no table is
+ * dropped here) and nothing in the app reads or writes it. The diff bytes
+ * live in audit.blob_objects, deduped by content_hash. Append-only.
  */
 export const repoCheckpoints = pgTable(
   "repo_checkpoints",

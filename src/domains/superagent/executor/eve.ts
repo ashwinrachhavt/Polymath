@@ -13,7 +13,7 @@ import type { AuthContext } from "@/domains/identity/resolve";
 export type AgentRunState = (typeof agentRuns.$inferSelect)["state"];
 
 /** The live states the run table's partial active index covers (agents/engine.ts). */
-export const ACTIVE_RUN_STATES: AgentRunState[] = ["queued", "running", "waiting_input", "waiting_approval"];
+const ACTIVE_RUN_STATES: AgentRunState[] = ["queued", "running", "waiting_input", "waiting_approval"];
 
 export function isActiveRunState(state: AgentRunState): boolean {
   return ACTIVE_RUN_STATES.includes(state);

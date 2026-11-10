@@ -33,7 +33,7 @@ Capturing requires an API key:
 1. In Polymath, open **Settings → Account and machine clients** and create a key (kind: Chrome companion). The secret is shown once — copy it.
 2. Paste it into the extension's **Access token** field (popup or dashboard settings) and save.
 
-The extension sends the key as a bearer token; Polymath stores only its digest. Revoke the key from the same Settings panel to cut access. A `pnpm companion:pair` CLI remains for headless setups.
+The extension sends the key as a bearer token; Polymath stores only its digest. Revoke the key from the same Settings panel to cut access.
 
 ## Durable capture outbox
 
