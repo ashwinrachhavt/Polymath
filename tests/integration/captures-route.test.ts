@@ -150,6 +150,11 @@ suite("POST /api/v1/captures duplicate contract", () => {
 });
 
 suite("POST /api/v1/captures extension extraction metadata", () => {
+  // Its own setup, so a filtered run of one case does not depend on suite order.
+  beforeAll(() => {
+    holder.db = handle?.db;
+  });
+
   it("keeps the companion's raw_markdown and quality on the capture", async () => {
     const { userId, workspaceId } = await seedWorkspace(handle!.db, `capture-route-markdown-${Date.now()}`);
     holder.auth = { userId, workspaceId, role: "owner" };
@@ -178,5 +183,50 @@ suite("POST /api/v1/captures extension extraction metadata", () => {
     expect(res.status).toBe(201);
     const capture = (await res.json()).capture;
     expect(capture.rawPayload).toEqual({ text: "Plain words, no extraction." });
+  });
+
+  // Value: protects=companion context lands in raw_payload.context and a bad one is a 422 problem;
+  // fails_when=the route stops passing context, stores an invalid field, or loses the words over one; why_new=no route case
+  // sent a context; seam=none; no_claim=Clerk mocked; createCapture's own rules are covered elsewhere
+  it("stores a companion's capture context beside the words", async () => {
+    const { userId, workspaceId } = await seedWorkspace(handle!.db, `capture-route-ctx-${Date.now()}`);
+    holder.auth = { userId, workspaceId, role: "owner" };
+    const context = {
+      source: { kind: "web", title: "An article", url: "https://example.com/a", version: "rev 2" },
+      passage: "the exact words",
+      surrounding: { before: "Before them,", after: "and after." },
+      why: { kind: "unknown" },
+    };
+    const res = await POST(
+      captureRequest({ text: "the exact words", url: "https://example.com/a", context }),
+      undefined,
+    );
+    expect(res.status).toBe(201);
+    expect((await res.json()).capture.rawPayload.context).toEqual(context);
+  });
+
+  it("saves the capture and names the context fields it had to drop", async () => {
+    const { userId, workspaceId } = await seedWorkspace(handle!.db, `capture-route-badctx-${Date.now()}`);
+    holder.auth = { userId, workspaceId, role: "owner" };
+    const res = await POST(
+      captureRequest({
+        text: "words that must not be lost",
+        context: {
+          folder: "inbox",
+          source: { url: "javascript:alert(1)" },
+          passage: "words that must not be lost",
+          why: { kind: "unknown" },
+          surrounding: { before: "  " },
+        },
+      }),
+      undefined,
+    );
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.contextDropped.sort()).toEqual(["folder", "source"]);
+    expect(body.capture.rawPayload.context).toEqual({
+      passage: "words that must not be lost",
+      why: { kind: "unknown" },
+    });
   });
 });

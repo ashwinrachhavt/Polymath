@@ -5,6 +5,7 @@ import { preflight, withCors } from "@/lib/cors";
 import { problemResponse } from "@/lib/problems";
 import { ConflictError, createCapture } from "@/domains/capture/commands";
 import { listCaptures } from "@/domains/capture/queries";
+import { parseCaptureContextLenient } from "@/domains/capture/context";
 
 /*
  * GET /api/v1/captures — the inbox queue (unprocessed by default).
@@ -15,6 +16,10 @@ import { listCaptures } from "@/domains/capture/queries";
  * bare address is a url-reference that dedupes on (workspace, source, url) and
  * answers 409 rather than making a second row. Omitting mode infers it from
  * what arrived, so an older companion build keeps working.
+ * An optional `context` (see domains/capture/context.ts) is validated field by
+ * field: what the server accepts is stored, and anything else is dropped and
+ * named in an additive `contextDropped: string[]` member of the 201 body. A
+ * bad context is never a 422 - the words are always saved.
  * CORS is scoped to the companion's origin; see src/lib/cors.ts.
  */
 
@@ -30,6 +35,12 @@ const captureRequest = z
     // before, so older companions keep working.
     raw_markdown: z.string().max(200_000).optional(),
     quality: z.string().max(20).optional(),
+    // Where it came from and why it was kept - passage, surrounding text,
+    // source identity, turn, screenshot region, an optional "why". All
+    // optional; an older companion sends none and captures exactly as before.
+    // Validated leniently below: a field this server does not accept is
+    // dropped and named in the response, and the capture is still saved.
+    context: z.unknown().optional(),
   })
   .refine((value) => Boolean(value.text?.trim() || value.url), {
     message: "Send text, a url, or both.",
@@ -62,7 +73,7 @@ export const POST = authedHandler(async (auth, request) => {
     return withCors(problemResponse(422, "invalid_input", "Send text, a url, or both (max 200k chars)."), origin);
   }
 
-  const { text, url, title, mode, raw_markdown, quality } = parsed.data;
+  const { text, url, title, mode, raw_markdown, quality, context } = parsed.data;
   // A page grab arrives as { url, text }; a bare URL or a plain note is text-only.
   const body = text?.trim() || url || "";
   // An address that arrived with no text of its own is the address itself, not
@@ -74,6 +85,7 @@ export const POST = authedHandler(async (auth, request) => {
     return withCors(problemResponse(400, "invalid_request", "Idempotency-Key must be a UUID."), origin);
   }
 
+  const lenient = parseCaptureContextLenient(context);
   try {
     const capture = await createCapture(auth, {
       text: body,
@@ -82,10 +94,13 @@ export const POST = authedHandler(async (auth, request) => {
       mode: arrival,
       raw_markdown,
       quality,
+      context: lenient.context,
       source: "companion",
       idempotencyKey,
     });
-    return withCors(Response.json({ capture }, { status: 201 }), origin);
+    // Additive member, present only when something was dropped.
+    const created = lenient.dropped.length ? { capture, contextDropped: lenient.dropped } : { capture };
+    return withCors(Response.json(created, { status: 201 }), origin);
   } catch (cause) {
     if (cause instanceof ConflictError) {
       // Companion contract: type/code/title/status stay byte-exact; the id of

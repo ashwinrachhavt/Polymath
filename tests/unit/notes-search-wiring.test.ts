@@ -77,14 +77,25 @@ beforeEach(() => {
 });
 
 describe("notes page search-filter wiring", () => {
+  // Value: protects=old ?layout=kanban links land on the evergreen board; fails_when=the redirect is
+  // removed and kanban falls through to the plain list; why_new=only the filter keys were pinned;
+  // seam=none; no_claim=browser navigation
+  it("sends the retired kanban layout to the evergreen board", async () => {
+    const { pageNotes } = await import("@/domains/knowledge/notes");
+    vi.mocked(pageNotes).mockClear();
+    const rendered = NotesSurface({ searchParams: params({ layout: "kanban" }) });
+    await expect(rendered).rejects.toMatchObject({ digest: expect.stringContaining("/polymath/notes/evergreen") });
+    expect(pageNotes).not.toHaveBeenCalled();
+  });
+
   it("renders Kind/Edited/Provenance chips only while a query is active", async () => {
     renderToStaticMarkup(await NotesSurface({ searchParams: params({}) }));
     const idle = toolbarProps.fn.mock.calls[0]?.[0] as { filters: { key: string }[] };
-    expect(idle.filters.map((f) => f.key)).toEqual(["view", "layout"]);
+    expect(idle.filters.map((f) => f.key)).toEqual(["view"]);
 
     renderToStaticMarkup(await NotesSurface({ searchParams: params({ q: "quarterly" }) }));
     const searching = toolbarProps.fn.mock.calls[1]?.[0] as { filters: { key: string }[] };
-    expect(searching.filters.map((f) => f.key)).toEqual(["view", "layout", "kind", "edited", "source"]);
+    expect(searching.filters.map((f) => f.key)).toEqual(["view", "kind", "edited", "source"]);
   });
 
   it("parses kind/edited/source URL params into the scope handed to the results surface", async () => {

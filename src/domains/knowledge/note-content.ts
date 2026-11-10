@@ -19,12 +19,24 @@ function mdManager(): MarkdownManager {
   return manager;
 }
 
+/*
+ * The editor's Markdown serializer escapes square brackets, so a typed
+ * [[Title]] was stored as \[\[Title\]\] - invisible to the link sync and
+ * shown raw by every reader. Writers and readers both pass through here so a
+ * wiki link always reads back as one.
+ */
+const ESCAPED_WIKI_LINK = /\\\[\\\[([^\]\n]*?)\\\]\\\]/g;
+
+export function unescapeWikiLinks(markdown: string): string {
+  return markdown.replace(ESCAPED_WIKI_LINK, (_, title: string) => `[[${title.replace(/\\([\\|_*])/g, "$1")}]]`);
+}
+
 export function noteContentToMarkdown(content: NoteContent | null | undefined): string {
   if (!content) return "";
-  if (typeof content.text === "string") return content.text;
+  if (typeof content.text === "string") return unescapeWikiLinks(content.text);
   if (content.type !== "doc" || !Array.isArray(content.content)) return "";
   try {
-    return mdManager().serialize(content as Parameters<MarkdownManager["serialize"]>[0]);
+    return unescapeWikiLinks(mdManager().serialize(content as Parameters<MarkdownManager["serialize"]>[0]));
   } catch {
     // A doc the serializer rejects (unknown node types from a newer writer)
     // must not blank the note; fall back to the version's plain text downstream.

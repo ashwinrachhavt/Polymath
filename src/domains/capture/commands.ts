@@ -27,6 +27,8 @@ import type { FileValidationResult } from "@/lib/file-validation";
 import { sha256Hex } from "@/lib/hash";
 import { blobObjects } from "../audit/schema";
 import { captures, captureSource } from "./schema";
+import { hasCaptureContext, type CaptureContext } from "./context";
+import { projects } from "@/domains/work/schema";
 
 /*
  * Inbox commands (ASH-137 A02). Clarify-before-commit: conversion is a
@@ -97,6 +99,8 @@ export async function createCapture(
     raw_markdown?: string;
     quality?: string;
     source?: (typeof captureSource.enumValues)[number];
+    /** Where it came from and why it was kept; all optional (see context.ts). */
+    context?: CaptureContext;
     idempotencyKey?: string;
   },
 ) {
@@ -113,6 +117,7 @@ export async function createCapture(
   const hash = mode === "blob" || working === null ? null : contentHash(working);
   const result = await withTransaction<typeof captures.$inferSelect | { survivorId: string }>(async (tx) => {
     const { value } = await withReceipt(tx, auth, input.idempotencyKey, { op: "createCapture", ...input }, async () => {
+      const context = await resolveContext(tx, auth, input.context);
       // onConflictDoNothing, not a caught 23505: a unique violation aborts the
       // transaction, and the survivor's title is written below in this one.
       const [capture] = await tx
@@ -130,6 +135,7 @@ export async function createCapture(
             // never feeds the ladder; it preserves what the flatten killed.
             ...(input.raw_markdown ? { raw_markdown: input.raw_markdown } : {}),
             ...(input.quality ? { quality: input.quality } : {}),
+            ...(context ? { context } : {}),
           },
           text,
           url,
@@ -200,6 +206,33 @@ export async function createCapture(
   // contract); the id rides along as an additive member.
   if ("survivorId" in result) throw new ConflictError("That URL is already in the inbox.", result.survivorId);
   return result;
+}
+
+/*
+ * A suggested project is only kept when it is one of this workspace's own, and
+ * its title is read here rather than trusted from the client.
+ */
+async function resolveContext(
+  tx: Parameters<Parameters<typeof withTransaction>[0]>[0],
+  auth: AuthContext,
+  context: CaptureContext | undefined,
+): Promise<CaptureContext | undefined> {
+  if (!hasCaptureContext(context)) return undefined;
+  const { suggestion, ...rest } = context;
+  if (!suggestion) return context;
+  const [project] = suggestion.projectId
+    ? await tx
+        .select({ id: projects.id, name: projects.name })
+        .from(projects)
+        .where(and(eq(projects.workspaceId, auth.workspaceId), eq(projects.id, suggestion.projectId)))
+        .limit(1)
+    : [];
+  const kept = {
+    ...(project ? { projectId: project.id, projectTitle: project.name } : {}),
+    ...(suggestion.question ? { question: suggestion.question } : {}),
+  };
+  const resolved: CaptureContext = Object.keys(kept).length ? { ...rest, suggestion: kept } : rest;
+  return hasCaptureContext(resolved) ? resolved : undefined;
 }
 
 /**

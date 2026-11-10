@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { io } from "next/cache";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -57,6 +58,7 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
   const list = parseListParams(raw, {
     filters: {
       view: ["drafts"],
+      // Retired: the board now lives in the evergreen view.
       layout: ["kanban"],
       kind: [...SEARCH_KINDS],
       edited: ["day", "week", "month"],
@@ -73,20 +75,19 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
   // eslint-disable-next-line react-hooks/purity -- per-request rolling window: io() above already opted this render out of prerendering, and the window must be evaluated at request time, not build time.
   const editedFrom = editedDays ? new Date(Date.now() - editedDays * 86_400_000) : undefined;
   const tag = typeof raw.tag === "string" && raw.tag.trim() ? raw.tag.trim().toLowerCase() : undefined;
-  const kanban = list.filters.layout === "kanban";
+  if (list.filters.layout === "kanban") redirect("/polymath/notes/evergreen");
   // The result page and the tag facets are independent reads.
   const [found, allTags] = await Promise.all([
     pageNotes(auth, {
       query: list.q,
       draftsOnly: list.filters.view === "drafts",
       tag,
-      // The kanban groups the whole matching set into columns, so it reads one wide page.
-      limit: kanban ? 200 : list.pageSize,
-      offset: kanban ? 0 : offsetFor(list.page, list.pageSize),
+      limit: list.pageSize,
+      offset: offsetFor(list.page, list.pageSize),
     }),
     listNoteTags(auth),
   ]);
-  if (!kanban) redirectPastEnd(BASE, raw, list.page, list.pageSize, found.total);
+  redirectPastEnd(BASE, raw, list.page, list.pageSize, found.total);
   const notes = found.items;
   const searchScope: SearchScope | undefined = list.q
     ? {
@@ -122,9 +123,17 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
   const noteList = (
     <div className="flex flex-col gap-3">
       <div>
-        <h2 className="text-body-dense font-medium">Notes</h2>
+        <h2 className="flex items-center justify-between text-body-dense font-medium">
+          Notes
+          <Link
+            href="/polymath/notes/evergreen"
+            className="text-xs font-normal text-muted-foreground hover:text-foreground"
+          >
+            Board &amp; reader →
+          </Link>
+        </h2>
         <p className="mt-0.5 text-xs text-muted-foreground">
-          {list.q && !kanban
+          {list.q
             ? "Ranked by keyword and meaning"
             : `${found.total} ${list.q || list.filters.view ? "matching" : "in this workspace"}`}
         </p>
@@ -138,7 +147,6 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
             allLabel: "All notes",
             options: [{ value: "drafts", label: "With unsaved draft" }],
           },
-          { key: "layout", label: "Layout", allLabel: "List", options: [{ value: "kanban", label: "Kanban by tag" }] },
           // Search filters render only while a query is active: they filter
           // results, not the plain list, and an inert control would lie.
           ...(list.q
@@ -189,7 +197,7 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
           ))}
         </div>
       )}
-      {list.q && !kanban ? (
+      {list.q ? (
         // While a note is open the ranked results stay in the sidebar so the
         // reader can jump between hits; with nothing selected they take the
         // working column below instead of truncating into 16rem.
@@ -209,46 +217,6 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
           emptyTitle="Write your first page."
           emptyDescription="It autosaves as you type, and every checkpoint becomes an immutable version."
         />
-      ) : kanban ? (
-        <div className="flex flex-col gap-3">
-          {Object.entries(
-            notes.reduce<Record<string, typeof notes>>((groups, note) => {
-              const column = note.tags[0] ?? "untagged";
-              (groups[column] ??= []).push(note);
-              return groups;
-            }, {}),
-          ).map(([column, columnNotes]) => (
-            <section key={column} aria-label={`Tag ${column}`} className="rounded-md border border-border">
-              <header className="flex items-center justify-between border-b border-border px-3 py-1.5">
-                <span className="text-xs font-medium text-muted-foreground">{column}</span>
-                <span className="text-xs text-muted-foreground">{columnNotes.length}</span>
-              </header>
-              <ul className="flex flex-col gap-1 p-1.5">
-                {columnNotes.map((note) => (
-                  <li key={note.id}>
-                    <Link
-                      href={listHref(BASE, raw, { id: note.id })}
-                      className={`block rounded-md border px-3 py-2 text-body-dense ${selected?.id === note.id ? "border-foreground/30 bg-muted/60" : "border-transparent hover:bg-muted/40"}`}
-                    >
-                      <span className="flex items-center justify-between gap-2">
-                        <span className="truncate font-medium">{note.title}</span>
-                        <span className="flex items-center gap-1">
-                          {note.kind === "zettel" && <Status>zettel</Status>}
-                          {note.hasDraft && <Status>draft</Status>}
-                        </span>
-                      </span>
-                      {note.excerpt && (
-                        <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-                          {markdownToPlainText(note.excerpt)}
-                        </span>
-                      )}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ))}
-        </div>
       ) : (
         <ul className="flex flex-col gap-1">
           {notes.map((note) => (
@@ -274,7 +242,7 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
           ))}
         </ul>
       )}
-      {!kanban && !list.q && (
+      {!list.q && (
         <Pagination basePath={BASE} raw={raw} page={list.page} pageSize={list.pageSize} total={found.total} compact />
       )}
     </div>
@@ -317,7 +285,7 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
               authorName: c.authorName,
             }))}
           />
-        ) : list.q && !kanban ? (
+        ) : list.q ? (
           // Same reading column as the editor and empty states: ranked
           // results get full titles, snippets and why-ranked chips instead of
           // the sidebar's truncation next to an empty editor.

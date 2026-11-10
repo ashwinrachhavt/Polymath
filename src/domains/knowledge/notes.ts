@@ -12,7 +12,7 @@ import {
   safeArtifactEmbedError,
   type ArtifactEmbedOutcome,
 } from "./embedding";
-import { noteContentToMarkdown } from "./note-content";
+import { noteContentToMarkdown, unescapeWikiLinks } from "./note-content";
 import { materializeSemanticEdges } from "./relations";
 import { artifactLinks, artifactVersions, artifacts, embeddings, recoveryCopies, workingDrafts } from "./schema";
 import type { EmbeddingProvider } from "@/integrations/embeddings/provider";
@@ -77,7 +77,7 @@ export type NoteKind = (typeof LINKABLE_KINDS)[number] | "transcript" | "documen
 
 export function extractWikiLinkTitles(markdown: string): string[] {
   const titles = new Set<string>();
-  for (const match of markdown.matchAll(WIKI_LINK)) {
+  for (const match of unescapeWikiLinks(markdown).matchAll(WIKI_LINK)) {
     const title = match[1].trim();
     if (title) titles.add(title);
   }
@@ -543,6 +543,46 @@ export async function listNotes(
       (row) =>
         ({ ...row, hasDraft: row.draftArtifactId !== null, draftArtifactId: undefined }) as unknown as NoteListItem,
     );
+  });
+}
+
+/**
+ * The linkable cards with these exact titles (case-insensitive), for a reader
+ * resolving [[Title]] links without holding the whole workspace index.
+ */
+export async function findNotesByTitle(auth: AuthContext, titles: string[]): Promise<NoteListItem[]> {
+  const wanted = [...new Set(titles.map((title) => title.trim().toLowerCase()).filter(Boolean))].slice(0, 500);
+  if (!wanted.length) return [];
+  return withTransaction(async (tx) => {
+    const rows = await tx
+      .select({
+        id: artifacts.id,
+        title: artifacts.title,
+        kind: artifacts.kind,
+        status: artifacts.status,
+        version: artifacts.version,
+        updatedAt: artifacts.updatedAt,
+        excerpt: noteExcerptSql,
+        tags: artifacts.tags,
+        draftArtifactId: workingDrafts.artifactId,
+      })
+      .from(artifacts)
+      .leftJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
+      .leftJoin(workingDrafts, eq(workingDrafts.artifactId, artifacts.id))
+      .where(
+        and(
+          eq(artifacts.workspaceId, auth.workspaceId),
+          inArray(artifacts.kind, [...LINKABLE_KINDS]),
+          isNull(artifacts.archivedAt),
+          inArray(sql<string>`lower(trim(${artifacts.title}))`, wanted),
+        ),
+      )
+      .orderBy(desc(artifacts.updatedAt));
+    return rows.map(({ draftArtifactId, ...row }) => ({
+      ...row,
+      tags: readTags(row.tags),
+      hasDraft: draftArtifactId !== null,
+    }));
   });
 }
 
