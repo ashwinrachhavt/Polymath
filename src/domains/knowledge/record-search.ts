@@ -197,7 +197,7 @@ export async function searchRecordsForAttach(auth: AuthContext, query: string): 
         title: row.title,
         href:
           row.kind === "note"
-            ? `/polymath/notes?note=${row.id}`
+            ? `/polymath/notes?id=${row.id}`
             : row.kind === "zettel"
               ? `/polymath/ideas?zettel=${row.id}`
               : `/artifacts/${row.id}`,

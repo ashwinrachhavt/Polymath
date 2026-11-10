@@ -6,6 +6,7 @@ import { outboxEvents } from "@/domains/audit/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { escapeLike } from "@/lib/list-params";
+import { linkPreviewKeys } from "./link-preview-keys";
 import {
   ARTIFACT_EMBEDDING_OWNER_TYPE,
   embedArtifact,
@@ -82,6 +83,68 @@ export function extractWikiLinkTitles(markdown: string): string[] {
     if (title) titles.add(title);
   }
   return [...titles];
+}
+
+export type LinkPreview = { title: string; id: string; firstParagraph: string };
+
+const PREVIEW_CHARS = 280;
+
+/*
+ * Plain text of the first non-empty paragraph, markup stripped, capped for a
+ * margin card. A leading heading that only repeats the card's title is skipped.
+ */
+function firstParagraphOf(markdown: string, title: string): string {
+  const body = markdown.replace(/^\s*#{1,6}\s+(.*)(\n|$)/, (line, heading: string) =>
+    heading.trim().toLowerCase() === title.trim().toLowerCase() ? "" : line,
+  );
+  const paragraph = body.split(/\n\s*\n/).find((block) => block.trim()) ?? "";
+  const text = paragraph
+    .replace(/^\s{0,3}(#{1,6}|>|[-*+]|\d+\.)\s+/gm, "")
+    .replace(/^\[[ xX]\]\s+/gm, "")
+    .replace(/\[\[([^\]|]*)\|([^\]]*)\]\]/g, "$2")
+    .replace(/\[\[([^\]]*)\]\]/g, "$1")
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/(?<!\\)[*_`~]/g, "")
+    .replace(/\\([^\w\s])/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+  return text.length > PREVIEW_CHARS ? `${text.slice(0, PREVIEW_CHARS - 1).trimEnd()}…` : text;
+}
+
+/*
+ * The first paragraph of each linked note, matched by trimmed, case-insensitive
+ * title within the workspace. It reads the autosaved draft when there is one,
+ * as the editor does; of several notes with one title, the oldest wins.
+ */
+export async function getLinkPreviews(auth: AuthContext, titles: string[]): Promise<LinkPreview[]> {
+  const wanted = linkPreviewKeys(titles);
+  if (wanted.length === 0) return [];
+  const titleKey = sql`lower(btrim(${artifacts.title}))`;
+  const rows = await withTransaction((tx) =>
+    tx
+      .selectDistinctOn([titleKey], {
+        id: artifacts.id,
+        title: artifacts.title,
+        content: sql<NoteContent | null>`coalesce(${workingDrafts.content}, ${artifactVersions.content})`,
+      })
+      .from(artifacts)
+      .leftJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
+      .leftJoin(workingDrafts, eq(workingDrafts.artifactId, artifacts.id))
+      .where(
+        and(
+          eq(artifacts.workspaceId, auth.workspaceId),
+          inArray(artifacts.kind, [...LINKABLE_KINDS]),
+          isNull(artifacts.archivedAt),
+          inArray(titleKey, wanted),
+        ),
+      )
+      .orderBy(titleKey, artifacts.createdAt, artifacts.id),
+  );
+  return rows.map((row) => ({
+    title: row.title,
+    id: row.id,
+    firstParagraph: firstParagraphOf(noteContentToMarkdown(row.content), row.title),
+  }));
 }
 
 function markdownOf(content: NoteContent, plainText?: string): string {
@@ -543,46 +606,6 @@ export async function listNotes(
       (row) =>
         ({ ...row, hasDraft: row.draftArtifactId !== null, draftArtifactId: undefined }) as unknown as NoteListItem,
     );
-  });
-}
-
-/**
- * The linkable cards with these exact titles (case-insensitive), for a reader
- * resolving [[Title]] links without holding the whole workspace index.
- */
-export async function findNotesByTitle(auth: AuthContext, titles: string[]): Promise<NoteListItem[]> {
-  const wanted = [...new Set(titles.map((title) => title.trim().toLowerCase()).filter(Boolean))].slice(0, 500);
-  if (!wanted.length) return [];
-  return withTransaction(async (tx) => {
-    const rows = await tx
-      .select({
-        id: artifacts.id,
-        title: artifacts.title,
-        kind: artifacts.kind,
-        status: artifacts.status,
-        version: artifacts.version,
-        updatedAt: artifacts.updatedAt,
-        excerpt: noteExcerptSql,
-        tags: artifacts.tags,
-        draftArtifactId: workingDrafts.artifactId,
-      })
-      .from(artifacts)
-      .leftJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
-      .leftJoin(workingDrafts, eq(workingDrafts.artifactId, artifacts.id))
-      .where(
-        and(
-          eq(artifacts.workspaceId, auth.workspaceId),
-          inArray(artifacts.kind, [...LINKABLE_KINDS]),
-          isNull(artifacts.archivedAt),
-          inArray(sql<string>`lower(trim(${artifacts.title}))`, wanted),
-        ),
-      )
-      .orderBy(desc(artifacts.updatedAt));
-    return rows.map(({ draftArtifactId, ...row }) => ({
-      ...row,
-      tags: readTags(row.tags),
-      hasDraft: draftArtifactId !== null,
-    }));
   });
 }
 

@@ -8,10 +8,10 @@ import { TaskItem, TaskList } from "@tiptap/extension-list";
 import Placeholder from "@tiptap/extension-placeholder";
 import { Markdown } from "@tiptap/markdown";
 import { useRouter } from "next/navigation";
-import { WIKI_LINK_OPEN, WikiLinks } from "./wiki-links";
+import { WIKI_LINK_OPEN, WikiLinks, refreshWikiPreviews, type WikiLinkOpen } from "./wiki-links";
+import type { LinkPreview } from "@/domains/knowledge/notes";
 import { InlineCompletion } from "./inline-completion";
 import { setAutocompleteEnabled, useAutocomplete } from "./autocomplete-client";
-import { unescapeWikiLinks } from "@/domains/knowledge/note-content";
 import { Bold, Italic, List, ListOrdered, Quote, Undo2, Redo2 } from "lucide-react";
 import { filterBlockCommands, slashQuery, type BlockCommand } from "@/components/workspace/slash-commands";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,12 @@ import { useWorkspace } from "@/components/workspace/workspace-provider";
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { markdownEditorMode, markdownSourceReason, type MarkdownEditorMode } from "./markdown-preservation";
+import {
+  markdownEditorMode,
+  markdownSourceReason,
+  richEditorMarkdown,
+  type MarkdownEditorMode,
+} from "./markdown-preservation";
 import { uploadCaptureFile } from "@/lib/capture-upload";
 import { SearchField } from "@/components/workspace/ui";
 import { artifactHref } from "./artifact-controls";
@@ -82,10 +87,16 @@ export default function RichEditor({
   mode: controlledMode,
   onModeChange,
   onStructuredPasteDropped,
+  linkPreviews,
+  missingLinkTitles,
 }: {
   content: string;
   onChange: (content: string) => void;
   ai?: RichEditorAI;
+  /** First lines of linked notes, folded into the text where the page has no margin. */
+  linkPreviews?: LinkPreview[];
+  /** Linked titles the server found no note for: they read as muted text, not links. */
+  missingLinkTitles?: string[];
   findLinkTargets?: FindLinkTargets;
   chrome?: "full" | "minimal";
   /** Short inline editor (task cards) instead of the full-page writing height. */
@@ -207,6 +218,8 @@ export default function RichEditor({
           onEmptySpace={ai?.onOpenChange ? () => ai.onOpenChange!(true) : undefined}
           floating={minimal}
           onStructuredPasteDropped={onStructuredPasteDropped}
+          linkPreviews={linkPreviews}
+          missingLinkTitles={missingLinkTitles}
         />
       )}
     </div>
@@ -326,7 +339,11 @@ function RichMarkdownEditor({
   editable = true,
   autocomplete = false,
   onStructuredPasteDropped,
+  linkPreviews,
+  missingLinkTitles,
 }: {
+  linkPreviews?: LinkPreview[];
+  missingLinkTitles?: string[];
   compact?: boolean;
   editable?: boolean;
   autocomplete?: boolean;
@@ -385,14 +402,16 @@ function RichMarkdownEditor({
   useEffect(() => {
     candidatesRef.current = candidates;
   });
-  // A clicked [[Title]] opens that note: the title resolves through the same
-  // finder the [[ picker uses, so a link reads and navigates the same way.
+  // A clicked [[Title]] opens that note: straight by id when its preview named
+  // one, otherwise the title resolves through the same finder the [[ picker
+  // uses, so a link reads and navigates the same way.
   const router = useRouter();
   useEffect(() => {
     const host = containerRef.current;
     if (!host) return;
     const open = (event: Event) => {
-      const title = (event as CustomEvent<string>).detail;
+      const { title, id } = (event as CustomEvent<WikiLinkOpen>).detail;
+      if (id) return router.push(`/polymath/notes?id=${id}`);
       const wanted = title.toLowerCase();
       const exact = (rows: LinkTarget[]) => rows.find((row) => !row.href && row.title.trim().toLowerCase() === wanted);
       const local = state.artifacts.find((a) => a.id !== undefined && a.title.trim().toLowerCase() === wanted);
@@ -418,7 +437,8 @@ function RichMarkdownEditor({
       TaskItem.configure({ nested: true }),
       Placeholder.configure({ placeholder: "Write. Press space for AI, / for a block, [[ to link a note." }),
       Markdown,
-      WikiLinks,
+      // Previews at creation, so the inline link notes draw on the first frame.
+      WikiLinks.configure({ previews: linkPreviews ?? null, missingTitles: missingLinkTitles ?? [] }),
       // Fixed at mount: a host either offers suggestions in this editor or not.
       ...(autocomplete ? [InlineCompletion] : []),
     ],
@@ -551,7 +571,7 @@ function RichMarkdownEditor({
       });
     },
     onUpdate: ({ editor }) => {
-      onChange(unescapeWikiLinks(editor.getMarkdown()));
+      onChange(richEditorMarkdown(editor.getMarkdown()));
       const { from } = editor.state.selection;
       const query = editor.state.selection.empty
         ? slashQuery(editor.state.doc.textBetween(Math.max(0, from - 40), from, "\n"))
@@ -601,8 +621,12 @@ function RichMarkdownEditor({
       setMenuPos(null);
     }
   }, [editor, menuAnchor]);
+  // Later preview changes (a server render after mount) redraw in place.
   useEffect(() => {
-    if (editor && unescapeWikiLinks(editor.getMarkdown()) !== content)
+    if (editor && linkPreviews) refreshWikiPreviews(editor, linkPreviews, missingLinkTitles);
+  }, [editor, linkPreviews, missingLinkTitles]);
+  useEffect(() => {
+    if (editor && richEditorMarkdown(editor.getMarkdown()) !== content)
       editor.commands.setContent(content, { contentType: "markdown", emitUpdate: false });
   }, [content, editor]);
   const formatButtons = [

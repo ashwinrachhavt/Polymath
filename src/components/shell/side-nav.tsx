@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronsLeft, ChevronsRight, Search } from "lucide-react";
 import { cn } from "cn";
+import { OPEN_COMMAND_SEARCH } from "./command-layer-mount";
 import { destinationForPath, destinations, homeHref, isConversationSurface, type Destination } from "@/lib/navigation";
 
 /*
@@ -58,7 +59,7 @@ export function SideNav() {
   }
 
   function openCommand() {
-    window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true }));
+    window.dispatchEvent(new Event(OPEN_COMMAND_SEARCH));
   }
 
   const activeHref = destinationForPath(pathname)?.href;

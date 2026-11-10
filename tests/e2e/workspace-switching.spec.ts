@@ -42,16 +42,40 @@ async function seedJourney(sql: postgres.Sql, tag: string) {
     insert into invitations (workspace_id, email, role, token_hash, expires_at, created_by, updated_by)
     values (${invited.id}, ${`switcher-${tag}@polymath.test`}, 'admin', ${`hash-${crypto.randomUUID()}`},
             now() + interval '7 days', ${user.id}, ${user.id})`;
-  // One note per workspace: the data-context change the notes list must show.
-  await sql`insert into artifacts (workspace_id, kind, title, status) values (${personal.workspace_id}, 'note', ${`Home note ${tag}`}, 'draft')`;
-  await sql`insert into artifacts (workspace_id, kind, title, status) values (${target.id}, 'note', ${`Target note ${tag}`}, 'draft')`;
+  // One note per workspace: the data-context change the notes surface must show.
+  const [homeNote] = await sql`
+    insert into artifacts (workspace_id, kind, title, status)
+    values (${personal.workspace_id}, 'note', ${`Home note ${tag}`}, 'draft')
+    returning id`;
+  const [targetNote] = await sql`
+    insert into artifacts (workspace_id, kind, title, status)
+    values (${target.id}, 'note', ${`Target note ${tag}`}, 'draft')
+    returning id`;
   return {
     userId: user.id,
     priorEmail: user.email as string | null,
-    personalId: personal.workspace_id,
     targetId: target.id as string,
     invitedId: invited.id as string,
+    homeNoteId: homeNote.id as string,
+    targetNoteId: targetNote.id as string,
   };
+}
+
+/*
+ * Opens a note by id. Bare /polymath/notes opens the workspace's latest note,
+ * and other specs in the same shard write newer notes to the same database, so
+ * the journey addresses its seeded notes directly instead of relying on order.
+ */
+async function openNote(page: Page, id: string) {
+  await page.goto(`/polymath/notes?id=${id}`);
+  await waitSettled(page);
+}
+
+/* Another workspace's note reads as absent, not as the note. */
+async function expectNoteHidden(page: Page, id: string) {
+  await openNote(page, id);
+  await expect(page.getByRole("heading", { name: "That note is not here" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByLabel("Note title")).toHaveCount(0);
 }
 
 async function openSwitcher(page: Page) {
@@ -131,12 +155,12 @@ test("switching workspaces changes the data context on the notes list", async ({
       const cookie = (await page.context().cookies()).find((c) => c.name === "polymath_active_workspace");
       expect(cookie?.value, "the active-workspace cookie names the target").toBe(seed.targetId);
 
-      // The data context changed: the notes list now serves Acme's notes.
-      await page.goto("/polymath/notes?mode=list");
-      const content = page.locator("#content").first();
-      await expect(content.getByText(`Target note ${tag}`)).toBeVisible({ timeout: 30_000 });
-      await expect(content.getByText(`Home note ${tag}`)).toHaveCount(0);
+      // The data context changed: Acme's note opens, and the personal note is
+      // out of reach from here.
+      await openNote(page, seed.targetNoteId);
+      await expect(page.getByLabel("Note title")).toHaveValue(`Target note ${tag}`, { timeout: 30_000 });
       await page.screenshot({ path: "test-results/feature-pixels/switcher-notes-acme.png", fullPage: true });
+      await expectNoteHidden(page, seed.homeNoteId);
 
       // Keyboard leg: focus the trigger, Enter opens, the first Tab stop is a
       // workspace row, Enter on the Personal row switches back. In dev the
@@ -169,12 +193,12 @@ test("switching workspaces changes the data context on the notes list", async ({
       await dialog2.getByRole("button", { name: /Personal/ }).press("Enter");
       await expect(dialog2).toBeHidden();
 
-      // Back in the personal workspace, the home note is the context again.
-      await page.goto("/polymath/notes?mode=list");
-      const content2 = page.locator("#content").first();
-      await expect(content2.getByText(`Home note ${tag}`)).toBeVisible({ timeout: 30_000 });
-      await expect(content2.getByText(`Target note ${tag}`)).toHaveCount(0);
+      // Back in the personal workspace, the home note is the context again and
+      // Acme's note is out of reach.
+      await openNote(page, seed.homeNoteId);
+      await expect(page.getByLabel("Note title")).toHaveValue(`Home note ${tag}`, { timeout: 30_000 });
       await page.screenshot({ path: "test-results/feature-pixels/switcher-notes-personal.png", fullPage: true });
+      await expectNoteHidden(page, seed.targetNoteId);
 
       expect(errors).toEqual([]);
     } finally {
@@ -182,7 +206,7 @@ test("switching workspaces changes the data context on the notes list", async ({
       // and artifacts; the home note and the session email are restored
       // explicitly so the shared dev owner is exactly as the journey found it.
       await sql`delete from workspaces where id in (${seed.targetId}, ${seed.invitedId})`;
-      await sql`delete from artifacts where id in (select id from artifacts where title = ${`Home note ${tag}`} and workspace_id = ${seed.personalId})`;
+      await sql`delete from artifacts where id = ${seed.homeNoteId}`;
       if (seed.priorEmail === null) await sql`update users set email = null where id = ${seed.userId}`;
       else await sql`update users set email = ${seed.priorEmail} where id = ${seed.userId}`;
     }

@@ -12,6 +12,7 @@ import { Status } from "@/components/workspace/ui";
 import { Skeleton } from "@/components/ui/skeleton";
 import { motion } from "motion/react";
 import { motionTransition } from "@/components/motion-config";
+import { noteLayout } from "./note-layout";
 import type { NoteAIRequest } from "@/components/products/polymath/note-ai-menu";
 import {
   markdownEditorMode,
@@ -32,8 +33,10 @@ import {
   setNoteTagsAction,
   startNoteAIAction,
 } from "./actions";
-import { X, History, Info, Link2, Plus, MessageSquare, Pencil } from "lucide-react";
-import { NotebookListToggle } from "./notebook-workspace";
+import { X, History, Info, Link2, Plus, MessageSquare } from "lucide-react";
+import { MarginNotes } from "@/components/products/polymath/margin-notes";
+import { FindNoteButton } from "./notebook-workspace";
+import type { LinkPreview } from "@/domains/knowledge/notes";
 import { NotionAppendAction } from "./notion-append";
 import { NoteCommentsPanel, type PanelComment } from "./note-comments-panel";
 
@@ -391,6 +394,8 @@ export function NoteEditor({
   backlinks,
   related,
   comments,
+  linkedPreviews,
+  missingLinkTitles,
 }: {
   noteId: string;
   /** Null while the current version is meaning-searchable or nothing is committed. */
@@ -423,6 +428,10 @@ export function NoteEditor({
   }[];
   related: { id: string; title: string; kind: string; score: number; excerpt: string | null; alreadyLinked: boolean }[];
   comments: PanelComment[];
+  /** First lines of the notes this one links to, shown in the margin beside the citing text. */
+  linkedPreviews: LinkPreview[];
+  /** Titles this note linked to when the server rendered it that name no note: shown muted, not as links. */
+  missingLinkTitles: string[];
 }) {
   const localKey = `polymath-note-local-${noteId}`;
   const findLinkTargets = useCallback(
@@ -590,11 +599,9 @@ export function NoteEditor({
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // The note reads as a document until the reader chooses to write to it. The
-  // body stays mounted in both states, but the editor only takes focus and
-  // shows its chrome while editing.
-  const [editing, setEditing] = useState(false);
   const noteColumnRef = useRef<HTMLDivElement>(null);
+  const [editorRoot, setEditorRoot] = useState<HTMLElement | null>(null);
+  useEffect(() => setEditorRoot(noteColumnRef.current), []);
   // Scroll-away chrome: once the reader is into the document, the header rows
   // recede; scroll back or hover to return them. The scroller is the suite
   // screen ancestor — the note column never scrolls itself.
@@ -753,21 +760,19 @@ export function NoteEditor({
    */
   const openCommentCount = comments.filter((c) => c.resolvedAt === null).length;
   return (
-    <div className="flex min-w-0 flex-1 items-start gap-6">
-      <div className="min-w-0 flex-1">
+    <div className={noteLayout.row}>
+      <div data-note-container className={noteLayout.cell}>
         <motion.div
           initial={{ opacity: 0, y: 4 }}
           animate={{ opacity: 1, y: 0 }}
           transition={motionTransition}
-          className="mx-auto flex min-h-[var(--canvas-min)] w-full max-w-[var(--measure-prose)] flex-col px-6 pb-24 pt-12"
+          className={noteLayout.column}
         >
           {/* The header zone: chrome fades in on pointer hover, always on for
               keyboard focus and coarse pointers. */}
-          <div
-            className={`header-zone -mx-6 flex h-8 items-center justify-between px-6 ${scrolled ? "is-scrolled" : ""}`}
-          >
-            <NotebookListToggle />
+          <div className={`header-zone ${noteLayout.header} ${scrolled ? "is-scrolled" : ""}`}>
             <div className="header-actions flex items-center gap-1">
+              <FindNoteButton icon />
               <NewNoteButton icon />
               <Dialog>
                 <DialogTrigger asChild>
@@ -859,37 +864,17 @@ export function NoteEditor({
              * the shell's one-heading-per-screen contract holds.
              */}
             <h1 className="sr-only">{title.trim() || "Untitled note"}</h1>
-            <div className="flex items-start gap-2">
+            <div className={noteLayout.titleRow}>
               <input
                 ref={titleRef}
                 aria-label="Note title"
                 value={title}
-                readOnly={!editing}
                 onChange={(e) => setTitle(e.target.value)}
-                onFocus={() => setEditing(true)}
                 onBlur={rename}
                 placeholder="Untitled note"
                 style={{ fontFamily: "var(--font-display)" }}
-                className="w-full min-w-0 bg-transparent text-display font-semibold leading-[1.2] tracking-tight outline-none placeholder:text-muted-foreground/40"
+                className={`w-full min-w-0 bg-transparent ${noteLayout.titleText} outline-none placeholder:text-muted-foreground/40`}
               />
-              <Button
-                type="button"
-                variant="ghost"
-                size="xs"
-                className="mt-2 shrink-0 text-muted-foreground"
-                aria-pressed={editing}
-                aria-label={editing ? "Read only" : "Edit note"}
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => {
-                  const next = !editing;
-                  setEditing(next);
-                  if (next) titleRef.current?.focus();
-                  else noteColumnRef.current?.querySelector<HTMLElement>(".ProseMirror")?.focus();
-                }}
-              >
-                <Pencil aria-hidden />
-                {editing ? "Read" : "Edit"}
-              </Button>
               {outlinks.length > 0 && (
                 <button
                   type="button"
@@ -904,7 +889,7 @@ export function NoteEditor({
             </div>
             {/* Metadata is small and muted; the actions it used to carry are
                 the header zone's problem now. */}
-            <div className="mt-3 flex min-h-5 flex-wrap items-center gap-2 text-data text-muted-foreground/80">
+            <div className={`${noteLayout.meta} text-muted-foreground/80`}>
               {saveState === "saving" && <span role="status">Saving…</span>}
               {saveState === "dirty" && <span role="status">Unsaved changes</span>}
               {saveState === "saved" && <span role="status">Saved</span>}
@@ -924,9 +909,7 @@ export function NoteEditor({
             )}
           </div>
           {/* The one quiet action row, hover-revealed like the header chrome. */}
-          <div
-            className={`header-actions quiet-actions mt-4 flex flex-wrap items-center gap-2 ${scrolled ? "is-scrolled" : ""}`}
-          >
+          <div className={`header-actions quiet-actions ${noteLayout.actions} ${scrolled ? "is-scrolled" : ""}`}>
             <NotionAppendAction
               noteId={noteId}
               title={title}
@@ -956,26 +939,21 @@ export function NoteEditor({
               {openCommentCount > 0 ? `Comments ${openCommentCount}` : "Comments"}
             </Button>
           </div>
-          <div
-            ref={noteColumnRef}
-            data-note-title={title}
-            className="mt-8 flex flex-1 flex-col"
-            onClick={() => {
-              if (!editing) setEditing(true);
-            }}
-          >
+          <div ref={noteColumnRef} data-note-title={title} className={noteLayout.body}>
             <RichEditor
               chrome="minimal"
-              editable={editing}
               autocomplete
               mode={editorMode}
               onModeChange={setEditorMode}
               findLinkTargets={findLinkTargets}
               content={markdown}
+              linkPreviews={linkedPreviews}
+              missingLinkTitles={missingLinkTitles}
               onChange={updateMarkdown}
               ai={{ pending: aiBusy, onAction: startAI, open: aiMenuOpen, onOpenChange: setAiMenuOpen }}
               onStructuredPasteDropped={() => setSourceHint(true)}
             />
+            <MarginNotes previews={linkedPreviews} editorRoot={editorRoot} />
             {sourceHint && editorMode === "rich" && (
               <div role="status" className="mt-2 flex items-center gap-2 text-body-dense text-muted-foreground">
                 <span>The paste lost its structure.</span>
@@ -1070,7 +1048,7 @@ export function NoteEditor({
           {/* Backlinks are part of reading the note, not a property of it:
               they sit at the foot of the document, always visible, so the
               reader sees what this note is part of. */}
-          <section aria-label="Backlinks" className="mt-14 border-t border-border pt-6">
+          <section id="note-backlinks" aria-label="Backlinks" className="mt-14 border-t border-border pt-6">
             <h2 className="text-xs font-medium text-muted-foreground">
               Backlinks <span className="tabular-nums">{backlinks.length}</span>
             </h2>

@@ -16,6 +16,18 @@ async function openDetails(page: import("@playwright/test").Page) {
   await expect(page.getByRole("dialog", { name: "Note details", exact: true })).toBeVisible();
 }
 
+/* A fresh note, made through the header's New note button; resolves to its id. */
+async function newNote(page: import("@playwright/test").Page): Promise<string> {
+  await page.goto("/polymath/notes");
+  // Bare /polymath/notes lands on the latest note (or the empty state); both offer New note.
+  await page.getByRole("button", { name: "New note" }).first().click();
+  // First hit compiles the route + action in dev mode; give the navigation room.
+  await expect(page).toHaveURL(/\/polymath\/notes\?id=[0-9a-f-]{36}/, { timeout: 20_000 });
+  // The previous note stays on screen until the new one streams in; wait for it.
+  await expect(page.getByLabel("Note title")).toHaveValue(/^(Untitled note)?$/);
+  return new URL(page.url()).searchParams.get("id")!;
+}
+
 test("create, autosave, recover and checkpoint a note, saved in the workspace", async ({ page }) => {
   test.setTimeout(90_000);
   const tag = Date.now().toString(36);
@@ -25,13 +37,8 @@ test("create, autosave, recover and checkpoint a note, saved in the workspace", 
   // The preview product screen hands off to the canonical surface.
   await page.goto("/apps/polymath/notebook");
   await expect(page).toHaveURL(/\/polymath\/notes/);
-  // Bare /polymath/notes is the evergreen reader; the list and editor (and
-  // New note) live at ?mode=list.
-  await page.goto("/polymath/notes?mode=list");
-
-  await page.getByRole("button", { name: "New note" }).click();
-  // First hit compiles the route + action in dev mode; give the navigation room.
-  await expect(page).toHaveURL(/\/polymath\/notes\?id=[0-9a-f-]{36}/, { timeout: 20_000 });
+  // The note is the page: open it by id and type, with no Edit click.
+  const noteId = await newNote(page);
   await page.getByLabel("Note title").fill(title);
   await page.getByLabel("Note title").blur();
 
@@ -69,12 +76,13 @@ test("create, autosave, recover and checkpoint a note, saved in the workspace", 
   await page.getByRole("button", { name: "Markdown source" }).click();
   await expect(page.getByLabel("Markdown source")).toHaveValue(body);
 
-  // The list entry links back to the same note.
-  await page.goto("/polymath/notes?mode=list");
-  // No exact: the link's accessible name legitimately includes the excerpt.
-  await page.getByRole("link", { name: title }).click();
-  // List links keep the list open (?mode=list&id=...).
-  await expect(page).toHaveURL(/\/polymath\/notes\?(?:.*&)?id=[0-9a-f-]{36}/);
+  // The note is always editable: open it by id and type with no Edit click.
+  await page.goto(`/polymath/notes?id=${noteId}`);
+  await page.getByLabel("Note title").waitFor();
+  await page.locator(".ProseMirror").first().click();
+  await page.keyboard.type(" hello");
+  await expect(page.getByText("Unsaved changes", { exact: true })).toBeVisible();
+  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
 });
 
 test("a [[wiki link]] becomes an edge both notes can see", async ({ page }) => {
@@ -85,10 +93,7 @@ test("a [[wiki link]] becomes an edge both notes can see", async ({ page }) => {
 
   // The target note, renamed and confirmed server-side (link resolution
   // matches the current title at autosave time).
-  await page.goto("/polymath/notes?mode=list");
-  await page.getByRole("button", { name: "New note" }).click();
-  // First hit compiles the route + action in dev mode; give the navigation room.
-  await expect(page).toHaveURL(/\/polymath\/notes\?id=[0-9a-f-]{36}/, { timeout: 20_000 });
+  await newNote(page);
   const targetUrl = page.url();
   await page.getByLabel("Note title").fill(targetTitle);
   await page.getByLabel("Note title").blur();
@@ -97,10 +102,7 @@ test("a [[wiki link]] becomes an edge both notes can see", async ({ page }) => {
   await expect(page.getByLabel("Note title")).toHaveValue(targetTitle);
 
   // The source note points at it by title.
-  await page.goto("/polymath/notes?mode=list");
-  await page.getByRole("button", { name: "New note" }).click();
-  // First hit compiles the route + action in dev mode; give the navigation room.
-  await expect(page).toHaveURL(/\/polymath\/notes\?id=[0-9a-f-]{36}/, { timeout: 20_000 });
+  await newNote(page);
   await page.getByLabel("Note title").fill(sourceTitle);
   await page.getByLabel("Note title").blur();
   await expect(page.getByText("Saved", { exact: true })).toBeVisible();
@@ -125,10 +127,7 @@ test("a [[wiki link]] becomes an edge both notes can see", async ({ page }) => {
 test("Ask AI stages a request and reports honestly when the agent bridge is unconfigured", async ({ page }) => {
   const tag = Date.now().toString(36);
 
-  await page.goto("/polymath/notes?mode=list");
-  await page.getByRole("button", { name: "New note" }).click();
-  // First hit compiles the route + action in dev mode; give the navigation room.
-  await expect(page).toHaveURL(/\/polymath\/notes\?id=[0-9a-f-]{36}/, { timeout: 20_000 });
+  await newNote(page);
   await page.getByLabel("Note title").fill(`AI staging ${tag}`);
   await page.getByLabel("Note title").blur();
 

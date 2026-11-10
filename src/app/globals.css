@@ -595,10 +595,50 @@
   /* Paragraphs break for reading rhythm, not to fill the box. */
   text-wrap: pretty;
 }
-/* [[Title]] links: the editor decorates them (wiki-links.ts) and the
-   evergreen reader renders them as anchors; both read as one quiet link.
-   Ink, not tangerine: DESIGN.md keeps the signal for actions, selection and
-   state, and a page of notes is mostly links. */
+/* Previews folded under a citing paragraph (wiki-links.ts); the margin column
+   replaces them in margin mode (the container query below). */
+.note-margin-inline {
+  margin: 0.5rem 0 1rem;
+  font-size: 0.75rem;
+  line-height: 1.25rem;
+  color: var(--muted-foreground);
+}
+.note-margin-inline summary {
+  cursor: pointer;
+  color: var(--link);
+}
+.note-margin-inline a {
+  color: var(--link);
+  font-weight: 500;
+}
+.note-margin-inline details > div {
+  margin-top: 0.25rem;
+  padding-left: 1rem;
+}
+/* The note container decides margin mode by its own width (sidebar and the
+   comments aside both take room): --measure-prose (720px; a query cannot read
+   var()) plus the 16rem column and its 1.5rem gap. This rule is the one source
+   of truth: margin-notes.tsx reads --margin-notes rather than recomputing it,
+   and tests/unit/margin-notes-threshold.test.ts keeps the 720px in step with
+   the token. In margin mode the column slides left only as far as the margin
+   needs. */
+[data-note-container] {
+  container-type: inline-size;
+}
+@container (min-width: calc(720px + 17.5rem)) {
+  .note-margin-inline {
+    display: none;
+  }
+  .note-column {
+    --margin-notes: on;
+    margin-right: 0;
+    margin-left: max(1rem, min((100% - var(--measure-prose)) / 2, 100% - var(--measure-prose) - 17rem));
+  }
+}
+/* [[Title]] links: the editor decorates them (wiki-links.ts) as one quiet
+   link. Ink, not tangerine: DESIGN.md keeps the signal for actions, selection
+   and state, and a page of notes is mostly links. A link the server found no
+   note for reads as muted text. */
 .wiki-link {
   color: var(--link);
   text-decoration: none;
@@ -612,6 +652,13 @@
 }
 .wiki-link:hover {
   text-decoration: underline;
+}
+.wiki-link-missing {
+  color: var(--muted-foreground);
+  cursor: text;
+}
+.wiki-link-missing:hover {
+  text-decoration: none;
 }
 .prose-reading a {
   color: var(--link);
@@ -1001,29 +1048,6 @@ textarea {
   min-height: 0;
   overflow: hidden;
 }
-/* The notes rail compacts the shared ListToolbar (spacing-system pass): the
-   search field and selects share the rail's width instead of stacking, and
-   controls drop to the 8px-grid compact height. Scoped so the full-width
-   toolbar on every other surface is untouched. */
-.rail-compact [role="search"] {
-  gap: var(--space-xs);
-}
-.rail-compact [role="search"] > div:first-child {
-  min-width: 0;
-}
-.rail-compact [role="search"] select {
-  width: calc(50% - 4px);
-  flex: 1 1 auto;
-}
-.rail-compact [role="search"] input[type="search"] {
-  height: 32px;
-}
-.rail-compact [role="search"] select {
-  min-height: 32px;
-  height: 32px;
-  padding-block: 0;
-}
-
 /* The graph canvas (React Flow) speaks Furrow: the library's own chrome —
    controls, background dots, handles, the live connection line — reads its
    --xy-* theme variables, so it follows the tokens in both modes with no
@@ -1066,16 +1090,4 @@ li[data-deep-linked="true"] {
 }
 .activity-title-toggle[open] > summary .title-collapse {
   display: inline;
-}
-
-/* Evergreen reader: links read as links (Andy Matuschak's working-notes feel),
-   blue and unadorned until hovered, so prose stays prose. */
-.evergreen-prose .wiki-link {
-  color: var(--link);
-  text-decoration: none;
-}
-.evergreen-prose .wiki-link:hover {
-  text-decoration: underline;
-  text-decoration-color: currentColor;
-  background-color: transparent;
 }

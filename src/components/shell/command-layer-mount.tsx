@@ -17,6 +17,9 @@ import { Button } from "@/components/ui/button";
  * visible network.
  */
 
+/** Opens the layer in search from other chrome (the sidebar), without faking a Cmd+K a page may claim. */
+export const OPEN_COMMAND_SEARCH = "command-layer:open-search";
+
 const CommandLayer = dynamic(() => import("./command-layer").then((m) => m.CommandLayer), { ssr: false });
 
 // Same hydration gate the triggers inside CommandLayer use: controls are
@@ -58,6 +61,12 @@ export function CommandLayerMount() {
     window.addEventListener("keydown", listener);
     return () => window.removeEventListener("keydown", listener);
   }, [mountedWith]);
+
+  useEffect(() => {
+    const openSearch = () => setMountedWith((current) => current ?? "search");
+    window.addEventListener(OPEN_COMMAND_SEARCH, openSearch);
+    return () => window.removeEventListener(OPEN_COMMAND_SEARCH, openSearch);
+  }, []);
 
   // The two triggers are persistent chrome: cheap, always visible, and the
   // focus-restore targets for both dialog exits. The palette itself mounts

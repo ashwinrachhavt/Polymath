@@ -1,92 +1,61 @@
 "use client";
 
-import { createContext, useContext, useState, type ReactNode } from "react";
-import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { NoteSwitcher } from "@/components/shell/note-switcher";
+import { noteLayout } from "./note-layout";
 
-type NotebookListControls = { open: boolean; toggle: () => void; openOnMobile: () => void };
+const OpenSwitcher = createContext<() => void>(() => {});
 
-// The list toggle belongs to the note's top row, but the list's state lives
-// here; the context is how the two meet without making the page pass callbacks.
-const NotebookListContext = createContext<NotebookListControls | null>(null);
+/*
+ * The notes page is one note column. Cmd/Ctrl+K opens the note finder here:
+ * the listener runs in the capture phase so it answers before the global
+ * command layer, which keeps Cmd+K everywhere else. The sidebar's search
+ * button opens the command layer by its own event, so it is not taken here.
+ *
+ * `replaceUrl` names the note shown when the URL did not (bare /polymath/notes):
+ * the URL catches up without a navigation, so the page renders once.
+ */
+export function NotebookWorkspace({ children, replaceUrl }: { children: ReactNode; replaceUrl?: string }) {
+  const [switcherOpen, setSwitcherOpen] = useState(false);
 
-/** The slim list's toggle, for any surface that renders inside the workspace. */
-export function NotebookListToggle() {
-  const list = useContext(NotebookListContext);
-  if (!list) return null;
+  useEffect(() => {
+    if (replaceUrl) window.history.replaceState(null, "", replaceUrl);
+  }, [replaceUrl]);
+
+  useEffect(() => {
+    const listener = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        setSwitcherOpen(true);
+      }
+    };
+    window.addEventListener("keydown", listener, true);
+    return () => window.removeEventListener("keydown", listener, true);
+  }, []);
+
   return (
-    <>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        className="hidden lg:inline-flex"
-        aria-expanded={list.open}
-        aria-label={list.open ? "Hide the note list" : "Show the note list"}
-        onClick={list.toggle}
-      >
-        {list.open ? (
-          <PanelLeftClose aria-hidden className="text-muted-foreground" />
-        ) : (
-          <PanelLeftOpen aria-hidden className="text-muted-foreground" />
-        )}
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        className="lg:hidden"
-        aria-label="Open the note list"
-        onClick={list.openOnMobile}
-      >
-        <PanelLeftOpen aria-hidden className="text-muted-foreground" />
-      </Button>
-    </>
+    <OpenSwitcher.Provider value={() => setSwitcherOpen(true)}>
+      <div className={noteLayout.row}>
+        <div className={noteLayout.cell}>{children}</div>
+        <NoteSwitcher open={switcherOpen} onOpenChange={setSwitcherOpen} />
+      </div>
+    </OpenSwitcher.Provider>
   );
 }
 
-export function NotebookWorkspace({
-  list,
-  children,
-  narrow = false,
-}: {
-  list: ReactNode;
-  children: ReactNode;
-  /** A note is open: the list rail shrinks to a quiet index instead of competing with the document. */ narrow?: boolean;
-}) {
-  const [open, setOpen] = useState(true);
-  const [mobileOpen, setMobileOpen] = useState(false);
-  return (
-    <NotebookListContext.Provider
-      value={{ open, toggle: () => setOpen((current) => !current), openOnMobile: () => setMobileOpen(true) }}
-    >
-      <div className="flex flex-1 items-start gap-6">
-        {open && (
-          <aside
-            aria-label="Notes list"
-            className={`sticky top-0 hidden max-h-[100dvh] shrink-0 overflow-y-auto lg:block ${narrow ? "w-64" : "w-72"}`}
-          >
-            {/* The rail compacts the shared toolbar: search and the two
-               selects share rows instead of stacking full-width. */}
-            <div className="rail-compact">{list}</div>
-          </aside>
-        )}
-        <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-          <SheetContent side="left" className="overflow-y-auto p-4 pt-12">
-            <SheetTitle>Notes</SheetTitle>
-            <SheetDescription className="sr-only">Search and select a note.</SheetDescription>
-            <div
-              onClick={(event) => {
-                if ((event.target as HTMLElement).closest("a")) setMobileOpen(false);
-              }}
-            >
-              {list}
-            </div>
-          </SheetContent>
-        </Sheet>
-        <div className="min-w-0 flex-1">{children}</div>
-      </div>
-    </NotebookListContext.Provider>
+/** Opens the note finder: the visible path to it on touch screens, and wherever the shortcut is not known. */
+export function FindNoteButton({ icon = false }: { icon?: boolean }) {
+  const open = useContext(OpenSwitcher);
+  return icon ? (
+    <Button type="button" variant="ghost" size="icon-sm" aria-label="Find a note" onClick={open}>
+      <Search aria-hidden className="text-muted-foreground" />
+    </Button>
+  ) : (
+    <Button type="button" variant="outline" onClick={open}>
+      Find a note
+    </Button>
   );
 }

@@ -41,15 +41,17 @@ function fmtTime(date: Date): string {
 export async function buildSurfaceCard(auth: AuthContext, intent: NavigationIntent): Promise<SurfaceCard> {
   if (intent.kind === "open_note") {
     const { items } = await pageNotes(auth, { query: intent.query, limit: CARD_LIMIT, offset: 0 });
+    const rows = items.map((note) => ({
+      label: note.title || "Untitled note",
+      href: `/polymath/notes?id=${note.id}`,
+      meta: `v${note.version} · ${fmtDay(note.updatedAt)}`,
+    }));
     return {
       surface: "note_search",
       title: `Notes matching "${intent.query}"`,
-      href: `/polymath/notes?q=${encodeURIComponent(intent.query)}`,
-      items: items.map((note) => ({
-        label: note.title || "Untitled note",
-        href: `/polymath/notes?id=${note.id}`,
-        meta: `v${note.version} · ${fmtDay(note.updatedAt)}`,
-      })),
+      // The header opens the best match; bare /polymath/notes would open the latest note instead.
+      href: rows[0]?.href ?? "/polymath/notes",
+      items: rows,
       emptyText: `No notes match "${intent.query}" yet.`,
     };
   }

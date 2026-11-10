@@ -74,7 +74,7 @@ export async function searchPaletteKnowledge(
       label: hit.title,
       context: `${KIND_CONTEXT[hit.kind] ?? "Card in Polymath"}${whyContext(hit)}`,
       // Every artifact card opens in the notebook, the same href the notes
-      // page's own hit list builds (search-results hrefFor).
+      // page opens by id.
       href: `/polymath/notes?id=${hit.id}`,
     })),
     meaning: result.meaning,
