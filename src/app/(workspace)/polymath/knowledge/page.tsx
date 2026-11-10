@@ -30,6 +30,7 @@ import { judgeTransactions } from "@/domains/knowledge/transaction-rules";
 import { summarize, type Judgment } from "@/domains/knowledge/transaction-classify";
 import { StatementPanel, type StatementPanelData } from "./statement-panel";
 import { SummaryPanel } from "./summary-panel";
+import { OpenRecorder } from "./open-recorder";
 import { DocumentVault } from "./vault";
 
 export const metadata = { title: "Knowledge · Polymath" };
@@ -264,6 +265,7 @@ function ReviewWorkbench({
 
   return (
     <div className="flex flex-col gap-4">
+      <OpenRecorder documentId={doc.id} />
       <Link href={backHref} className="text-muted-foreground w-fit text-xs underline-offset-4 hover:underline">
         Back to vault
       </Link>

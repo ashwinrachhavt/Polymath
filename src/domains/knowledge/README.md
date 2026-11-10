@@ -180,6 +180,10 @@ The read model behind the Vault (`/polymath/knowledge`): `library.ts` for reads,
   `currentExtractionSql` / `currentExtractionIdSubquery`. A newly created
   extraction clears the pin (fresh bytes are newer truth). No UI calls it
   since the Files explorer merged into the Vault (2026-11-10).
+- Opens (`document-opens.ts`): `recordDocumentOpen` upserts the caller's
+  `document_reading_state` row (open count, last opened) when the Vault's
+  document detail mounts; it is the only writer of that table, and knowledge
+  debt (`debt.ts`) reads it for the never-opened signal.
 - Tags (`tags.ts`): free tags, normalized lowercase, one row per (document,
   tag); batch add/remove with idempotent re-tags. `listDocuments` takes a tag
   filter and returns each row's tags; `listTags` is the filter rail.
