@@ -65,7 +65,7 @@ const PATHS: Record<RecordKind, (id: string) => string> = {
   thread: (id) => `/command-center/conversations/${id}`,
   zettel: () => "/polymath/ideas",
   event: () => "/calendar",
-  contact: () => "/command-center/relationships/contacts",
+  contact: () => "/command-center/relationships/people",
   company: () => "/command-center/relationships/companies",
   person: () => "/command-center/relationships/people",
   organization: () => "/command-center/relationships/companies",

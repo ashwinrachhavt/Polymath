@@ -127,7 +127,10 @@ for (const vp of VIEWPORTS) {
     const trigger = page.getByRole("button", { name: /Research (company|again)/ });
     await expect(trigger).toBeVisible({ timeout: 30_000 });
     if (await page.getByText("Not researched yet").isVisible()) {
-      await page.screenshot({ path: `test-results/feature-pixels/company-profile-fresh-${vp.name}.png`, style: HIDE_DEV_CHROME });
+      await page.screenshot({
+        path: `test-results/feature-pixels/company-profile-fresh-${vp.name}.png`,
+        style: HIDE_DEV_CHROME,
+      });
     }
 
     const actionDone = waitForAction(page);
@@ -146,7 +149,11 @@ for (const vp of VIEWPORTS) {
     // Citations resolve into the disclosed source list.
     await result.getByText("Sources (4)", { exact: true }).click();
     await expect(result.getByRole("link", { name: "About Example" })).toBeVisible();
-    await page.screenshot({ path: `test-results/feature-pixels/company-profile-researched-${vp.name}.png`, style: HIDE_DEV_CHROME, fullPage: true });
+    await page.screenshot({
+      path: `test-results/feature-pixels/company-profile-researched-${vp.name}.png`,
+      style: HIDE_DEV_CHROME,
+      fullPage: true,
+    });
 
     if (vp.name === "mobile") {
       // Real-viewport proof, not fullPage stitching: scroll the Offerings
@@ -156,9 +163,15 @@ for (const vp of VIEWPORTS) {
       const sourcesToggle = result.getByText("Sources (4)", { exact: true });
       await sourcesToggle.focus();
       await result.getByText("Offerings", { exact: true }).scrollIntoViewIfNeeded();
-      await page.screenshot({ path: "test-results/feature-pixels/company-profile-offerings-viewport-mobile.png", style: HIDE_DEV_CHROME });
+      await page.screenshot({
+        path: "test-results/feature-pixels/company-profile-offerings-viewport-mobile.png",
+        style: HIDE_DEV_CHROME,
+      });
       await sourcesToggle.scrollIntoViewIfNeeded();
-      await page.screenshot({ path: "test-results/feature-pixels/company-profile-sources-viewport-mobile.png", style: HIDE_DEV_CHROME });
+      await page.screenshot({
+        path: "test-results/feature-pixels/company-profile-sources-viewport-mobile.png",
+        style: HIDE_DEV_CHROME,
+      });
     }
 
     // The linked contact renders on the profile, and the record panel fits.
@@ -171,7 +184,7 @@ for (const vp of VIEWPORTS) {
     const seeded = await seedResearchSubjects();
     test.skip(!seeded, "DATABASE_URL not configured");
 
-    await page.goto(`/command-center/relationships/contacts?id=${seeded!.contactId}`);
+    await page.goto(`/command-center/relationships/people?id=${seeded!.contactId}`);
     // After a prior attempt the trigger reads "Research again".
     const trigger = page.getByRole("button", { name: /Research (person|again)/ });
     await expect(trigger).toBeVisible({ timeout: 30_000 });
@@ -183,7 +196,11 @@ for (const vp of VIEWPORTS) {
     await expect(result).toBeVisible();
     await expect(result.getByText("Platform lead at Example", { exact: true })).toBeVisible();
     await expect(result.getByText("Ask about the pricing launch", { exact: true })).toBeVisible();
-    await page.screenshot({ path: `test-results/feature-pixels/person-profile-researched-${vp.name}.png`, style: HIDE_DEV_CHROME, fullPage: true });
+    await page.screenshot({
+      path: `test-results/feature-pixels/person-profile-researched-${vp.name}.png`,
+      style: HIDE_DEV_CHROME,
+      fullPage: true,
+    });
 
     // A focus button re-researches one angle; the card set refreshes in place.
     const focusDone = waitForAction(page);
@@ -194,7 +211,10 @@ for (const vp of VIEWPORTS) {
     // already showed (kind labels, card titles) cannot prove the refresh.
     await expect(result.getByText(/Talking points · \d+ cards? from \d+ sources?/)).toBeVisible();
     await expect(result.getByText(/dropped - the sources could not ground them/)).toBeVisible();
-    await page.screenshot({ path: `test-results/feature-pixels/person-profile-focus-${vp.name}.png`, style: HIDE_DEV_CHROME });
+    await page.screenshot({
+      path: `test-results/feature-pixels/person-profile-focus-${vp.name}.png`,
+      style: HIDE_DEV_CHROME,
+    });
 
     // Prove the card grid fits the real viewport: no card is clipped sideways.
     const firstCard = result.locator("li").first();

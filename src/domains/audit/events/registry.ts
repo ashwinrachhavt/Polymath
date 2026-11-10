@@ -85,7 +85,7 @@ export const GENERIC_TECHNICAL_SUMMARY = "Workspace activity recorded";
 const SUBJECT_ROUTES: Record<string, (subjectId: string) => Destination> = {
   capture: (id) => ({ label: "Open capture", href: `/command-center/inbox?id=${id}` }),
   task: (id) => ({ label: "Open task", href: `/neuralflow/work?task=${id}` }),
-  contact: (id) => ({ label: "Open contact", href: `/command-center/relationships/contacts?id=${id}` }),
+  contact: (id) => ({ label: "Open contact", href: `/command-center/relationships/people?id=${id}` }),
   company: (id) => ({ label: "Open company", href: `/command-center/relationships/companies/${id}` }),
   document: (id) => ({ label: "Open document", href: `/polymath/knowledge?doc=${id}` }),
   run: (id) => ({ label: "Open run", href: `/polymath/${id}` }),
