@@ -1,13 +1,13 @@
-import { and, eq, gte, sql } from "drizzle-orm";
-import type { AnyPgColumn } from "drizzle-orm/pg-core";
+import { and, desc, eq, gt, gte, isNotNull, notExists, sql } from "drizzle-orm";
+import { alias, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { auditEvents } from "@/domains/audit/schema";
 import { getPreferences, isValidTimezone } from "@/domains/identity/preferences";
 import type { AuthContext } from "@/domains/identity/resolve";
+import { projectDocumentIds } from "@/domains/knowledge/projects";
 import { db } from "@/lib/db";
 import { shiftDateKey, todayKeyInTimezone } from "@/lib/local-date";
 import { countDueFlashcards, getFlashcardDueQueue } from "./flashcards";
-import { getLearnLibrary } from "./queries";
-import { quizAttempts } from "./schema";
+import { quizAttempts, quizzes } from "./schema";
 
 /*
  * Home's Up next: the one place to continue learning, and whether the habit
@@ -20,26 +20,87 @@ export type UpNext = {
   dueCards: number;
   /** The deck holding the card that has waited longest. */
   firstDue: { notebookId: string; deckId: string } | null;
-  /** The newest document's ready quiz this user has never attempted. */
+  /** The newest Notebook quiz this user has never sat, linked inside its Notebook. */
   quizWaiting: { quizId: string; title: string; href: string } | null;
   /** Consecutive local days with learning, ending today or yesterday; 0 when broken. */
   streakDays: number;
 };
 
 export async function getUpNext(auth: AuthContext): Promise<UpNext> {
-  const [dueCards, [firstCard], library, streakDays] = await Promise.all([
+  const [dueCards, [firstCard], quiz, streakDays] = await Promise.all([
     countDueFlashcards(auth),
     getFlashcardDueQueue(auth, 1),
-    getLearnLibrary(auth),
+    quizWaiting(auth),
     learningStreakDays(auth),
   ]);
-  const quiz = library.find((row) => row.quizId !== null && row.bestCorrect === null);
   return {
     dueCards,
     firstDue: firstCard ? { notebookId: firstCard.notebookId, deckId: firstCard.deckId } : null,
-    quizWaiting: quiz?.quizId ? { quizId: quiz.quizId, title: quiz.title, href: `/learn/${quiz.documentId}` } : null,
+    quizWaiting: quiz,
     streakDays,
   };
+}
+
+/*
+ * The newest ready quiz this user has never attempted, among the quizzes the
+ * Learn list shows (a document's latest ready quiz; an older generation is
+ * superseded). Only a quiz made in a Notebook qualifies, and only while that
+ * Notebook still holds every source the quiz pins: the Notebook page opens a
+ * quiz on exactly that condition, so Continue never lands on a Notebook that
+ * hides it. A quiz made outside any Notebook stays on the Learn list.
+ */
+async function quizWaiting(auth: AuthContext): Promise<UpNext["quizWaiting"]> {
+  const newer = alias(quizzes, "newer_quiz");
+  const [quiz] = await db
+    .select({
+      id: quizzes.id,
+      title: quizzes.title,
+      notebookId: quizzes.notebookId,
+      documentId: quizzes.documentId,
+      sourceManifest: quizzes.sourceManifest,
+    })
+    .from(quizzes)
+    .where(
+      and(
+        eq(quizzes.workspaceId, auth.workspaceId),
+        eq(quizzes.status, "ready"),
+        isNotNull(quizzes.notebookId),
+        notExists(
+          db
+            .select({ one: sql`1` })
+            .from(quizAttempts)
+            .where(
+              and(
+                eq(quizAttempts.workspaceId, auth.workspaceId),
+                eq(quizAttempts.quizId, quizzes.id),
+                eq(quizAttempts.userId, auth.userId),
+              ),
+            ),
+        ),
+        notExists(
+          db
+            .select({ one: sql`1` })
+            .from(newer)
+            .where(
+              and(
+                eq(newer.workspaceId, auth.workspaceId),
+                eq(newer.documentId, quizzes.documentId),
+                eq(newer.status, "ready"),
+                gt(newer.createdAt, quizzes.createdAt),
+              ),
+            ),
+        ),
+      ),
+    )
+    .orderBy(desc(quizzes.createdAt), desc(quizzes.id))
+    .limit(1);
+  if (!quiz?.notebookId) return null;
+
+  const held = await projectDocumentIds(auth, quiz.notebookId);
+  const pinned =
+    quiz.sourceManifest.length > 0 ? quiz.sourceManifest.map((source) => source.documentId) : [quiz.documentId];
+  if (!held || !pinned.every((id) => held.includes(id))) return null;
+  return { quizId: quiz.id, title: quiz.title, href: `/projects/${quiz.notebookId}/notebook?quiz=${quiz.id}` };
 }
 
 /*
@@ -52,7 +113,8 @@ const STREAK_LOOKBACK_DAYS = 366;
  * A day of learning is a day with a flashcard review or a quiz attempt, in the
  * user's own timezone. Ratings overwrite the card's schedule row, so the review
  * history is the audit trail: rateFlashcard writes one row per rating in the
- * same transaction as the rating.
+ * same transaction as the rating. The partial index
+ * audit_events_flashcard_review_idx serves exactly this read.
  */
 async function learningStreakDays(auth: AuthContext): Promise<number> {
   const { timezone } = await getPreferences(auth);

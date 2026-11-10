@@ -2,7 +2,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { auditEvents, blobObjects } from "@/domains/audit/schema";
 import { userPreferences } from "@/domains/identity/schema";
-import { documentExtractions, documents, files, notebooks } from "@/domains/knowledge/schema";
+import { documentExtractions, documents, files, notebookSources, notebooks, sources } from "@/domains/knowledge/schema";
 import { flashcardDecks, flashcards, quizAttempts, quizzes } from "@/domains/learning/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
@@ -72,7 +72,12 @@ async function seedDeck(auth: ReturnType<typeof ownerAuth>, cardCount: number) {
   return { notebook, deck, cards };
 }
 
-async function seedReadyQuiz(auth: ReturnType<typeof ownerAuth>, title: string) {
+/*
+ * A ready quiz on a fresh document. With `notebookId` the quiz was made in
+ * that Notebook and the Notebook holds the document as a source, the way
+ * generateNotebookQuizAction leaves them.
+ */
+async function seedReadyQuiz(auth: ReturnType<typeof ownerAuth>, title: string, notebookId: string | null = null) {
   const [blob] = await db
     .insert(blobObjects)
     .values({
@@ -105,14 +110,36 @@ async function seedReadyQuiz(auth: ReturnType<typeof ownerAuth>, title: string) 
     .insert(quizzes)
     .values({
       workspaceId: auth.workspaceId,
+      notebookId,
       documentId: doc.id,
       sourceExtractionId: extraction.id,
+      sourceManifest: [{ documentId: doc.id, extractionId: extraction.id, title }],
       title,
       status: "ready",
       questionCount: 3,
     })
     .returning();
-  return { doc, quiz };
+  let source = null;
+  if (notebookId) {
+    [source] = await db
+      .insert(sources)
+      .values({ workspaceId: auth.workspaceId, kind: "file", title, fileId: file.id })
+      .returning();
+    await db.insert(notebookSources).values({ workspaceId: auth.workspaceId, notebookId, sourceId: source.id });
+  }
+  return { doc, quiz, source };
+}
+
+async function attempt(auth: ReturnType<typeof ownerAuth>, quizId: string) {
+  await db.insert(quizAttempts).values({
+    workspaceId: auth.workspaceId,
+    quizId,
+    userId: auth.userId,
+    answers: [],
+    correctCount: 1,
+    totalCount: 3,
+    idempotencyKey: crypto.randomUUID(),
+  });
 }
 
 /** Rate a card now, then move that review `daysAgo` whole days back. */
@@ -136,13 +163,17 @@ suite("up next", () => {
     const { notebook, deck, cards } = await seedDeck(auth, 3);
     // Reviewed today, so due in a day: no longer due.
     await flashcardCommands.rateFlashcard(auth, { flashcardId: cards[0].id, rating: "good" });
-    const { doc, quiz } = await seedReadyQuiz(auth, "Lease quiz");
+    const { quiz } = await seedReadyQuiz(auth, "Lease quiz", notebook.id);
 
     const result = await upNext.getUpNext(auth);
 
     expect(result.dueCards).toBe(2);
     expect(result.firstDue).toEqual({ notebookId: notebook.id, deckId: deck.id });
-    expect(result.quizWaiting).toEqual({ quizId: quiz.id, title: "Lease quiz", href: `/learn/${doc.id}` });
+    expect(result.quizWaiting).toEqual({
+      quizId: quiz.id,
+      title: "Lease quiz",
+      href: `/projects/${notebook.id}/notebook?quiz=${quiz.id}`,
+    });
     expect(result.streakDays).toBe(1);
 
     // Another workspace sees none of it.
@@ -194,6 +225,54 @@ suite("up next", () => {
       .set({ createdAt: sql`${auditEvents.createdAt} - interval '1 day'` })
       .where(eq(auditEvents.workspaceId, gapped.workspaceId));
     expect((await upNext.getUpNext(gapped)).streakDays).toBe(0);
+  });
+
+  it("a waiting quiz opens inside the Notebook that holds it, or is not offered", async () => {
+    const auth = await seed();
+    const [notebook] = await db
+      .insert(notebooks)
+      .values({ workspaceId: auth.workspaceId, title: "Lease notebook" })
+      .returning();
+    const waiting = async () => (await upNext.getUpNext(auth)).quizWaiting;
+
+    // A quiz made outside any Notebook has no Notebook page to open in.
+    await seedReadyQuiz(auth, "Loose quiz");
+    expect(await waiting()).toBeNull();
+
+    // A Notebook quiz is offered there, newest first.
+    const older = await seedReadyQuiz(auth, "Older quiz", notebook.id);
+    const newest = await seedReadyQuiz(auth, "Newest quiz", notebook.id);
+    expect(await waiting()).toEqual({
+      quizId: newest.quiz.id,
+      title: "Newest quiz",
+      href: `/projects/${notebook.id}/notebook?quiz=${newest.quiz.id}`,
+    });
+
+    // Once sat, the next one waits.
+    await attempt(auth, newest.quiz.id);
+    expect((await waiting())?.quizId).toBe(older.quiz.id);
+
+    // The Notebook page hides a quiz whose source it no longer holds, so
+    // Continue must not point there.
+    await db.delete(notebookSources).where(eq(notebookSources.sourceId, older.source!.id));
+    expect(await waiting()).toBeNull();
+  });
+
+  it("a quiz superseded by a newer generation on its document is not offered", async () => {
+    const auth = await seed();
+    const [notebook] = await db
+      .insert(notebooks)
+      .values({ workspaceId: auth.workspaceId, title: "Lease notebook" })
+      .returning();
+    const first = await seedReadyQuiz(auth, "Lease quiz", notebook.id);
+    const [regenerated] = await db
+      .insert(quizzes)
+      .values({ ...first.quiz, id: undefined, generationKey: null, createdAt: sql`now() + interval '1 second'` })
+      .returning();
+    await attempt(auth, regenerated.id);
+
+    // The library shows the regenerated quiz as sat; the older one is history.
+    expect((await upNext.getUpNext(auth)).quizWaiting).toBeNull();
   });
 
   it("no learning yet gives zeros and nulls", async () => {
