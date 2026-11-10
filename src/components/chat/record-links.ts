@@ -56,7 +56,7 @@ function isRecordKind(value: unknown): value is RecordKind {
 
 const PATHS: Record<RecordKind, (id: string) => string> = {
   task: () => "/work",
-  note: () => "/polymath/notes",
+  note: (id) => `/polymath/notes?id=${id}`,
   document: (id) => `/polymath/library/${id}`,
   source: () => "/polymath/knowledge",
   project: (id) => `/projects/${id}`,
@@ -74,7 +74,7 @@ const PATHS: Record<RecordKind, (id: string) => string> = {
 };
 
 /**
- * The route for a record. A kind whose surface is a collection (tasks, notes,
+ * The route for a record. A kind whose surface is a collection (tasks,
  * events) has no per-id page today, so it links to the collection rather than
  * inventing a detail route that 404s — the id still travels in the label.
  */

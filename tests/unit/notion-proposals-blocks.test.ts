@@ -72,6 +72,7 @@ describe("record cards", () => {
   it("maps a kind to its real route and refuses to invent one", () => {
     expect(recordPath("document", "abc")).toBe("/polymath/library/abc");
     expect(recordPath("artifact", "abc")).toBe("/artifacts/abc");
+    expect(recordPath("note", "abc")).toBe("/polymath/notes?id=abc");
     expect(recordPath("notathing" as never, "abc")).toBeNull();
   });
 
@@ -81,7 +82,10 @@ describe("record cards", () => {
   });
 
   it("caps what one tool result can put in the thread", () => {
-    const records = collectRecords({ notes: Array.from({ length: 20 }, (_, i) => ({ id: String(i), title: `Note ${i}` })) }, 3);
+    const records = collectRecords(
+      { notes: Array.from({ length: 20 }, (_, i) => ({ id: String(i), title: `Note ${i}` })) },
+      3,
+    );
     expect(records).toHaveLength(3);
   });
 

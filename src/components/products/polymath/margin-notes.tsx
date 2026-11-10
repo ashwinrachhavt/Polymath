@@ -15,11 +15,16 @@ import { layoutMarginNotes } from "./margin-layout";
  * the page loaded has no preview until the next load, so it gets no card.
  */
 
-/** The column's width, and the gap that keeps it clear of the text. */
-const MARGIN_COLUMN_REM = 16;
-const MARGIN_GAP_REM = 1.5;
+/*
+ * Margin mode has one source of truth: the container query in globals.css,
+ * which sets this property on .note-column when the container fits the
+ * measure plus the margin column. The script reads that outcome rather than
+ * recomputing the threshold.
+ */
+export const MARGIN_MODE_PROPERTY = "--margin-notes";
 
 const ESTIMATED_CARD_HEIGHT = 84;
+const MAX_VISIBLE_CARDS = 12;
 
 type Anchor = { key: string; top: number };
 
@@ -68,22 +73,14 @@ function useAnchors(previews: LinkPreview[], editorRoot: HTMLElement | null): An
   return anchors;
 }
 
-/*
- * True while the note's container fits measure + margin column. The same
- * threshold lives in globals.css as a container query (CSS cannot read
- * var() in a query), so first paint is already in the right mode; a unit
- * test keeps the two in step.
- */
+/** True while the container query in globals.css has the note column in margin mode. */
 function useMarginMode(editorRoot: HTMLElement | null): boolean {
   const [on, setOn] = useState(false);
   useEffect(() => {
-    const container = editorRoot?.closest<HTMLElement>("[data-note-container]");
-    if (!container) return;
-    const check = () => {
-      const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-      const measure = parseFloat(getComputedStyle(container).getPropertyValue("--measure-prose")) || 720;
-      setOn(container.clientWidth >= measure + (MARGIN_COLUMN_REM + MARGIN_GAP_REM) * rem);
-    };
+    const column = editorRoot?.closest<HTMLElement>(".note-column");
+    const container = column?.closest<HTMLElement>("[data-note-container]");
+    if (!column || !container) return;
+    const check = () => setOn(getComputedStyle(column).getPropertyValue(MARGIN_MODE_PROPERTY).trim() === "on");
     check();
     const resize = new ResizeObserver(check);
     resize.observe(container);
@@ -92,16 +89,14 @@ function useMarginMode(editorRoot: HTMLElement | null): boolean {
   return on;
 }
 
-function scrollToBacklinks() {
-  document.getElementById("note-backlinks")?.scrollIntoView({ behavior: "smooth", block: "start" });
-}
-
 export function MarginNotes({ previews, editorRoot }: { previews: LinkPreview[]; editorRoot: HTMLElement | null }) {
   const marginOn = useMarginMode(editorRoot);
   const anchors = useAnchors(previews, editorRoot);
   const byId = useMemo(() => new Map(previews.map((p) => [p.id, p])), [previews]);
   const cardRefs = useRef(new Map<string, HTMLElement>());
   const [heights, setHeights] = useState<Record<string, number>>({});
+  // Past MAX_VISIBLE_CARDS the rest wait behind "+N more"; once opened they stay open.
+  const [showAll, setShowAll] = useState(false);
 
   // Card heights are known only after they render, and change when the text rewraps.
   useEffect(() => {
@@ -126,11 +121,16 @@ export function MarginNotes({ previews, editorRoot }: { previews: LinkPreview[];
       cancelAnimationFrame(frame);
       resize.disconnect();
     };
-  }, [anchors, marginOn]);
+  }, [anchors, marginOn, showAll]);
 
   const placed = useMemo(
-    () => layoutMarginNotes(anchors.map((a) => ({ ...a, height: heights[a.key] ?? ESTIMATED_CARD_HEIGHT }))),
-    [anchors, heights],
+    () =>
+      layoutMarginNotes(
+        anchors.map((a) => ({ ...a, height: heights[a.key] ?? ESTIMATED_CARD_HEIGHT })),
+        12,
+        showAll ? anchors.length : MAX_VISIBLE_CARDS,
+      ),
+    [anchors, heights, showAll],
   );
   if (!marginOn || placed.length === 0) return null;
 
@@ -168,7 +168,7 @@ export function MarginNotes({ previews, editorRoot }: { previews: LinkPreview[];
       {hiddenCount > 0 && (
         <button
           type="button"
-          onClick={scrollToBacklinks}
+          onClick={() => setShowAll(true)}
           style={{ top: moreTop, color: "var(--link)" }}
           className="pointer-events-auto absolute left-0 text-xs underline-offset-2 hover:underline"
         >

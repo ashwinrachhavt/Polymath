@@ -8,7 +8,7 @@ import { TaskItem, TaskList } from "@tiptap/extension-list";
 import Placeholder from "@tiptap/extension-placeholder";
 import { Markdown } from "@tiptap/markdown";
 import { useRouter } from "next/navigation";
-import { WIKI_LINK_OPEN, WikiLinks, refreshWikiPreviews } from "./wiki-links";
+import { WIKI_LINK_OPEN, WikiLinks, refreshWikiPreviews, type WikiLinkOpen } from "./wiki-links";
 import type { LinkPreview } from "@/domains/knowledge/notes";
 import { InlineCompletion } from "./inline-completion";
 import { setAutocompleteEnabled, useAutocomplete } from "./autocomplete-client";
@@ -392,14 +392,16 @@ function RichMarkdownEditor({
   useEffect(() => {
     candidatesRef.current = candidates;
   });
-  // A clicked [[Title]] opens that note: the title resolves through the same
-  // finder the [[ picker uses, so a link reads and navigates the same way.
+  // A clicked [[Title]] opens that note: straight by id when its preview named
+  // one, otherwise the title resolves through the same finder the [[ picker
+  // uses, so a link reads and navigates the same way.
   const router = useRouter();
   useEffect(() => {
     const host = containerRef.current;
     if (!host) return;
     const open = (event: Event) => {
-      const title = (event as CustomEvent<string>).detail;
+      const { title, id } = (event as CustomEvent<WikiLinkOpen>).detail;
+      if (id) return router.push(`/polymath/notes?id=${id}`);
       const wanted = title.toLowerCase();
       const exact = (rows: LinkTarget[]) => rows.find((row) => !row.href && row.title.trim().toLowerCase() === wanted);
       const local = state.artifacts.find((a) => a.id !== undefined && a.title.trim().toLowerCase() === wanted);
@@ -425,7 +427,8 @@ function RichMarkdownEditor({
       TaskItem.configure({ nested: true }),
       Placeholder.configure({ placeholder: "Write. Press space for AI, / for a block, [[ to link a note." }),
       Markdown,
-      WikiLinks,
+      // Previews at creation, so the inline link notes draw on the first frame.
+      WikiLinks.configure({ previews: linkPreviews ?? null }),
       // Fixed at mount: a host either offers suggestions in this editor or not.
       ...(autocomplete ? [InlineCompletion] : []),
     ],
@@ -608,6 +611,7 @@ function RichMarkdownEditor({
       setMenuPos(null);
     }
   }, [editor, menuAnchor]);
+  // Later preview changes (a server render after mount) redraw in place.
   useEffect(() => {
     if (editor && linkPreviews) refreshWikiPreviews(editor, linkPreviews);
   }, [editor, linkPreviews]);

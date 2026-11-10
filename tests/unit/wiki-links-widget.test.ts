@@ -2,11 +2,17 @@
 import { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { afterEach, describe, expect, it } from "vitest";
-import { WIKI_LINK_OPEN, WikiLinks, refreshWikiPreviews } from "@/components/products/polymath/wiki-links";
+import {
+  WIKI_LINK_OPEN,
+  WikiLinks,
+  refreshWikiPreviews,
+  type WikiLinkOpen,
+} from "@/components/products/polymath/wiki-links";
 
 /*
  * Value: protects=the inline fallback for margin notes sits right after the paragraph that cites the note;
- * fails_when=the widget moves, doubles up per link, or ignores unknown titles; why_new=no coverage for the
+ * fails_when=the widget moves, doubles up per link, ignores unknown titles, or keeps stale text after the
+ * previews refresh; why_new=no coverage for the
  * widget decoration; seam=none; no_claim=the CSS that hides it while the margin column shows
  */
 
@@ -46,13 +52,19 @@ describe("inline link notes", () => {
     refreshWikiPreviews(ed, [alpha]);
     expect(ed.view.dom.querySelectorAll(".note-margin-inline")).toHaveLength(1);
   });
+
+  it("redraws when a preview's text changes", () => {
+    const ed = mount([alpha]);
+    refreshWikiPreviews(ed, [{ ...alpha, firstParagraph: "Rewritten." }]);
+    expect(ed.view.dom.querySelector(".note-margin-inline")?.textContent).toContain("Rewritten.");
+  });
 });
 
 describe("inline link note clicks", () => {
   function click(init: MouseEventInit) {
     const ed = mount([alpha]);
-    const opened: string[] = [];
-    ed.view.dom.addEventListener(WIKI_LINK_OPEN, (e) => opened.push((e as CustomEvent<string>).detail));
+    const opened: WikiLinkOpen[] = [];
+    ed.view.dom.addEventListener(WIKI_LINK_OPEN, (e) => opened.push((e as CustomEvent<WikiLinkOpen>).detail));
     const link = ed.view.dom.querySelector<HTMLAnchorElement>(".note-margin-inline a")!;
     const event = new MouseEvent("click", { bubbles: true, cancelable: true, ...init });
     link.dispatchEvent(event);
@@ -60,7 +72,7 @@ describe("inline link note clicks", () => {
   }
 
   it("opens a plain click through the host instead of navigating", () => {
-    expect(click({})).toEqual({ opened: ["Alpha"], prevented: true });
+    expect(click({})).toEqual({ opened: [{ title: "Alpha", id: "a1" }], prevented: true });
   });
 
   it("leaves a meta-click to the browser", () => {
