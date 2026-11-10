@@ -107,6 +107,32 @@ async function insertUrlCapture(workspaceId: string, url: string) {
   return row.id;
 }
 
+async function insertPageCapture(workspaceId: string, url: string, text: string, fetchedText: string) {
+  const [row] = await db
+    .insert(captures)
+    .values({
+      workspaceId,
+      kind: "url",
+      source: "quick_capture",
+      captureMode: "page",
+      rawPayload: { url, text },
+      url,
+      text,
+      fetchedText,
+      fetchOutcome: "acquired",
+      processingState: "enriched",
+    })
+    .returning({ id: captures.id });
+  return row.id;
+}
+
+/** A real jevClassifier with an enabled entry, in an env missing what `env` leaves out. */
+function classifierWith(workspaceId: string, env: Record<string, string>, client?: JevClient) {
+  return jevClassifier(workspaceId, { entry: ENABLED_ENTRY, client, quotaStore: drizzleQuotaStore(db as never), env });
+}
+
+const PAGE = "A long essay on pricing pages, how teams test them, and what the numbers showed over two years.";
+
 async function readKind(captureId: string) {
   const [row] = await db
     .select({ label: captures.kindLabel, reason: captures.kindReason, source: captures.kindSource })
@@ -159,9 +185,85 @@ suite("capture kind label", () => {
     expect(row.source).toBe("jev");
   });
 
-  it("a spent quota stores no label and reports the budget", async () => {
+  it("a link with the person's own words is labeled by those words, not as an article", async () => {
+    const { userId, workspaceId } = await seedWorkspace(db, `kind-${Date.now()}-page`);
+    const auth = { userId, workspaceId, role: "owner" as const };
+    const url = "https://example.com/pricing";
+
+    const todo = await insertPageCapture(workspaceId, url, "Call Dana about this by Friday", PAGE);
+    const ruleJudger = fakeJudger("article");
+    expect(await labelCaptureKind(auth, todo, { judger: ruleJudger })).toEqual({
+      kind: "task",
+      source: "rules",
+      skipped: null,
+    });
+    expect(ruleJudger.calls).toHaveLength(0);
+
+    const note = await insertPageCapture(workspaceId, url, "Use this layout for our own pricing page", PAGE);
+    const judger = fakeJudger("idea");
+    expect(await labelCaptureKind(auth, note, { judger })).toEqual({ kind: "idea", source: "jev", skipped: null });
+    expect(judger.calls).toHaveLength(1);
+    expect(JSON.parse(judger.calls[0].state)).toMatchObject({
+      text: PAGE,
+      note: "Use this layout for our own pricing page",
+    });
+  });
+
+  it("without Jev (no key, or no allowance) the capture reads Not classified with a reason", async () => {
+    const { userId, workspaceId } = await seedWorkspace(db, `kind-${Date.now()}-nojev`);
+    const auth = { userId, workspaceId, role: "owner" as const };
+    const client: JevClient & { calls: number } = {
+      calls: 0,
+      async systemOne() {
+        this.calls += 1;
+        throw new Error("no request should be made without an allowance");
+      },
+    };
+    const cases = [
+      classifierWith(workspaceId, { JEV_MONTHLY_INPUT_TOKENS: "100000" }),
+      classifierWith(workspaceId, { TYPESAFE_API_KEY: "k" }, client),
+      classifierWith(workspaceId, { TYPESAFE_API_KEY: "k", JEV_MONTHLY_INPUT_TOKENS: "0" }, client),
+    ];
+    for (const judger of cases) {
+      const captureId = await insertTextCapture(workspaceId, AMBIGUOUS);
+      expect(await labelCaptureKind(auth, captureId, { judger })).toEqual({
+        kind: null,
+        source: null,
+        skipped: "disabled",
+      });
+      expect(await readKind(captureId)).toEqual({
+        label: null,
+        source: null,
+        reason: "Not classified automatically here. Set it by hand.",
+      });
+    }
+    expect(client.calls).toBe(0);
+  });
+
+  it("an edit the rules no longer settle clears the old automatic label", async () => {
+    const { userId, workspaceId } = await seedWorkspace(db, `kind-${Date.now()}-stale`);
+    const auth = { userId, workspaceId, role: "owner" as const };
+    const captureId = await insertTextCapture(workspaceId, "- [ ] buy milk");
+    expect(await labelCaptureKind(auth, captureId)).toMatchObject({ kind: "task", source: "rules" });
+
+    await db.update(captures).set({ text: "Milk is cheaper at the corner shop." }).where(eq(captures.id, captureId));
+    const result = await labelCaptureKind(auth, captureId, {
+      judger: classifierWith(workspaceId, { JEV_MONTHLY_INPUT_TOKENS: "100000" }),
+    });
+
+    expect(result).toEqual({ kind: null, source: null, skipped: "disabled" });
+    expect(await readKind(captureId)).toEqual({
+      label: null,
+      source: null,
+      reason: "Not classified automatically here. Set it by hand.",
+    });
+  });
+
+  it("a spent quota clears the earlier Jev label, keeps the reason and reports the budget", async () => {
     const { userId, workspaceId } = await seedWorkspace(db, `kind-${Date.now()}-budget`);
     const captureId = await insertTextCapture(workspaceId, AMBIGUOUS);
+    await labelCaptureKind({ userId, workspaceId, role: "owner" }, captureId, { judger: fakeJudger("idea") });
+    expect(await readKind(captureId)).toMatchObject({ label: "idea", source: "jev" });
     const client: JevClient & { calls: number } = {
       calls: 0,
       async systemOne() {
@@ -184,6 +286,7 @@ suite("capture kind label", () => {
     const row = await readKind(captureId);
     expect(row.label).toBeNull();
     expect(row.source).toBeNull();
+    expect(row.reason).toBe("Classification budget used this month — set it by hand.");
   });
 
   it("the person's correction is stored with source user and enrichment never overwrites it", async () => {

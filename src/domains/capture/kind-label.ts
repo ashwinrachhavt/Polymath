@@ -21,9 +21,9 @@ import { captures } from "./schema";
  *          registry entry and the workspace's monthly jev allowance
  *   user   the person's correction, which nothing automatic overwrites
  *
- * `kind_source` records which decided. A spent allowance stores no label,
- * only the reason, so the Inbox can say "Not classified" honestly instead of
- * guessing.
+ * `kind_source` records which decided. When none can (no Jev here, a spent
+ * allowance, nothing to read), the capture keeps no automatic label, only the
+ * reason, so the Inbox says "Not classified" honestly instead of guessing.
  */
 
 export const CAPTURE_KINDS = ["article", "idea", "task", "person", "reference", "quote", "other"] as const;
@@ -33,8 +33,13 @@ function isCaptureKind(value: unknown): value is CaptureKind {
   return typeof value === "string" && (CAPTURE_KINDS as readonly string[]).includes(value);
 }
 
-/** Stored with no label when the jev allowance is spent; the Inbox shows it as the tooltip. */
-const BUDGET_REASON = "Classification budget used this month — set it by hand.";
+/** Stored with no label when nothing could decide; the Inbox shows "Not classified" with it. */
+const UNCLASSIFIED_REASON = {
+  budget: "Classification budget used this month — set it by hand.",
+  disabled: "Not classified automatically here. Set it by hand.",
+  unread: "Nothing here to read. Set it by hand.",
+  unclear: "Could not tell what kind this is. Set it by hand.",
+} as const;
 const USER_REASON = "Set by you.";
 /** Below this, Jev's top pick is a guess, and the honest label is "other". */
 const JEV_MIN_PROBABILITY = 0.5;
@@ -89,8 +94,6 @@ type KindLabelOutcome = {
   skipped: "budget" | "disabled" | null;
 };
 
-const UNLABELED: KindLabelOutcome = { kind: null, source: null, skipped: null };
-
 /** Nothing automatic may write over the person's own choice. */
 const notSetByUser = or(isNull(captures.kindSource), sql`${captures.kindSource} <> 'user'`);
 
@@ -106,15 +109,32 @@ async function storeLabel(
 }
 
 /**
+ * No decider could name the capture. Any automatic label was read from words
+ * that may since have been edited away, so it goes; the reason stays.
+ */
+async function storeUnclassified(
+  auth: AuthContext,
+  captureId: string,
+  why: keyof typeof UNCLASSIFIED_REASON,
+): Promise<KindLabelOutcome> {
+  await db
+    .update(captures)
+    .set({ kindLabel: null, kindReason: UNCLASSIFIED_REASON[why], kindSource: null })
+    .where(and(eq(captures.workspaceId, auth.workspaceId), eq(captures.id, captureId), notSetByUser));
+  return { kind: null, source: null, skipped: why === "budget" || why === "disabled" ? why : null };
+}
+
+/**
  * Label one capture, rules first, then Jev. Jev is asked only when the rules
  * cannot name it, the capture has words to read, and the jev entry is usable
  * (an injected judger, or the registry entry enabled); the request goes
  * through the quota ledger. A label the person set is returned untouched.
  *
- * Skips are outcomes, not errors: `disabled` stores nothing (the deployment
- * runs without Jev, or set it no allowance); `budget` stores only the reason,
- * and keeps any earlier label. A Jev request error propagates so the caller's
- * event redelivers. Writes never bump the capture's version: the label is
+ * Skips are outcomes, not errors: `disabled` (the deployment runs without
+ * Jev, or set it no allowance) and `budget` (the allowance is spent) store
+ * only the reason, as do nothing to read and an unreadable answer; each
+ * clears any earlier automatic label. A Jev request error propagates so the
+ * caller's event redelivers. Writes never bump the capture's version: the label is
  * its own axis, and an open editor must not go stale because a label landed.
  */
 export async function labelCaptureKind(
@@ -137,23 +157,24 @@ export async function labelCaptureKind(
     .from(captures)
     .where(and(eq(captures.workspaceId, auth.workspaceId), eq(captures.id, captureId)))
     .limit(1);
-  if (!capture) return UNLABELED;
+  if (!capture) return { kind: null, source: null, skipped: null };
   if (capture.kindSource === "user" && isCaptureKind(capture.kindLabel)) {
     return { kind: capture.kindLabel, source: "user", skipped: null };
   }
 
-  // A page grab or a bare link carries the page as its text (the fetch writes
-  // it there); none of it is the person's own words, so the rules see a link.
-  const ownWords = capture.captureMode === "page" || capture.captureMode === "url-reference" ? "" : capture.text;
-  const rule = ruleKind({ text: ownWords ?? "", url: capture.url, structure: capture.structure });
+  // A bare link's fetch writes the page into its text, so none of that text is
+  // the person's own words and the rules see a link. A page capture keeps
+  // what the person sent beside the link (the page goes to fetchedText).
+  const ownWords = (capture.captureMode === "url-reference" ? "" : capture.text) ?? "";
+  const rule = ruleKind({ text: ownWords, url: capture.url, structure: capture.structure });
   if (rule) {
     await storeLabel(auth, captureId, { ...rule, source: "rules" });
     return { kind: rule.kind, source: "rules", skipped: null };
   }
 
   const reading = (capture.cleanText ?? workingText(capture) ?? "").trim();
-  if (!reading) return UNLABELED;
-  if (!deps.judger && !providerEntry("jev")?.enabled) return { ...UNLABELED, skipped: "disabled" };
+  if (!reading) return storeUnclassified(auth, captureId, "unread");
+  if (!deps.judger && !providerEntry("jev")?.enabled) return storeUnclassified(auth, captureId, "disabled");
   const judger = deps.judger ?? jevClassifier(auth.workspaceId);
 
   let answer: JevAnswer | undefined;
@@ -162,6 +183,8 @@ export async function labelCaptureKind(
       state: JSON.stringify({
         title: capture.title ?? undefined,
         text: reading.slice(0, LLM_MAX_INPUT_CHARS),
+        // The person's words beside a page they grabbed say what it is to them.
+        note: capture.captureMode === "page" && ownWords.trim() ? ownWords.slice(0, LLM_MAX_INPUT_CHARS) : undefined,
         url: capture.url ?? undefined,
       }),
       questions: captureKindQuestions(),
@@ -170,24 +193,20 @@ export async function labelCaptureKind(
   } catch (cause) {
     // An allowance of zero is "no budget set", the deployment's choice, not a spent month.
     if (cause instanceof QuotaExhaustedError && cause.allowance > 0) {
-      await db
-        .update(captures)
-        .set({ kindReason: BUDGET_REASON })
-        .where(and(eq(captures.workspaceId, auth.workspaceId), eq(captures.id, captureId), isNull(captures.kindLabel)));
-      return { ...UNLABELED, skipped: "budget" };
+      return storeUnclassified(auth, captureId, "budget");
     }
     if (
       cause instanceof QuotaExhaustedError ||
       cause instanceof JevDisabledError ||
       cause instanceof JevUnconfiguredError
     ) {
-      return { ...UNLABELED, skipped: "disabled" };
+      return storeUnclassified(auth, captureId, "disabled");
     }
     throw cause;
   }
 
-  // An answer that is not a choice is unreadable: store nothing rather than guess.
-  if (!answer || answer.type !== "choice") return UNLABELED;
+  // An answer that is not a choice is unreadable: no label rather than a guess.
+  if (!answer || answer.type !== "choice") return storeUnclassified(auth, captureId, "unclear");
   const probability = answer.probabilities[answer.choice] ?? answer.confidence;
   const pick = isCaptureKind(answer.choice) && probability >= JEV_MIN_PROBABILITY ? answer.choice : null;
   const label = pick

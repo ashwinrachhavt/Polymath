@@ -88,8 +88,8 @@ export const CAPTURE_KIND_NAMES: Record<CaptureKind, string> = {
 
 /**
  * The kind chip: the label when one is set, "Not classified" when the
- * capture has a reason but no label (the classification budget ran out),
- * and nothing while the capture is still unlabeled.
+ * capture has a reason but no label (nothing automatic could decide: no Jev
+ * here, a spent budget, nothing to read), and nothing before labeling ran.
  */
 export function CaptureKindChip({ kindLabel, kindReason }: { kindLabel?: string | null; kindReason?: string | null }) {
   const name = kindLabel

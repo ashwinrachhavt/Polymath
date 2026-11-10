@@ -347,7 +347,7 @@ export function InboxDetail({
             A fixed-height row, so a label landing never shifts the body. */}
         <div className="text-muted-foreground mt-1.5 flex h-8 min-w-0 items-center gap-2 text-xs">
           <CaptureKindChip kindLabel={optimisticKind.label} kindReason={optimisticKind.reason} />
-          <span className="min-w-0 truncate">{optimisticKind.reason ?? "Not labeled yet. Use Change to set it."}</span>
+          <span className="min-w-0 truncate">{optimisticKind.reason ?? "Not labeled. Use Change to set it."}</span>
           <div className="ml-auto shrink-0">
             <Select
               variant="ghost"
