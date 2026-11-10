@@ -23,8 +23,8 @@ type Paper = (typeof PAPERS)[number]["value"];
 type Accent = (typeof ACCENTS)[number]["value"];
 export type AppearanceChoice = { paper: Paper; accent: Accent };
 
-export const APPEARANCE_STORAGE_KEY = "polymath.appearance";
-export const DEFAULT_APPEARANCE: AppearanceChoice = { paper: "white", accent: "graphite" };
+const APPEARANCE_STORAGE_KEY = "polymath.appearance";
+const DEFAULT_APPEARANCE: AppearanceChoice = { paper: "white", accent: "graphite" };
 
 const isPaper = (value: unknown): value is Paper => PAPERS.some((p) => p.value === value);
 const isAccent = (value: unknown): value is Accent => ACCENTS.some((a) => a.value === value);
