@@ -259,15 +259,32 @@ export async function getFlashcardDueQueue(
         eq(flashcardReviews.userId, auth.userId),
       ),
     )
-    .where(
-      and(
-        eq(flashcards.workspaceId, auth.workspaceId),
-        or(isNull(flashcardReviews.id), lte(flashcardReviews.dueAt, now)),
-      ),
-    )
+    .where(and(eq(flashcards.workspaceId, auth.workspaceId), isDue(now)))
     .orderBy(sql`coalesce(${flashcardReviews.dueAt}, now())`, asc(flashcards.createdAt))
     .limit(Math.max(1, Math.min(limit, 100)));
   return rows.map((row) => ({ ...row, dueAt: row.dueAt ?? now }));
+}
+
+/** How many cards are due for this user across every deck: the whole count, not a page of the queue. */
+export async function countDueFlashcards(auth: AuthContext): Promise<number> {
+  const [row] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(flashcards)
+    .leftJoin(
+      flashcardReviews,
+      and(
+        eq(flashcardReviews.flashcardId, flashcards.id),
+        eq(flashcardReviews.workspaceId, auth.workspaceId),
+        eq(flashcardReviews.userId, auth.userId),
+      ),
+    )
+    .where(and(eq(flashcards.workspaceId, auth.workspaceId), isDue(new Date())));
+  return row?.count ?? 0;
+}
+
+/** A card is due for its learner once its review time has come, or when they have never rated it. */
+function isDue(now: Date) {
+  return or(isNull(flashcardReviews.id), lte(flashcardReviews.dueAt, now));
 }
 
 export async function rateFlashcard(

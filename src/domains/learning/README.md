@@ -1,6 +1,6 @@
 # learning
 
-Owns quiz, Explain It, flashcard, and graph-recall records plus source pinning, server grading, and personal recall schedules. Notebook owns source selection and learning creation. `/learn` is the cross-Notebook Up Next queue; legacy `/learn/:documentId` routes remain readable for existing quizzes. Tables are in `schema.ts`; server actions call this domain and UI reads through its queries.
+Owns quiz, Explain It, flashcard, and graph-recall records plus source pinning, server grading, and personal recall schedules. Notebook owns source selection and learning creation. Home's Up next card (`up-next.ts`) names the one place to continue (due cards, then a quiz never sat) and the learning streak; `/learn` lists everything due across Notebooks; legacy `/learn/:documentId` routes remain readable for existing quizzes. Tables are in `schema.ts`; server actions call this domain and UI reads through its queries.
 
 ## The trust boundary
 

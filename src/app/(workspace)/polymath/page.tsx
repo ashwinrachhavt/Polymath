@@ -12,14 +12,17 @@ import { displayTitle } from "@/lib/display-text";
 import { stripMentionContext } from "@/components/chat/mention-context";
 import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { markOnboardingWelcomedAction } from "@/app/(workspace)/onboarding/actions";
+import { getUpNext } from "@/domains/learning/up-next";
 import type { PickableSkill } from "./skills/slash-skill-menu";
 import { groupHistory, type HistoryRow } from "./history";
 import { HomeSurface } from "./home-surface";
+import { UpNextCard } from "./up-next-card";
 
 export const metadata = { title: "Polymath" };
 
 /*
- * Polymath is home: one composer, then the conversations that already exist.
+ * Polymath is home: what to learn next, one composer, then the conversations
+ * that already exist.
  * The rail names the destination, so the page opens with the question rather
  * than a title restating it (agents/design.md: no oversized H1s, the greeting
  * is the whole of the header here).
@@ -55,7 +58,7 @@ export async function PolymathSurface() {
   // The history read, the model policy, and the one-time welcome check are
   // independent: issue them together so the page costs one round trip per
   // query rather than one per query in sequence.
-  const [runs, skillRows, modelPolicy, unwelcomed] = await Promise.all([
+  const [runs, skillRows, modelPolicy, unwelcomed, upNext] = await Promise.all([
     // Every conversation on this surface is a run, so runs are the history.
     // Fifty is a bounded read, not the whole table, and it is deep enough that
     // the grouped list still reaches "Older" for a regular user. Onboarding
@@ -68,6 +71,7 @@ export async function PolymathSurface() {
     // been welcomed on yet. Null forever after the stamp, so this read doubles
     // as the "show it at all" decision.
     findUnwelcomedOnboardingSession(auth.workspaceId),
+    getUpNext(auth),
   ]);
   const skills: PickableSkill[] = skillRows.map((skill) => ({
     id: skill.id,
@@ -90,6 +94,7 @@ export async function PolymathSurface() {
 
   return (
     <HomeSurface
+      upNext={<UpNextCard upNext={upNext} />}
       history={groupHistory(rows)}
       skills={skills}
       models={models}
@@ -127,6 +132,7 @@ export default function PolymathPage() {
 function PolymathSkeleton() {
   return (
     <div role="status" aria-label="Loading Polymath" className="page-content flex flex-1 flex-col gap-10 pt-16">
+      <Skeleton className="mx-auto h-20 w-full max-w-3xl" />
       <Skeleton className="mx-auto h-7 w-80 max-w-full" />
       <Skeleton className="mx-auto h-24 w-full max-w-3xl" />
     </div>

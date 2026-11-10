@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
@@ -17,9 +17,9 @@ import type { PickableSkill } from "./skills/slash-skill-menu";
 /*
  * The Assistant home in two states, and only ever one of them.
  *
- * Idle: the greeting, the composer, and every conversation the person already
- * has, grouped by day. Nothing else — no chrome for a conversation that does
- * not exist yet.
+ * Idle: what to learn next, the greeting, the composer, and every conversation
+ * the person already has, grouped by day. Nothing else — no chrome for a
+ * conversation that does not exist yet.
  *
  * Started: the conversation takes the whole canvas. The home's greeting,
  * composer and list are gone rather than stacked under a transcript, and the
@@ -30,6 +30,7 @@ import type { PickableSkill } from "./skills/slash-skill-menu";
  * navigating would drop the stream and re-mount the transcript.
  */
 export function HomeSurface({
+  upNext,
   history,
   skills,
   models,
@@ -37,6 +38,8 @@ export function HomeSurface({
   notice,
   welcome,
 }: {
+  /** The Up next card, rendered on the server; it leaves with the rest of the idle screen. */
+  upNext: ReactNode;
   history: HistoryGroup[];
   skills: PickableSkill[];
   models: ModelOption[];
@@ -101,6 +104,7 @@ export function HomeSurface({
 
   return (
     <div className="page-content flex flex-1 flex-col gap-12 pt-[12vh] pb-16">
+      <div className="mx-auto w-full max-w-3xl">{upNext}</div>
       {welcome ? (
         <OnboardingWelcome {...welcome} />
       ) : (

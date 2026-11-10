@@ -160,8 +160,8 @@ describe("navigation", () => {
     // into the header's notifications panel. Day, Shut down and Spending came
     // back as their own routes when Briefing went, so each keeps a way in.
     // Ideas arrived as its own top-level surface, taking the zettel, card and
-    // area routes that used to hide under the vault prefix. Learning now lives
-    // in Notebook. Supervision joined the rail from the base branch since the
+    // area routes that used to hide under the vault prefix. Learning is made in
+    // Notebook; Learn, beside it, lists what is due across every Notebook. Supervision joined the rail from the base branch since the
     // release forked. Focus returned when it stopped being a redirect into Work and
     // became its own screen (spec §3); it sits beside Work, whose sessions it
     // runs.
@@ -175,6 +175,7 @@ describe("navigation", () => {
       "Ideas",
       "Document Vault",
       "Notebook",
+      "Learn",
       "Artifacts",
       "Skills",
       "People",
