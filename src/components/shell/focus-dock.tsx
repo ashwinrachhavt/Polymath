@@ -55,10 +55,11 @@ export function FocusDock() {
 function LiveDock({ pathname }: { pathname: string }) {
   // Keyed by the path it was read on, so a read from an earlier page is never shown as current.
   const [read, setRead] = useState<{ path: string; session: LiveSession | null; stale: boolean } | null>(null);
-  const ownsLiveControls = pathname === "/neuralflow/focus";
+  // Focus and Today render the live controls themselves.
+  const ownsLiveControls = pathname === "/neuralflow/focus" || pathname === "/today";
 
   useEffect(() => {
-    if (ownsLiveControls) return; // The Focus screen renders the live controls itself.
+    if (ownsLiveControls) return;
     let cancelled = false;
     async function load(options?: { force?: boolean }) {
       const now = Date.now();

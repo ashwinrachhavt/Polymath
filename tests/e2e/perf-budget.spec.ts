@@ -21,9 +21,8 @@ test.skip(!process.env.DATABASE_URL, "Canonical routes read Postgres; skipping w
 test.describe.configure({ retries: 0 });
 
 const HERO_ROUTES = [
-
   { path: "/reviews", name: "Reviews" },
-  { path: "/neuralflow/work", name: "Work" },
+  { path: "/today", name: "Today" },
   { path: "/command-center/inbox", name: "Inbox" },
 ] as const;
 
@@ -69,9 +68,21 @@ test("hero route transitions stay inside the navigation budget", async ({ page }
   }
 
   for (const [path, timings] of Object.entries(report)) {
-    test.info().annotations.push({ type: "perf", description: `${path} ttfb=${timings.fullNavTtfbMs}ms clientNav=${timings.clientNavMs}ms` });
+    test
+      .info()
+      .annotations.push({
+        type: "perf",
+        description: `${path} ttfb=${timings.fullNavTtfbMs}ms clientNav=${timings.clientNavMs}ms`,
+      });
   }
-  writeFileSync("perf-budget-report.json", JSON.stringify({ at: new Date().toISOString(), mode: process.env.E2E_BASE_URL ? "production" : "dev", report }, null, 2));
+  writeFileSync(
+    "perf-budget-report.json",
+    JSON.stringify(
+      { at: new Date().toISOString(), mode: process.env.E2E_BASE_URL ? "production" : "dev", report },
+      null,
+      2,
+    ),
+  );
 
   if (ENFORCE) {
     for (const [path, timings] of Object.entries(report)) {

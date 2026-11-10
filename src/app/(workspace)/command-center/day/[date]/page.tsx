@@ -7,6 +7,7 @@ import { Empty, Panel, Screen } from "@/components/workspace/ui";
 import { listWorkRows } from "@/domains/work/queries";
 import { getDayPage, getWeekActivity } from "@/domains/daybook/queries";
 import { getAuthContext } from "@/lib/auth";
+import { CloseTheDay } from "./close-the-day";
 import { PinControls, UnpinButton } from "./pin-controls";
 import { buildTimeline, type TimelineRow } from "./timeline";
 
@@ -319,27 +320,7 @@ async function DaySurface({ params }: { params: Promise<{ date: string }> }) {
             )}
           </Panel>
 
-          <Panel title="Close the day" description="The ritual reads this record, then seeds tomorrow.">
-            <dl className="space-y-2 text-body-dense">
-              <div className="flex items-baseline justify-between gap-3">
-                <dt className="text-muted-foreground">Captures still to clarify</dt>
-                <dd className="tabular-nums">{capturedCount}</dd>
-              </div>
-              <div className="flex items-baseline justify-between gap-3">
-                <dt className="text-muted-foreground">Committed tasks</dt>
-                <dd className="tabular-nums">{plan.length}</dd>
-              </div>
-              <div className="flex items-baseline justify-between gap-3">
-                <dt className="text-muted-foreground">Sessions today</dt>
-                <dd className="tabular-nums">{day.sessions.length}</dd>
-              </div>
-            </dl>
-            <div className="mt-4">
-              <Button asChild className="w-full">
-                <Link href="/command-center/shutdown">Close the day</Link>
-              </Button>
-            </div>
-          </Panel>
+          <CloseTheDay captures={capturedCount} committed={plan.length} sessions={day.sessions.length} />
         </aside>
       </div>
     </Screen>
