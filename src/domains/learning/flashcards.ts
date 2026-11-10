@@ -82,7 +82,7 @@ export async function generateFlashcardDeck(
       .select({ count: sql<number>`count(*)::int` })
       .from(flashcards)
       .where(and(eq(flashcards.workspaceId, auth.workspaceId), eq(flashcards.deckId, prior.id)));
-    return { deckId: prior.id, cardCount: count ? 1 : 0 };
+    return { deckId: prior.id, cardCount: count };
   }
 
   const engine = generator ?? defaultFlashcardGenerator(auth.workspaceId);

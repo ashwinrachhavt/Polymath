@@ -200,7 +200,7 @@ export async function searchRecordsForAttach(auth: AuthContext, query: string): 
             ? `/polymath/notes?note=${row.id}`
             : row.kind === "zettel"
               ? `/polymath/ideas?zettel=${row.id}`
-              : `/polymath/artifacts/${row.id}`,
+              : `/artifacts/${row.id}`,
       })),
   );
   references.push(

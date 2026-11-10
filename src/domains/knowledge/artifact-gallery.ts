@@ -3,7 +3,7 @@ import { markdownToPlainText } from "@/lib/display-text";
 import { briefFromContent } from "./design-brief-handoff";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
-import { artifactLinks, artifactVersions, artifacts, documents } from "./schema";
+import { artifactLinks, artifactStatus, artifactVersions, artifacts, documents } from "./schema";
 import { currentExtractionSql } from "./versions";
 
 /*
@@ -29,6 +29,9 @@ export type GalleryArtifact = {
 };
 
 const PREVIEW_LENGTH = 280;
+
+const isArtifactStatus = (value: string): value is (typeof artifactStatus.enumValues)[number] =>
+  (artifactStatus.enumValues as readonly string[]).includes(value);
 
 export async function listGalleryArtifacts(
   auth: AuthContext,
@@ -62,7 +65,10 @@ export async function listGalleryArtifacts(
   else if (input.kind) artifactFilters.push(eq(artifacts.kind, input.kind));
   if (input.origin === "run") artifactFilters.push(isNotNull(artifacts.producedByRunId));
   if (input.origin === "upload" || input.origin === "authored") artifactFilters.push(isNull(artifacts.producedByRunId));
-  if (input.status) artifactFilters.push(eq(artifacts.status, input.status as typeof artifacts.$inferSelect.status));
+  // Source-only statuses (pending, failed, ...) are not artifact_status values:
+  // comparing would make Postgres reject the whole query, so they match no artifact.
+  if (input.status)
+    artifactFilters.push(isArtifactStatus(input.status) ? eq(artifacts.status, input.status) : sql`false`);
   if (escapedQuery)
     artifactFilters.push(
       sql`(${artifacts.title} ilike ${`%${escapedQuery}%`} or exists (select 1 from artifact_versions av where av.id = ${artifacts.currentVersionId} and av.plain_text ilike ${`%${escapedQuery}%`}))`,
