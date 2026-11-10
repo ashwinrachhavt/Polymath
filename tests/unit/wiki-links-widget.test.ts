@@ -53,6 +53,16 @@ describe("inline link notes", () => {
     expect(ed.view.dom.querySelectorAll(".note-margin-inline")).toHaveLength(1);
   });
 
+  it("follows refreshed missing titles", () => {
+    const ed = mount([alpha]);
+    const unknown = () => ed.view.dom.querySelector('[data-wiki-title="Unknown"]')!;
+    expect(unknown().classList.contains("wiki-link-missing")).toBe(false);
+    refreshWikiPreviews(ed, [alpha], ["Unknown"]);
+    expect(unknown().classList.contains("wiki-link-missing")).toBe(true);
+    refreshWikiPreviews(ed, [alpha]);
+    expect(unknown().classList.contains("wiki-link-missing")).toBe(false);
+  });
+
   it("redraws when a preview's text changes", () => {
     const ed = mount([alpha]);
     refreshWikiPreviews(ed, [{ ...alpha, firstParagraph: "Rewritten." }]);

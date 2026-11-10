@@ -84,12 +84,15 @@ export default function RichEditor({
   onModeChange,
   onStructuredPasteDropped,
   linkPreviews,
+  missingLinkTitles,
 }: {
   content: string;
   onChange: (content: string) => void;
   ai?: RichEditorAI;
   /** First lines of linked notes, folded into the text where the page has no margin. */
   linkPreviews?: LinkPreview[];
+  /** Linked titles the server found no note for: they read as muted text, not links. */
+  missingLinkTitles?: string[];
   findLinkTargets?: FindLinkTargets;
   chrome?: "full" | "minimal";
   /** Short inline editor (task cards) instead of the full-page writing height. */
@@ -212,6 +215,7 @@ export default function RichEditor({
           floating={minimal}
           onStructuredPasteDropped={onStructuredPasteDropped}
           linkPreviews={linkPreviews}
+          missingLinkTitles={missingLinkTitles}
         />
       )}
     </div>
@@ -332,8 +336,10 @@ function RichMarkdownEditor({
   autocomplete = false,
   onStructuredPasteDropped,
   linkPreviews,
+  missingLinkTitles,
 }: {
   linkPreviews?: LinkPreview[];
+  missingLinkTitles?: string[];
   compact?: boolean;
   editable?: boolean;
   autocomplete?: boolean;
@@ -428,7 +434,7 @@ function RichMarkdownEditor({
       Placeholder.configure({ placeholder: "Write. Press space for AI, / for a block, [[ to link a note." }),
       Markdown,
       // Previews at creation, so the inline link notes draw on the first frame.
-      WikiLinks.configure({ previews: linkPreviews ?? null }),
+      WikiLinks.configure({ previews: linkPreviews ?? null, missingTitles: missingLinkTitles ?? [] }),
       // Fixed at mount: a host either offers suggestions in this editor or not.
       ...(autocomplete ? [InlineCompletion] : []),
     ],
@@ -613,8 +619,8 @@ function RichMarkdownEditor({
   }, [editor, menuAnchor]);
   // Later preview changes (a server render after mount) redraw in place.
   useEffect(() => {
-    if (editor && linkPreviews) refreshWikiPreviews(editor, linkPreviews);
-  }, [editor, linkPreviews]);
+    if (editor && linkPreviews) refreshWikiPreviews(editor, linkPreviews, missingLinkTitles);
+  }, [editor, linkPreviews, missingLinkTitles]);
   useEffect(() => {
     if (editor && unescapeWikiLinks(editor.getMarkdown()) !== content)
       editor.commands.setContent(content, { contentType: "markdown", emitUpdate: false });

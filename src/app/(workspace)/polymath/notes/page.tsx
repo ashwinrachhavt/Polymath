@@ -17,6 +17,7 @@ import { relatedNotes } from "@/domains/knowledge/relations";
 import { getAuthContext } from "@/lib/auth";
 import type { RawSearchParams } from "@/lib/list-params";
 import { NewNoteButton, NoteEditor } from "./note-editor";
+import { noteLayout } from "./note-layout";
 import { FindNoteButton, NotebookWorkspace } from "./notebook-workspace";
 
 export const metadata = { title: "Notes · Polymath" };
@@ -45,7 +46,7 @@ function requestedNoteId(raw: RawSearchParams): string | undefined {
 
 function NotesMessage({ title, body, children }: { title: string; body: string; children: ReactNode }) {
   return (
-    <div className="suite-screen h-full overflow-y-auto">
+    <div className={noteLayout.screen}>
       <NotebookWorkspace>
         <div className="mx-auto w-full max-w-[var(--measure-prose)] px-6 pb-16 pt-12">
           <h1 className="text-lg" style={{ fontFamily: "var(--font-display)" }}>
@@ -108,8 +109,17 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
     getLinkPreviews(auth, linkedTitles),
   ]);
 
+  // A linked title is missing only if it named no note at this render. Links
+  // added later, and a link to this note itself, read as ordinary links.
+  const ownTitle = selected.title.trim().toLowerCase();
+  const previewed = new Set(linkedPreviews.map((p) => p.title.trim().toLowerCase()));
+  const missingLinkTitles = linkedTitles.filter((t) => {
+    const key = t.toLowerCase();
+    return key !== ownTitle && !previewed.has(key);
+  });
+
   return (
-    <div className="suite-screen h-full overflow-y-auto">
+    <div className={noteLayout.screen}>
       <NotebookWorkspace replaceUrl={raw.id === selected.id ? undefined : `/polymath/notes?id=${selected.id}`}>
         <NoteEditor
           key={selected.id}
@@ -131,6 +141,7 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
           savedAt={(selected.draft?.updatedAt ?? selected.updatedAt).toISOString()}
           versions={versions.map((v) => ({ ...v, createdAt: v.createdAt.toISOString() }))}
           linkedPreviews={linkedPreviews.filter((p) => p.id !== selected.id)}
+          missingLinkTitles={missingLinkTitles}
           outlinks={outlinks}
           backlinks={backlinks}
           related={related}
@@ -156,20 +167,42 @@ export default function NotesPage(props: { searchParams: Promise<RawSearchParams
 }
 
 function NotesSkeleton() {
-  // Shape-matches the loaded workspace — the shared
-  // --measure-prose reading column at the canvas offset — so the stream-in
-  // never reflows the page it becomes.
+  // Built from the loaded note's layout classes (note-layout.ts), wrapper for
+  // wrapper, so the title and the first line hold still when the note arrives.
   return (
-    <div role="status" aria-label="Loading Notes" className="flex items-start gap-6">
-      <div className="mx-auto w-full max-w-[var(--measure-prose)] flex-1 px-6 pt-12">
-        {/* The loaded header's actions sit at the right. */}
-        <Skeleton className="ml-auto h-8 w-32" />
-        <Skeleton className="mt-8 h-9 w-2/3" />
-        <div className="mt-10 flex flex-col gap-6">
-          <Skeleton className="h-5 w-full" />
-          <Skeleton className="h-5 w-[94%]" />
-          <Skeleton className="h-5 w-full" />
-          <Skeleton className="h-5 w-[72%]" />
+    <div role="status" aria-label="Loading Notes" className={noteLayout.screen}>
+      <div className={noteLayout.row}>
+        <div className={noteLayout.cell}>
+          <div className={noteLayout.row}>
+            {/* The container query that places the column in margin mode keys off this. */}
+            <div data-note-container className={noteLayout.cell}>
+              <div className={noteLayout.column}>
+                {/* The header's four icon actions sit at the right. */}
+                <div className={noteLayout.header}>
+                  <Skeleton className="h-7 w-31" />
+                </div>
+                <div className={noteLayout.titleRow}>
+                  <Skeleton data-skeleton-title className={`${noteLayout.titleText} h-[1.2em] w-2/3`} />
+                </div>
+                <div className={noteLayout.meta}>
+                  <Skeleton className="h-3 w-28" />
+                </div>
+                {/* The quiet action row: three xs buttons (h-6) about as wide as
+                    the loaded ones, so a phone wraps them the same way. */}
+                <div className={noteLayout.actions}>
+                  <Skeleton className="h-6 w-24" />
+                  <Skeleton className="h-6 w-28" />
+                  <Skeleton className="h-6 w-24" />
+                </div>
+                <div data-skeleton-body className={`${noteLayout.body} gap-6`}>
+                  <Skeleton className="h-5 w-full" />
+                  <Skeleton className="h-5 w-[94%]" />
+                  <Skeleton className="h-5 w-full" />
+                  <Skeleton className="h-5 w-[72%]" />
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

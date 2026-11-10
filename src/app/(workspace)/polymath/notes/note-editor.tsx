@@ -12,6 +12,7 @@ import { Status } from "@/components/workspace/ui";
 import { Skeleton } from "@/components/ui/skeleton";
 import { motion } from "motion/react";
 import { motionTransition } from "@/components/motion-config";
+import { noteLayout } from "./note-layout";
 import type { NoteAIRequest } from "@/components/products/polymath/note-ai-menu";
 import {
   markdownEditorMode,
@@ -394,6 +395,7 @@ export function NoteEditor({
   related,
   comments,
   linkedPreviews,
+  missingLinkTitles,
 }: {
   noteId: string;
   /** Null while the current version is meaning-searchable or nothing is committed. */
@@ -428,6 +430,8 @@ export function NoteEditor({
   comments: PanelComment[];
   /** First lines of the notes this one links to, shown in the margin beside the citing text. */
   linkedPreviews: LinkPreview[];
+  /** Titles this note linked to when the server rendered it that name no note: shown muted, not as links. */
+  missingLinkTitles: string[];
 }) {
   const localKey = `polymath-note-local-${noteId}`;
   const findLinkTargets = useCallback(
@@ -756,17 +760,17 @@ export function NoteEditor({
    */
   const openCommentCount = comments.filter((c) => c.resolvedAt === null).length;
   return (
-    <div className="flex min-w-0 flex-1 items-start gap-6">
-      <div data-note-container className="min-w-0 flex-1">
+    <div className={noteLayout.row}>
+      <div data-note-container className={noteLayout.cell}>
         <motion.div
           initial={{ opacity: 0, y: 4 }}
           animate={{ opacity: 1, y: 0 }}
           transition={motionTransition}
-          className="mx-auto flex min-h-[var(--canvas-min)] w-full max-w-[var(--measure-prose)] flex-col px-6 pb-24 pt-12 note-column"
+          className={noteLayout.column}
         >
           {/* The header zone: chrome fades in on pointer hover, always on for
               keyboard focus and coarse pointers. */}
-          <div className={`header-zone -mx-6 flex h-8 items-center justify-end px-6 ${scrolled ? "is-scrolled" : ""}`}>
+          <div className={`header-zone ${noteLayout.header} ${scrolled ? "is-scrolled" : ""}`}>
             <div className="header-actions flex items-center gap-1">
               <FindNoteButton icon />
               <NewNoteButton icon />
@@ -860,7 +864,7 @@ export function NoteEditor({
              * the shell's one-heading-per-screen contract holds.
              */}
             <h1 className="sr-only">{title.trim() || "Untitled note"}</h1>
-            <div className="flex items-start gap-2">
+            <div className={noteLayout.titleRow}>
               <input
                 ref={titleRef}
                 aria-label="Note title"
@@ -869,7 +873,7 @@ export function NoteEditor({
                 onBlur={rename}
                 placeholder="Untitled note"
                 style={{ fontFamily: "var(--font-display)" }}
-                className="w-full min-w-0 bg-transparent text-display font-semibold leading-[1.2] tracking-tight outline-none placeholder:text-muted-foreground/40"
+                className={`w-full min-w-0 bg-transparent ${noteLayout.titleText} outline-none placeholder:text-muted-foreground/40`}
               />
               {outlinks.length > 0 && (
                 <button
@@ -885,7 +889,7 @@ export function NoteEditor({
             </div>
             {/* Metadata is small and muted; the actions it used to carry are
                 the header zone's problem now. */}
-            <div className="mt-3 flex min-h-5 flex-wrap items-center gap-2 text-data text-muted-foreground/80">
+            <div className={`${noteLayout.meta} text-muted-foreground/80`}>
               {saveState === "saving" && <span role="status">Saving…</span>}
               {saveState === "dirty" && <span role="status">Unsaved changes</span>}
               {saveState === "saved" && <span role="status">Saved</span>}
@@ -905,9 +909,7 @@ export function NoteEditor({
             )}
           </div>
           {/* The one quiet action row, hover-revealed like the header chrome. */}
-          <div
-            className={`header-actions quiet-actions mt-4 flex flex-wrap items-center gap-2 ${scrolled ? "is-scrolled" : ""}`}
-          >
+          <div className={`header-actions quiet-actions ${noteLayout.actions} ${scrolled ? "is-scrolled" : ""}`}>
             <NotionAppendAction
               noteId={noteId}
               title={title}
@@ -937,7 +939,7 @@ export function NoteEditor({
               {openCommentCount > 0 ? `Comments ${openCommentCount}` : "Comments"}
             </Button>
           </div>
-          <div ref={noteColumnRef} data-note-title={title} className="relative mt-8 flex flex-1 flex-col">
+          <div ref={noteColumnRef} data-note-title={title} className={noteLayout.body}>
             <RichEditor
               chrome="minimal"
               autocomplete
@@ -946,6 +948,7 @@ export function NoteEditor({
               findLinkTargets={findLinkTargets}
               content={markdown}
               linkPreviews={linkedPreviews}
+              missingLinkTitles={missingLinkTitles}
               onChange={updateMarkdown}
               ai={{ pending: aiBusy, onAction: startAI, open: aiMenuOpen, onOpenChange: setAiMenuOpen }}
               onStructuredPasteDropped={() => setSourceHint(true)}

@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import { Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NoteSwitcher } from "@/components/shell/note-switcher";
+import { noteLayout } from "./note-layout";
 
 const OpenSwitcher = createContext<() => void>(() => {});
 
@@ -37,8 +38,8 @@ export function NotebookWorkspace({ children, replaceUrl }: { children: ReactNod
 
   return (
     <OpenSwitcher.Provider value={() => setSwitcherOpen(true)}>
-      <div className="flex flex-1 items-start gap-6">
-        <div className="min-w-0 flex-1">{children}</div>
+      <div className={noteLayout.row}>
+        <div className={noteLayout.cell}>{children}</div>
         <NoteSwitcher open={switcherOpen} onOpenChange={setSwitcherOpen} />
       </div>
     </OpenSwitcher.Provider>

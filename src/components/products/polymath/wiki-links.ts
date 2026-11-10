@@ -13,8 +13,12 @@ import type { LinkPreview } from "@/domains/knowledge/notes";
  * so a drag still selects, and the arrow keys move the caret into the title.
  *
  * With previews (the linked notes the server found), a link carries its note's
- * id, so the host opens it without a search, and a link to no note reads as
- * muted text. Without previews (null) no link is judged.
+ * id, so the host opens it without a search. A link reads as missing (muted,
+ * and plain text to a click) only when its title is in `missingTitles`: the
+ * titles that were in the note when the server rendered it and had no note.
+ * Any other link without a preview, such as one added since, stays a normal
+ * link and opens through the host's title search. A link to the open note
+ * itself (the host's [[data-note-title]]) is not judged and does not navigate.
  */
 
 export const WIKI_LINK_OPEN = "wikilink:open";
@@ -56,8 +60,11 @@ function inlineNote(previews: LinkPreview[]): HTMLElement {
   return root;
 }
 
-function decorate(doc: ProseMirrorNode, editable: boolean, previews: LinkPreview[] | null): DecorationSet {
-  const byTitle = new Map((previews ?? []).map((p) => [p.title.trim().toLowerCase(), p]));
+const titleKey = (title: string) => title.trim().toLowerCase();
+
+function decorate(doc: ProseMirrorNode, editable: boolean, links: Links): DecorationSet {
+  const byTitle = new Map((links.previews ?? []).map((p) => [titleKey(p.title), p]));
+  const missingTitles = new Set(links.missingTitles.map(titleKey));
   const decorations: Decoration[] = [];
   doc.descendants((node, pos) => {
     if (!node.isText || !node.text) return;
@@ -65,13 +72,14 @@ function decorate(doc: ProseMirrorNode, editable: boolean, previews: LinkPreview
       const start = pos + (match.index ?? 0);
       const end = start + match[0].length;
       const title = match[1].split("|")[0].trim();
-      const preview = byTitle.get(title.toLowerCase());
-      const missing = previews !== null && !preview;
+      const preview = byTitle.get(titleKey(title));
+      const missing = !preview && missingTitles.has(titleKey(title));
       decorations.push(
         Decoration.inline(start, start + 2, { class: "wiki-link-bracket" }),
         Decoration.inline(start + 2, end - 2, {
           class: missing ? "wiki-link wiki-link-missing" : "wiki-link",
           "data-wiki-title": title,
+          ...(missing ? { "data-wiki-missing": "" } : {}),
           ...(preview ? { "data-wiki-id": preview.id } : {}),
           ...(editable && !missing ? { title: "Click to open. Use the arrow keys to edit it." } : {}),
         }),
@@ -85,7 +93,7 @@ function decorate(doc: ProseMirrorNode, editable: boolean, previews: LinkPreview
       block.descendants((node) => {
         if (!node.isText || !node.text) return;
         for (const match of node.text.matchAll(WIKI)) {
-          const preview = byTitle.get(match[1].split("|")[0].trim().toLowerCase());
+          const preview = byTitle.get(titleKey(match[1].split("|")[0]));
           if (preview) cited.set(preview.id, preview);
         }
       });
@@ -105,25 +113,20 @@ function decorate(doc: ProseMirrorNode, editable: boolean, previews: LinkPreview
   return DecorationSet.create(doc, decorations);
 }
 
-type Previews = { previews: LinkPreview[] | null };
+type Links = { previews: LinkPreview[] | null; missingTitles: string[] };
 
-export const WikiLinks = Extension.create<Previews, Previews>({
+export const WikiLinks = Extension.create<Links, Links>({
   name: "wikiLinks",
-  addOptions: () => ({ previews: null }),
-  // The previews live in storage so the host can swap them after mount (see refreshWikiPreviews).
+  addOptions: () => ({ previews: null, missingTitles: [] }),
+  // The link state lives in storage so the host can swap it after mount (see refreshWikiPreviews).
   addStorage() {
-    return { previews: this.options.previews };
+    return { previews: this.options.previews, missingTitles: this.options.missingTitles };
   },
   addProseMirrorPlugins() {
     const editor = this.editor;
     // Rebuilt when the document or the editable flag changes; the flag can
     // flip without a transaction, so the set is cached here, not in plugin state.
-    let cache: {
-      doc: ProseMirrorNode;
-      editable: boolean;
-      previews: LinkPreview[] | null;
-      set: DecorationSet;
-    } | null = null;
+    let cache: { doc: ProseMirrorNode; editable: boolean; links: Links; set: DecorationSet } | null = null;
     const storage = this.storage;
     return [
       new Plugin({
@@ -131,17 +134,26 @@ export const WikiLinks = Extension.create<Previews, Previews>({
         props: {
           decorations: (state) => {
             const editable = editor.isEditable;
-            const previews = storage.previews;
-            if (!cache || cache.doc !== state.doc || cache.editable !== editable || cache.previews !== previews) {
-              cache = { doc: state.doc, editable, previews, set: decorate(state.doc, editable, previews) };
+            const links = { previews: storage.previews, missingTitles: storage.missingTitles };
+            if (
+              !cache ||
+              cache.doc !== state.doc ||
+              cache.editable !== editable ||
+              cache.links.previews !== links.previews ||
+              cache.links.missingTitles !== links.missingTitles
+            ) {
+              cache = { doc: state.doc, editable, links, set: decorate(state.doc, editable, links) };
             }
             return cache.set;
           },
           handleClick: (view, _pos, event) => {
             const target = (event.target as HTMLElement | null)?.closest<HTMLElement>("[data-wiki-title]");
             const title = target?.dataset.wikiTitle;
-            // Shift- and Alt-click extend or adjust the selection.
-            if (!title || event.shiftKey || event.altKey) return false;
+            // Shift- and Alt-click extend or adjust the selection. A missing link,
+            // and a link to the open note, are text: the click places the caret.
+            if (!title || event.shiftKey || event.altKey || target.dataset.wikiMissing !== undefined) return false;
+            const self = view.dom.closest<HTMLElement>("[data-note-title]")?.dataset.noteTitle;
+            if (self !== undefined && titleKey(self) === titleKey(title)) return false;
             event.preventDefault();
             const id = target.dataset.wikiId;
             open(view.dom, id ? { title, id } : { title });
@@ -153,8 +165,10 @@ export const WikiLinks = Extension.create<Previews, Previews>({
   },
 });
 
-/** Swap the previews of a mounted editor and redraw the inline notes. */
-export function refreshWikiPreviews(editor: Editor, previews: LinkPreview[]) {
-  (editor.storage as unknown as { wikiLinks: Previews }).wikiLinks.previews = previews;
+/** Swap the previews (and the server's missing titles) of a mounted editor and redraw. */
+export function refreshWikiPreviews(editor: Editor, previews: LinkPreview[], missingTitles: string[] = []) {
+  const storage = (editor.storage as unknown as { wikiLinks: Links }).wikiLinks;
+  storage.previews = previews;
+  storage.missingTitles = missingTitles;
   editor.view.dispatch(editor.state.tr.setMeta(key, true));
 }

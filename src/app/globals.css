@@ -637,8 +637,8 @@
 }
 /* [[Title]] links: the editor decorates them (wiki-links.ts) as one quiet
    link. Ink, not tangerine: DESIGN.md keeps the signal for actions, selection
-   and state, and a page of notes is mostly links. A link to no note reads as
-   muted text. */
+   and state, and a page of notes is mostly links. A link the server found no
+   note for reads as muted text. */
 .wiki-link {
   color: var(--link);
   text-decoration: none;

@@ -37,7 +37,8 @@ vi.mock("@/domains/knowledge/note-comments", () => ({ listNoteComments: vi.fn(as
 vi.mock("@/domains/knowledge/relations", () => ({ relatedNotes: vi.fn(async () => []) }));
 vi.mock("@/app/(workspace)/polymath/notes/note-editor", () => ({
   NewNoteButton: () => h("button", null, "New note"),
-  NoteEditor: (props: { noteId: string }) => h("div", { "data-testid": "editor", "data-note": props.noteId }),
+  NoteEditor: (props: { noteId: string; missingLinkTitles: string[] }) =>
+    h("div", { "data-testid": "editor", "data-note": props.noteId, "data-missing": props.missingLinkTitles.join(";") }),
 }));
 vi.mock("@/app/(workspace)/polymath/notes/notebook-workspace", () => ({
   NotebookWorkspace: (props: { children: ReactNode; replaceUrl?: string }) =>
@@ -46,7 +47,7 @@ vi.mock("@/app/(workspace)/polymath/notes/notebook-workspace", () => ({
 }));
 
 import { NotesSurface } from "@/app/(workspace)/polymath/notes/page";
-import { getNote, listNotes } from "@/domains/knowledge/notes";
+import { extractWikiLinkTitles, getLinkPreviews, getNote, listNotes } from "@/domains/knowledge/notes";
 
 const params = (raw: Record<string, string>) => Promise.resolve(raw);
 
@@ -98,6 +99,14 @@ describe("notes page", () => {
       const html = renderToStaticMarkup(await NotesSurface({ searchParams: params({ id: "b", ...retired }) }));
       expect(html).toContain('data-note="b"');
     }
+  });
+
+  it("names as missing only linked titles with no note at this render, never the note itself", async () => {
+    vi.mocked(getNote).mockResolvedValue(noteRow as never);
+    vi.mocked(extractWikiLinkTitles).mockReturnValueOnce(["Alpha", "Nowhere|Shown", "quarterly plan"]);
+    vi.mocked(getLinkPreviews).mockResolvedValueOnce([{ id: "a1", title: "alpha", firstParagraph: "" }]);
+    const html = renderToStaticMarkup(await NotesSurface({ searchParams: params({ id: "b" }) }));
+    expect(html).toContain('data-missing="Nowhere"');
   });
 
   it("with no notes at all, offers a new note instead of redirecting", async () => {
