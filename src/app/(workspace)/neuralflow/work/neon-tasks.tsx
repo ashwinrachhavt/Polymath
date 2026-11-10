@@ -2,7 +2,8 @@ import Link from "next/link";
 import { io } from "next/cache";
 import { Empty, Panel, Screen, StatStrip } from "@/components/workspace/ui";
 import { getAuthContext } from "@/lib/auth";
-import { WORK_OPEN_STATUSES, WORK_PRIORITIES, type WorkRow } from "@/domains/work/queries";
+import { CalendarDays, CircleDashed } from "lucide-react";
+import { WORK_OPEN_STATUSES, WORK_PRIORITIES, type DatedTask, type WorkRow } from "@/domains/work/queries";
 import {
   getTaskDetailForPage,
   getActiveFocusSessionForPage,
@@ -10,6 +11,7 @@ import {
   countWorkByStatusForPage,
   listWorkPageForPage,
   listWorkRowsForPage,
+  listTasksDueBetweenForPage,
 } from "./data";
 import { redirectPastEnd } from "@/components/list/clamp";
 import { ListToolbar } from "@/components/list/list-toolbar";
@@ -24,7 +26,7 @@ import { CommitList, WorkList } from "./work-list";
 import { DayStrip } from "./day-strip";
 import { SeedSuggestions } from "./seed-suggestions";
 import { listSeedsForDay } from "@/domains/work/seeds";
-import { todayKeyInTimezone } from "@/lib/local-date";
+import { shiftDateKey, todayKeyInTimezone } from "@/lib/local-date";
 import { getPreferences } from "@/domains/identity/preferences";
 
 /*
@@ -60,6 +62,14 @@ function scopeOf(show: string | undefined): Scope {
 const BASE = "/neuralflow/work";
 const UUID = /^[0-9a-f-]{36}$/i;
 
+function dueDateLabel(date: Date) {
+  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(date);
+}
+
+function dueDay(task: DatedTask) {
+  return task.dueAt.toISOString().slice(0, 10);
+}
+
 export async function NeonTasks({
   show,
   selectedTask,
@@ -80,10 +90,10 @@ export async function NeonTasks({
   const filtered = Boolean(list.q || list.filters.priority || list.filters.status);
   const validSelection = selectedTask && UUID.test(selectedTask) ? selectedTask : undefined;
 
-  // Tomorrow's suggestions belong to today: the shutdown ritual wrote them for
-  // this local day, and "today" compares in the owner's saved timezone.
-  const { timezone } = await getPreferences(auth);
-  const [found, openRows, counts, activeSession, seeds] = await Promise.all([
+  // Start the independent page reads together; the timezone only gates
+  // timezone-specific day suggestions and deadline grouping.
+  const [preferences, found, openRows, counts, activeSession] = await Promise.all([
+    getPreferences(auth),
     listWorkPageForPage(auth, scope, {
       limit: list.pageSize,
       offset: offsetFor(list.page, list.pageSize),
@@ -94,7 +104,13 @@ export async function NeonTasks({
     listWorkRowsForPage(auth, "open"),
     countWorkByStatusForPage(auth),
     getActiveFocusSessionForPage(auth),
-    listSeedsForDay(auth, todayKeyInTimezone(timezone)).catch(() => []),
+  ]);
+  const today = todayKeyInTimezone(preferences.timezone);
+  const [seeds, datedTasks] = await Promise.all([
+    scope === "today" ? listSeedsForDay(auth, today).catch(() => []) : Promise.resolve([]),
+    scope === "today"
+      ? listTasksDueBetweenForPage(auth, shiftDateKey(today, -30), shiftDateKey(today, 14))
+      : Promise.resolve([]),
   ]);
   redirectPastEnd(BASE, raw, list.page, list.pageSize, found.total);
   const rows = found.rows;
@@ -123,7 +139,12 @@ export async function NeonTasks({
   // up would be two controls for one decision, and the owner would see the
   // task they are deciding about twice before deciding.
   const suggestedIds = new Set(seeds.map((seed) => seed.taskId));
-  const nextUp = openRows.filter((r) => !committedIds.has(r.id) && !suggestedIds.has(r.id)).slice(0, 5);
+  const deadlineIds = new Set(
+    datedTasks.filter((task) => task.status !== "done" && task.status !== "cancelled").map((task) => task.id),
+  );
+  const nextUp = openRows
+    .filter((r) => !committedIds.has(r.id) && !suggestedIds.has(r.id) && !deadlineIds.has(r.id))
+    .slice(0, 5);
   const inboxCount = counts.inbox;
 
   const hrefFor = (id: string) => listHref(BASE, raw, { view: "saved", task: id });
@@ -131,10 +152,48 @@ export async function NeonTasks({
   // "Inbox" on Today is the triage count, not the rows: captured work is
   // triaged on Inbox, and this screen's job is to say how much is waiting.
   const nextUpCount = nextUp.length;
+  const dueTasks = datedTasks.filter((task) => task.status !== "done" && task.status !== "cancelled");
+  const overdueTasks = dueTasks.filter((task) => dueDay(task) < today);
+  const dueTodayTasks = dueTasks.filter((task) => dueDay(task) === today);
+  const upcomingTasks = dueTasks.filter((task) => dueDay(task) > today);
+  const overdueDeadlines = overdueTasks.slice(0, 4);
+  const dueTodayDeadlines = dueTodayTasks.slice(0, 4);
+  const upcomingDeadlines = upcomingTasks.slice(0, 6);
+  const deadlineTotal = overdueTasks.length + dueTodayTasks.length + upcomingTasks.length;
+  const renderDeadlineGroup = (label: string, tasks: DatedTask[], tone = "text-muted-foreground") =>
+    tasks.length ? (
+      <section aria-label={label}>
+        <h3 className={`mb-1.5 text-xs font-medium ${tone}`}>
+          {label} <span className="readout">· {tasks.length}</span>
+        </h3>
+        <ul className="divide-y divide-border/60">
+          {tasks.map((task) => (
+            <li key={task.id}>
+              <Link
+                href={`/neuralflow/work?view=saved&task=${task.id}`}
+                className="group flex min-w-0 items-center gap-2.5 py-2.5 first:pt-1"
+              >
+                <CircleDashed aria-hidden className={`size-3.5 shrink-0 ${tone}`} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium group-hover:text-primary">{task.title}</span>
+                  <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                    {task.projectName ?? "Unassigned project"}
+                  </span>
+                </span>
+                <time className={`readout shrink-0 text-xs ${tone}`} dateTime={task.dueAt.toISOString()}>
+                  {dueDateLabel(task.dueAt)}
+                </time>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </section>
+    ) : null;
 
   return (
     <Screen
       title={scope === "today" ? "Work" : scope === "done" ? "Finished" : "Tasks"}
+      description={scope === "today" ? "Your day, at a glance." : undefined}
       actions={
         // The live session's controls live on Focus now; this entry points at
         // its setup when nothing is running.
@@ -155,8 +214,8 @@ export async function NeonTasks({
           className="grid-cols-2 sm:grid-cols-4"
           items={[
             { label: "Committed", value: found.total, hint: "Work you have taken on today." },
-            { label: "In progress", value: counts.in_progress, hint: "Across your workspace." },
-            { label: "Finished", value: counts.done, hint: "Tasks completed." },
+            { label: "Due today", value: dueTodayTasks.length, hint: "Open tasks with today's deadline." },
+            { label: "Overdue", value: overdueTasks.length, hint: "Past-due open work." },
             { label: "Inbox", value: counts.inbox, hint: "Waiting to be clarified." },
           ]}
         />
@@ -361,7 +420,33 @@ export async function NeonTasks({
             {detail ? <TaskEvidence items={provenance} taskId={detail.task.id} /> : null}
           </Panel>
         ) : scope === "today" ? (
-          <aside className="flex min-w-0 flex-col gap-5">
+          <aside className="flex min-w-0 flex-col gap-4">
+            <section aria-labelledby="deadlines-heading" className="panel rounded-xl p-4">
+              <div className="mb-3 flex items-center gap-2">
+                <CalendarDays aria-hidden className="size-4 text-muted-foreground" />
+                <h2 id="deadlines-heading" className="text-body-dense font-medium">
+                  Upcoming deadlines
+                </h2>
+                <span className="readout text-data text-muted-foreground">{deadlineTotal}</span>
+                <Link
+                  href="/neuralflow/work?view=calendar"
+                  className="ml-auto text-data text-muted-foreground hover:text-foreground"
+                >
+                  Calendar
+                </Link>
+              </div>
+              {deadlineTotal === 0 ? (
+                <p className="rounded-lg border border-dashed border-border px-3 py-5 text-center text-label text-muted-foreground">
+                  No upcoming deadlines. Your schedule is clear.
+                </p>
+              ) : (
+                <div className="divide-y divide-border/60">
+                  {renderDeadlineGroup("Overdue", overdueDeadlines, "text-destructive")}
+                  {renderDeadlineGroup("Today", dueTodayDeadlines, "text-primary")}
+                  {renderDeadlineGroup("Coming up", upcomingDeadlines)}
+                </div>
+              )}
+            </section>
             <section aria-labelledby="next-up-heading" className="panel rounded-xl p-4">
               <div className="mb-3 flex items-baseline gap-2">
                 <h2 id="next-up-heading" className="text-body-dense font-medium">

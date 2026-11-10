@@ -257,6 +257,11 @@ export type WorkProjectSummary = {
   taskCount: number;
   openCount: number;
   completedCount: number;
+  inboxCount: number;
+  backlogCount: number;
+  readyCount: number;
+  inProgressCount: number;
+  waitingCount: number;
 };
 
 /** Workspace-scoped project totals for the work overview. */
@@ -265,7 +270,12 @@ export async function listWorkProjectSummaries(auth: Pick<AuthContext, "workspac
     select p.id, p.name, p.phase, p.target_date::text as target_date,
       count(t.id)::int as task_count,
       count(t.id) filter (where t.status not in ('done', 'cancelled'))::int as open_count,
-      count(t.id) filter (where t.status = 'done')::int as completed_count
+      count(t.id) filter (where t.status = 'done')::int as completed_count,
+      count(t.id) filter (where t.status = 'inbox')::int as inbox_count,
+      count(t.id) filter (where t.status = 'backlog')::int as backlog_count,
+      count(t.id) filter (where t.status = 'ready')::int as ready_count,
+      count(t.id) filter (where t.status = 'in_progress')::int as in_progress_count,
+      count(t.id) filter (where t.status = 'waiting')::int as waiting_count
     from projects p
     left join tasks t on t.project_id = p.id and t.workspace_id = p.workspace_id
       and t.archived_at is null and t.parent_task_id is null
@@ -283,6 +293,11 @@ export async function listWorkProjectSummaries(auth: Pick<AuthContext, "workspac
       task_count: number;
       open_count: number;
       completed_count: number;
+      inbox_count: number;
+      backlog_count: number;
+      ready_count: number;
+      in_progress_count: number;
+      waiting_count: number;
     }>
   ).map((row) => ({
     id: row.id,
@@ -292,6 +307,11 @@ export async function listWorkProjectSummaries(auth: Pick<AuthContext, "workspac
     taskCount: row.task_count,
     openCount: row.open_count,
     completedCount: row.completed_count,
+    inboxCount: row.inbox_count,
+    backlogCount: row.backlog_count,
+    readyCount: row.ready_count,
+    inProgressCount: row.in_progress_count,
+    waitingCount: row.waiting_count,
   }));
 }
 

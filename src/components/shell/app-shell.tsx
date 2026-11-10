@@ -12,6 +12,7 @@ import { isConversationSurface, isBrowserPreviewPath } from "@/lib/navigation";
 import { FocusDock } from "@/components/shell/focus-dock";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { WorkspaceSwitcherData } from "@/components/shell/workspace-switcher";
+import type { ShellPreferenceSnapshot } from "@/components/shell/shell-preferences";
 
 const subscribeToHydration = () => () => {};
 
@@ -34,6 +35,7 @@ export function AppShell({
   clerkConfigured = false,
   interfaceMode = "action",
   notifications,
+  shellPreferences,
   workspaceSwitcher = null,
 }: {
   children: ReactNode;
@@ -41,6 +43,7 @@ export function AppShell({
   clerkConfigured?: boolean;
   interfaceMode?: "library" | "action";
   notifications: TriageFeed;
+  shellPreferences: ShellPreferenceSnapshot;
   workspaceSwitcher?: WorkspaceSwitcherData | null;
 }) {
   const pathname = usePathname();
@@ -73,9 +76,11 @@ export function AppShell({
         <div className={cn("flex min-w-0 flex-1 flex-col", headerless && "min-h-0")}>
           {!headerless ? (
             <TopBar
+              key={shellPreferences.scope}
               clerkConfigured={clerkConfigured}
               interfaceMode={interfaceMode}
               notifications={notifications}
+              shellPreferences={shellPreferences}
               workspaceSwitcher={workspaceSwitcher}
             />
           ) : null}

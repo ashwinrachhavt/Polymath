@@ -2,9 +2,7 @@
 
 import { BookOpen, Zap } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import { loadPreferencesAction, savePreferencesAction } from "@/app/(workspace)/settings/actions";
-import type { InterfaceModeValue } from "@/domains/identity/preferences";
+import type { SaveShellPreference } from "@/components/shell/shell-preferences";
 
 /*
  * ASH-312: the deliberate switch. The header shows the resolved language and
@@ -13,32 +11,20 @@ import type { InterfaceModeValue } from "@/domains/identity/preferences";
  * re-renders the shell in the saved mode, so the phone picks it up on next
  * load - the row, not this browser, is the record.
  */
-export function ModeToggle({ resolved }: { resolved: "library" | "action" }) {
+export function ModeToggle({
+  resolved,
+  disabled,
+  onSave,
+}: {
+  resolved: "library" | "action";
+  disabled: boolean;
+  onSave: SaveShellPreference;
+}) {
   const router = useRouter();
-  const [version, setVersion] = useState<number | null>(null);
-  const [pending, setPending] = useState(false);
-
-  useEffect(() => {
-    void loadPreferencesAction()
-      .then((result) => { if (result.ok) setVersion(result.preferences.version); })
-      .catch(() => {});
-  }, []);
 
   async function flip() {
-    if (version === null || pending) return;
-    const target: InterfaceModeValue = resolved === "library" ? "action" : "library";
-    setPending(true);
-    const result = await savePreferencesAction({ expectedVersion: version, interfaceMode: target }).catch(() => null);
-    setPending(false);
-    if (!result?.ok) {
-      // A version conflict means another device moved first; reload the row
-      // and let the next tap decide against the fresh version.
-      const fresh = await loadPreferencesAction().catch(() => null);
-      if (fresh?.ok) setVersion(fresh.preferences.version);
-      return;
-    }
-    setVersion(result.preferences.version);
-    router.refresh();
+    const target = resolved === "library" ? "action" : "library";
+    if (await onSave({ interfaceMode: target })) router.refresh();
   }
 
   const Icon = resolved === "library" ? BookOpen : Zap;
@@ -46,7 +32,7 @@ export function ModeToggle({ resolved }: { resolved: "library" | "action" }) {
     <button
       type="button"
       onClick={() => void flip()}
-      disabled={pending}
+      disabled={disabled}
       aria-label={resolved === "library" ? "Switch to Action mode" : "Switch to Library mode"}
       title={resolved === "library" ? "Library mode - switch to Action" : "Action mode - switch to Library"}
       className="text-muted-foreground hover:bg-muted hover:text-foreground flex size-8 items-center justify-center rounded-md"

@@ -262,7 +262,7 @@ export function InboxList({
                 isChecked && "bg-muted/40",
               )}
             >
-              <div className="flex min-h-14 items-center gap-2 pr-4 pl-2">
+              <div className="flex min-h-[4.5rem] items-center gap-2 pr-4 pl-2">
                 <input
                   type="checkbox"
                   checked={isChecked}
@@ -274,7 +274,7 @@ export function InboxList({
                 <span
                   aria-hidden
                   className={cn(
-                    "flex size-7 shrink-0 items-center justify-center rounded-full border text-muted-foreground",
+                    "flex size-8 shrink-0 items-center justify-center rounded-full border text-muted-foreground transition-colors",
                     isHighlighted ? "border-border bg-background" : "border-border/70 bg-card",
                   )}
                 >
@@ -286,8 +286,16 @@ export function InboxList({
                   className="flex min-w-0 flex-1 items-center gap-3 rounded-md py-2 outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-body-dense leading-5">{title}</span>
-                    <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                    <span className="block truncate text-body-dense leading-5 font-medium">{title}</span>
+                    {capture.preview?.trim() && capture.preview.trim() !== title ? (
+                      <span className="mt-0.5 block truncate text-xs leading-4 text-muted-foreground">
+                        {capture.preview.trim()}
+                      </span>
+                    ) : null}
+                    <span className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                      {capture.processingState === "unprocessed" ? (
+                        <span aria-label="To clarify" className="size-1.5 shrink-0 rounded-full bg-primary" />
+                      ) : null}
                       <span className="truncate">{captureKindLabel(capture.kind)}</span>
                       {capture.processingState !== "unprocessed" ? (
                         <>

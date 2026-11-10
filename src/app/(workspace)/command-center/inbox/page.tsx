@@ -52,23 +52,23 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
   await io();
   const auth = await getAuthContext();
   const kind = list.filters.kind as (typeof CAPTURE_KINDS)[number] | undefined;
-  const found = await searchCapturesForPage(auth, {
-    filter,
-    kind,
-    query: list.q,
-    limit: list.pageSize,
-    offset: offsetFor(list.page, list.pageSize),
-  });
+  const [found, tabs] = await Promise.all([
+    searchCapturesForPage(auth, {
+      filter,
+      kind,
+      query: list.q,
+      limit: list.pageSize,
+      offset: offsetFor(list.page, list.pageSize),
+    }),
+    countInboxTabsForPage(auth),
+  ]);
   const rows = found.items;
   // No ?id= reads as "show the newest": the detail pane is the working half of
   // the screen, and an empty void beside the list is wasted on a hint sentence.
   const effectiveSelectedId = selectedId ?? rows[0]?.id ?? null;
-  const [tabs, selected] = await Promise.all([
-    countInboxTabsForPage(auth),
-    // The detail pane is a view of the record, not of the current filter: a
-    // capture outside the view still renders, the list just shows no highlight.
-    effectiveSelectedId ? getCaptureForPage(auth, effectiveSelectedId) : Promise.resolve(null),
-  ]);
+  // The detail pane is a view of the record, not of the current filter: a
+  // capture outside the view still renders, the list just shows no highlight.
+  const selected = effectiveSelectedId ? await getCaptureForPage(auth, effectiveSelectedId) : null;
   const generation = capabilityStatus().find((c) => c.id === "generation");
   const pageSize = list.pageSize;
   redirectPastEnd("/command-center/inbox", query, list.page, pageSize, found.total);
@@ -78,7 +78,7 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
 
   return (
     <div className="flex h-[calc(100dvh-3rem)] flex-col overflow-hidden max-md:h-auto max-md:overflow-visible">
-      <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[minmax(0,520px)_minmax(0,1fr)]">
+      <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[minmax(0,40fr)_minmax(0,60fr)] xl:grid-cols-[minmax(0,520px)_minmax(0,1fr)]">
         <section
           aria-label="Capture queue"
           className="flex min-h-0 min-w-0 flex-col border-border max-md:min-h-[70dvh] md:border-r"

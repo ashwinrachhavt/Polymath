@@ -44,7 +44,9 @@ for (const vp of VIEWPORTS) {
     await waitSettled(page);
     await page.addStyleTag({ content: HIDE_DEV_CHROME });
 
-    await expect(page.getByRole("link", { name: "To clarify" })).toBeVisible();
+    await expect(
+      page.getByRole("navigation", { name: "Inbox filters" }).getByRole("link", { name: "To clarify", exact: true }),
+    ).toBeVisible();
     await expect(page.getByRole("link", { name: "All", exact: true })).toBeVisible();
 
     await page.screenshot({ path: `test-results/feature-pixels/inbox-filter-tabs-${vp.name}.png` });

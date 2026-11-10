@@ -88,7 +88,7 @@ function Tags({ tags }: { tags: string[] }) {
 /*
  * The card's reading body: the claim as paragraphs, the evidence as a
  * blockquote, one "Linked ideas" list (explicit and semantic edges merged,
- * each a plain link — there is no decision to make about a link), the
+ * with each idea as its own link card), the
  * document it was decomposed from, and timestamps. Blocks render in document
  * order, and a body longer than one paragraph keeps every paragraph.
  */
@@ -124,11 +124,15 @@ function IdeaCardBody({
       {linked.length > 0 ? (
         <section className="flex flex-col gap-1">
           <h2 className="text-body-dense font-medium">Linked ideas</h2>
-          <ul className="flex flex-col gap-1">
+          <ul className="flex flex-col gap-2">
             {linked.map((card) => (
               <li key={card.id}>
-                <Link href={ideaHref(card.id)} className="text-body-dense underline-offset-2 hover:underline">
-                  {card.title}
+                <Link
+                  href={ideaHref(card.id)}
+                  aria-label={`Open linked idea: ${card.title}`}
+                  className="group flex min-h-12 items-center rounded-lg border border-border bg-background/50 px-3 py-2 text-body-dense font-medium transition-colors hover:border-primary/40 hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <span className="min-w-0 break-words">{card.title}</span>
                 </Link>
               </li>
             ))}
