@@ -346,11 +346,14 @@ function RichMarkdownEditor({
       const local = state.artifacts.find((a) => a.id !== undefined && a.title.trim().toLowerCase() === wanted);
       if (local?.id) return router.push(`/polymath/notes?id=${local.id}`);
       if (!findLinkTargets) return notify(`No note titled "${title}" yet.`);
-      void findLinkTargets(title, "keyword").then((rows) => {
-        const hit = exact(rows);
-        if (hit) router.push(`/polymath/notes?id=${hit.id}`);
-        else notify(`No note titled "${title}" yet.`);
-      });
+      void findLinkTargets(title, "keyword").then(
+        (rows) => {
+          const hit = exact(rows);
+          if (hit) router.push(`/polymath/notes?id=${hit.id}`);
+          else notify(`No note titled "${title}" yet.`);
+        },
+        () => notify(`Could not open "${title}". Try again.`),
+      );
     };
     host.addEventListener(WIKI_LINK_OPEN, open);
     return () => host.removeEventListener(WIKI_LINK_OPEN, open);

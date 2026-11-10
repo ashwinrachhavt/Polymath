@@ -365,6 +365,7 @@ export function CommandLayer({
     if (mode === null && recorder.current) recorder.current.stop();
     if (mode === null) dictation.current?.stop();
   }, [mode]);
+  useEffect(() => () => dictation.current?.stop(), []);
 
   // Triggerless mount: the wrapper in command-layer-mount.tsx owns the
   // triggers, so a palette loaded from it renders the dialog alone. The

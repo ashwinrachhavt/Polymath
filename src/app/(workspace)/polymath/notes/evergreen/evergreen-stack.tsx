@@ -128,6 +128,8 @@ export function EvergreenStack({
     (event: MouseEvent, fromPane: number, targetId: string) => {
       if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
       event.preventDefault();
+      // A hover still pending would pop a card for a link that just moved.
+      if (previewTimer.current) clearTimeout(previewTimer.current);
       setPreview(null);
       const open = stackIds.indexOf(targetId);
       if (open !== -1 && open < fromPane + 1) {
@@ -153,6 +155,12 @@ export function EvergreenStack({
     if (previewTimer.current) clearTimeout(previewTimer.current);
     previewTimer.current = setTimeout(() => setPreview({ entry, x: rect.left, y: rect.bottom }), 250);
   };
+  useEffect(
+    () => () => {
+      if (previewTimer.current) clearTimeout(previewTimer.current);
+    },
+    [],
+  );
   const hidePreview = () => {
     if (previewTimer.current) clearTimeout(previewTimer.current);
     setPreview(null);
