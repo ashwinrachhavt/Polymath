@@ -327,7 +327,7 @@ for (const path of [
   "/neuralflow/work",
   "/polymath/knowledge",
   "/polymath/notes",
-  "/polymath/artifacts",
+  "/artifacts",
 ]) {
   test(`${path} meets WCAG 2.2 AA`, async ({ page }) => {
     // An axe scan plus a cold dev-compile per screen; the ceiling only bites

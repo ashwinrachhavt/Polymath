@@ -27,11 +27,11 @@ dependent, so `inventory:check` behaves the same on a laptop and in CI.
 | `vitest` | 5.0.5 |
 | `@playwright/test` | ^1.64.1 |
 
-Migrations: 117 files, highest `0290_superagent_observe_effect_kind`.
+Migrations: 125 files, highest `0298_learning_artifact_feedback`.
 
 ## Tests
 
-576 `.test.ts` and 52 `.spec.ts` files (unit: 343, integration: 230, e2e: 52).
+579 `.test.ts` and 52 `.spec.ts` files (unit: 345, integration: 231, e2e: 52).
 ## Domains
 
 25 folders; 19 own tables.
@@ -51,7 +51,7 @@ Migrations: 117 files, highest `0290_superagent_observe_effect_kind`.
 | `identity` | 16 |
 | `integrations` | 7 |
 | `knowledge` | 44 |
-| `learning` | 3 |
+| `learning` | 10 |
 | `opportunities` | 4 |
 | `skills` | 1 |
 | `spending` | 4 |
@@ -186,6 +186,13 @@ No tables: `conversations`, `diagrams`, `home`, `import`, `notifications`, `supe
 | `learning` | `quizzes` | versioned |
 | `learning` | `quiz_questions` | append-only |
 | `learning` | `quiz_attempts` | append-only |
+| `learning` | `flashcard_decks` | versioned |
+| `learning` | `flashcards` | versioned |
+| `learning` | `flashcard_reviews` | versioned |
+| `learning` | `explain_sessions` | versioned |
+| `learning` | `explain_turns` | versioned |
+| `learning` | `graph_recall_attempts` | append-only |
+| `learning` | `artifact_feedback` | versioned |
 | `opportunities` | `opportunities` | versioned |
 | `opportunities` | `opportunity_stage_history` | append-only |
 | `opportunities` | `opportunity_links` | append-only |
@@ -215,7 +222,7 @@ No tables: `conversations`, `diagrams`, `home`, `import`, `notifications`, `supe
 | `work` | `boards` | versioned |
 | `work` | `briefing_seeds` | versioned |
 
-Totals: 88 versioned, 56 append-only, 6 versionless but guarded (each declared with its guard and its file in `scripts/lib/row-state.ts`).
+Totals: 94 versioned, 57 append-only, 6 versionless but guarded (each declared with its guard and its file in `scripts/lib/row-state.ts`).
 
 ## Route handlers
 

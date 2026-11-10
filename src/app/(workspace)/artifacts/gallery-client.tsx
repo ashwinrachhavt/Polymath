@@ -188,7 +188,7 @@ export function ArtifactCard({
     >
       <div className={isList ? "min-w-0 flex-1" : ""}>
         <p
-          className={`text-muted-foreground/70 leading-snug ${isList ? "line-clamp-2 text-body-dense" : "line-clamp-6 font-serif text-body-dense"}`}
+          className={`text-muted-foreground leading-snug ${isList ? "line-clamp-2 text-body-dense" : "line-clamp-6 font-serif text-body-dense"}`}
         >
           {artifact.preview || (artifact.recordType === "source" ? "No extracted text yet." : "Empty artifact.")}
         </p>
