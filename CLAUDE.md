@@ -1,3 +1,7 @@
+# Coding instructions
+
+For any coding task, read [AGENTS.md](AGENTS.md) and its [agent context](.agents/README.md). Apply the task-relevant conventions before editing; follow [FACTORY.md](.agents/FACTORY.md) for verification and handoff. These files are shared across coding agents.
+
 ## graphify
 
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
