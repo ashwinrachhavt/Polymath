@@ -7,7 +7,7 @@ import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { noteContentToMarkdown } from "./note-content";
 import { commitNoteSnapshot, type NoteContent } from "./notes";
-import { artifactLinks, artifactVersions, artifacts } from "./schema";
+import { artifactLinks, artifactVersions, artifacts, workingDrafts } from "./schema";
 
 /*
  * Notebook AI, in the register the owner asked for (Notion-AI-style, built
@@ -79,13 +79,25 @@ export function buildNoteAIObjective(input: {
 
 async function loadNote(auth: AuthContext, artifactId: string) {
   const [note] = await db
-    .select({ id: artifacts.id, title: artifacts.title, content: artifactVersions.content })
+    .select({
+      id: artifacts.id,
+      title: artifacts.title,
+      content: artifactVersions.content,
+      draftContent: workingDrafts.content,
+    })
     .from(artifacts)
     .leftJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
+    // Autosave writes the working draft, not a version: the draft is what the
+    // editor shows, so it is what AI acts on. Without it a note that was typed
+    // but never checkpointed read as empty.
+    .leftJoin(
+      workingDrafts,
+      and(eq(workingDrafts.artifactId, artifacts.id), eq(workingDrafts.workspaceId, auth.workspaceId)),
+    )
     .where(and(eq(artifacts.id, artifactId), eq(artifacts.workspaceId, auth.workspaceId), eq(artifacts.kind, "note")))
     .limit(1);
   if (!note) throw new NoteAIError("note_not_found", "No such note.");
-  const markdown = noteContentToMarkdown(note.content as Record<string, unknown> | null);
+  const markdown = noteContentToMarkdown((note.draftContent ?? note.content) as Record<string, unknown> | null);
   return { id: note.id, title: note.title, markdown };
 }
 

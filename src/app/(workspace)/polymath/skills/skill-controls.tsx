@@ -15,7 +15,6 @@ import type { SkillWriteAction } from "./contract";
  */
 
 function useWrite() {
-  const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -27,7 +26,6 @@ function useWrite() {
         setError(result.error);
         return;
       }
-      router.refresh();
     });
   }
 

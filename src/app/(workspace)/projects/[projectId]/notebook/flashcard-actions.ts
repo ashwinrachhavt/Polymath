@@ -82,8 +82,9 @@ export async function rateNotebookFlashcardAction(input: z.input<typeof rateSche
     ) {
       return { ok: false as const, error: "That flashcard is not in this notebook." };
     }
+    // No revalidatePath: a rating fires once per card, and the session holds
+    // its deck in local state, so a re-render per card was discarded work.
     const result = await rateFlashcard(auth, parsed.data);
-    revalidatePath("/projects/" + parsed.data.projectId + "/notebook/flashcards");
     return { ok: true as const, dueAt: result.dueAt.toISOString() };
   } catch (error) {
     if (error instanceof FlashcardError) return { ok: false as const, error: error.message };

@@ -40,7 +40,7 @@ test("a capture turns into a fully formed Linear issue draft", async ({ page }) 
 });
 
 test("a note drafts a Linear issue proposal that links back to its source", async ({ page }) => {
-  await page.goto("/polymath/notes");
+  await page.goto("/polymath/notes?mode=list");
   await waitSettled(page);
 
   await page.getByRole("button", { name: "New note", exact: true }).click();

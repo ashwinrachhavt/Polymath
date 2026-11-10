@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { correctTransactionCategory, readStatementLedger } from "./statement-actions";
@@ -64,7 +63,6 @@ export function StatementPanel({
   extractionSucceeded: boolean;
   statement: StatementPanelData | null;
 }) {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
@@ -78,7 +76,6 @@ export function StatementPanel({
         setError(result.error);
         return;
       }
-      router.refresh();
     });
   }
 
@@ -90,7 +87,6 @@ export function StatementPanel({
         setError(result.error);
         return;
       }
-      router.refresh();
     });
   }
 

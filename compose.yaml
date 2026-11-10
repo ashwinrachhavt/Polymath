@@ -18,6 +18,11 @@
 
 x-app-env: &app-env # In-container service discovery (overrides localhost values from env files).
   DATABASE_URL: postgresql://axiom:axiom@db:5432/axiom
+  # Render server-side dates in the developer's zone, not the container's UTC:
+  # otherwise every client component that formats a date hydrates with a
+  # different string than the server sent. Set LOCAL_TZ in .env (e.g.
+  # America/Los_Angeles); unset keeps UTC, as CI expects.
+  TZ: ${LOCAL_TZ:-UTC}
   DOCLING_SERVE_URL: http://docling:5001
   HEADROOM_BASE_URL: http://headroom:8787
   SEARXNG_URL: http://searxng:8080
@@ -261,7 +266,9 @@ services:
       interval: 5s
       timeout: 5s
       retries: 3
-      start_period: 5s
+      # A cold RabbitMQ boot takes ~18s before check_running passes; a 5s
+      # grace failed `make up` on every fresh start while the broker came up fine.
+      start_period: 60s
     restart: unless-stopped
     networks:
       - search

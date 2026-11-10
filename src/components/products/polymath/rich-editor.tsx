@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { linkTargetInsertion, type LinkTarget } from "./link-target-insertion";
 import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
@@ -295,11 +295,21 @@ function AutocompleteToggle() {
           ? "No model provider is configured for suggestions."
           : status === "paused"
             ? "Suggestions are paused for a few minutes (allowance or rate limit)."
-            : "Suggestions appear when you pause. Tab accepts, Cmd/Ctrl+→ accepts a word, Esc dismisses."
+            : status === "silent"
+              ? "The model behind suggestions has not replied to the last few requests. It keeps trying as you write."
+              : "Suggestions appear when you pause. Tab accepts, Cmd/Ctrl+→ accepts a word, Esc dismisses."
       }
       onClick={() => setAutocompleteEnabled(!enabled)}
     >
-      {unavailable ? "Autocomplete unavailable" : enabled ? "Autocomplete on" : "Autocomplete off"}
+      {unavailable
+        ? "Autocomplete unavailable"
+        : !enabled
+          ? "Autocomplete off"
+          : status === "paused"
+            ? "Autocomplete paused"
+            : status === "silent"
+              ? "Autocomplete not responding"
+              : "Autocomplete on"}
     </Button>
   );
 }
@@ -516,7 +526,7 @@ function RichMarkdownEditor({
         role: "textbox",
         "aria-label": "Rich note content",
         "aria-multiline": "true",
-        class: `${compact ? "min-h-24 p-2 text-body-dense leading-6" : floating ? "prose-reading flex-1 font-[family-name:var(--font-reading)] text-foreground" : "min-h-72 max-w-[var(--measure-prose)] p-4 text-sm leading-7"} ${editable ? "writing-surface outline-none" : "outline-none [&_*]:cursor-text"} [&_p]:mb-4 [&_h1]:text-2xl [&_h2]:text-xl [&_h2]:mb-3 [&_h3]:text-lg [&_h3]:mb-2 [&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-6 [&_ol]:pl-6 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-4 [&_blockquote]:italic [&_pre]:overflow-auto [&_pre]:bg-muted [&_pre]:p-3 [&_a]:text-primary [&_a]:underline`,
+        class: `${compact ? "min-h-24 p-2 text-body-dense leading-6" : floating ? "prose-reading flex-1 cursor-text font-[family-name:var(--font-reading)] text-foreground" : "min-h-72 max-w-[var(--measure-prose)] p-4 text-sm leading-7"} ${editable ? "writing-surface outline-none" : "outline-none [&_*]:cursor-text"} [&_p]:mb-4 [&_h1]:text-2xl [&_h2]:text-xl [&_h2]:mb-3 [&_h3]:text-lg [&_h3]:mb-2 [&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-6 [&_ol]:pl-6 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-4 [&_blockquote]:italic [&_pre]:overflow-auto [&_pre]:bg-muted [&_pre]:p-3 [&_a]:text-primary [&_a]:underline`,
       },
     },
     onSelectionUpdate: ({ editor }) => {
@@ -707,8 +717,26 @@ function RichMarkdownEditor({
       </DialogContent>
     </Dialog>
   );
+  // Notion-style: the blank page below the last block belongs to the writing
+  // area, so a click there puts the caret at the end of the note. On click,
+  // not mousedown: the host may make the editor editable on this same click,
+  // so focus waits a tick for that to land.
+  const focusEndFromBlankSpace = (event: MouseEvent<HTMLDivElement>) => {
+    if (!editor || !floating) return;
+    const root = editor.view.dom;
+    if (event.target !== root && event.target !== event.currentTarget) return;
+    const last = root.lastElementChild;
+    if (last && event.clientY < last.getBoundingClientRect().bottom) return;
+    setTimeout(() => {
+      if (editor.isEditable && !editor.isDestroyed) editor.commands.focus("end");
+    }, 0);
+  };
   return (
-    <div ref={containerRef} className={floating ? "relative" : "relative panel overflow-hidden rounded-lg"}>
+    <div
+      ref={containerRef}
+      className={floating ? "relative flex flex-1 flex-col" : "relative panel overflow-hidden rounded-lg"}
+      onClick={focusEndFromBlankSpace}
+    >
       {slash && slashMatches.length > 0 && (
         <div className="absolute z-50 top-12 left-0" style={menuPos ?? undefined}>
           <SlashMenu

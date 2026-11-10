@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -51,7 +50,6 @@ export function ProjectSettingsForm({
   memories: Array<{ id: string; content: string }>;
   connectors: Array<{ id: string; label: string; enabled: boolean }>;
 }) {
-  const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -73,7 +71,6 @@ export function ProjectSettingsForm({
       }
       done?.();
       setNotice("Saved.");
-      router.refresh();
     });
   }
 

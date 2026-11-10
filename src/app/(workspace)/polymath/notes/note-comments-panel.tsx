@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { timeAgo } from "@/lib/time";
 import { addNoteCommentAction, resolveNoteCommentAction } from "./actions";
@@ -22,9 +21,8 @@ export type PanelComment = {
 };
 
 function CommentRow({ comment }: { comment: PanelComment }) {
-  const router = useRouter();
   const [busy, setBusy] = useState(false);
-  // Local mirror of resolvedAt: router.refresh() re-renders the server tree
+  // Local mirror of resolvedAt: the action's revalidation re-renders the server tree
   // but does not remount this row, so without it the panel would keep
   // showing the old state and the next click would send the same toggle.
   const [resolvedOverride, setResolvedOverride] = useState<boolean | null>(null);
@@ -40,7 +38,6 @@ function CommentRow({ comment }: { comment: PanelComment }) {
     setBusy(false);
     if (!result.ok) return;
     setResolvedOverride(result.resolvedAt !== null);
-    router.refresh();
   };
   return (
     <li className={`rounded-md border px-3 py-2.5 ${resolved ? "border-transparent bg-muted/30" : "border-border"}`}>
@@ -74,7 +71,6 @@ function CommentRow({ comment }: { comment: PanelComment }) {
 }
 
 export function NoteCommentsPanel({ noteId, initialComments }: { noteId: string; initialComments: PanelComment[] }) {
-  const router = useRouter();
   const [comments, setComments] = useState(initialComments);
   const [draft, setDraft] = useState("");
   const [pending, setPending] = useState(false);
@@ -92,7 +88,6 @@ export function NoteCommentsPanel({ noteId, initialComments }: { noteId: string;
     // flight belongs to the next comment.
     setDraft((current) => (current === body ? "" : current));
     setComments((current) => [...current, result.comment]);
-    router.refresh();
   };
 
   const openCount = comments.filter((c) => c.resolvedAt === null).length;

@@ -15,8 +15,10 @@ import { QuotaExhaustedError } from "@/integrations/providers/quota";
  * It answers 200 with `completion: ""` whenever there is nothing to show
  * (too little text, a slow or failed provider, a reply that was not a
  * continuation): a missing suggestion is not an error the writer should see.
- * 503 (no provider configured) and 429 (allowance or rate) tell the editor to
- * stop asking for a while.
+ * `answered: false` marks the empties where the model gave no reply at all (it
+ * failed, timed out or sent no text), so the editor can say suggestions are
+ * not arriving instead of claiming they are on. 503 (no provider configured)
+ * and 429 (allowance or rate) tell the editor to stop asking for a while.
  */
 
 const completeRequest = z.object({
@@ -53,8 +55,10 @@ export const POST = authedHandler(async (auth, request) => {
     return problemResponse(429, "rate_limited", "Too many suggestions requested; try again shortly.");
 
   try {
-    const { completion } = await completeWriting(auth, parsed.data, { signal: request.signal });
-    return Response.json({ completion }, { headers: { "cache-control": "no-store" } });
+    const { completion, answered } = await completeWriting(auth, parsed.data, { signal: request.signal });
+    return Response.json(answered ? { completion } : { completion, answered }, {
+      headers: { "cache-control": "no-store" },
+    });
   } catch (cause) {
     if (cause instanceof GenerationUnconfiguredError) {
       return problemResponse(503, "generation_unconfigured", "No model provider is configured for suggestions.");
@@ -63,6 +67,6 @@ export const POST = authedHandler(async (auth, request) => {
       return problemResponse(429, "quota_exhausted", "The model allowance for suggestions is used up.");
     }
     // A timeout, an aborted request or a provider error: no suggestion.
-    return Response.json({ completion: "" }, { headers: { "cache-control": "no-store" } });
+    return Response.json({ completion: "", answered: false }, { headers: { "cache-control": "no-store" } });
   }
 });

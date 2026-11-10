@@ -11,14 +11,23 @@ import { useSyncExternalStore } from "react";
 type CompletionRequest = { title?: string; before: string; after: string };
 export type CompleteFn = (request: CompletionRequest, signal: AbortSignal) => Promise<string>;
 
-export type AutocompleteStatus = "ready" | "unavailable" | "paused";
+/*
+ * "silent": the route keeps answering with no reply from the model at all
+ * (provider failing, timing out, or sending empty text). Requests continue so
+ * it recovers on its own, but the toggle stops claiming suggestions are on.
+ */
+export type AutocompleteStatus = "ready" | "unavailable" | "paused" | "silent";
 
 const STORAGE_KEY = "polymath.autocomplete";
 const PAUSE_MS = 5 * 60_000;
 const RATE_LIMIT_PAUSE_MS = 20_000;
 
+/** Consecutive no-answer replies before the toggle says suggestions are not arriving. */
+const SILENT_AFTER = 3;
+
 let pausedUntil = 0;
 let unavailable = false;
+let unanswered = 0;
 const listeners = new Set<() => void>();
 const notify = () => listeners.forEach((listener) => listener());
 
@@ -39,9 +48,11 @@ export function setAutocompleteEnabled(on: boolean) {
   notify();
 }
 
-function status(): AutocompleteStatus {
+/** Whether the route can serve suggestions right now (exported for tests). */
+export function autocompleteStatus(): AutocompleteStatus {
   if (unavailable) return "unavailable";
-  return Date.now() < pausedUntil ? "paused" : "ready";
+  if (Date.now() < pausedUntil) return "paused";
+  return unanswered >= SILENT_AFTER ? "silent" : "ready";
 }
 
 function subscribe(listener: () => void) {
@@ -59,12 +70,19 @@ function subscribe(listener: () => void) {
 /** The preference and the route's availability, live across editors and tabs. */
 export function useAutocomplete(): { enabled: boolean; status: AutocompleteStatus } {
   const enabled = useSyncExternalStore(subscribe, autocompleteEnabled, () => true);
-  const current = useSyncExternalStore(subscribe, status, () => "ready" as const);
+  const current = useSyncExternalStore(subscribe, autocompleteStatus, () => "ready" as const);
   return { enabled, status: current };
 }
 
+function recordAnswer(answered: boolean) {
+  const was = autocompleteStatus();
+  unanswered = answered ? 0 : unanswered + 1;
+  if (autocompleteStatus() !== was) notify();
+}
+
 export const fetchCompletion: CompleteFn = async (request, signal) => {
-  if (status() !== "ready") return "";
+  const current = autocompleteStatus();
+  if (current !== "ready" && current !== "silent") return "";
   const response = await fetch("/api/v1/notes/complete", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -86,7 +104,11 @@ export const fetchCompletion: CompleteFn = async (request, signal) => {
     setTimeout(notify, wait + 50);
     return "";
   }
-  if (!response.ok) return "";
-  const body = (await response.json().catch(() => null)) as { completion?: unknown } | null;
+  if (!response.ok) {
+    recordAnswer(false);
+    return "";
+  }
+  const body = (await response.json().catch(() => null)) as { completion?: unknown; answered?: unknown } | null;
+  recordAnswer(body?.answered !== false && typeof body?.completion === "string");
   return typeof body?.completion === "string" ? body.completion : "";
 };

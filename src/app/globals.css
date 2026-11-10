@@ -780,12 +780,15 @@
   outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
-/* The writing surface is the page itself: an editor-wide ring reads as a box
-   around the canvas. Keyboard focus stays visible through the caret and a
-   whisper outline in the border color. Unlayered so it beats the ring above. */
+/* The writing surface is the page itself (Notion-style): any outline around
+   it reads as a text box with edges, and a contenteditable matches
+   :focus-visible on every click, so it showed up while typing. Focus is shown
+   by the caret, drawn in full ink. Unlayered so it beats the ring above. */
 .writing-surface:focus-visible {
-  outline: 1px solid var(--border);
-  outline-offset: -1px;
+  outline: none;
+}
+.writing-surface {
+  caret-color: var(--foreground);
 }
 /* A composer draws its focus ring on the surrounding panel
    (has-[:focus-visible]:ring-3); the textarea's own outline would double it.
@@ -1043,4 +1046,19 @@ li[data-deep-linked="true"] {
 }
 .activity-title-toggle[open] > summary .title-collapse {
   display: inline;
+}
+
+/* Evergreen reader: links read as links (Andy Matuschak's working-notes feel),
+   blue and unadorned until hovered, so prose stays prose. */
+.evergreen-prose .wiki-link {
+  color: var(--reader-link, #2f6fd6);
+  text-decoration: none;
+}
+.evergreen-prose .wiki-link:hover {
+  text-decoration: underline;
+  text-decoration-color: currentColor;
+  background-color: transparent;
+}
+.dark .evergreen-prose .wiki-link {
+  color: var(--reader-link-dark, #7aa7ff);
 }

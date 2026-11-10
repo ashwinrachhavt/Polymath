@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { answerNotebookExplainItAction } from "./explain-actions";
 
 type Evidence = { quote: string; source: { documentId: string; extractionId: string; title: string } };
@@ -17,7 +16,6 @@ type Turn = {
 type Session = { id: string; status: "active" | "completed"; title: string; turns: Turn[] };
 
 export function ExplainItSession({ projectId, session }: { projectId: string; session: Session }) {
-  const router = useRouter();
   const [answer, setAnswer] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -38,7 +36,6 @@ export function ExplainItSession({ projectId, session }: { projectId: string; se
         return;
       }
       setAnswer("");
-      router.refresh();
     });
   }
 

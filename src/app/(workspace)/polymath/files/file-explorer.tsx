@@ -172,6 +172,9 @@ export function FileExplorer({
     const accepted = files.filter((f) => /\.(pdf|png|jpe?g)$/i.test(f.name));
     const skipped = files.length - accepted.length;
     if (skipped > 0) setNotice(`${skipped} file${skipped === 1 ? "" : "s"} skipped: only PDF, PNG and JPEG are read.`);
+    // One refresh after the batch, not one per file: each refresh is a full
+    // render of the explorer, and the upload rows already show per-file state.
+    let landed = false;
     for (const file of accepted) {
       const key = crypto.randomUUID();
       setUploads((u) => [{ key, name: file.name, state: "busy" }, ...u]);
@@ -199,12 +202,13 @@ export function FileExplorer({
           );
         } else {
           setUploads((u) => u.map((x) => (x.key === key ? { ...x, state: "done" } : x)));
-          router.refresh();
+          landed = true;
         }
       } catch {
         setUploads((u) => u.map((x) => (x.key === key ? { ...x, state: "error", note: "Network error" } : x)));
       }
     }
+    if (landed) router.refresh();
   }
 
   async function rereadSelected() {
@@ -281,8 +285,9 @@ export function FileExplorer({
 
   async function organise(fn: () => Promise<{ ok: true } | { ok: false; error: string }>, done: string) {
     const result = await fn();
+    // Every organise action revalidates /polymath/files, and that response
+    // already carries the re-rendered page: no second refresh.
     setNotice(result.ok ? done : result.error);
-    if (result.ok) router.refresh();
     return result.ok;
   }
 
@@ -300,7 +305,6 @@ export function FileExplorer({
     if (result.ok) {
       setNewFolderIn(null);
       setFolder(`folder:${result.folderId}`);
-      router.refresh();
     } else {
       setNotice(result.error);
     }
@@ -900,16 +904,12 @@ export function FileExplorer({
           }}
           onClose={() => setActive(null)}
           onShare={() => setShareOpen(true)}
-          onChanged={(m) => {
-            setNotice(m);
-            router.refresh();
-          }}
+          onChanged={(m) => setNotice(m)}
           onArchived={(m) => {
             const gone = activeRow.id;
             setRows((c) => c.filter((r) => r.id !== gone));
             setActive(null);
             setNotice(m);
-            router.refresh();
           }}
         />
       ) : null}

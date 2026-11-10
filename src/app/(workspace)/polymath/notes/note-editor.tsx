@@ -77,6 +77,15 @@ type VersionItem = { id: string; versionNumber: number; reason: string; note: st
 const stamp = (iso: string) =>
   new Date(iso).toLocaleString("en", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
+/** The server renders in UTC and the browser in local time; the text is expected to differ. */
+function Stamp({ iso }: { iso: string }) {
+  return (
+    <time dateTime={iso} suppressHydrationWarning>
+      {stamp(iso)}
+    </time>
+  );
+}
+
 /*
  * One in-flight AI run against the note. The run's result is staged here as
  * a proposal; accepting it applies the text to the editor and commits a
@@ -115,7 +124,6 @@ export function NewNoteButton({ icon = false }: { icon?: boolean }) {
     setPending(false);
     if (!result.ok) return setError(result.error);
     router.push(`/polymath/notes?id=${result.artifactId}`);
-    router.refresh();
   };
   return (
     <span className="inline-flex items-center gap-2">
@@ -158,7 +166,6 @@ function LinkEditor({
   outgoing: boolean;
   quiet?: boolean;
 }) {
-  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [type, setType] = useState(link.linkType === "reference" ? "related" : link.linkType);
   const [why, setWhy] = useState(link.context && link.linkType !== "reference" ? link.context : "");
@@ -172,7 +179,6 @@ function LinkEditor({
     setBusy(false);
     if (!result.ok) return setError(result.error ?? "Could not save.");
     setOpen(false);
-    router.refresh();
   };
   if (!open) {
     return (
@@ -342,7 +348,6 @@ function LinkRow({
 export type IndexNotice = { kind: "failed"; error: string } | { kind: "unindexed" };
 
 function MeaningIndexStatus({ noteId, notice }: { noteId: string; notice: IndexNotice }) {
-  const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   return (
@@ -358,7 +363,6 @@ function MeaningIndexStatus({ noteId, notice }: { noteId: string; notice: IndexN
           const result = await retryNoteEmbeddingAction({ artifactId: noteId });
           setPending(false);
           if (!result.ok) return setError(result.error);
-          router.refresh();
         }}
       >
         {pending ? "Indexing…" : notice.kind === "failed" ? "Retry indexing" : "Index for meaning search"}
@@ -516,7 +520,6 @@ export function NoteEditor({
       if (!result.ok) return setError(result.error);
       versionRef.current = result.version;
       setTags(result.tags);
-      router.refresh();
     });
   };
   const addTag = () => {
@@ -542,7 +545,6 @@ export function NoteEditor({
       // deterministic point where the new title has landed before they
       // navigate or reload — but it must not paper over a dirty body.
       if (markdownRef.current === savedRef.current) setSaveState("saved");
-      router.refresh();
     });
   };
 
@@ -571,7 +573,6 @@ export function NoteEditor({
       // Non-fatal.
     }
     setSaveState("saved");
-    router.refresh();
   };
 
   // Cmd/Ctrl+S is the checkpoint: the browser's Save dialog never helps here,
@@ -695,7 +696,6 @@ export function NoteEditor({
     setSaveState("saved");
     setAi(null);
     if (notice) setError(notice);
-    router.refresh();
   };
 
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -792,7 +792,9 @@ export function NoteEditor({
                         <li key={v.id} className="rounded-md border border-border px-3 py-2 text-body-dense">
                           <span className="flex items-center justify-between gap-2">
                             <span className="font-medium">Version {v.versionNumber}</span>
-                            <span className="text-xs text-muted-foreground">{stamp(v.createdAt)}</span>
+                            <span className="text-xs text-muted-foreground">
+                              <Stamp iso={v.createdAt} />
+                            </span>
                           </span>
                           <span className="mt-0.5 block text-xs text-muted-foreground">
                             {v.reason}
@@ -822,7 +824,9 @@ export function NoteEditor({
               role="status"
               className="mb-6 flex flex-wrap items-center gap-2 rounded-lg border border-(--tone-attention-wash)/40 bg-(--tone-attention-wash)/15 p-3 text-body-dense"
             >
-              <span>Unsent changes from {stamp(localOffer.savedAt)} were found in this browser.</span>
+              <span>
+                Unsent changes from <Stamp iso={localOffer.savedAt} /> were found in this browser.
+              </span>
               <Button
                 type="button"
                 size="sm"
@@ -913,7 +917,9 @@ export function NoteEditor({
                   Not saved
                 </span>
               )}
-              <span>Updated {stamp(updatedAt)}</span>
+              <span>
+                Updated <Stamp iso={updatedAt} />
+              </span>
             </div>
             {indexNotice && (
               <div className="mt-1.5 text-xs text-muted-foreground">
@@ -1175,11 +1181,15 @@ export function NoteEditor({
               </div>
               <div className="flex items-center justify-between gap-2">
                 <dt className="text-xs text-muted-foreground">Created</dt>
-                <dd className="text-xs">{stamp(createdAt)}</dd>
+                <dd className="text-xs">
+                  <Stamp iso={createdAt} />
+                </dd>
               </div>
               <div className="flex items-center justify-between gap-2">
                 <dt className="text-xs text-muted-foreground">Updated</dt>
-                <dd className="text-xs">{stamp(updatedAt)}</dd>
+                <dd className="text-xs">
+                  <Stamp iso={updatedAt} />
+                </dd>
               </div>
               <div className="flex items-center justify-between gap-2">
                 <dt className="text-xs text-muted-foreground">Version</dt>

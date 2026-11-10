@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { captureUrlAction } from "./actions";
@@ -11,7 +10,6 @@ import { captureUrlAction } from "./actions";
  * stuck row heals in place instead of duplicating.
  */
 export function RetryCaptureButton({ url }: { url: string }) {
-  const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -21,7 +19,6 @@ export function RetryCaptureButton({ url }: { url: string }) {
     try {
       const result = await captureUrlAction(url);
       if (!result.ok) throw new Error(result.message);
-      router.refresh();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "The fetch failed again.");
     } finally {

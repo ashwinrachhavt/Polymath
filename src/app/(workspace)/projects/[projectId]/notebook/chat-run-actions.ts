@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createEveDriver, eveAgentForProfile, eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { createEngine } from "@/domains/agents/engine";
@@ -49,6 +50,10 @@ export async function startNotebookRun(input: { projectId: string; title: string
       subjects: [{ type: "project", id: parsed.projectId }],
       estimateUsd: "0.25",
     });
+    // The new conversation joins the notebook's history. Revalidating here
+    // returns the re-rendered page with this response, so the client needs no
+    // follow-up router.refresh().
+    revalidatePath(`/projects/${parsed.projectId}/notebook`);
     return { ok: true, runId };
   } catch (cause) {
     // A failed start is a stated error, never a bare throw into the client.

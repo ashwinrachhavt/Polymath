@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
+import { EvergreenSurface } from "./evergreen/surface";
 import { io } from "next/cache";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Status } from "@/components/workspace/ui";
@@ -75,7 +76,7 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
   // eslint-disable-next-line react-hooks/purity -- per-request rolling window: io() above already opted this render out of prerendering, and the window must be evaluated at request time, not build time.
   const editedFrom = editedDays ? new Date(Date.now() - editedDays * 86_400_000) : undefined;
   const tag = typeof raw.tag === "string" && raw.tag.trim() ? raw.tag.trim().toLowerCase() : undefined;
-  if (list.filters.layout === "kanban") redirect("/polymath/notes/evergreen");
+  if (list.filters.layout === "kanban") redirect("/polymath/notes?board=1");
   // The result page and the tag facets are independent reads.
   const [found, allTags] = await Promise.all([
     pageNotes(auth, {
@@ -125,11 +126,8 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
       <div>
         <h2 className="flex items-center justify-between text-body-dense font-medium">
           Notes
-          <Link
-            href="/polymath/notes/evergreen"
-            className="text-xs font-normal text-muted-foreground hover:text-foreground"
-          >
-            Board &amp; reader →
+          <Link href="/polymath/notes" className="text-xs font-normal text-muted-foreground hover:text-foreground">
+            Reader →
           </Link>
         </h2>
         <p className="mt-0.5 text-xs text-muted-foreground">
@@ -334,12 +332,29 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
   );
 }
 
+/*
+ * Notes opens to reading: the stacked, evergreen-style reader. A note id opens
+ * the editor, and a search, a filter or ?mode=list opens the list beside it.
+ */
+const LIST_PARAMS = ["id", "q", "view", "tag", "kind", "edited", "page", "layout", "mode"] as const;
+
+function opensReader(raw: RawSearchParams): boolean {
+  if (typeof raw.stack === "string" || raw.board === "1") return true;
+  return !LIST_PARAMS.some((key) => raw[key] !== undefined);
+}
+
 export default function NotesPage(props: { searchParams: Promise<RawSearchParams> }) {
   return (
     <Suspense fallback={<NotesSkeleton />}>
-      <NotesSurface {...props} />
+      <NotesRouter {...props} />
     </Suspense>
   );
+}
+
+async function NotesRouter({ searchParams }: { searchParams: Promise<RawSearchParams> }) {
+  const raw = await searchParams;
+  if (opensReader(raw)) return <EvergreenSurface raw={raw} />;
+  return <NotesSurface searchParams={Promise.resolve(raw)} />;
 }
 
 function NotesSkeleton() {

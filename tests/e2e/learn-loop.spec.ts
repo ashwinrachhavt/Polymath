@@ -181,18 +181,15 @@ test("the learning loop: library states, a sitting with instant feedback, and on
   // first #content (the pattern the other specs use).
   const content = page.locator("#content").first();
 
-  // The library: learning state per document, the Stones stat, and the
-  // honest state for the document still being read.
-  await expect(content.getByRole("heading", { name: "Learn", level: 1 })).toBeVisible();
-  await expect(content.getByText("Stones earned")).toBeVisible();
-  const docRow = content.getByRole("listitem").filter({ has: page.getByText(DOC_TITLE, { exact: true }) });
+  // The Up next queue (PR #557): quizzes with their best score and a
+  // Continue link. A document still being read has no quiz, so it is not
+  // queued; its honest state lives on its own quiz page.
+  await expect(content.getByRole("heading", { name: "Up next", level: 1 })).toBeVisible();
+  const quizzes = content.getByRole("region", { name: "Quizzes" });
+  const docRow = quizzes.getByRole("listitem").filter({ has: page.getByText(DOC_TITLE, { exact: true }) });
   await expect(docRow).toContainText("Best score 1/3");
-  await expect(docRow.getByRole("link", { name: "Retake" })).toBeVisible();
-  const readingRow = content
-    .getByRole("listitem")
-    .filter({ has: page.getByText(STILL_READING_TITLE, { exact: true }) });
-  await expect(readingRow).toContainText("Still reading this document");
-  await expect(readingRow.getByRole("button", { name: "Generate quiz" })).toBeDisabled();
+  await expect(docRow.getByRole("link", { name: "Continue" })).toBeVisible();
+  await expect(quizzes.getByText(STILL_READING_TITLE, { exact: true })).toHaveCount(0);
 
   const client = db();
   if (!client) throw new Error("DATABASE_URL disappeared mid-journey");
@@ -200,7 +197,7 @@ test("the learning loop: library states, a sitting with instant feedback, and on
 
   // Open the quiz: one question at a time, choices plus the apart
   // I-don't-know option.
-  await docRow.getByRole("link", { name: "Retake" }).click();
+  await docRow.getByRole("link", { name: "Continue" }).click();
   await expect(content.getByText("Question 1 of 3")).toBeVisible();
   await expect(content.getByRole("button", { name: "I don't know" })).toBeVisible();
 
@@ -222,15 +219,34 @@ test("the learning loop: library states, a sitting with instant feedback, and on
   await expect(content.getByText("Kept as an honest gap.")).toBeVisible();
   await content.getByRole("button", { name: "Finish" }).click();
 
-  // The sitting is recorded; one ledger row earned the stone exactly once.
+  // The sitting is recorded, but 1 of 3 is under the learning gate (two
+  // thirds correct, gamification rules spec §6), so it pays nothing.
   await expect(content.getByText("1 of 3")).toBeVisible();
-  await expect(content.getByText("+10 stones for finishing this quiz.")).toBeVisible();
-  const rows = await client<{ idempotency_key: string; points: number }[]>`
+  await expect(content.getByText("No stone for this sitting.")).toBeVisible();
+  const ledgerRows = () => client<{ idempotency_key: string; points: number }[]>`
     select idempotency_key, points
     from reward_ledger
     where subject_type = 'quiz_attempt'
       and subject_id in (select id from quiz_attempts where quiz_id = ${fixture!.quizId})
-    order by created_at desc limit 1`;
+    order by created_at desc`;
+  expect(await ledgerRows()).toHaveLength(0);
+
+  // A retake that clears the gate (2 of 3, the gap still honest) earns the
+  // stone; one ledger row, exactly once.
+  await content.getByRole("button", { name: "Retake" }).click();
+  await expect(content.getByText("Question 1 of 3")).toBeVisible();
+  await content.getByRole("button", { name: "In the same transaction" }).click();
+  await content.getByRole("button", { name: "Next question" }).click();
+  await expect(content.getByText("Question 2 of 3")).toBeVisible();
+  await content.getByRole("button", { name: "Each used passage by title" }).click();
+  await expect(content.getByText("Correct!")).toBeVisible();
+  await content.getByRole("button", { name: "Next question" }).click();
+  await expect(content.getByText("Question 3 of 3")).toBeVisible();
+  await content.getByRole("button", { name: "I don't know" }).click();
+  await content.getByRole("button", { name: "Finish" }).click();
+  await expect(content.getByText("2 of 3")).toBeVisible();
+  await expect(content.getByText("+10 stones for finishing this quiz.")).toBeVisible();
+  const rows = await ledgerRows();
   expect(rows).toHaveLength(1);
   expect(rows[0].points).toBe(10);
   expect(rows[0].idempotency_key).toMatch(/^quiz_attempt:/);
@@ -244,5 +260,5 @@ test("the learning loop: library states, a sitting with instant feedback, and on
   await expect(page.locator("#content").first().getByText("Points earned")).toBeVisible();
   await expect(page.getByText(String(earned)).first()).toBeVisible();
   await openLearn(page);
-  await expect(page.locator("#content").first().getByText("Best score 1/3")).toBeVisible();
+  await expect(page.locator("#content").first().getByText("Best score 2/3")).toBeVisible();
 });

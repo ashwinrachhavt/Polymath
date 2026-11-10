@@ -15,6 +15,7 @@ import {
 import { ArrowLeft, PenLine, Search } from "lucide-react";
 import { MarkdownBlocks } from "@/components/markdown";
 import { inline } from "@/components/markdown-inline";
+import { NewNoteButton } from "../note-editor";
 
 export type StackIndexEntry = {
   id: string;
@@ -35,9 +36,9 @@ export type StackNote = {
   backlinks: { id: string; title: string; snippet: string | null }[];
 };
 
-const BASE = "/polymath/notes/evergreen";
+const BASE = "/polymath/notes";
 const INDEX_WIDTH = 352;
-const NOTE_WIDTH = 620;
+const NOTE_WIDTH = 640;
 /** How much of a covered pane stays visible as its spine. */
 const SPINE = 40;
 const WIKI_LINK = /\[\[([^\]\n]+)\]\]/g;
@@ -313,7 +314,13 @@ export function EvergreenStack({
             </div>
             {searchBox("w-64")}
             <Link
-              href="/polymath/notes"
+              href={BASE}
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-2.5 text-body-dense hover:bg-muted/40"
+            >
+              Reader
+            </Link>
+            <Link
+              href={`${BASE}?mode=list`}
               className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-2.5 text-body-dense hover:bg-muted/40"
             >
               <PenLine className="size-3.5" aria-hidden />
@@ -388,6 +395,17 @@ export function EvergreenStack({
             <p className="mt-1 text-xs text-muted-foreground">
               {index.length} notes · follow a link and it opens beside this one.
             </p>
+            <div className="mt-4">
+              <NewNoteButton />
+            </div>
+            <p className="mt-3 flex gap-3 text-xs text-muted-foreground">
+              <Link href={`${BASE}?board=1`} className="hover:text-foreground">
+                Board
+              </Link>
+              <Link href={`${BASE}?mode=list`} className="hover:text-foreground">
+                List &amp; editor
+              </Link>
+            </p>
             {searchBox("mt-5 w-full")}
             <ul className="mt-4 flex flex-col">
               {filtered.map((entry) => (
@@ -451,7 +469,7 @@ export function EvergreenStack({
                     ))}
                   </p>
                 )}
-                <div className="prose-reading mt-6 flex flex-col gap-1.5">
+                <div className="evergreen-prose prose-reading mt-6 flex flex-col gap-3 text-[1.0625rem] leading-[1.65]">
                   {note.markdown.trim() ? (
                     <MarkdownBlocks text={note.markdown} renderInline={renderInlineFor(pane)} />
                   ) : (

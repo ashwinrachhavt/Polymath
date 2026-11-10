@@ -71,6 +71,8 @@ export async function restoreDocumentVersionAction(raw: unknown) {
   const input = restoreSchema.parse(raw);
   try {
     const result = await restoreDocumentVersion(auth, input);
+    // The file explorer's preview pane is the caller; its rows show the version.
+    revalidatePath("/polymath/files");
     return { ok: true as const, restored: result.restored };
   } catch (cause) {
     if (cause instanceof VersionRestoreError) {
@@ -101,6 +103,7 @@ export async function archiveDocumentAction(raw: unknown) {
   const input = archiveSchema.parse(raw);
   try {
     const result = await archiveDocument(auth, input);
+    revalidatePath("/polymath/files");
     return { ok: true as const, ...result };
   } catch (cause) {
     if (cause instanceof DocumentLifecycleError) {

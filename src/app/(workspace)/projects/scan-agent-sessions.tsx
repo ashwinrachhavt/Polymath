@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { FolderSearch, Loader2 } from "lucide-react";
 
 import { scanAgentSessionsAction } from "./actions";
@@ -27,7 +26,6 @@ type ScanSummary = {
 };
 
 export function ScanAgentSessions() {
-  const router = useRouter();
   const [pending, start] = useTransition();
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -44,8 +42,8 @@ export function ScanAgentSessions() {
       }
       setNote("");
       setResult(outcome);
-      // The section's rows are server-rendered; a refresh re-reads them.
-      router.refresh();
+      // The section's rows are server-rendered; the action's revalidation
+      // re-reads them in the same response.
     });
   }
 

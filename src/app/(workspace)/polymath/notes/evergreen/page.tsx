@@ -1,112 +1,12 @@
-import { Suspense } from "react";
-import { io } from "next/cache";
-import { z } from "zod";
-import { Skeleton } from "@/components/ui/skeleton";
-import {
-  extractWikiLinkTitles,
-  findNotesByTitle,
-  getNote,
-  listNoteBacklinks,
-  listNotes,
-  type NoteListItem,
-} from "@/domains/knowledge/notes";
-import { noteContentToMarkdown } from "@/domains/knowledge/note-content";
-import { markdownToPlainText } from "@/lib/display-text";
-import { getAuthContext } from "@/lib/auth";
+import { redirect } from "next/navigation";
 import type { RawSearchParams } from "@/lib/list-params";
-import { EvergreenStack, type StackIndexEntry, type StackNote } from "./evergreen-stack";
 
-export const metadata = { title: "Notes · Polymath" };
-
-/*
- * A read-only view of the notes graph in the evergreen-notes style: each note
- * opens as a pane to the right of the one that linked to it, earlier panes
- * fold into spines, and every pane ends with the notes that link to it. The
- * open trail lives in the URL (?stack=id,id,...) so it can be shared, reloaded
- * and walked back with the browser. Editing stays on /polymath/notes.
- */
-
-const MAX_PANES = 8;
-const uuid = z.string().uuid();
-
-function parseStack(raw: RawSearchParams): string[] {
-  const value = typeof raw.stack === "string" ? raw.stack : "";
-  const ids = value.split(",").filter((id) => uuid.safeParse(id).success);
-  return [...new Set(ids)].slice(-MAX_PANES);
-}
-
-async function EvergreenSurface({ searchParams }: { searchParams: Promise<RawSearchParams> }) {
-  await io();
-  const auth = await getAuthContext();
-  const stack = parseStack(await searchParams);
-
-  const [all, opened] = await Promise.all([
-    listNotes(auth, 2000),
-    Promise.all(
-      stack.map(async (id) => {
-        const note = await getNote(auth, id);
-        if (!note) return null;
-        const backlinks = await listNoteBacklinks(auth, id);
-        return { note, backlinks };
-      }),
-    ),
-  ]);
-
-  const toEntry = (n: NoteListItem): StackIndexEntry => ({
-    id: n.id,
-    title: n.title,
-    kind: n.kind,
-    tags: Array.isArray(n.tags) ? n.tags.filter((t): t is string => typeof t === "string") : [],
-    updatedAt: n.updatedAt.toISOString(),
-    excerpt: n.excerpt ? markdownToPlainText(n.excerpt).slice(0, 280) : null,
-  });
-  const index = all.map(toEntry);
-
-  const notes: StackNote[] = opened
-    .filter((entry): entry is NonNullable<typeof entry> => entry !== null)
-    .map(({ note, backlinks }) => ({
-      id: note.id,
-      title: note.title,
-      kind: note.kind,
-      tags: note.tags,
-      updatedAt: note.updatedAt.toISOString(),
-      markdown: noteContentToMarkdown(note.draft?.content ?? note.content),
-      backlinks: backlinks.map((b) => ({
-        id: b.id,
-        title: b.title,
-        snippet: b.context ? markdownToPlainText(b.context) : b.excerpt ? markdownToPlainText(b.excerpt) : null,
-      })),
-    }));
-
-  // The index is capped, so a [[Title]] in an open pane may point past it:
-  // those titles are looked up directly, and a link never reads as a missing
-  // note just because the workspace is large.
-  const indexed = new Set(index.map((entry) => entry.title.trim().toLowerCase()));
-  const beyond = notes
-    .flatMap((note) => extractWikiLinkTitles(note.markdown))
-    .map((title) => title.split("|")[0].trim())
-    .filter((title) => title && !indexed.has(title.toLowerCase()));
-  const linked = beyond.length ? (await findNotesByTitle(auth, beyond)).map(toEntry) : [];
-
-  return <EvergreenStack index={index} notes={notes} linked={linked} />;
-}
-
-export default function EvergreenNotesPage(props: { searchParams: Promise<RawSearchParams> }) {
-  return (
-    <Suspense
-      fallback={
-        <div role="status" aria-label="Loading notes" className="flex h-full gap-0">
-          <div className="flex w-[22rem] shrink-0 flex-col gap-3 border-r border-border p-8">
-            <Skeleton className="h-7 w-32" />
-            <Skeleton className="h-8 w-full" />
-            {Array.from({ length: 8 }, (_, i) => (
-              <Skeleton key={i} className="h-5 w-[85%]" />
-            ))}
-          </div>
-        </div>
-      }
-    >
-      <EvergreenSurface {...props} />
-    </Suspense>
-  );
+// The stacked reader is now what /polymath/notes opens to; keep old links working.
+export default async function EvergreenNotesPage({ searchParams }: { searchParams: Promise<RawSearchParams> }) {
+  const raw = await searchParams;
+  const params = new URLSearchParams();
+  if (typeof raw.stack === "string") params.set("stack", raw.stack);
+  if (raw.board === "1") params.set("board", "1");
+  const query = params.toString();
+  redirect(query ? `/polymath/notes?${query}` : "/polymath/notes");
 }

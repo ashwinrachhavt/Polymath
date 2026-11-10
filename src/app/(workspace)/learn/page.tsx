@@ -1,13 +1,37 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { connection } from "next/server";
 import type { Metadata } from "next";
 import { getAuthContext } from "@/lib/auth";
 import { getLearnLibrary } from "@/domains/learning/queries";
 import { getFlashcardDueQueue } from "@/domains/learning/flashcards";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export const metadata: Metadata = { title: "Learning · Polymath" };
 
-export default async function LearnPage() {
+// The queue reads per-request data, so it streams behind a skeleton instead of
+// blocking the whole navigation (cacheComponents: blocking-prerender-dynamic).
+export default function LearnPage() {
+  return (
+    <Suspense
+      fallback={
+        <div
+          role="status"
+          aria-label="Loading Up next"
+          className="page-content mx-auto flex w-full max-w-4xl flex-col gap-4"
+        >
+          <Skeleton className="h-8 w-40" />
+          <Skeleton className="h-28 w-full" />
+          <Skeleton className="h-28 w-full" />
+        </div>
+      }
+    >
+      <LearnSurface />
+    </Suspense>
+  );
+}
+
+async function LearnSurface() {
   await connection();
   const auth = await getAuthContext();
   const [library, dueCards] = await Promise.all([getLearnLibrary(auth), getFlashcardDueQueue(auth, 40)]);

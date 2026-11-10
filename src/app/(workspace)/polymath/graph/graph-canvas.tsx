@@ -17,7 +17,6 @@ import {
   type Node,
   type NodeProps,
 } from "@xyflow/react";
-import { useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { GraphEdge, GraphNode } from "@/domains/knowledge/relations";
@@ -152,7 +151,6 @@ function mixPosition(nodes: CardNode[], sourceIds: string[]): { x: number; y: nu
 }
 
 export function GraphCanvas({ nodes: initialNodes, edges: initialEdges }: { nodes: GraphNode[]; edges: GraphEdge[] }) {
-  const router = useRouter();
   const [nodes, setNodes, onNodesChange] = useNodesState<CardNode>(
     useMemo(() => layout(initialNodes, initialEdges), [initialNodes, initialEdges]),
   );
@@ -200,9 +198,10 @@ export function GraphCanvas({ nodes: initialNodes, edges: initialEdges }: { node
     async (c: Connection) => {
       if (!c.source || !c.target || c.source === c.target) return;
       setError("");
-      if (await linkPair(c.source, c.target)) router.refresh();
+      // linkCardsAction revalidates, and the edge is already drawn: no refresh.
+      await linkPair(c.source, c.target);
     },
-    [linkPair, router],
+    [linkPair],
   );
 
   /* Alfred's CONNECT: every unique pair in the crucible, pairwise. Failed
@@ -215,9 +214,8 @@ export function GraphCanvas({ nodes: initialNodes, edges: initialEdges }: { node
     const pairs: [string, string][] = [];
     for (let i = 0; i < crucible.ids.length; i++)
       for (let j = i + 1; j < crucible.ids.length; j++) pairs.push([crucible.ids[i], crucible.ids[j]]);
-    const results = await Promise.all(pairs.map(([a, b]) => linkPair(a, b)));
+    await Promise.all(pairs.map(([a, b]) => linkPair(a, b)));
     setBusy(false);
-    if (results.every(Boolean)) router.refresh();
   };
 
   /* Alfred's MIX: synthesize the crucible into a new card and keep playing —

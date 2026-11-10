@@ -42,8 +42,9 @@ export function GenerateQuizButton({
               setError(result.error);
               return;
             }
+            // generateQuizAction revalidates, so the current page re-renders in
+            // the same response; only the push needs the router.
             if (afterGenerate === "push") router.push(`/learn/${documentId}`);
-            else router.refresh();
           });
         }}
       >

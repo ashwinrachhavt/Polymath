@@ -161,3 +161,35 @@ describe("inline completion", () => {
     expect(complete).not.toHaveBeenCalled();
   });
 });
+
+describe("autocomplete status", () => {
+  const ask = { before: "Evergreen notes", after: "" };
+  const reply = (body: unknown) => vi.fn(async () => Response.json(body));
+  const signal = () => new AbortController().signal;
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  it("stops claiming suggestions are on when the model keeps sending no reply, and recovers", async () => {
+    const client = await import("@/components/products/polymath/autocomplete-client");
+    const silent = reply({ completion: "", answered: false });
+    vi.stubGlobal("fetch", silent);
+    for (let i = 0; i < 2; i++) await client.fetchCompletion(ask, signal());
+    expect(client.autocompleteStatus()).toBe("ready");
+    await client.fetchCompletion(ask, signal());
+    expect(client.autocompleteStatus()).toBe("silent");
+    // It keeps asking, so a provider that comes back clears the flag.
+    vi.stubGlobal("fetch", reply({ completion: " link to each other." }));
+    expect(await client.fetchCompletion(ask, signal())).toBe(" link to each other.");
+    expect(client.autocompleteStatus()).toBe("ready");
+  });
+
+  it("treats an empty suggestion the model did answer as ready", async () => {
+    const client = await import("@/components/products/polymath/autocomplete-client");
+    vi.stubGlobal("fetch", reply({ completion: "" }));
+    for (let i = 0; i < 4; i++) await client.fetchCompletion(ask, signal());
+    expect(client.autocompleteStatus()).toBe("ready");
+  });
+});

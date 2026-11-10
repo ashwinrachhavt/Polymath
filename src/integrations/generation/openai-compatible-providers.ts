@@ -19,6 +19,8 @@ type ProviderCatalogEntry = {
   modelEnv?: string;
   headers?: Record<string, string>;
   streamUsage?: boolean;
+  /** Request fields that turn reasoning off for this provider (see GenerateInput.reasoning). */
+  noReasoning?: Record<string, unknown>;
 };
 
 const PROVIDER_CATALOG: Record<string, ProviderCatalogEntry> = {
@@ -32,6 +34,9 @@ const PROVIDER_CATALOG: Record<string, ProviderCatalogEntry> = {
     apiKeyEnv: ["MERCURY_API_KEY", "INCEPTION_API_KEY"],
     defaultModel: "mercury-3",
     modelEnv: "MERCURY_MODEL",
+    // mercury-3 reasons before answering; under a short max_tokens the
+    // reasoning spends the whole cap and the content comes back null.
+    noReasoning: { reasoning_effort: "instant" },
   },
   groq: {
     baseUrl: "https://api.groq.com/openai/v1",
@@ -78,7 +83,15 @@ export function providerFromCatalog(
   if (!apiKey) return null;
   const model = modelOverride || (entry.modelEnv ? env[entry.modelEnv] : undefined) || entry.defaultModel;
   return openAICompatibleProvider(
-    { baseUrl: entry.baseUrl, apiKey, model, registryId: id, headers: entry.headers, streamUsage: entry.streamUsage },
+    {
+      baseUrl: entry.baseUrl,
+      apiKey,
+      model,
+      registryId: id,
+      headers: entry.headers,
+      streamUsage: entry.streamUsage,
+      noReasoning: entry.noReasoning,
+    },
     fetchImpl,
   );
 }

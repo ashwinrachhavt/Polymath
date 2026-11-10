@@ -73,6 +73,12 @@ const domainErrors = [
 ];
 
 const guarded = bindGuarded({ domainErrors, onSuccess: revalidate });
+/*
+ * Autosave fires on every pause in typing. The editor already holds the text,
+ * so re-rendering the whole Notes route after each one only made the page
+ * stall and flicker mid-sentence; the list catches up on the next navigation.
+ */
+const guardedQuiet = bindGuarded({ domainErrors });
 
 const content = z.record(z.string(), z.unknown());
 const key = z.string().uuid().optional();
@@ -103,7 +109,7 @@ export async function autosaveNoteAction(input: z.input<typeof autosaveInput>): 
   const parsed = autosaveInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "That autosave is not valid." };
   const auth = await authorize();
-  return guarded(async () => ({ version: (await autosaveNoteDraft(auth, parsed.data)).version }));
+  return guardedQuiet(async () => ({ version: (await autosaveNoteDraft(auth, parsed.data)).version }));
 }
 
 const commitInput = z.object({
