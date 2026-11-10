@@ -1,7 +1,8 @@
-import { Extension } from "@tiptap/core";
+import { Extension, type Editor } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
+import type { LinkPreview } from "@/domains/knowledge/notes";
 
 /*
  * A [[Title]] stays plain text in the document (the save path resolves it to a
@@ -16,7 +17,31 @@ export const WIKI_LINK_OPEN = "wikilink:open";
 const WIKI = /\[\[([^\]\n]+)\]\]/g;
 const key = new PluginKey("wikiLinks");
 
-function decorate(doc: ProseMirrorNode, editable: boolean): DecorationSet {
+/*
+ * Where the page has no room for a margin column, the previews fold into the
+ * text: one <details> widget after each top-level block that cites a previewed
+ * note, listing that block's links. The host hides it (CSS, data-margin) while
+ * margin notes are showing.
+ */
+function inlineNote(previews: LinkPreview[]): HTMLElement {
+  const root = document.createElement("div");
+  root.className = "note-margin-inline";
+  root.contentEditable = "false";
+  const details = root.appendChild(document.createElement("details"));
+  const summary = details.appendChild(document.createElement("summary"));
+  summary.textContent = previews.map((p) => p.title).join(", ");
+  for (const preview of previews) {
+    const entry = details.appendChild(document.createElement("div"));
+    const link = entry.appendChild(document.createElement("a"));
+    link.href = `/polymath/notes?id=${preview.id}`;
+    link.textContent = preview.title;
+    if (preview.firstParagraph) entry.appendChild(document.createElement("p")).textContent = preview.firstParagraph;
+  }
+  return root;
+}
+
+function decorate(doc: ProseMirrorNode, editable: boolean, previews: LinkPreview[] = []): DecorationSet {
+  const byTitle = new Map(previews.map((p) => [p.title.trim().toLowerCase(), p]));
   const decorations: Decoration[] = [];
   doc.descendants((node, pos) => {
     if (!node.isText || !node.text) return;
@@ -36,24 +61,58 @@ function decorate(doc: ProseMirrorNode, editable: boolean): DecorationSet {
       );
     }
   });
+  if (byTitle.size > 0) {
+    doc.forEach((block, offset) => {
+      const cited = new Map<string, LinkPreview>();
+      block.descendants((node) => {
+        if (!node.isText || !node.text) return;
+        for (const match of node.text.matchAll(WIKI)) {
+          const preview = byTitle.get(match[1].split("|")[0].trim().toLowerCase());
+          if (preview) cited.set(preview.id, preview);
+        }
+      });
+      if (cited.size === 0) return;
+      const list = [...cited.values()];
+      decorations.push(
+        Decoration.widget(offset + block.nodeSize, () => inlineNote(list), {
+          side: -1,
+          key: `wiki-inline-${list.map((p) => p.id).join("-")}`,
+          stopEvent: () => true,
+          ignoreSelection: true,
+        }),
+      );
+    });
+  }
   return DecorationSet.create(doc, decorations);
 }
 
-export const WikiLinks = Extension.create({
+export const WikiLinks = Extension.create<{ previews: LinkPreview[] }, { previews: LinkPreview[] }>({
   name: "wikiLinks",
+  addOptions: () => ({ previews: [] }),
+  // The previews live in storage so the host can swap them after mount (see refreshWikiPreviews).
+  addStorage() {
+    return { previews: this.options.previews };
+  },
   addProseMirrorPlugins() {
     const editor = this.editor;
     // Rebuilt when the document or the editable flag changes; the flag can
     // flip without a transaction, so the set is cached here, not in plugin state.
-    let cache: { doc: ProseMirrorNode; editable: boolean; set: DecorationSet } | null = null;
+    let cache: {
+      doc: ProseMirrorNode;
+      editable: boolean;
+      previews: LinkPreview[];
+      set: DecorationSet;
+    } | null = null;
+    const storage = this.storage;
     return [
       new Plugin({
         key,
         props: {
           decorations: (state) => {
             const editable = editor.isEditable;
-            if (!cache || cache.doc !== state.doc || cache.editable !== editable) {
-              cache = { doc: state.doc, editable, set: decorate(state.doc, editable) };
+            const previews = storage.previews;
+            if (!cache || cache.doc !== state.doc || cache.editable !== editable || cache.previews !== previews) {
+              cache = { doc: state.doc, editable, previews, set: decorate(state.doc, editable, previews) };
             }
             return cache.set;
           },
@@ -73,3 +132,9 @@ export const WikiLinks = Extension.create({
     ];
   },
 });
+
+/** Swap the previews of a mounted editor and redraw the inline notes. */
+export function refreshWikiPreviews(editor: Editor, previews: LinkPreview[]) {
+  (editor.storage as unknown as { wikiLinks: { previews: LinkPreview[] } }).wikiLinks.previews = previews;
+  editor.view.dispatch(editor.state.tr.setMeta(key, true));
+}

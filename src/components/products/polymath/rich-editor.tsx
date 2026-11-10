@@ -8,7 +8,8 @@ import { TaskItem, TaskList } from "@tiptap/extension-list";
 import Placeholder from "@tiptap/extension-placeholder";
 import { Markdown } from "@tiptap/markdown";
 import { useRouter } from "next/navigation";
-import { WIKI_LINK_OPEN, WikiLinks } from "./wiki-links";
+import { WIKI_LINK_OPEN, WikiLinks, refreshWikiPreviews } from "./wiki-links";
+import type { LinkPreview } from "@/domains/knowledge/notes";
 import { InlineCompletion } from "./inline-completion";
 import { setAutocompleteEnabled, useAutocomplete } from "./autocomplete-client";
 import { unescapeWikiLinks } from "@/domains/knowledge/note-content";
@@ -82,10 +83,13 @@ export default function RichEditor({
   mode: controlledMode,
   onModeChange,
   onStructuredPasteDropped,
+  linkPreviews,
 }: {
   content: string;
   onChange: (content: string) => void;
   ai?: RichEditorAI;
+  /** First lines of linked notes, folded into the text where the page has no margin. */
+  linkPreviews?: LinkPreview[];
   findLinkTargets?: FindLinkTargets;
   chrome?: "full" | "minimal";
   /** Short inline editor (task cards) instead of the full-page writing height. */
@@ -207,6 +211,7 @@ export default function RichEditor({
           onEmptySpace={ai?.onOpenChange ? () => ai.onOpenChange!(true) : undefined}
           floating={minimal}
           onStructuredPasteDropped={onStructuredPasteDropped}
+          linkPreviews={linkPreviews}
         />
       )}
     </div>
@@ -326,7 +331,9 @@ function RichMarkdownEditor({
   editable = true,
   autocomplete = false,
   onStructuredPasteDropped,
+  linkPreviews,
 }: {
+  linkPreviews?: LinkPreview[];
   compact?: boolean;
   editable?: boolean;
   autocomplete?: boolean;
@@ -601,6 +608,9 @@ function RichMarkdownEditor({
       setMenuPos(null);
     }
   }, [editor, menuAnchor]);
+  useEffect(() => {
+    if (editor && linkPreviews) refreshWikiPreviews(editor, linkPreviews);
+  }, [editor, linkPreviews]);
   useEffect(() => {
     if (editor && unescapeWikiLinks(editor.getMarkdown()) !== content)
       editor.commands.setContent(content, { contentType: "markdown", emitUpdate: false });

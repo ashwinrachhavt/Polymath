@@ -756,12 +756,12 @@ export function NoteEditor({
   const openCommentCount = comments.filter((c) => c.resolvedAt === null).length;
   return (
     <div className="flex min-w-0 flex-1 items-start gap-6">
-      <div className="min-w-0 flex-1">
+      <div data-note-container className="group/note min-w-0 flex-1">
         <motion.div
           initial={{ opacity: 0, y: 4 }}
           animate={{ opacity: 1, y: 0 }}
           transition={motionTransition}
-          className="mx-auto flex min-h-[var(--canvas-min)] w-full max-w-[var(--measure-prose)] flex-col px-6 pb-24 pt-12 lg:mr-0 lg:ml-[max(1rem,min(calc((100%_-_720px)/2),calc(100%_-_976px)))]"
+          className="mx-auto flex min-h-[var(--canvas-min)] w-full max-w-[var(--measure-prose)] flex-col px-6 pb-24 pt-12 group-data-[margin=on]/note:mr-0 group-data-[margin=on]/note:ml-[max(1rem,min(calc((100%_-_var(--measure-prose))/2),calc(100%_-_var(--measure-prose)_-_17rem)))]"
         >
           {/* The header zone: chrome fades in on pointer hover, always on for
               keyboard focus and coarse pointers. */}
@@ -943,6 +943,7 @@ export function NoteEditor({
               onModeChange={setEditorMode}
               findLinkTargets={findLinkTargets}
               content={markdown}
+              linkPreviews={linkedPreviews}
               onChange={updateMarkdown}
               ai={{ pending: aiBusy, onAction: startAI, open: aiMenuOpen, onOpenChange: setAiMenuOpen }}
               onStructuredPasteDropped={() => setSourceHint(true)}
