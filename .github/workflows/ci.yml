@@ -389,6 +389,11 @@ jobs:
     name: e2e (${{ github.event_name == 'pull_request' && 'core' || 'full' }}, shard ${{ matrix.shard }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # The Playwright image ships chromium and its OS libraries, so no
+    # per-run `playwright install --with-deps` (225s of apt on every shard).
+    # Keep the tag equal to @playwright/test in pnpm-lock.yaml.
+    # Job services are reached by service name, not localhost, from here.
+    container: mcr.microsoft.com/playwright:v1.64.1-noble
     strategy:
       fail-fast: false
       # 3-way shard of the full suite, 2-way of the core set (explicit per-leg
@@ -421,8 +426,8 @@ jobs:
       # Per-shard private database: each leg provisions its own db (below) on
       # its own postgres service and boots its server against it — a shard
       # shares no ledger rows with its siblings or with a previous run.
-      DATABASE_URL: postgresql://axiom:axiom@localhost:5432/axiom_e2e_shard${{ matrix.shard }}
-      TEST_DATABASE_URL: postgresql://axiom:axiom@localhost:5432/axiom_e2e_shard${{ matrix.shard }}
+      DATABASE_URL: postgresql://axiom:axiom@postgres:5432/axiom_e2e_shard${{ matrix.shard }}
+      TEST_DATABASE_URL: postgresql://axiom:axiom@postgres:5432/axiom_e2e_shard${{ matrix.shard }}
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -430,22 +435,15 @@ jobs:
         with:
           node-version-file: .node-version
           cache: pnpm
-      # Next's dev server does not populate the production .next/cache path.
-      # The chromium download is ~20s of every run; the OS deps step below is
-      # a fast no-op once the image has them, and install skips what is cached.
-      - uses: actions/cache@v6
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ hashFiles('pnpm-lock.yaml') }}
       - run: pnpm install --frozen-lockfile
+      # The image has no psql, which scripts/reset-test-db.sh needs.
+      - run: apt-get update -qq && apt-get install -y -qq --no-install-recommends postgresql-client
       # Provision this shard's private database exactly the way local runs do
       # (tests/e2e/README.md): scripts/reset-test-db.sh drops, recreates and
       # migrates the db named by TEST_DATABASE_URL — raw SQL applied in journal
       # order, because drizzle-kit migrate has a pre-existing
       # identifier-truncation issue on 0000-0002.
       - run: sh scripts/reset-test-db.sh
-      # Only chromium is configured; downloading the rest is wasted minutes.
-      - run: pnpm exec playwright install --with-deps chromium
       # playwright.config.ts builds and starts the server itself. Each matrix
       # leg boots its own server and runs its explicit slice of the suite;
       # the fixture env is unchanged from the pre-shard invocation.

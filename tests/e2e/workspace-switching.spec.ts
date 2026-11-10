@@ -82,6 +82,19 @@ test("switching workspaces changes the data context on the notes list", async ({
     await sql`update users set email = ${journeyEmail} where id = ${seed.userId}`;
 
     try {
+      // The switcher's membership rows are cached per user (use cache, tag
+      // invalidated only by the app's own mutation actions), and this journey
+      // seeds rows with raw SQL. A shell render earlier in the same dev
+      // server would otherwise serve the stale list. Creating a workspace
+      // through the real form expires the tag; dropping the cookie it sets
+      // returns the device to the personal workspace. The throwaway workspace is
+      // left in place, as workspace-create.spec.ts does: its audit event pins it.
+      await page.goto("/workspaces/create");
+      await page.locator('input[name="name"]').fill(`Cache bust ${tag}`);
+      await page.getByRole("button", { name: "Create workspace" }).click();
+      await expect(page).toHaveURL(/\/onboarding$/, { timeout: 30_000 });
+      await page.context().clearCookies({ name: "polymath_active_workspace" });
+
       await page.goto("/more");
       await waitSettled(page);
 
