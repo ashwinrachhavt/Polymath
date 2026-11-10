@@ -12,7 +12,7 @@ LANGFUSE_COMPOSE := docker compose -f compose.langfuse.yaml
 .PHONY: install dev migrate check e2e search-up search-down search-logs \
 	langfuse-up langfuse-down langfuse-logs evals \
 	queue-up queue-down queue-logs eve-up eve-down eve-logs eve-status eve \
-	local-stack-up local-stack-down up down logs restart seed-taxonomy \
+	local-stack-up local-stack-down up up-prod down logs restart seed-taxonomy \
 	inventory inventory-check
 
 install:
@@ -61,6 +61,19 @@ up:
 	@echo "Useful commands:"
 	@echo "  make logs   follow web + worker logs"
 	@echo "  make down   stop everything (volumes kept)"
+
+# The same stack with the web app as a production build: precompiled routes
+# and link prefetching instead of on-demand dev compiles. No hot reload; rerun
+# after code changes. `make up` switches back to the dev server.
+up-prod:
+	@test -f scripts/local-search/searxng/settings.yml || \
+		sed "s/__SEARXNG_SECRET__/$$(openssl rand -hex 32)/" \
+			scripts/local-search/searxng/settings.yml.tpl > scripts/local-search/searxng/settings.yml
+	$(LANGFUSE_COMPOSE) up -d
+	$(COMPOSE) -f compose.yaml -f compose.prod.yaml up -d --build --remove-orphans
+	@echo ""
+	@echo "Axiom (production build) is building, then starts at http://127.0.0.1:3000"
+	@echo "  the first build takes a few minutes: make logs shows progress"
 
 down:
 	$(COMPOSE) down --remove-orphans

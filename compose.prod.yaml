@@ -1,0 +1,22 @@
+# Production-mode web app on the local stack: `make up-prod`.
+#
+# Layered over compose.yaml. Dev mode compiles each route on first visit and
+# never prefetches links, so navigation waits on the server; a production
+# build serves precompiled routes and prefetches, which is what using the app
+# day to day should feel like. The trade: no hot reload — rerun `make up-prod`
+# after pulling or editing code (the build takes a few minutes).
+#
+# Production mode turns off the keyless dev-auth fallback (lib/auth.ts), so
+# sign-in goes through Clerk: CLERK keys must be set in .env.
+services:
+  web:
+    command: ["sh", "-c", "pnpm build && exec pnpm start --hostname 0.0.0.0 --port 3000"]
+    environment:
+      NEXT_TELEMETRY_DISABLED: "1"
+    volumes:
+      # Its own build output: the dev server's .next cache stays untouched, so
+      # switching back with `make up` does not start from a cold compile.
+      - app_next_prod:/app/.next
+
+volumes:
+  app_next_prod:
