@@ -1,9 +1,11 @@
 # Polymath agent context
 
-Read [BRIEF.md](BRIEF.md) for desired outcomes. For implementation and review, also read [FACTORY.md](FACTORY.md), then the relevant conventions below. These are requirements for new or changed code; they do not certify that existing code already complies.
+Read [BRIEF.md](BRIEF.md) for desired outcomes. For any code change, also read [Engineering](conventions/engineering.md) and [FACTORY.md](FACTORY.md), then load only the task-relevant conventions below. These are requirements for new or changed code; they do not certify that existing code already complies.
 
 | Task                                                             | Read                                             |
 | ---------------------------------------------------------------- | ------------------------------------------------ |
+| General implementation, design, readability, code review           | [Engineering](conventions/engineering.md)        |
+| React, Next.js, UI state, browser behavior                          | [Frontend](conventions/frontend.md)              |
 | TypeScript, boundary validation, optional fields, error handling | [TypeScript](conventions/typescript.md)          |
 | HTTP routes, server actions, webhooks, tool authorization        | [API and protection](conventions/api.md)         |
 | Schema changes, relationships, migrations, database queries      | [Data and queries](conventions/data.md)          |
