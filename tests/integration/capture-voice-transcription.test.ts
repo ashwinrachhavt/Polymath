@@ -1,6 +1,7 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { auditEvents, outboxEvents } from "@/domains/audit/schema";
+import { providerQuotaBuckets } from "@/domains/integrations/schema";
 import { captures } from "@/domains/capture/schema";
 import { workspaces } from "@/domains/identity/schema";
 import { validateFile } from "@/lib/file-validation";
@@ -148,6 +149,42 @@ suite("voice capture transcription", () => {
     const row = await getCapture(captureId);
     expect(row.processingState).toBe("failed");
     expect(row.failureReason).toContain("Transcription is not configured");
+    expect(row.text).toBeNull();
+    expect(row.blobId).not.toBeNull();
+  });
+
+  it("a seconds-metered provider is charged the audio's length, not the reservation", async () => {
+    const { captureId } = await voiceCapture();
+    await runEnrichment(captureId, {
+      transcriber: {
+        name: "deepgram:test",
+        registryId: "deepgram",
+        reserveUnits: () => 120,
+        transcribe: vi.fn(async () => ({ text: TRANSCRIPT, units: 7 })),
+      },
+    });
+
+    expect((await getCapture(captureId)).text).toBe(TRANSCRIPT);
+    const [bucket] = await db
+      .select()
+      .from(providerQuotaBuckets)
+      .where(and(eq(providerQuotaBuckets.workspaceId, workspaceId), eq(providerQuotaBuckets.provider, "deepgram")));
+    expect(bucket).toMatchObject({ unit: "seconds", consumed: 7, reserved: 0 });
+  });
+
+  it("allowance used up: refused before the provider is called, and the capture says why", async () => {
+    const overCap = vi.fn(async () => ({ text: TRANSCRIPT, units: 1 }));
+    const { captureId } = await voiceCapture();
+    vi.stubEnv("DEEPGRAM_LIFETIME_SECONDS", "10");
+    await runEnrichment(captureId, {
+      transcriber: { name: "deepgram:test", registryId: "deepgram", reserveUnits: () => 11, transcribe: overCap },
+    });
+    vi.stubEnv("DEEPGRAM_LIFETIME_SECONDS", "");
+
+    expect(overCap).not.toHaveBeenCalled();
+    const row = await getCapture(captureId);
+    expect(row.processingState).toBe("failed");
+    expect(row.failureReason).toContain("allowance is used up");
     expect(row.text).toBeNull();
     expect(row.blobId).not.toBeNull();
   });

@@ -497,17 +497,31 @@ async function transcribeVoiceCapture(
 
   const entry = providerEntry(provider.registryId);
   const call = () => provider.transcribe({ bytes, mimeType: blob.mimeType });
-  const { text } =
-    entry?.quota && entry.enabled
-      ? await withQuota(
-          drizzleQuotaStore(),
-          entry,
-          event.workspaceId,
-          provider.reserveUnits({ bytes, mimeType: blob.mimeType }),
-          call,
-          (r) => r.units,
-        )
-      : await call();
+  let text: string;
+  try {
+    ({ text } =
+      entry?.quota && entry.enabled
+        ? await withQuota(
+            drizzleQuotaStore(),
+            entry,
+            event.workspaceId,
+            provider.reserveUnits({ bytes, mimeType: blob.mimeType }),
+            call,
+            (r) => r.units,
+          )
+        : await call());
+  } catch (cause) {
+    if (!(cause instanceof QuotaExhaustedError)) throw cause;
+    // Redelivery cannot refill an allowance, so this settles on the capture
+    // instead of retrying into the dead-letter queue.
+    await ownedUpdate(token, capture.id, {
+      processingState: "failed",
+      failureReason: "The transcription allowance is used up - the audio is kept.",
+      updatedAt: new Date(),
+      ...RELEASE,
+    });
+    return null;
+  }
   const transcript = text.trim();
 
   await ownedUpdate(token, capture.id, {
