@@ -3,12 +3,17 @@
 import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
 import { ConflictError, StaleWriteError } from "@/domains/capture/commands";
-import { documentForCapture } from "@/domains/capture/document-source";
+import { checkCaptureSource, documentForCapture } from "@/domains/capture/document-source";
 import { searchCaptures } from "@/domains/capture/queries";
 import { FlashcardError, generateFlashcardDeck } from "@/domains/learning/flashcards";
-import { GENERATION_COPY, generateQuiz, QuizGenerationError } from "@/domains/learning/generate-quiz";
 import {
-  describeGenerationOutcome,
+  GENERATION_COPY,
+  generateQuiz,
+  loadCurrentQuizSources,
+  QuizGenerationError,
+} from "@/domains/learning/generate-quiz";
+import {
+  type GenerationOutcome,
   MAX_ITEM_COUNT,
   MAX_LEARNING_SOURCES,
   MIN_ITEM_COUNT,
@@ -36,9 +41,12 @@ export type LearningSourceOption =
   | { type: "capture"; id: string; version: number; title: string };
 
 export type MakeLearningResult =
-  { ok: true; href: string; summary: string } | { ok: false; error: string; failedSourceId?: string };
+  { ok: true; href: string; notice: string | null } | { ok: false; error: string; failedSourceId?: string };
+
+type Resolved = { ok: true; documentIds: string[] } | { ok: false; error: string; failedSourceId?: string };
 
 const PICKER_LIMIT = 25;
+const MAX_RAW_SOURCES = 50;
 
 const findSchema = z.object({ query: z.string().max(200) });
 
@@ -49,8 +57,8 @@ export async function findLearningSourcesAction(
 > {
   const parsed = findSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Search with a shorter phrase." };
-  const auth = await authorize();
   try {
+    const auth = await authorize();
     const query = parsed.data.query;
     const [documents, captures] = await Promise.all([
       searchLearningDocuments(auth, { query, limit: PICKER_LIMIT }),
@@ -59,12 +67,15 @@ export async function findLearningSourcesAction(
     return {
       ok: true,
       documents: documents.map((doc) => ({ type: "document", ...doc })),
-      captures: captures.items.map((row) => ({
-        type: "capture",
-        id: row.id,
-        version: row.version,
-        title: row.title?.trim() || row.preview?.trim().split("\n")[0] || row.url || "Untitled capture",
-      })),
+      // A capture with no words yet (a voice note before its transcript) cannot be filed.
+      captures: captures.items
+        .filter((row) => row.hasText)
+        .map((row) => ({
+          type: "capture",
+          id: row.id,
+          version: row.version,
+          title: row.title?.trim() || row.preview?.trim().split("\n")[0] || row.url || "Untitled capture",
+        })),
     };
   } catch (error) {
     return { ok: false, error: actionError(error, "Could not load your sources.") };
@@ -78,7 +89,8 @@ const sourceSchema = z.discriminatedUnion("type", [
 
 const makeSchema = z.object({
   kind: z.enum(["flashcards", "quiz"]),
-  sources: z.array(sourceSchema).min(1).max(MAX_LEARNING_SOURCES),
+  // The source limit counts distinct documents after resolution; this only bounds the request.
+  sources: z.array(sourceSchema).min(1).max(MAX_RAW_SOURCES),
   count: z.number().int().min(MIN_ITEM_COUNT).max(MAX_ITEM_COUNT).optional(),
   idempotencyKey: z.uuid(),
 });
@@ -92,8 +104,8 @@ export async function makeFlashcardsOrQuizAction(input: z.input<typeof makeSchem
     };
   }
   const { kind, sources, count, idempotencyKey } = parsed.data;
-  const auth = await authorize();
   try {
+    const auth = await authorize();
     const resolved = await resolveDocumentIds(auth, sources);
     if (!resolved.ok) return resolved;
     const documentIds = resolved.documentIds;
@@ -104,10 +116,11 @@ export async function makeFlashcardsOrQuizAction(input: z.input<typeof makeSchem
       return {
         ok: true,
         href: `/learn/decks/${deck.deckId}`,
-        summary: describeGenerationOutcome(
-          { one: "flashcard", many: "flashcards" },
-          { made: deck.cardCount, requested: deck.requested, stoppedBy: deck.stoppedBy },
-        ),
+        notice: shortfallNotice("flashcards", {
+          made: deck.cardCount,
+          requested: deck.requested,
+          stoppedBy: deck.stoppedBy,
+        }),
       };
     }
     const quiz = await generateQuiz(auth, {
@@ -120,10 +133,11 @@ export async function makeFlashcardsOrQuizAction(input: z.input<typeof makeSchem
     return {
       ok: true,
       href: `/learn/quizzes/${quiz.quizId}`,
-      summary: describeGenerationOutcome(
-        { one: "question", many: "questions" },
-        { made: quiz.questionCount, requested: quiz.requested, stoppedBy: quiz.stoppedBy },
-      ),
+      notice: shortfallNotice("questions", {
+        made: quiz.questionCount,
+        requested: quiz.requested,
+        stoppedBy: quiz.stoppedBy,
+      }),
     };
   } catch (error) {
     if (error instanceof FlashcardError) return { ok: false, error: error.message };
@@ -135,33 +149,67 @@ export async function makeFlashcardsOrQuizAction(input: z.input<typeof makeSchem
   }
 }
 
+/** What to tell the learner about a deck or quiz that came out short of its request; null when it did not. */
+function shortfallNotice(
+  noun: string,
+  run: { made: number; requested: number; stoppedBy: GenerationOutcome | "in_progress" },
+): string | null {
+  if (run.stoppedBy === "in_progress") return `Still making ${noun}: ${run.made} so far.`;
+  if (run.made >= run.requested) return null;
+  if (run.stoppedBy === "batch_failed") {
+    return `Made ${run.made} of ${run.requested} ${noun} before a batch failed. Make them again for more.`;
+  }
+  return `Made ${run.made} of ${run.requested} ${noun}; the sources support no more.`;
+}
+
 /**
  * Each source's library document, in the order picked, without repeats: a
- * capture already filed as a picked document counts once. A capture that
- * cannot be filed stops the request and names itself, so the dialog can
- * point at it.
+ * capture already filed as a picked document counts once. Filing takes a
+ * capture out of the inbox for good, so every source is checked first, read
+ * only, and no capture is filed unless the whole request can go ahead. A
+ * capture that cannot be a source stops the request and names itself, so
+ * the dialog can point at it.
  */
-async function resolveDocumentIds(
-  auth: AuthContext,
-  sources: LearningSourceRef[],
-): Promise<{ ok: true; documentIds: string[] } | { ok: false; error: string; failedSourceId: string }> {
+async function resolveDocumentIds(auth: AuthContext, sources: LearningSourceRef[]): Promise<Resolved> {
+  const checked: Array<{ source: LearningSourceRef; documentId: string | null }> = [];
+  for (const source of sources) {
+    if (source.type === "document") {
+      checked.push({ source, documentId: source.id });
+      continue;
+    }
+    const outcome = await asSourceRefusal(source, () =>
+      checkCaptureSource(auth, { captureId: source.id, expectedVersion: source.version }),
+    );
+    if (!outcome.ok) return outcome;
+    checked.push({ source, documentId: outcome.value.documentId });
+  }
+
+  const inLibrary = [...new Set(checked.flatMap(({ documentId }) => (documentId ? [documentId] : [])))];
+  const distinct = inLibrary.length + checked.filter(({ documentId }) => documentId === null).length;
+  if (distinct > MAX_LEARNING_SOURCES) {
+    const over = distinct - MAX_LEARNING_SOURCES;
+    return {
+      ok: false,
+      error: `One request reads up to ${MAX_LEARNING_SOURCES} sources, and these are ${distinct}. Remove ${over} and try again.`,
+    };
+  }
+  // Throws QuizGenerationError for a document outside the workspace or still being read.
+  if (inLibrary.length > 0) await loadCurrentQuizSources(auth, inLibrary);
+
   const documentIds: string[] = [];
   let filedCapture = false;
   try {
-    for (const source of sources) {
-      let documentId = source.id;
-      if (source.type === "capture") {
-        try {
-          documentId = await documentForCapture(auth, { captureId: source.id, expectedVersion: source.version });
-          filedCapture = true;
-        } catch (error) {
-          if (error instanceof ConflictError || error instanceof StaleWriteError) {
-            return { ok: false, error: error.message, failedSourceId: source.id };
-          }
-          throw error;
-        }
+    for (const { source, documentId: known } of checked) {
+      let documentId = known;
+      if (documentId === null && source.type === "capture") {
+        const filed = await asSourceRefusal(source, () =>
+          documentForCapture(auth, { captureId: source.id, expectedVersion: source.version }),
+        );
+        if (!filed.ok) return filed;
+        documentId = filed.value;
+        filedCapture = true;
       }
-      if (!documentIds.includes(documentId)) documentIds.push(documentId);
+      if (documentId && !documentIds.includes(documentId)) documentIds.push(documentId);
     }
   } finally {
     if (filedCapture) {
@@ -170,6 +218,21 @@ async function resolveDocumentIds(
     }
   }
   return { ok: true, documentIds };
+}
+
+/** A capture's refusal (stale, converted, no text) as copy naming that capture; other errors still throw. */
+async function asSourceRefusal<T>(
+  source: LearningSourceRef,
+  run: () => Promise<T>,
+): Promise<{ ok: true; value: T } | { ok: false; error: string; failedSourceId: string }> {
+  try {
+    return { ok: true, value: await run() };
+  } catch (error) {
+    if (error instanceof ConflictError || error instanceof StaleWriteError) {
+      return { ok: false, error: error.message, failedSourceId: source.id };
+    }
+    throw error;
+  }
 }
 
 async function authorize() {

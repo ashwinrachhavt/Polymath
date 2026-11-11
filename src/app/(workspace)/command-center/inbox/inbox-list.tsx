@@ -36,6 +36,8 @@ export type InboxRow = {
   /** Why it has that label, or with no label, why it is not classified. */
   kindReason?: string | null;
   preview: string | null;
+  /** Whether the capture has words to file to the library; a voice note before its transcript does not. */
+  hasText: boolean;
   url: string | null;
   version: number;
   convertedType: string | null;
@@ -157,15 +159,17 @@ export function captureDetailHeading(capture: {
 }
 
 /**
- * A capture as a flashcard or quiz source: an open one (picking it files it
- * to the library) or one already filed as a document. A capture turned into
- * a task, note or draft is not a source.
+ * A capture as a flashcard or quiz source: an open one with words to file
+ * (picking it files it to the library) or one already filed as a document.
+ * A capture turned into a task, note or draft is not a source, and neither
+ * is one with nothing to file yet, such as a voice note before its transcript.
  */
 export function captureLearningSource(capture: {
   id: string;
   version: number;
   processingState: string;
   convertedType: string | null;
+  hasText: boolean;
   title?: string | null;
   preview?: string | null;
   text?: string | null;
@@ -173,7 +177,7 @@ export function captureLearningSource(capture: {
   rawPayload?: unknown;
 }): LearningSourceOption | null {
   if (capture.processingState === "discarded") return null;
-  if (capture.processingState === "converted" && capture.convertedType !== "document") return null;
+  if (capture.processingState === "converted" ? capture.convertedType !== "document" : !capture.hasText) return null;
   return { type: "capture", id: capture.id, version: capture.version, title: captureTitle(capture) };
 }
 
@@ -224,10 +228,9 @@ export function InboxList({
   // Converted rows cannot transition; every other selected row is sent and
   // non-permitting rows fail through the setCaptureState domain guard (D15).
   const bulkTargets = optimisticRows.filter((row) => selected.has(row.id) && row.processingState !== "converted");
-  const learningSources = optimisticRows
-    .filter((row) => selected.has(row.id))
-    .map(captureLearningSource)
-    .filter((source) => source !== null);
+  const selectedRows = optimisticRows.filter((row) => selected.has(row.id));
+  const learningSources = selectedRows.map(captureLearningSource).filter((source) => source !== null);
+  const notSources = selectedRows.length - learningSources.length;
 
   function bulkAct(next: "discarded" | "unprocessed") {
     // Focus origin is tracked explicitly: on click the toolbar button (not
@@ -418,8 +421,10 @@ export function InboxList({
               initialSources={learningSources}
               title={
                 learningSources.length === 0
-                  ? "Archived captures, tasks and notes cannot be sources."
-                  : "Files the selected captures to your library, then makes flashcards or a quiz from them."
+                  ? "Archived captures, tasks, notes and captures with no text yet cannot be sources."
+                  : notSources > 0
+                    ? `Leaves out ${notSources} selected ${notSources === 1 ? "capture that cannot be a source" : "captures that cannot be sources"} (archived, a task or note, or no text yet).`
+                    : "Files the selected captures to your library, then makes flashcards or a quiz from them."
               }
             >
               Flashcards or quiz
