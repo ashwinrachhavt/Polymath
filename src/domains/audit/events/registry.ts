@@ -415,6 +415,9 @@ const TIER_2_ACTIONS: { action: string; category: EventCategory }[] = [
   { action: "skill.installed", category: "workspace" },
   { action: "skill.removed", category: "workspace" },
   { action: "spending_policy.updated", category: "work" },
+  // Dictation: provider, seconds and timing only, never the words or the audio.
+  { action: "speech.dictation_failed", category: "knowledge" },
+  { action: "speech.dictation_transcribed", category: "knowledge" },
   { action: "task.completed", category: "work" },
   { action: "task.created", category: "work" },
   { action: "task.dependency_added", category: "work" },

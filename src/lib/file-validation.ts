@@ -22,7 +22,10 @@ const SIGNATURES: { mimeType: string; bytes: number[] }[] = [
   { mimeType: "audio/mpeg", bytes: [0xff, 0xf2] },
   { mimeType: "audio/ogg", bytes: [0x4f, 0x67, 0x67, 0x53] }, // OggS
   { mimeType: "text/plain", bytes: [] }, // UTF-8 BOM; bare text is caught by the printable scan below
-  { mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", bytes: [0x50, 0x4b, 0x03, 0x04] }, // PK\x03\x04 (docx/xlsx/pptx zip container)
+  {
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    bytes: [0x50, 0x4b, 0x03, 0x04],
+  }, // PK\x03\x04 (docx/xlsx/pptx zip container)
 ];
 
 /**
@@ -67,18 +70,33 @@ export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
 export const MAX_UPLOAD_LABEL = "4 MB";
 
 export type FileValidationResult =
-  | { ok: true; mimeType: string }
-  | { ok: false; reason: "empty_file" | "payload_too_large" | "unidentified" };
+  { ok: true; mimeType: string } | { ok: false; reason: "empty_file" | "payload_too_large" | "unidentified" };
 
 // PDF page-count/EOF sanity is deliberately out of scope: the magic check only
 // routes the upload; a truncated PDF surfaces at extraction, not here.
 
-/** ISO-BMFF audio (m4a/mp4 from Safari's MediaRecorder) declares 'ftyp' at offset 4 and its brand at 8. Video brands overlap (isom/mp42); the verdict only routes the upload, and a mismatch still quarantines, so a video misread as audio/mp4 costs a label, never a silent accept of something else. */
+const ISO_BMFF_AUDIO_BRANDS = new Set(["M4A ", "M4B ", "mp41", "mp42", "isom", "iso2", "iso5", "iso6"]);
+
+/**
+ * ISO-BMFF audio (m4a/mp4 from Safari's MediaRecorder) declares 'ftyp' at
+ * offset 4, its major brand at 8 and its compatible brands from 16 to the end
+ * of the box. Any listed brand in either place counts: a fragmented recording
+ * can lead with a brand of its own and name isom only as compatible. Video
+ * brands overlap (isom/mp42); the verdict only routes the upload, and a
+ * mismatch still quarantines, so a video misread as audio/mp4 costs a label,
+ * never a silent accept of something else.
+ */
 function sniffIsoBmffAudio(bytes: Uint8Array): string | null {
   if (bytes.byteLength < 12) return null;
   if (bytes[4] !== 0x66 || bytes[5] !== 0x74 || bytes[6] !== 0x79 || bytes[7] !== 0x70) return null;
-  const brand = String.fromCharCode(bytes[8], bytes[9], bytes[10], bytes[11]);
-  return ["M4A ", "M4B ", "mp41", "mp42", "isom", "iso2"].includes(brand) ? "audio/mp4" : null;
+  const boxSize = ((bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3]) >>> 0;
+  // A real ftyp box is a few dozen bytes; the cap keeps a lying size from walking the file.
+  const end = Math.max(12, Math.min(boxSize, bytes.byteLength, 96));
+  for (let offset = 8; offset + 4 <= end; offset = offset === 8 ? 16 : offset + 4) {
+    const brand = String.fromCharCode(bytes[offset], bytes[offset + 1], bytes[offset + 2], bytes[offset + 3]);
+    if (ISO_BMFF_AUDIO_BRANDS.has(brand)) return "audio/mp4";
+  }
+  return null;
 }
 
 export function validateFile(bytes: Uint8Array, filename = ""): FileValidationResult {

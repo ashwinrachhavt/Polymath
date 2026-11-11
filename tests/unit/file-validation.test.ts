@@ -104,6 +104,17 @@ describe("validateFile audio (ASH-314 voice captures)", () => {
     expect(validateFile(TEXT, "not-audio.m4a")).toEqual({ ok: false, reason: "unidentified" });
   });
 
+  it("a fragmented recording is audio by its iso5 brand, or by a compatible brand behind an unlisted major one", () => {
+    const ftyp = (major: string, ...compatible: string[]) => {
+      const brands = [major, "\0\0\0\0", ...compatible].join("");
+      const size = 8 + brands.length;
+      return new Uint8Array([0, 0, 0, size, ...[...("ftyp" + brands)].map((c) => c.charCodeAt(0)), 0, 0, 0, 8]);
+    };
+    expect(validateFile(ftyp("iso5", "isom", "iso5", "hlsf"))).toEqual({ ok: true, mimeType: "audio/mp4" });
+    expect(validateFile(ftyp("hlsf", "isom"))).toEqual({ ok: true, mimeType: "audio/mp4" });
+    expect(validateFile(ftyp("qt  ", "qt  "))).toEqual({ ok: false, reason: "unidentified" });
+  });
+
   it("an unknown ftyp brand is not audio", () => {
     const QT = new Uint8Array([0x00, 0x00, 0x00, 0x20, 0x66, 0x74, 0x79, 0x70, 0x71, 0x74, 0x20, 0x20]);
     expect(validateFile(QT, "clip.mov")).toEqual({ ok: false, reason: "unidentified" });
