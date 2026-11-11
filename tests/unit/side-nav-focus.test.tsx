@@ -4,25 +4,24 @@ import { act, fireEvent, render } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /*
- * Focus pages hide the rail (spec 5): it waits off-canvas, slides in from a
- * hover zone at the left edge, and `[` pins it open. The pin persists in
- * localStorage so the choice survives a reload.
+ * Every page shares one rail (spec 5): pinned open, or hidden off-canvas,
+ * sliding in from a hover zone at the left edge. `[` toggles the pin, which
+ * persists in localStorage; with no saved choice the rail is pinned.
  *
- * Value: protects=the four rail states a focus page can show (hidden, peek,
- * pinned), that a normal page never leaves the docked rail, that a hidden
- * rail always leaves a focusable way back (touch and keyboard have no edge
- * zone), that unpinning without a mouse on the rail never strands a peek,
- * and that the pin reaches <html> before first paint; fails_when=the rail
- * stays docked on a focus page, the edge zone does not reveal it, `[` stops
- * pinning or persisting, the opener goes missing or unfocusable, a keyboard
- * unpin leaves data-state="peek", or the boot script stops marking a pinned
- * browser; why_new=no test rendered the rail before; seam=SideNav and the
+ * Value: protects=the rail states every page can show (hidden, peek,
+ * pinned), the pinned default, that a hidden rail always leaves a focusable
+ * way back (touch and keyboard have no edge zone), that unpinning without a
+ * mouse on the rail never strands a peek, and that the pin reaches <html>
+ * before first paint; fails_when=an ordinary page keeps a docked rail, the
+ * edge zone does not reveal it, `[` stops pinning or persisting, the opener
+ * goes missing or unfocusable, a keyboard unpin leaves data-state="peek", or
+ * the boot script stops marking a pinned browser; seam=SideNav and the
  * sidebar-pin boot script under jsdom with the pathname mocked;
  * no_claim=the slide animation, CSS media gates (pointer: fine, md), the
  * sidebar-pinned variant's first-paint layout, real hover geometry.
  */
 
-vi.mock("next/navigation", () => ({ usePathname: () => "/polymath/notes" }));
+vi.mock("next/navigation", () => ({ usePathname: () => "/command-center/inbox" }));
 
 import { SideNav } from "@/components/shell/side-nav";
 import { SIDEBAR_PIN_BOOT_SCRIPT } from "@/lib/sidebar-pin";
@@ -41,19 +40,21 @@ function button(label: string) {
   return element;
 }
 
-describe("SideNav focus mode", () => {
+describe("SideNav", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    // Most cases start from a person who hid the rail; the default is below.
+    window.localStorage.setItem(PINNED_KEY, "0");
     document.documentElement.removeAttribute("data-sidebar-pinned");
   });
 
-  it("starts hidden on a focus page", () => {
-    render(createElement(SideNav, { focus: true }));
+  it("starts hidden once the person hid it", () => {
+    render(createElement(SideNav));
     expect(nav().getAttribute("data-state")).toBe("hidden");
   });
 
   it("peeks when the pointer reaches the left edge", () => {
-    render(createElement(SideNav, { focus: true }));
+    render(createElement(SideNav));
     const zone = document.querySelector("[data-peek-zone]");
     if (!zone) throw new Error("peek zone not rendered");
     fireEvent.mouseEnter(zone);
@@ -63,7 +64,7 @@ describe("SideNav focus mode", () => {
   it("hides again 250ms after the pointer leaves the rail", () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     try {
-      render(createElement(SideNav, { focus: true }));
+      render(createElement(SideNav));
       fireEvent.mouseEnter(document.querySelector("[data-peek-zone]")!);
       fireEvent.mouseLeave(nav());
       act(() => vi.advanceTimersByTime(200));
@@ -76,7 +77,7 @@ describe("SideNav focus mode", () => {
   });
 
   it("pins with [ and remembers it", () => {
-    render(createElement(SideNav, { focus: true }));
+    render(createElement(SideNav));
     fireEvent.keyDown(window, { key: "[" });
     expect(nav().getAttribute("data-state")).toBe("pinned");
     expect(window.localStorage.getItem(PINNED_KEY)).toBe("1");
@@ -87,18 +88,11 @@ describe("SideNav focus mode", () => {
   });
 
   it("ignores [ typed into a field", () => {
-    render(
-      createElement(
-        "div",
-        null,
-        createElement("input", { "aria-label": "Title" }),
-        createElement(SideNav, { focus: true }),
-      ),
-    );
+    render(createElement("div", null, createElement("input", { "aria-label": "Title" }), createElement(SideNav)));
     const input = document.querySelector("input")!;
     fireEvent.keyDown(input, { key: "[" });
     expect(nav().getAttribute("data-state")).toBe("hidden");
-    expect(window.localStorage.getItem(PINNED_KEY)).toBeNull();
+    expect(window.localStorage.getItem(PINNED_KEY)).toBe("0");
   });
 
   it("ignores [ typed into a rich-text editor", () => {
@@ -111,7 +105,7 @@ describe("SideNav focus mode", () => {
           { contentEditable: true, suppressContentEditableWarning: true },
           createElement("p", null, "Note"),
         ),
-        createElement(SideNav, { focus: true }),
+        createElement(SideNav),
       ),
     );
     fireEvent.keyDown(document.querySelector("p")!, { key: "[" });
@@ -120,12 +114,12 @@ describe("SideNav focus mode", () => {
 
   it("opens pinned when the pin was saved", () => {
     window.localStorage.setItem(PINNED_KEY, "1");
-    render(createElement(SideNav, { focus: true }));
+    render(createElement(SideNav));
     expect(nav().getAttribute("data-state")).toBe("pinned");
   });
 
   it("always leaves a hidden rail a focusable opener that pins it", () => {
-    render(createElement(SideNav, { focus: true }));
+    render(createElement(SideNav));
     expect(nav().getAttribute("data-state")).toBe("hidden");
     const opener = button("Show sidebar");
     expect(opener.disabled).toBe(false);
@@ -142,7 +136,7 @@ describe("SideNav focus mode", () => {
 
   it("hides at once when unpinned from the button with no mouse on the rail", () => {
     window.localStorage.setItem(PINNED_KEY, "1");
-    render(createElement(SideNav, { focus: true }));
+    render(createElement(SideNav));
     const pin = button("Keep sidebar open");
     pin.focus();
     fireEvent.click(pin);
@@ -154,7 +148,7 @@ describe("SideNav focus mode", () => {
 
   it("stays a peek when unpinned with the mouse on the rail", () => {
     window.localStorage.setItem(PINNED_KEY, "1");
-    render(createElement(SideNav, { focus: true }));
+    render(createElement(SideNav));
     fireEvent.pointerEnter(nav(), { pointerType: "mouse" });
     fireEvent.click(button("Keep sidebar open"));
     expect(nav().getAttribute("data-state")).toBe("peek");
@@ -162,35 +156,37 @@ describe("SideNav focus mode", () => {
 
   it("hides at once when unpinned by touch", () => {
     window.localStorage.setItem(PINNED_KEY, "1");
-    render(createElement(SideNav, { focus: true }));
+    render(createElement(SideNav));
     fireEvent.pointerEnter(nav(), { pointerType: "touch" });
     fireEvent.click(button("Keep sidebar open"));
     expect(nav().getAttribute("data-state")).toBe("hidden");
   });
 
   it("mirrors the pin onto <html> for the first paint", () => {
-    render(createElement(SideNav, { focus: true }));
-    fireEvent.keyDown(window, { key: "[" });
-    expect(document.documentElement.hasAttribute("data-sidebar-pinned")).toBe(true);
-    fireEvent.keyDown(window, { key: "[" });
-    expect(document.documentElement.hasAttribute("data-sidebar-pinned")).toBe(false);
-  });
-
-  it("marks <html> from the boot script only when the pin was saved", () => {
-    new Function(SIDEBAR_PIN_BOOT_SCRIPT)();
-    expect(document.documentElement.hasAttribute("data-sidebar-pinned")).toBe(false);
-    window.localStorage.setItem(PINNED_KEY, "1");
-    new Function(SIDEBAR_PIN_BOOT_SCRIPT)();
-    expect(document.documentElement.hasAttribute("data-sidebar-pinned")).toBe(true);
-  });
-
-  it("stays docked off a focus page, whatever the pin or the keys say", () => {
-    window.localStorage.setItem(PINNED_KEY, "0");
     render(createElement(SideNav));
-    expect(nav().getAttribute("data-state")).toBe("docked");
-    expect(document.querySelector("[data-peek-zone]")).toBeNull();
     fireEvent.keyDown(window, { key: "[" });
-    expect(nav().getAttribute("data-state")).toBe("docked");
-    expect(window.localStorage.getItem(PINNED_KEY)).toBe("0");
+    expect(document.documentElement.hasAttribute("data-sidebar-pinned")).toBe(true);
+    fireEvent.keyDown(window, { key: "[" });
+    expect(document.documentElement.hasAttribute("data-sidebar-pinned")).toBe(false);
+  });
+
+  it("marks <html> from the boot script unless the person hid the rail", () => {
+    new Function(SIDEBAR_PIN_BOOT_SCRIPT)();
+    expect(document.documentElement.hasAttribute("data-sidebar-pinned")).toBe(false);
+    window.localStorage.removeItem(PINNED_KEY);
+    new Function(SIDEBAR_PIN_BOOT_SCRIPT)();
+    expect(document.documentElement.hasAttribute("data-sidebar-pinned")).toBe(true);
+  });
+
+  it("opens pinned when no choice was saved", () => {
+    window.localStorage.removeItem(PINNED_KEY);
+    render(createElement(SideNav));
+    expect(nav().getAttribute("data-state")).toBe("pinned");
+    expect(document.querySelector("[data-peek-zone]")).toBeNull();
+  });
+
+  it("has no second, icon-rail collapse control", () => {
+    render(createElement(SideNav));
+    expect(document.querySelector("button[aria-label='Collapse navigation']")).toBeNull();
   });
 });

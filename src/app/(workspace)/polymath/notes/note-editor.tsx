@@ -723,7 +723,7 @@ export function NoteEditor({
   }, [sourceHint]);
   // A brand-new note (the empty state's "Write your first page." action) opens
   // with the composer focused; an existing note never steals focus on mount.
-  const titleRef = useRef<HTMLInputElement>(null);
+  const titleRef = useRef<HTMLTextAreaElement>(null);
   const newNote = initialTitle === "Untitled note" && initialMarkdown === "";
   useEffect(() => {
     if (newNote) titleRef.current?.focus();
@@ -869,15 +869,24 @@ export function NoteEditor({
              */}
             <h1 className="sr-only">{title.trim() || "Untitled note"}</h1>
             <div className={noteLayout.titleRow}>
-              <input
+              {/* A textarea so a long title wraps instead of being clipped;
+                  Enter commits rather than adding a line break. */}
+              <textarea
                 ref={titleRef}
                 aria-label="Note title"
+                rows={1}
                 value={title}
-                onChange={(e) => setTitle(e.target.value)}
+                onChange={(e) => setTitle(e.target.value.replace(/\n/g, " "))}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    e.currentTarget.blur();
+                  }
+                }}
                 onBlur={rename}
                 placeholder="Untitled note"
                 style={{ fontFamily: "var(--font-display)" }}
-                className={`w-full min-w-0 bg-transparent ${noteLayout.titleText} outline-none placeholder:text-muted-foreground/40`}
+                className={`field-sizing-content w-full min-w-0 resize-none overflow-hidden bg-transparent ${noteLayout.titleText} outline-none placeholder:text-muted-foreground/40`}
               />
               {outlinks.length > 0 && (
                 <button

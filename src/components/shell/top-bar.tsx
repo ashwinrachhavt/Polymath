@@ -106,7 +106,9 @@ export function TopBar({
   }
 
   return (
-    <header className="border-border bg-background/85 sticky top-0 z-20 flex h-12 shrink-0 items-center gap-2 border-b px-3 backdrop-blur">
+    // While the rail is hidden, the sidebar's "Show sidebar" button sits at the
+    // top left; md:pl-12 keeps the workspace switcher out from under it.
+    <header className="border-border bg-background/85 sticky top-0 z-20 flex h-12 shrink-0 items-center gap-2 border-b px-3 backdrop-blur md:pl-12 sidebar-pinned:md:pl-3">
       <div className="flex min-w-0 items-center gap-2">
         <WorkspaceSwitcher data={workspaceSwitcher} />
         <PathBreadcrumb />
