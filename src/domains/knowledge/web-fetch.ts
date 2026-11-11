@@ -1,5 +1,5 @@
 import type { AuthContext } from "@/domains/identity/resolve";
-import { scrapeToMarkdown, FirecrawlError, type FirecrawlScrapeResult } from "@/integrations/firecrawl/client";
+import { scrapeToMarkdown, type FirecrawlScrapeResult } from "@/integrations/firecrawl/client";
 import { fetchTranscript, isYouTubeUrl, type TranscriptResult } from "@/integrations/youtube/transcript";
 import { withTransaction } from "@/lib/db-transaction";
 import { canonicalCaptureUrl } from "@/lib/safe-fetch";
@@ -25,7 +25,9 @@ export const WEB_FETCH_CAPABILITY = "web.fetch";
 export const WEB_FETCH_MAX_BYTES = 200_000;
 
 export type AgentWebFetchResult =
-  { ok: true; url: string; title: string | null; markdown: string; truncated: boolean } | { ok: false; error: string };
+  | { ok: true; url: string; title: string | null; markdown: string; truncated: boolean }
+  /** `retryable` has the meaning it has on AgentSearchResult: a temporary read failure, worth one more try. */
+  | { ok: false; error: string; retryable?: true };
 
 export type AgentWebCrawlResult =
   { ok: true; queued: true; url: string; limit: number; maxDepth: number; note: string } | { ok: false; error: string };
@@ -133,9 +135,8 @@ export async function fetchPageForAgent(
       markdown: truncated ? page.markdown.slice(0, maxChars) : page.markdown,
       truncated,
     };
-  } catch (cause) {
-    if (cause instanceof FirecrawlError) return { ok: false, error: "fetch failed, try again" };
-    return { ok: false, error: "fetch failed, try again" };
+  } catch {
+    return { ok: false, error: "fetch failed, try again", retryable: true };
   }
 }
 
