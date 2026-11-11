@@ -43,6 +43,11 @@ async function hold(page: Page, ms = 600) {
   await page.keyboard.up("AltRight");
 }
 
+/** The modal dialog hides the status pill from the accessibility tree, so wait on the element itself. */
+async function microphoneOpen(page: Page) {
+  await expect(page.locator("[data-dictation]")).toContainText("Tap Right Option to stop");
+}
+
 async function tap(page: Page) {
   await page.keyboard.down("AltRight");
   await page.keyboard.up("AltRight");
@@ -216,6 +221,90 @@ test("a failed clip is kept and Retry sends it again without re-recording", asyn
   await expect(status).not.toContainText("Transcription failed");
 });
 
+test("the composer's mic button latches listening with the caret in place and a second click inserts once", async ({
+  page,
+}) => {
+  const uploads = countUploads(page);
+  const composer = await openComposer(page);
+  await composer.pressSequentially("abc");
+  await page.getByRole("button", { name: "Dictate" }).click();
+  const status = page.getByRole("status", { name: "Dictation" });
+  await expect(status).toContainText("Tap Right Option to stop");
+  await expect(composer).toBeFocused();
+  await page.waitForTimeout(500);
+  await page.getByRole("button", { name: "Stop dictating" }).click();
+  await expect(composer).toHaveValue(`abc ${FIXTURE}`, ANSWERED);
+  await expect(composer).toBeFocused();
+  await expect(page).toHaveURL(/\/polymath$/);
+  await expect(page.getByRole("button", { name: "Dictate" })).toBeEnabled();
+  expect(uploads.count).toBe(1);
+});
+
+test("the note editor's mic button dictates into the note", async ({ page }) => {
+  test.setTimeout(90_000);
+  const editor = await openNewNote(page);
+  await page.keyboard.type("first");
+  await expect(editor).toContainText("first");
+  await page.getByRole("button", { name: "Dictate" }).click();
+  await expect(page.getByRole("status", { name: "Dictation" })).toContainText("Tap Right Option to stop");
+  await expect(editor).toBeFocused();
+  await page.waitForTimeout(500);
+  await page.getByRole("button", { name: "Stop dictating" }).click();
+  await expect(editor).toContainText(`first ${FIXTURE}`, ANSWERED);
+});
+
+test("the capture dialog's why field fills through its mic button and the capture is saved as dictated", async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  await page.goto("/command-center/inbox");
+  await waitSettled(page);
+  await controllerReady(page);
+  await page.getByRole("button", { name: "Capture", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  const unique = `e2e-dictated-why-${Date.now()}`;
+  await dialog.getByLabel("Anything worth keeping").fill(unique);
+  const why = dialog.getByLabel("Why does this matter?");
+  await dialog.getByRole("button", { name: "Dictate" }).click();
+  await microphoneOpen(page);
+  await page.waitForTimeout(500);
+  await dialog.getByRole("button", { name: "Stop dictating" }).click();
+  await expect(why).toHaveValue(FIXTURE, ANSWERED);
+
+  await dialog.getByRole("button", { name: "Save capture" }).click();
+  await expect(dialog).toBeHidden();
+  await page.getByText(unique, { exact: false }).first().click();
+  const detail = page.getByRole("article");
+  await expect(detail.getByRole("region", { name: "Capture context" })).toContainText(FIXTURE);
+  await expect(detail.getByRole("region", { name: "Capture context" })).toContainText("dictated");
+});
+
+test("retyping the dictated why saves it as typed", async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.goto("/command-center/inbox");
+  await waitSettled(page);
+  await controllerReady(page);
+  await page.getByRole("button", { name: "Capture", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  const unique = `e2e-typed-why-${Date.now()}`;
+  await dialog.getByLabel("Anything worth keeping").fill(unique);
+  const why = dialog.getByLabel("Why does this matter?");
+  await dialog.getByRole("button", { name: "Dictate" }).click();
+  await microphoneOpen(page);
+  await page.waitForTimeout(500);
+  await dialog.getByRole("button", { name: "Stop dictating" }).click();
+  await expect(why).toHaveValue(FIXTURE, ANSWERED);
+  await why.press("End");
+  await why.pressSequentially("!");
+
+  await dialog.getByRole("button", { name: "Save capture" }).click();
+  await expect(dialog).toBeHidden();
+  await page.getByText(unique, { exact: false }).first().click();
+  const context = page.getByRole("article").getByRole("region", { name: "Capture context" });
+  await expect(context).toContainText(`${FIXTURE}!`);
+  await expect(context).not.toContainText("dictated");
+});
+
 test("words still land at the note's caret when focus has moved to another field by the time they arrive", async ({
   page,
 }) => {
@@ -236,4 +325,51 @@ test("words still land at the note's caret when focus has moved to another field
   await expect(editor).toContainText(`alpha ${FIXTURE} beta`, ANSWERED);
   await expect(title).not.toHaveValue(/Fixture transcript/);
   await expect(title).toBeFocused();
+});
+
+test("inside the capture dialog, Retry on the pill works and leaves the dialog open", async ({ page }) => {
+  test.setTimeout(90_000);
+  let attempts = 0;
+  await page.route(`**${TRANSCRIPTIONS}`, async (route) => {
+    attempts += 1;
+    if (attempts === 1) await route.fulfill({ status: 502, contentType: "application/problem+json", body: "{}" });
+    else await route.continue();
+  });
+  await page.goto("/command-center/inbox");
+  await waitSettled(page);
+  await controllerReady(page);
+  await page.getByRole("button", { name: "Capture", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  const why = dialog.getByLabel("Why does this matter?");
+  await dialog.getByRole("button", { name: "Dictate" }).click();
+  await microphoneOpen(page);
+  await page.waitForTimeout(500);
+  await dialog.getByRole("button", { name: "Stop dictating" }).click();
+
+  const pill = page.locator("[data-dictation]");
+  await expect(pill).toContainText("Transcription failed");
+  // A real pointer press: this fails if the dialog's overlay covers the pill
+  // or the page's pointer events are off.
+  await pill.getByRole("button", { name: "Retry", includeHidden: true }).click();
+  await expect(why).toHaveValue(FIXTURE, ANSWERED);
+  await expect(dialog).toBeVisible();
+  expect(attempts).toBe(2);
+});
+
+test("closing the capture dialog stops the microphone and offers what was said", async ({ page }) => {
+  await page.goto("/command-center/inbox");
+  await waitSettled(page);
+  await controllerReady(page);
+  await page.getByRole("button", { name: "Capture", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Dictate" }).click();
+  await microphoneOpen(page);
+  await page.waitForTimeout(500);
+  await dialog.getByRole("button", { name: "Close" }).click();
+  await expect(dialog).toBeHidden();
+
+  const pill = page.locator("[data-dictation]");
+  await expect(pill).not.toHaveAttribute("data-dictation", "listening", { timeout: 10_000 });
+  await expect(pill).toContainText("The field closed before your words arrived", ANSWERED);
+  await expect(pill).toContainText(FIXTURE);
 });

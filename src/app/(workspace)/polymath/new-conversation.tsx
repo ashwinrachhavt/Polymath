@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowUp, Puzzle, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { DictationButton } from "@/components/speech/dictation-button";
 import {
   ComposerPlus,
   mentionAt,
@@ -49,6 +50,7 @@ export function NewConversation({
   const [caret, setCaret] = useState(0);
   const [skillId, setSkillId] = useState("");
   const [pending, setPending] = useState(false);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [attachNote, setAttachNote] = useState<string | null>(null);
   const [records, setRecords] = useState<RecordReference[] | null | undefined>(undefined);
@@ -279,6 +281,7 @@ export function NewConversation({
           onClose={() => setDraft((current) => ` ${current}`)}
         />
         <Textarea
+          ref={composerRef}
           autoFocus
           aria-label="Start a conversation"
           className="composer-input min-h-[88px] resize-none border-0 bg-transparent px-3.5 pt-3 pb-11 text-body leading-6 focus-visible:ring-0"
@@ -366,21 +369,24 @@ export function NewConversation({
               <span className="px-1 truncate text-data text-muted-foreground">{attachNote}</span>
             )}
           </div>
-          <Button
-            type="submit"
-            size="icon"
-            aria-label="Send"
-            className="pointer-events-auto size-8 shrink-0 rounded-full"
-            disabled={
-              !draft.trim() ||
-              pending ||
-              // Same gate as the chat composer: a chip without fetched
-              // context must not be dropped silently by a send.
-              chips.some((chip) => chip.error !== null || chip.context === null)
-            }
-          >
-            <ArrowUp aria-hidden className="size-4" />
-          </Button>
+          <div className="pointer-events-auto flex shrink-0 items-center gap-1">
+            <DictationButton className="size-8 rounded-full" field={() => composerRef.current} />
+            <Button
+              type="submit"
+              size="icon"
+              aria-label="Send"
+              className="size-8 shrink-0 rounded-full"
+              disabled={
+                !draft.trim() ||
+                pending ||
+                // Same gate as the chat composer: a chip without fetched
+                // context must not be dropped silently by a send.
+                chips.some((chip) => chip.error !== null || chip.context === null)
+              }
+            >
+              <ArrowUp aria-hidden className="size-4" />
+            </Button>
+          </div>
         </div>
       </div>
       {error ? (

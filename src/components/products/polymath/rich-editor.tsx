@@ -15,6 +15,7 @@ import { setAutocompleteEnabled, useAutocomplete } from "./autocomplete-client";
 import { Bold, Italic, List, ListOrdered, Quote, Undo2, Redo2 } from "lucide-react";
 import { filterBlockCommands, slashQuery, type BlockCommand } from "@/components/workspace/slash-commands";
 import { Button } from "@/components/ui/button";
+import { DictationButton } from "@/components/speech/dictation-button";
 import { useWorkspace } from "@/components/workspace/workspace-provider";
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -130,17 +131,24 @@ export default function RichEditor({
     );
   };
   const minimal = chrome === "minimal";
+  const root = useRef<HTMLDivElement>(null);
   // The minimal chrome is flex-based so a host that stretches it (the notes
   // column gives the canvas its --canvas-min floor) can hand the slack to the
   // writing area itself; hosts without spare height are unaffected.
   return (
-    <div className={minimal ? "relative flex flex-1 flex-col" : "space-y-3"}>
+    <div ref={root} className={minimal ? "relative flex flex-1 flex-col" : "space-y-3"}>
       {minimal ? (
         ai || autocomplete ? (
           // Floats in the gap above the document instead of taking a row of
           // its own, so the first line of text sits right under the title.
           <div className="absolute -top-12 right-0 z-10 flex items-center justify-end gap-1">
             {autocomplete && mode === "rich" && editable ? <AutocompleteToggle /> : null}
+            {mode === "rich" && editable ? (
+              <DictationButton
+                size="icon-sm"
+                field={() => root.current?.querySelector<HTMLElement>('[contenteditable="true"]') ?? null}
+              />
+            ) : null}
             {ai ? (
               <NoteAIMenu
                 selection={selection}
@@ -907,6 +915,7 @@ function RichMarkdownEditor({
           >
             <Redo2 aria-hidden />
           </Button>
+          <DictationButton field={() => editor?.view.dom ?? null} />
         </div>
       ) : null}
       <EditorContent editor={editor} className={floating ? "flex flex-1 flex-col" : undefined} />
