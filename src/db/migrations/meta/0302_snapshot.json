@@ -1,6 +1,6 @@
 {
-  "id": "797352a4-1259-4bd1-9f8f-1e84845ec35c",
-  "prevId": "0caa1331-9764-465c-8d77-0f839bc84ae6",
+  "id": "5228a2a2-569f-40da-854e-884dc1f6abee",
+  "prevId": "797352a4-1259-4bd1-9f8f-1e84845ec35c",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -19108,6 +19108,247 @@
         "taxonomy_nodes_level_range": {
           "name": "taxonomy_nodes_level_range",
           "value": "level between 1 and 3"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.tidy_findings": {
+      "name": "tidy_findings",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subject_id": {
+          "name": "subject_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "other_id": {
+          "name": "other_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "detail": {
+          "name": "detail",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "dedupe_key": {
+          "name": "dedupe_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'open'"
+        },
+        "resolution": {
+          "name": "resolution",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "resolution_note": {
+          "name": "resolution_note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "resolved_at": {
+          "name": "resolved_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "resolved_by": {
+          "name": "resolved_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "tidy_findings_dedupe_key": {
+          "name": "tidy_findings_dedupe_key",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "dedupe_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "tidy_findings_status_idx": {
+          "name": "tidy_findings_status_idx",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "kind",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "tidy_findings_subject_idx": {
+          "name": "tidy_findings_subject_idx",
+          "columns": [
+            {
+              "expression": "subject_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "tidy_findings_other_idx": {
+          "name": "tidy_findings_other_idx",
+          "columns": [
+            {
+              "expression": "other_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "tidy_findings_workspace_id_workspaces_id_fk": {
+          "name": "tidy_findings_workspace_id_workspaces_id_fk",
+          "tableFrom": "tidy_findings",
+          "tableTo": "workspaces",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "tidy_findings_subject_id_artifacts_id_fk": {
+          "name": "tidy_findings_subject_id_artifacts_id_fk",
+          "tableFrom": "tidy_findings",
+          "tableTo": "artifacts",
+          "columnsFrom": [
+            "subject_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "tidy_findings_other_id_artifacts_id_fk": {
+          "name": "tidy_findings_other_id_artifacts_id_fk",
+          "tableFrom": "tidy_findings",
+          "tableTo": "artifacts",
+          "columnsFrom": [
+            "other_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "tidy_findings_kind_check": {
+          "name": "tidy_findings_kind_check",
+          "value": "kind in ('disagreement', 'duplicate', 'source_changed', 'unlinked', 'broken_link')"
+        },
+        "tidy_findings_status_check": {
+          "name": "tidy_findings_status_check",
+          "value": "status in ('open', 'resolved', 'dismissed', 'cleared')"
+        },
+        "tidy_findings_resolution_check": {
+          "name": "tidy_findings_resolution_check",
+          "value": "(status = 'resolved') = (resolution is not null) and (resolution is null or resolution in ('first_holds', 'second_holds', 'both_hold'))"
+        },
+        "tidy_findings_decided_check": {
+          "name": "tidy_findings_decided_check",
+          "value": "(status in ('resolved', 'dismissed')) = (resolved_at is not null)"
+        },
+        "tidy_findings_pair_check": {
+          "name": "tidy_findings_pair_check",
+          "value": "(kind in ('disagreement', 'duplicate')) = (other_id is not null)"
         }
       },
       "isRLSEnabled": false

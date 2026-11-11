@@ -3,10 +3,10 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronsLeft, ChevronsRight, PanelLeftOpen, Pin, Search } from "lucide-react";
+import { PanelLeftOpen, Pin, Search } from "lucide-react";
 import { cn } from "cn";
 import { OPEN_COMMAND_SEARCH } from "./command-layer-mount";
-import { destinationForPath, destinations, homeHref, isConversationSurface, type Destination } from "@/lib/navigation";
+import { destinationForPath, destinations, homeHref, type Destination } from "@/lib/navigation";
 import { readPinned, subscribeToPin, writePinned } from "@/lib/sidebar-pin";
 
 /*
@@ -14,24 +14,23 @@ import { readPinned, subscribeToPin, writePinned } from "@/lib/sidebar-pin";
  * product's destinations. There is no app layer to switch between, so no
  * identity header per app and no launcher entry — everything on screen is
  * Polymath. Shared workspace services (Reviews, Activity, Settings) sit at
- * the bottom. Collapses to an icon rail; the choice persists in localStorage.
+ * the bottom.
  *
  * No count badges: the only counts chrome can read without a server
  * round-trip come from the browser-preview store, and the rail's pages read
  * canonical Postgres records - a badge from one source over a page fed by
  * another is a number that lies (ASH-164).
  *
- * On a focus page (isFocusSurface) the rail gets out of the way: it waits
- * off-canvas, a 12px zone at the left edge slides it in over the page, and
- * it hides 250ms after the pointer leaves. A button at the top left, `[`, or
- * the pin control inside the rail pins it open again; the button is the way
- * in for touch (no hover zone) and keyboard (a hidden rail is inert). The pin
- * persists in this browser (lib/sidebar-pin.ts), mirrored onto <html> so a
- * pinned rail is laid out from the first paint. data-state names which of
- * the four states is on screen: docked, hidden, peek or pinned.
+ * Every page shares one rail. It is pinned open, or it waits off-canvas: a
+ * 12px zone at the left edge slides it in over the page, and it hides 250ms
+ * after the pointer leaves. A button at the top left, `[`, or the pin control
+ * inside the rail toggles the pin; the button is the way in for touch (no
+ * hover zone) and keyboard (a hidden rail is inert). The pin persists in this
+ * browser (lib/sidebar-pin.ts), mirrored onto <html> so a pinned rail is laid
+ * out from the first paint. data-state names which of the three states is on
+ * screen: hidden, peek or pinned.
  */
 
-const COLLAPSED_KEY = "axiom-sidenav-collapsed";
 const PEEK_HIDE_DELAY_MS = 250;
 const subscribeToHydration = () => () => {};
 
@@ -49,18 +48,13 @@ function holdsFocus(element: HTMLElement | null) {
   return element?.contains(document.activeElement) ?? false;
 }
 
-export function SideNav({ focus = false }: { focus?: boolean }) {
+export function SideNav() {
   const pathname = usePathname();
   const hydrated = useSyncExternalStore(
     subscribeToHydration,
     () => true,
     () => false,
   );
-  // A conversation surface owns the width: the rail folds to its icon state
-  // while one is live on it. A person who pinned the rail open (localStorage
-  // "0") keeps it open; the auto-collapse does not fight them.
-  const isConversation = isConversationSurface(pathname);
-  const [collapsed, setCollapsed] = useState(false);
   const pinned = useSyncExternalStore(subscribeToPin, readPinned, () => false);
   const [peeking, setPeeking] = useState(false);
   const hideTimer = useRef<number | undefined>(undefined);
@@ -75,28 +69,10 @@ export function SideNav({ focus = false }: { focus?: boolean }) {
   // to the control that toggles back instead.
   const handOffFocus = useRef(false);
 
-  const state = !focus ? "docked" : pinned ? "pinned" : peeking ? "peek" : "hidden";
-  const overlay = state === "hidden" || state === "peek";
-  // The icon rail is a docked-page preference; a focus page's rail is either
-  // out of the way or pinned at full width.
-  const iconRail = state === "docked" && collapsed;
+  const state = pinned ? "pinned" : peeking ? "peek" : "hidden";
+  const overlay = state !== "pinned";
 
   useEffect(() => {
-    if (window.localStorage.getItem(COLLAPSED_KEY) !== "1") return;
-    const frame = requestAnimationFrame(() => setCollapsed(true));
-    return () => cancelAnimationFrame(frame);
-  }, []);
-
-  useEffect(() => {
-    if (!isConversation || focus) return;
-    const frame = requestAnimationFrame(() => {
-      if (window.localStorage.getItem(COLLAPSED_KEY) !== "0") setCollapsed(true);
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [isConversation, focus]);
-
-  useEffect(() => {
-    if (!focus) return;
     function onKeyDown(event: KeyboardEvent) {
       if (event.key !== "[" || event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented) return;
       if (isTypingTarget(event.target)) return;
@@ -109,7 +85,7 @@ export function SideNav({ focus = false }: { focus?: boolean }) {
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [focus]);
+  }, []);
 
   useEffect(() => () => window.clearTimeout(hideTimer.current), []);
 
@@ -141,13 +117,6 @@ export function SideNav({ focus = false }: { focus?: boolean }) {
     writePinned(!pinned);
   }
 
-  function toggle() {
-    setCollapsed((current) => {
-      window.localStorage.setItem(COLLAPSED_KEY, current ? "0" : "1");
-      return !current;
-    });
-  }
-
   function openCommand() {
     window.dispatchEvent(new Event(OPEN_COMMAND_SEARCH));
   }
@@ -161,19 +130,17 @@ export function SideNav({ focus = false }: { focus?: boolean }) {
         key={destination.href}
         href={destination.href}
         aria-label={destination.label}
-        title={iconRail ? destination.label : undefined}
         aria-current={active ? "page" : undefined}
         className={cn(
-          "flex h-8 min-h-8 items-center gap-2.5 rounded-md text-body-dense transition-colors outline-none",
+          "flex h-8 min-h-8 items-center gap-2.5 rounded-md px-2.5 text-body-dense transition-colors outline-none",
           "focus-visible:ring-ring focus-visible:ring-3",
-          iconRail ? "justify-center px-0" : "px-2.5",
           active
             ? "bg-sidebar-accent text-sidebar-foreground font-medium"
             : "text-muted-foreground hover:bg-sidebar-accent/70 hover:text-sidebar-foreground",
         )}
       >
         <destination.icon aria-hidden className={cn("size-4 shrink-0", !active && "opacity-75")} />
-        {iconRail ? null : <span className="min-w-0 flex-1 truncate">{destination.label}</span>}
+        <span className="min-w-0 flex-1 truncate">{destination.label}</span>
       </Link>
     );
   }
@@ -182,7 +149,7 @@ export function SideNav({ focus = false }: { focus?: boolean }) {
     <>
       {/* The edge zone sits under the rail, so a peeking rail covers it.
           Hover only exists for a fine pointer; touch never gets the zone. */}
-      {focus && !pinned ? (
+      {!pinned ? (
         <div
           data-peek-zone
           aria-hidden
@@ -190,10 +157,11 @@ export function SideNav({ focus = false }: { focus?: boolean }) {
           className="sidebar-pinned:hidden fixed inset-y-0 left-0 z-40 hidden w-3 pointer-fine:md:block"
         />
       ) : null}
-      {/* The way back to the rail for touch and keyboard, at the top left.
-          A peeking rail (z-40) covers it. Below md the bottom bar is the
+      {/* The way back to the rail for touch and keyboard, at the top left;
+          the top bar leaves room for it (top-bar.tsx). A
+          peeking rail (z-40) covers it. Below md the bottom bar is the
           navigation and the rail never shows, so neither does this. */}
-      {focus && !pinned ? (
+      {!pinned ? (
         <button
           ref={openerRef}
           type="button"
@@ -210,9 +178,8 @@ export function SideNav({ focus = false }: { focus?: boolean }) {
           <PanelLeftOpen aria-hidden className="size-4" />
         </button>
       ) : null}
-      {/* Hovering a docked rail also counts as a peek: following one of its
-          links into a focus page leaves the rail under the pointer until the
-          pointer leaves it. */}
+      {/* Hovering the rail also counts as a peek: following one of its links
+          leaves the rail under the pointer until the pointer leaves it. */}
       <nav
         ref={navRef}
         aria-label="Workspace"
@@ -227,7 +194,7 @@ export function SideNav({ focus = false }: { focus?: boolean }) {
           pointerOnRail.current = false;
         }}
         className={cn(
-          "group/nav border-sidebar-border bg-sidebar hidden h-dvh shrink-0 border-r md:block",
+          "group/nav border-sidebar-border bg-sidebar hidden h-dvh w-60 shrink-0 border-r md:block",
           overlay
             ? "fixed inset-y-0 left-0 z-40 shadow-[var(--shadow)] transition-transform duration-200 ease-out motion-reduce:transition-none"
             : "sticky top-0",
@@ -237,92 +204,43 @@ export function SideNav({ focus = false }: { focus?: boolean }) {
           // rail until hydration swaps in the real state: no shift.
           state === "hidden" &&
             "sidebar-pinned:sticky sidebar-pinned:bottom-auto sidebar-pinned:z-auto sidebar-pinned:translate-x-0 sidebar-pinned:shadow-none",
-          iconRail ? "w-[52px]" : "w-60",
         )}
       >
         <div className="flex h-full flex-col gap-1 overflow-y-auto px-2 py-2.5">
-          {/*
-           * The mark and the disclosure share one row in both states, so the
-           * chevron sits where the eye already is. A 52px rail cannot hold a 24px
-           * mark and a 24px target inside the 8px gutter, so the collapsed row
-           * borrows the gutter back rather than shrinking the target below the
-           * 24px floor in agents/design.md.
-           */}
-          <div className={cn("flex items-center", iconRail ? "-mx-1.5" : "gap-1")}>
+          <div className="flex items-center gap-1">
             {/* axe's label-content-name-mismatch: when an aria-label is present,
               the link's text content must appear inside it. The mark's "P" is
               aria-hidden for painting but still counts as text content here, so
               any aria-label ("Polymath", "Polymath home") fails the rule. No
-              label: the visible "Polymath" names the link, and the title covers
-              the collapsed state where the text is not rendered. */}
+              label: the visible "Polymath" names the link. */}
             <Link
               href={homeHref}
-              title={iconRail ? "Polymath" : undefined}
               className={cn(
-                "text-sidebar-foreground hover:bg-sidebar-accent flex items-center gap-2 rounded-md text-body-dense font-semibold tracking-tight transition-colors outline-none",
+                "text-sidebar-foreground hover:bg-sidebar-accent flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-body-dense font-semibold tracking-tight transition-colors outline-none",
                 "focus-visible:ring-ring focus-visible:ring-3",
-                iconRail ? "size-6 justify-center px-0" : "h-9 min-w-0 flex-1 px-2",
               )}
             >
               <span aria-hidden className="polymath-mark !size-6 !text-body">
                 P
               </span>
-              {iconRail ? null : <span className="min-w-0 flex-1 truncate text-left">Polymath</span>}
+              <span className="min-w-0 flex-1 truncate text-left">Polymath</span>
             </Link>
-            {/*
-             * aria-expanded reports the rail, the label reports the action: a
-             * name that restates the current state ("Collapsed") tells a screen
-             * reader where it is, not what pressing the button does.
-             *
-             * Invisible until hover: the collapse control is chrome, not content,
-             * so it stays out of the rail's reading order until the pointer is
-             * over the rail. Keyboard focus and the expanded state keep it
-             * visible (focus-visible for keyboard, aria-expanded for the state);
-             * on touch there is no hover, so the expanded rail keeps its opacity
-             * and the collapsed rail shows the expand arrow outright.
-             */}
-            {focus ? (
-              <button
-                ref={pinRef}
-                type="button"
-                onClick={togglePin}
-                aria-pressed={pinned}
-                aria-keyshortcuts="["
-                aria-label="Keep sidebar open"
-                title="Keep sidebar open ([)"
-                className={cn(
-                  "hover:bg-sidebar-accent hover:text-sidebar-foreground flex size-8 shrink-0 items-center justify-center rounded-md transition-colors outline-none",
-                  "focus-visible:ring-ring focus-visible:ring-3",
-                  pinned ? "bg-sidebar-accent text-sidebar-foreground" : "text-muted-foreground",
-                )}
-              >
-                <Pin aria-hidden className="size-4" />
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={toggle}
-                aria-expanded={!collapsed}
-                aria-label={iconRail ? "Expand navigation" : "Collapse navigation"}
-                title={iconRail ? "Expand navigation" : "Collapse navigation"}
-                className={cn(
-                  "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground flex shrink-0 items-center justify-center rounded-md transition-colors outline-none",
-                  "focus-visible:ring-ring focus-visible:ring-3",
-                  // Always visible: the rail's only persistent control. Auto-collapse
-                  // made hidden-when-collapsed reachable on its own, and a hover-reveal
-                  // control is undiscoverable on touch and indistinguishable from an
-                  // unsettled animation to the e2e settle gate.
-                  "opacity-100",
-                  iconRail ? "size-6" : "size-8",
-                )}
-              >
-                {iconRail ? (
-                  <ChevronsRight aria-hidden className="size-4" />
-                ) : (
-                  <ChevronsLeft aria-hidden className="size-4" />
-                )}
-              </button>
-            )}
+            <button
+              ref={pinRef}
+              type="button"
+              onClick={togglePin}
+              aria-pressed={pinned}
+              aria-keyshortcuts="["
+              aria-label="Keep sidebar open"
+              title="Keep sidebar open ([)"
+              className={cn(
+                "hover:bg-sidebar-accent hover:text-sidebar-foreground flex size-8 shrink-0 items-center justify-center rounded-md transition-colors outline-none",
+                "focus-visible:ring-ring focus-visible:ring-3",
+                pinned ? "bg-sidebar-accent text-sidebar-foreground" : "text-muted-foreground",
+              )}
+            >
+              <Pin aria-hidden className="size-4" />
+            </button>
           </div>
 
           <span className="flex items-center gap-1.5">
@@ -334,17 +252,12 @@ export function SideNav({ focus = false }: { focus?: boolean }) {
               data-search-trigger
               aria-keyshortcuts="Meta+K Control+K"
               className={cn(
-                "border-sidebar-border bg-card text-muted-foreground hover:text-foreground disabled:opacity-50 flex h-8 flex-1 items-center gap-2.5 rounded-md border text-body-dense transition-colors outline-none",
+                "border-sidebar-border bg-card text-muted-foreground hover:text-foreground disabled:opacity-50 flex h-8 flex-1 items-center gap-2.5 rounded-md border px-2.5 text-body-dense transition-colors outline-none",
                 "focus-visible:ring-ring focus-visible:ring-3",
-                iconRail ? "justify-center border-transparent bg-transparent px-0 hover:bg-sidebar-accent" : "px-2.5",
               )}
             >
               <Search aria-hidden className="size-4 shrink-0" />
-              {iconRail ? null : (
-                <>
-                  <span className="flex-1 text-left">Search</span>
-                </>
-              )}
+              <span className="flex-1 text-left">Search</span>
             </button>
           </span>
 

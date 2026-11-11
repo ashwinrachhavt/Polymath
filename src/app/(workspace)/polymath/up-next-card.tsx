@@ -48,22 +48,30 @@ export async function UpNextContent({ auth }: { auth: AuthContext }) {
 
 /*
  * Home's trigger: one place to pick learning back up and one button to do it.
- * Continue goes to the cards that are due, else the quiz never sat, else the
- * Notebooks where learning is made. A broken streak simply disappears; the
- * card never counts what was missed.
+ * Continue goes to the cards that are due, else two ideas that disagree, else
+ * the quiz never sat, else the Notebooks where learning is made. A broken
+ * streak simply disappears; the card never counts what was missed.
  */
 export function UpNextCard({ upNext }: { upNext: UpNext }) {
-  const { dueCards, firstDue, quizWaiting, streakDays } = upNext;
+  const { dueCards, firstDue, quizWaiting, streakDays, disagreement } = upNext;
   const next = firstDue
     ? {
         href: `/projects/${firstDue.notebookId}/notebook/flashcards?deck=${firstDue.deckId}`,
         label: "Review the flashcards that are due.",
       }
-    : quizWaiting
-      ? { href: quizWaiting.href, label: `Take the quiz on ${quizWaiting.title}.` }
-      : { href: "/projects", label: "Make flashcards or a quiz from a Notebook." };
+    : disagreement
+      ? {
+          href: `/polymath/ideas?tidy=${disagreement.findingId}#tidy-${disagreement.findingId}`,
+          label: `Two ideas disagree: "${disagreement.firstTitle}" and "${disagreement.secondTitle}". Decide which holds.`,
+        }
+      : quizWaiting
+        ? { href: quizWaiting.href, label: `Take the quiz on ${quizWaiting.title}.` }
+        : { href: "/projects", label: "Make flashcards or a quiz from a Notebook." };
   const progress = [
     dueCards === 0 ? "No cards due" : `${dueCards} ${dueCards === 1 ? "card" : "cards"} due`,
+    disagreement
+      ? `${disagreement.open} ${disagreement.open === 1 ? "disagreement" : "disagreements"} to settle`
+      : null,
     streakDays > 0 ? `${streakDays}-day streak` : null,
   ]
     .filter(Boolean)
