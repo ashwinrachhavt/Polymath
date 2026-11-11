@@ -12,7 +12,7 @@ export const noteLayout = {
   cell: "min-w-0 flex-1",
   /** The centered reading column at the prose measure. */
   column:
-    "mx-auto flex min-h-[var(--canvas-min)] w-full max-w-[var(--measure-prose)] flex-col px-6 pb-24 pt-12 note-column",
+    "mx-auto flex min-h-[var(--canvas-min)] w-full max-w-[var(--measure-prose)] flex-col px-6 pb-24 pt-4 note-column",
   /** The header row of icon actions above the title. */
   header: "-mx-6 flex h-8 items-center justify-end px-6",
   titleRow: "flex items-start gap-2",
@@ -21,5 +21,5 @@ export const noteLayout = {
   meta: "mt-3 flex min-h-5 flex-wrap items-center gap-2 text-data",
   actions: "mt-4 flex flex-wrap items-center gap-2",
   /** Where the document starts. */
-  body: "relative mt-8 flex flex-1 flex-col",
+  body: "relative mt-12 flex flex-1 flex-col",
 } as const;
