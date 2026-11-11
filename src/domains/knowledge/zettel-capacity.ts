@@ -29,3 +29,12 @@ export function capForSize(chars: number): number {
  */
 export const SUGGESTED_LINKS_PER_COLLECTION_CARD = 3;
 export const SUGGESTED_LINKS_PER_DETAIL_PAGE = 5;
+
+/*
+ * The maximum cosine distance at which an existing idea becomes a duplicate
+ * candidate, and the distance under which it is the same idea without asking
+ * a model. Between the two, a model comparison decides. Creation (zettels.ts)
+ * and the Tidy pass (tidy.ts) read the same pair.
+ */
+export const ZETTEL_DUPLICATE_MAX_DISTANCE = 0.15;
+export const ZETTEL_DUPLICATE_STRONG_DISTANCE = 0.04;
