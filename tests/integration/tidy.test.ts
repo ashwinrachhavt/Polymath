@@ -359,6 +359,27 @@ suite("Tidy (real Postgres)", () => {
     ]);
   });
 
+  it("Home's Up next offers the oldest open disagreement until it is settled", async () => {
+    const auth = await seedAuth("upnext");
+    const older = await seedCard(auth, { kind: "zettel", title: "Coffee helps focus", body: "Coffee helps." });
+    const olderOther = await seedCard(auth, { kind: "zettel", title: "Coffee hurts focus", body: "Coffee hurts." });
+    const newer = await seedCard(auth, { kind: "zettel", title: "Naps help", body: "Naps help." });
+    const newerOther = await seedCard(auth, { kind: "zettel", title: "Naps hurt", body: "Naps hurt." });
+    const { recordDisagreement, dismissFinding } = await import("@/domains/knowledge/tidy");
+    const { withTransaction } = await import("@/lib/db-transaction");
+    const { getUpNext } = await import("@/domains/learning/up-next");
+    await withTransaction((tx) => recordDisagreement(tx, auth, { subjectId: older, otherId: olderOther, reason: "r" }));
+    await withTransaction((tx) => recordDisagreement(tx, auth, { subjectId: newer, otherId: newerOther, reason: "r" }));
+
+    const first = (await getUpNext(auth)).disagreement;
+    expect(first).toMatchObject({ firstTitle: "Coffee helps focus", secondTitle: "Coffee hurts focus", open: 2 });
+    await dismissFinding(auth, { findingId: first!.findingId });
+    expect((await getUpNext(auth)).disagreement).toMatchObject({ firstTitle: "Naps help", open: 1 });
+
+    await holder.db!.update(artifacts).set({ archivedAt: new Date() }).where(eq(artifacts.id, newerOther));
+    expect((await getUpNext(auth)).disagreement).toBeNull();
+  });
+
   it("resolving a disagreement writes the link its outcome describes", async () => {
     const auth = await seedAuth("resolve");
     const { recordDisagreement, resolveDisagreement, listTidyFindings, TidyTransitionError } =
