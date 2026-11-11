@@ -82,6 +82,8 @@ const listColumns = {
   // A file capture's preview is its reading once the OCR rung has landed one;
   // until then the filename is the only label the row carries.
   preview: sql<string | null>`coalesce(left(${captures.text}, 300), ${captures.rawPayload}->>'filename')`,
+  // Whether filing has words to file: workingText (mode.ts) is not blank.
+  hasText: sql<boolean>`coalesce(case when ${captures.captureMode} in ('page', 'url-reference') then coalesce(${captures.fetchedText}, ${captures.text}) else ${captures.text} end, '') ~ '\\S'`,
 };
 
 /** Paged, searchable read for the inbox list pane. The total honours every filter. */

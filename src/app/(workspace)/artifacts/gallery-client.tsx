@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { FileText, LayoutGrid, List, Search } from "lucide-react";
+import { deckReviewHref } from "@/domains/learning/review-href";
 import { WriteFromLibrary } from "./write-from-library";
 
 /*
@@ -178,7 +179,7 @@ export function ArtifactCard({
           ? `/projects/${artifact.notebookId}/notebook?quiz=${artifact.id}`
           : `/learn/${artifact.documentId}`
         : artifact.recordType === "flashcard_deck"
-          ? `/projects/${artifact.notebookId}/notebook/flashcards?deck=${artifact.id}`
+          ? deckReviewHref({ deckId: artifact.id, notebookId: artifact.notebookId ?? null })
           : `/artifacts/${artifact.id}`;
   const label = artifact.recordType === "source" ? "Source" : artifact.kind;
   return (

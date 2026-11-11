@@ -1,6 +1,6 @@
 {
-  "id": "5228a2a2-569f-40da-854e-884dc1f6abee",
-  "prevId": "797352a4-1259-4bd1-9f8f-1e84845ec35c",
+  "id": "f1bcf43c-423c-41b3-9dbe-71167567ba53",
+  "prevId": "5228a2a2-569f-40da-854e-884dc1f6abee",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -20287,7 +20287,7 @@
           "name": "notebook_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "title": {
           "name": "title",

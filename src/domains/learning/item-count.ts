@@ -10,6 +10,9 @@
  * generators' response schemas enforce the same cap).
  */
 
+/** The most sources one quiz or deck reads. */
+export const MAX_LEARNING_SOURCES = 8;
+
 export const MIN_ITEM_COUNT = 5;
 export const MAX_ITEM_COUNT = 100;
 
