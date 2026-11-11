@@ -23,6 +23,7 @@ import {
   defaultItemCount,
   generateInBatches,
   MAX_ITEM_COUNT,
+  MAX_LEARNING_SOURCES,
   MIN_ITEM_COUNT,
   type GenerationOutcome,
 } from "./item-count";
@@ -69,12 +70,12 @@ const ABANDONED_AFTER_MS = 10 * 60 * 1000;
  */
 export async function generateFlashcardDeck(
   auth: AuthContext,
-  input: { notebookId: string; documentIds: string[]; cardCount?: number; idempotencyKey: string },
+  input: { notebookId?: string; documentIds: string[]; cardCount?: number; idempotencyKey: string },
   generator?: FlashcardGenerator,
 ): Promise<{ deckId: string; cardCount: number; requested: number; stoppedBy: DeckGenerationState }> {
   if (
     input.documentIds.length < 1 ||
-    input.documentIds.length > 8 ||
+    input.documentIds.length > MAX_LEARNING_SOURCES ||
     new Set(input.documentIds).size !== input.documentIds.length
   ) {
     throw new FlashcardError("invalid_sources", "Choose one to eight distinct sources.");
@@ -249,7 +250,7 @@ export async function getFlashcardDeck(
   onlyDue = false,
 ): Promise<{
   id: string;
-  notebookId: string;
+  notebookId: string | null;
   title: string;
   sourceManifest: FlashcardSourceSnapshot[];
   cards: Array<{ id: string; prompt: string; answer: string; evidence: FlashcardEvidence; dueAt: Date }>;
@@ -296,8 +297,9 @@ export async function getFlashcardDueQueue(
   Array<{
     flashcardId: string;
     deckId: string;
-    notebookId: string;
-    notebookTitle: string;
+    /** Null for a deck made outside a Notebook; it is reviewed at deckReviewHref. */
+    notebookId: string | null;
+    notebookTitle: string | null;
     deckTitle: string;
     prompt: string;
     dueAt: Date;
@@ -319,7 +321,7 @@ export async function getFlashcardDueQueue(
       flashcardDecks,
       and(eq(flashcardDecks.id, flashcards.deckId), eq(flashcardDecks.workspaceId, auth.workspaceId)),
     )
-    .innerJoin(notebooks, and(eq(notebooks.id, flashcardDecks.notebookId), eq(notebooks.workspaceId, auth.workspaceId)))
+    .leftJoin(notebooks, and(eq(notebooks.id, flashcardDecks.notebookId), eq(notebooks.workspaceId, auth.workspaceId)))
     .leftJoin(
       flashcardReviews,
       and(

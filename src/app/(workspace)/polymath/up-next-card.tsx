@@ -4,6 +4,7 @@ import { unstable_rethrow } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { AuthContext } from "@/domains/identity/resolve";
+import { deckReviewHref } from "@/domains/learning/review-href";
 import { getUpNext, type UpNext } from "@/domains/learning/up-next";
 
 /*
@@ -49,14 +50,15 @@ export async function UpNextContent({ auth }: { auth: AuthContext }) {
 /*
  * Home's trigger: one place to pick learning back up and one button to do it.
  * Continue goes to the cards that are due, else two ideas that disagree, else
- * the quiz never sat, else the Notebooks where learning is made. A broken
+ * the quiz never sat, else Learn, where flashcards and quizzes are made from
+ * any sources. A broken
  * streak simply disappears; the card never counts what was missed.
  */
 export function UpNextCard({ upNext }: { upNext: UpNext }) {
   const { dueCards, firstDue, quizWaiting, streakDays, disagreement } = upNext;
   const next = firstDue
     ? {
-        href: `/projects/${firstDue.notebookId}/notebook/flashcards?deck=${firstDue.deckId}`,
+        href: deckReviewHref(firstDue),
         label: "Review the flashcards that are due.",
       }
     : disagreement
@@ -66,7 +68,7 @@ export function UpNextCard({ upNext }: { upNext: UpNext }) {
         }
       : quizWaiting
         ? { href: quizWaiting.href, label: `Take the quiz on ${quizWaiting.title}.` }
-        : { href: "/projects", label: "Make flashcards or a quiz from a Notebook." };
+        : { href: "/learn", label: "Make flashcards or a quiz from any sources." };
   const progress = [
     dueCards === 0 ? "No cards due" : `${dueCards} ${dueCards === 1 ? "card" : "cards"} due`,
     disagreement

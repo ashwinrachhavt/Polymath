@@ -266,12 +266,12 @@ describe("live Alfred route functionality", () => {
     expect(html.match(/<h1/g)).toHaveLength(1);
   });
 
-  it("Up next with nothing to learn yet leads to the Notebooks and mentions no streak", async () => {
+  it("Up next with nothing to learn yet leads to Learn and mentions no streak", async () => {
     const auth = { userId: "owner", workspaceId: "workspace", role: "owner" as const };
     const html = renderToStaticMarkup(await UpNextContent({ auth }));
     expect(getUpNext).toHaveBeenCalledWith(auth);
     expect(html).toContain("No cards due");
-    expect(html).toContain('href="/projects"');
+    expect(html).toContain('href="/learn"');
     expect(html).not.toContain("streak");
     expect(html).not.toMatch(/<h[1-6]/);
   });
@@ -303,6 +303,13 @@ describe("live Alfred route functionality", () => {
     );
     expect(due).toContain('href="/projects/nb-1/notebook/flashcards?deck=deck-1"');
     expect(due).toContain("12 cards due · 4-day streak");
+
+    const looseDeck = renderToStaticMarkup(
+      UpNextCard({
+        upNext: { dueCards: 3, firstDue: { notebookId: null, deckId: "deck-2" }, quizWaiting, streakDays: 0 },
+      }),
+    );
+    expect(looseDeck).toContain('href="/learn/decks/deck-2"');
 
     const quiz = renderToStaticMarkup(
       UpNextCard({ upNext: { dueCards: 0, firstDue: null, quizWaiting, streakDays: 1, disagreement: null } }),
