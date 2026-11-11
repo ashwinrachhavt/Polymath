@@ -59,7 +59,7 @@ const findingFacts = z.discriminatedUnion("kind", [
 ]);
 
 /** What a finding says, by kind. Persisted `detail` is parsed against this at every read. */
-export type TidyFindingFacts = z.infer<typeof findingFacts>;
+type TidyFindingFacts = z.infer<typeof findingFacts>;
 type SubjectFacts = TidyFindingFacts & { subjectId: string };
 
 /**
@@ -238,7 +238,7 @@ export async function recordDisagreement(
  * ------------------------------------------------------------------------- */
 
 /** Model comparisons one pass may spend, across every pair it reviews. */
-export const TIDY_MAX_MODEL_COMPARISONS = 20;
+const TIDY_MAX_MODEL_COMPARISONS = 20;
 /** Notes and ideas one pass reviews for pairs, oldest-edited first. */
 const PAIR_REVIEW_ARTIFACTS = 25;
 const PAIR_NEIGHBOURS = 3;
@@ -269,9 +269,10 @@ export type TidyPassSummary = {
         comparisons: number;
         disagreements: number;
         duplicates: number;
-        /** Notes and ideas left for the next pass because the comparison budget ran out or a call failed. */
+        /** Notes and ideas left for the next pass. */
         deferred: number;
-        error?: string;
+        /** Why a stopped review stopped. Provider text can carry account details, so it is logged, never returned. */
+        stoppedBy?: "budget" | "comparison_failed";
       };
   /** New or reopened derivable findings, and ones cleared because their condition no longer holds. */
   opened: number;
@@ -359,8 +360,9 @@ async function reviewPairs(auth: AuthContext, judge: PairJudge): Promise<TidyPas
           existing: { title: neighbour.title, content: neighbour.content },
         });
       } catch (cause) {
+        console.warn("[tidy] idea comparison failed; pair review stops until the next pass", cause);
         result.deferred += candidates.length - index;
-        return { status: "stopped", ...result, error: cause instanceof Error ? cause.message : String(cause) };
+        return { status: "stopped", ...result, stoppedBy: "comparison_failed" };
       }
       if (verdict.verdict === "distinct") continue;
       if (await recordPair(auth, candidate.id, neighbour, verdict)) {
@@ -370,7 +372,7 @@ async function reviewPairs(auth: AuthContext, judge: PairJudge): Promise<TidyPas
     }
     if (!finished) {
       result.deferred += candidates.length - index;
-      return { status: "stopped", ...result };
+      return { status: "stopped", ...result, stoppedBy: "budget" };
     }
     await stampPairsReviewed(auth, candidate);
     result.reviewed += 1;

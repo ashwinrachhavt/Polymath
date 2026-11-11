@@ -16,6 +16,9 @@ const GROUPS: Array<{ label: string; kinds: TidyFindingView["kind"][] }> = [
   { label: "Loose ends", kinds: ["unlinked", "broken_link"] },
 ];
 
+/** A short list a person can finish, not a queue to manage. */
+const ROWS_PER_GROUP = 5;
+
 type Hrefs = { open: (card: TidyArtifactView) => string };
 
 function CardLink({ card, hrefs }: { card: TidyArtifactView; hrefs: Hrefs }) {
@@ -125,8 +128,10 @@ export function TidySection({
         </p>
       </div>
       {GROUPS.map((group) => {
-        const rows = findings.filter((finding) => group.kinds.includes(finding.kind));
-        if (rows.length === 0) return null;
+        const inGroup = findings.filter((finding) => group.kinds.includes(finding.kind));
+        if (inGroup.length === 0) return null;
+        const rows = inGroup.filter((finding, index) => index < ROWS_PER_GROUP || finding.id === openFindingId);
+        const hidden = inGroup.length - rows.length;
         return (
           <section key={group.label} aria-label={group.label} className="flex flex-col gap-2">
             <h3 className="text-xs font-medium text-muted-foreground">{group.label}</h3>
@@ -155,6 +160,9 @@ export function TidySection({
                 </li>
               ))}
             </ul>
+            {hidden > 0 ? (
+              <p className="text-xs text-muted-foreground">{hidden} more will show as you settle these.</p>
+            ) : null}
           </section>
         );
       })}

@@ -337,6 +337,35 @@ suite("Tidy (real Postgres)", () => {
     expect(stamped).toEqual([]);
   });
 
+  it("a failed comparison stops pair review without leaking the provider's words, and loose ends still run", async () => {
+    const auth = await seedAuth("failing");
+    await seedCard(auth, { kind: "zettel", title: "Tea calms", body: "Tea calms.", d: 0 });
+    await seedCard(auth, { kind: "zettel", title: "Tea excites", body: "Tea excites.", d: 0.1 });
+    const note = await seedCard(auth, { kind: "note", title: "Hub", body: "See [[Missing page]].", ageDays: 1 });
+    const { runTidyPass, listTidyFindings } = await import("@/domains/knowledge/tidy");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const summary = await runTidyPass(auth, {
+      judge: {
+        embeddingModel: "test-embed",
+        compare: async () => {
+          throw new Error("401 from provider for key sk-secret");
+        },
+      },
+    });
+    warn.mockRestore();
+
+    expect(summary.pairReview).toMatchObject({ status: "stopped", stoppedBy: "comparison_failed", reviewed: 0 });
+    expect(JSON.stringify(summary)).not.toContain("sk-secret");
+    const { findings } = await listTidyFindings(auth);
+    expect(findings.map((f) => [f.kind, f.subject.id])).toEqual([["broken_link", note]]);
+    const stamped = await holder
+      .db!.select({ id: artifacts.id })
+      .from(artifacts)
+      .where(and(eq(artifacts.workspaceId, auth.workspaceId), sql`${artifacts.metadata} ? 'tidy'`));
+    expect(stamped).toEqual([]);
+  });
+
   it("an idea whose source document was archived is out of date", async () => {
     const auth = await seedAuth("source");
     const idea = await seedCard(auth, { kind: "zettel", title: "From a lease", body: "A lease idea." });

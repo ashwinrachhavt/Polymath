@@ -24,7 +24,7 @@ import { drizzleQuotaStore, withQuota, type QuotaStore } from "@/integrations/pr
 
 export type ZettelCandidate = { title: string; content: string; quote?: string };
 
-export type IdeaComparisonInput = {
+type IdeaComparisonInput = {
   candidate: { title: string; content: string; quote?: string };
   existing: { title: string; content: string };
 };

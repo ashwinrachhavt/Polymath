@@ -139,14 +139,16 @@ export async function runTidyNowAction(): Promise<{ message: string }> {
   requireRole(auth, "member");
   const summary = await runTidyPass(auth);
   refresh();
-  const found =
-    summary.opened +
-    (summary.pairReview.status === "skipped" ? 0 : summary.pairReview.disagreements + summary.pairReview.duplicates);
-  const parts = [
-    found === 0 ? "Nothing new to look at." : `Found ${found} new ${found === 1 ? "thing" : "things"} to look at.`,
-  ];
-  if (summary.pairReview.status === "skipped")
-    parts.push("Comparing ideas needs a model, so only loose ends and sources were checked.");
-  else if (summary.pairReview.status === "stopped") parts.push("Some ideas are left for the next run.");
+  const review = summary.pairReview;
+  const found = summary.opened + (review.status === "skipped" ? 0 : review.disagreements + review.duplicates);
+  const parts = [found === 0 ? "Nothing new found." : `Found ${found} new ${found === 1 ? "thing" : "things"} to look at.`];
+  // "Nothing new" must never read as "no disagreements" when ideas were not compared.
+  if (review.status === "skipped") {
+    parts.push("Ideas were not compared with each other, because no model is set up. Only sources and loose ends were checked.");
+  } else if (review.status === "stopped" && review.stoppedBy === "comparison_failed") {
+    parts.push("Comparing ideas failed partway, so some were not checked. Try again later.");
+  } else if (review.status === "stopped") {
+    parts.push("Some ideas are left for the next run.");
+  }
   return { message: parts.join(" ") };
 }
