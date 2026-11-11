@@ -37,6 +37,7 @@ import { X, History, Info, Link2, Plus, MessageSquare } from "lucide-react";
 import { MarginNotes } from "@/components/products/polymath/margin-notes";
 import { FindNoteButton } from "./notebook-workspace";
 import type { LinkPreview } from "@/domains/knowledge/notes";
+import type { NoteAICoverage } from "@/domains/knowledge/note-ai";
 import { NotionAppendAction } from "./notion-append";
 import { NoteCommentsPanel, type PanelComment } from "./note-comments-panel";
 
@@ -98,6 +99,8 @@ type AIProposal = {
   runId: string;
   heading: string;
   selection: string;
+  /** How much of the note the run read; only a whole-note read may replace the note. */
+  coverage: NoteAICoverage;
   state: string;
   output: string | null;
   failed?: boolean;
@@ -637,6 +640,7 @@ export function NoteEditor({
       runId: result.runId,
       heading: AI_HEADINGS[request.action],
       selection: request.selection,
+      coverage: result.coverage,
       state: "queued",
       output: null,
     });
@@ -985,6 +989,11 @@ export function NoteEditor({
                       : "Working - the draft appears here when the run finishes"}
                 </span>
               </div>
+              {ai.coverage === "note_start" && (
+                <p className="text-xs text-muted-foreground">
+                  This note is long, so only the first part was read. Select a passage to work on a later part.
+                </p>
+              )}
               {ai.output && !ai.failed && (
                 <>
                   <div className="max-h-64 overflow-y-auto whitespace-pre-wrap rounded-md bg-muted/40 p-3 text-body-dense leading-6">
@@ -1011,7 +1020,7 @@ export function NoteEditor({
                     >
                       {ai.heading === "Answer" ? "Insert the answer" : "Add at the end"}
                     </Button>
-                    {ai.heading !== "Answer" && (
+                    {ai.heading !== "Answer" && ai.coverage === "whole_note" && (
                       <Button
                         type="button"
                         size="sm"

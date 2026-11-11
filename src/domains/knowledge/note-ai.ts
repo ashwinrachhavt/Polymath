@@ -5,6 +5,7 @@ import { recordAudit } from "@/domains/audit/record";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
+import { untrustedDataClauseForTransform } from "@/lib/prompts";
 import { noteContentToMarkdown } from "./note-content";
 import { commitNoteSnapshot, type NoteContent } from "./notes";
 import { artifactLinks, artifactVersions, artifacts, workingDrafts } from "./schema";
@@ -26,12 +27,18 @@ export type NoteAIAction = (typeof NOTE_AI_ACTIONS)[number];
 /** Objectives from this feature carry one marker so history and tests can tell them apart from other runs on the note. */
 export const NOTE_AI_MARKER = "Notebook AI";
 
-/** The model never sees more than this; a longer note is quoted from the top with an explicit cut. */
-const MAX_NOTE_CHARS = 8000;
+/** One size limit for whatever the model is handed, a selection or the note. */
+export const MAX_NOTE_AI_CHARS = 8000;
 
 export class NoteAIError extends Error {
   constructor(
-    public readonly code: "note_not_found" | "run_not_found" | "empty_input" | "no_output" | "run_mismatch",
+    public readonly code:
+      | "note_not_found"
+      | "run_not_found"
+      | "empty_input"
+      | "too_long"
+      | "no_output"
+      | "run_mismatch",
     message: string,
   ) {
     super(message);
@@ -39,10 +46,40 @@ export class NoteAIError extends Error {
   }
 }
 
-function quote(text: string, max = MAX_NOTE_CHARS): string {
-  const trimmed = text.trim();
-  if (trimmed.length <= max) return trimmed;
-  return `${trimmed.slice(0, max)}\n\n[…the note continues; this is the first ${max} characters]`;
+/** How much of the note a run read. Only "whole_note" may replace the note. */
+export type NoteAICoverage = "selection" | "whole_note" | "note_start";
+
+const REWRITE_ACTIONS: ReadonlySet<NoteAIAction> = new Set(["improve", "shorten", "translate"]);
+
+/*
+ * What the model will read, decided before any spend. A rewrite is refused
+ * rather than run on part of its subject: its result can replace that subject,
+ * and text the model never saw must not be replaceable. Summarize and ask only
+ * read, so a long note is read from the top and the caller is told.
+ */
+export function resolveNoteAIScope(input: { action: NoteAIAction; noteMarkdown: string; selection?: string }): {
+  subject: string;
+  coverage: NoteAICoverage;
+} {
+  const selection = input.action === "ask" ? "" : (input.selection?.trim() ?? "");
+  if (selection) {
+    if (selection.length > MAX_NOTE_AI_CHARS) {
+      throw new NoteAIError("too_long", "That selection is too long for one pass. Select a shorter passage.");
+    }
+    return { subject: selection, coverage: "selection" };
+  }
+  const note = input.noteMarkdown.trim();
+  if (note.length <= MAX_NOTE_AI_CHARS) return { subject: note, coverage: "whole_note" };
+  if (REWRITE_ACTIONS.has(input.action)) {
+    throw new NoteAIError(
+      "too_long",
+      "This note is too long to rewrite in one pass. Select the part you want changed.",
+    );
+  }
+  return {
+    subject: `${note.slice(0, MAX_NOTE_AI_CHARS)}\n\n[…the note continues; this is the first ${MAX_NOTE_AI_CHARS} characters]`,
+    coverage: "note_start",
+  };
 }
 
 /**
@@ -57,22 +94,23 @@ export function buildNoteAIObjective(input: {
   question?: string;
   language?: string;
 }): string {
-  const subject = input.selection?.trim() ? input.selection.trim() : quote(input.noteMarkdown);
-  const scope = input.selection?.trim() ? "the selected passage" : "the note";
+  const { subject, coverage } = resolveNoteAIScope(input);
+  const scope = coverage === "selection" ? "the selected passage" : "the note";
+  const text = `${untrustedDataClauseForTransform("text below the line")}\n\n---\n${subject}`;
   switch (input.action) {
     case "improve":
-      return `${NOTE_AI_MARKER}: improve the writing of ${scope} from the note "${input.noteTitle}". Fix grammar and tighten the prose; keep the author's voice, meaning and Markdown structure. Return only the revised text, with no preamble or commentary.\n\n---\n${subject}`;
+      return `${NOTE_AI_MARKER}: improve the writing of ${scope} from the note "${input.noteTitle}". Fix grammar and tighten the prose; keep the author's voice, meaning and Markdown structure. Return only the revised text, with no preamble or commentary. ${text}`;
     case "shorten":
-      return `${NOTE_AI_MARKER}: shorten ${scope} from the note "${input.noteTitle}" to about half its length, keeping every load-bearing fact and the Markdown structure. Return only the shortened text, with no preamble or commentary.\n\n---\n${subject}`;
+      return `${NOTE_AI_MARKER}: shorten ${scope} from the note "${input.noteTitle}". Aim for about half the length and keep the Markdown structure. Keep every fact, number, qualification, citation and commitment; when that needs more than half the length, keep the meaning over the length target. Return only the shortened text, with no preamble or commentary. ${text}`;
     case "summarize":
-      return `${NOTE_AI_MARKER}: summarize ${scope} from the note "${input.noteTitle}". Answer with one short paragraph followed by bullet points of the key facts. Return only the summary, with no preamble or commentary.\n\n---\n${subject}`;
+      return `${NOTE_AI_MARKER}: summarize ${scope} from the note "${input.noteTitle}". Answer with one short paragraph followed by bullet points of the key facts. Return only the summary, with no preamble or commentary. ${text}`;
     case "translate": {
       const language = input.language?.trim();
-      return `${NOTE_AI_MARKER}: translate ${scope} from the note "${input.noteTitle}" into ${language}. Preserve the Markdown structure. Return only the translation, with no preamble or commentary.\n\n---\n${subject}`;
+      return `${NOTE_AI_MARKER}: translate ${scope} from the note "${input.noteTitle}" into ${language}. Preserve the Markdown structure. Return only the translation, with no preamble or commentary. ${text}`;
     }
     case "ask": {
       const question = input.question?.trim();
-      return `${NOTE_AI_MARKER}: answer a question about the note "${input.noteTitle}". Use the note first; when the question reaches beyond it, search the workspace's saved notes and use what you find. Answer plainly in Markdown, and cite every workspace note you rely on as a [[wiki-link]] by its exact title. If the note and the workspace do not contain the answer, say so instead of inventing one.\n\nQuestion: ${question}\n\n---\n${quote(input.noteMarkdown)}`;
+      return `${NOTE_AI_MARKER}: answer a question about the note "${input.noteTitle}". Use the note first; when the question reaches beyond it, search the workspace's saved notes and use what you find. Answer plainly in Markdown, and cite every workspace note you rely on as a [[wiki-link]] by its exact title. If the note and the workspace do not contain the answer, say so instead of inventing one.\n\nQuestion: ${question}\n\n${text}`;
     }
   }
 }
@@ -122,13 +160,19 @@ export async function startNoteAIRun(
     question: input.question,
     language: input.language,
   });
-  return engine.start({
+  const { coverage } = resolveNoteAIScope({
+    action: input.action,
+    noteMarkdown: note.markdown,
+    selection: input.selection,
+  });
+  const run = await engine.start({
     auth,
     profileName: "polymath",
     objective,
     subjects: [{ type: "note", id: note.id }],
     estimateUsd: "0.25",
   });
+  return { ...run, coverage };
 }
 
 /** Recent Notebook AI runs on a note, newest first, with whatever output each has produced. */
