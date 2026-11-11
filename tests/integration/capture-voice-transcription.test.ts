@@ -5,6 +5,7 @@ import { providerQuotaBuckets } from "@/domains/integrations/schema";
 import { captures } from "@/domains/capture/schema";
 import { workspaces } from "@/domains/identity/schema";
 import { validateFile } from "@/lib/file-validation";
+import { TranscriptionRequestError } from "@/integrations/transcription/provider";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 import type { AuthContext } from "@/domains/identity/resolve";
 
@@ -187,6 +188,42 @@ suite("voice capture transcription", () => {
     expect(row.failureReason).toContain("allowance is used up");
     expect(row.text).toBeNull();
     expect(row.blobId).not.toBeNull();
+  });
+
+  it("audio the provider refuses settles on the capture instead of retrying into the dead-letter queue", async () => {
+    const { captureId } = await voiceCapture();
+    await runEnrichment(captureId, {
+      transcriber: {
+        name: "deepgram:test",
+        registryId: "fixture",
+        reserveUnits: () => 1,
+        transcribe: vi.fn(async () => {
+          throw new TranscriptionRequestError("deepgram", 400);
+        }),
+      },
+    });
+
+    const row = await getCapture(captureId);
+    expect(row.processingState).toBe("failed");
+    expect(row.failureReason).toContain("refused this audio (HTTP 400)");
+    expect(row.blobId).not.toBeNull();
+  });
+
+  it("a provider outage is left to the outbox to retry", async () => {
+    const { captureId } = await voiceCapture();
+    await expect(
+      runEnrichment(captureId, {
+        transcriber: {
+          name: "deepgram:test",
+          registryId: "fixture",
+          reserveUnits: () => 1,
+          transcribe: vi.fn(async () => {
+            throw new TranscriptionRequestError("deepgram", 503);
+          }),
+        },
+      }),
+    ).rejects.toThrow(TranscriptionRequestError);
+    expect((await getCapture(captureId)).processingState).not.toBe("failed");
   });
 
   it("a stale failure clears once a transcript lands on retry", async () => {
