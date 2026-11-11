@@ -227,6 +227,44 @@ suite("flashcard batching", () => {
     expect(deck.stoppedBy).toBe("batch_failed");
   });
 
+  it("a deck made without a notebook stores no notebook and is due for review", async () => {
+    const { auth, documentId } = await seedNotebookSource(factText(20));
+    const { generator } = fixtureGenerator({ perCall: 25, supply: 5, deckCount: () => storedCards(auth.workspaceId) });
+
+    const out = await deckModule.generateFlashcardDeck(
+      auth,
+      { documentIds: [documentId], cardCount: 5, idempotencyKey: crypto.randomUUID() },
+      generator,
+    );
+
+    expect(out).toMatchObject({ cardCount: 5, stoppedBy: "complete" });
+    const [deck] = await db.select().from(flashcardDecks).where(eq(flashcardDecks.id, out.deckId));
+    expect(deck.notebookId).toBeNull();
+    const due = await deckModule.getFlashcardDueQueue(auth, 10);
+    expect(due).toHaveLength(5);
+    expect(due[0]).toMatchObject({ deckId: out.deckId, notebookId: null, notebookTitle: null });
+  });
+
+  it("refuses a replayed key that names a different notebook than the deck it made", async () => {
+    const { auth, notebookId, documentId } = await seedNotebookSource(factText(20));
+    const { generator, calls } = fixtureGenerator({
+      perCall: 25,
+      supply: 5,
+      deckCount: () => storedCards(auth.workspaceId),
+    });
+    const idempotencyKey = crypto.randomUUID();
+    await deckModule.generateFlashcardDeck(
+      auth,
+      { documentIds: [documentId], cardCount: 5, idempotencyKey },
+      generator,
+    );
+
+    await expect(
+      deckModule.generateFlashcardDeck(auth, { notebookId, documentIds: [documentId], idempotencyKey }, generator),
+    ).rejects.toMatchObject({ code: "invalid_sources" });
+    expect(calls).toHaveLength(1);
+  });
+
   it("a failed first batch stores nothing and reports the failure", async () => {
     const { auth, notebookId, documentId } = await seedNotebookSource(factText(60));
     const { generator } = fixtureGenerator({

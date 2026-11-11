@@ -1,7 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 import { completeQuizAttempt, QuizAttemptError, type CompleteQuizAttemptResult } from "@/domains/learning/commands";
+import { FlashcardError, getFlashcardDeck, rateFlashcard } from "@/domains/learning/flashcards";
 import { generateQuiz, GENERATION_COPY, QuizGenerationError } from "@/domains/learning/generate-quiz";
 import type { SubmittedAnswer } from "@/domains/learning/schema";
 import { getRewardsOverview, pickRewardAnnouncement } from "@/domains/gamification/queries";
@@ -10,8 +12,8 @@ import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 
 /*
- * The Learn surface's two mutations. Both are member-only, both return typed
- * unions (no throw crosses to the client), and both map the domain's typed
+ * The Learn surface's mutations. Each is member-only, returns a typed
+ * union (no throw crosses to the client), and maps the domain's typed
  * error codes onto authored copy - the code that reaches the screen is a
  * sentence, never a class name or a driver message. The copy map lives in
  * the domain next to the codes, so the verb and the failed row's stored
@@ -81,5 +83,32 @@ export async function completeQuizAttemptAction(input: {
   } catch (error) {
     if (error instanceof QuizAttemptError) return { ok: false, error: ATTEMPT_COPY[error.code] };
     return { ok: false, error: actionError(error, "Could not record this sitting.") };
+  }
+}
+
+const rateSchema = z.object({
+  deckId: z.uuid(),
+  flashcardId: z.uuid(),
+  rating: z.enum(["again", "hard", "good", "easy"]),
+});
+
+/** Rate a card in a deck made outside a Notebook; a Notebook deck is rated through its Notebook. */
+export async function rateDeckFlashcardAction(
+  input: z.input<typeof rateSchema>,
+): Promise<{ ok: true; dueAt: string } | { ok: false; error: string }> {
+  const parsed = rateSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Choose a valid flashcard rating." };
+  const auth = await getAuthContext();
+  requireRole(auth, "member");
+  try {
+    const deck = await getFlashcardDeck(auth, parsed.data.deckId);
+    if (!deck || deck.notebookId !== null || !deck.cards.some((card) => card.id === parsed.data.flashcardId)) {
+      return { ok: false, error: "That flashcard is not in this deck." };
+    }
+    const result = await rateFlashcard(auth, parsed.data);
+    return { ok: true, dueAt: result.dueAt.toISOString() };
+  } catch (error) {
+    if (error instanceof FlashcardError) return { ok: false, error: error.message };
+    return { ok: false, error: actionError(error, "Could not save this flashcard rating.") };
   }
 }
