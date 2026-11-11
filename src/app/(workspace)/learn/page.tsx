@@ -5,8 +5,10 @@ import type { Metadata } from "next";
 import { getAuthContext } from "@/lib/auth";
 import { getLearnLibrary } from "@/domains/learning/queries";
 import { getFlashcardDueQueue } from "@/domains/learning/flashcards";
+import { deckReviewHref } from "@/domains/learning/review-href";
 import { UpNextSection } from "@/app/(workspace)/polymath/up-next-card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { MakeLearningButton } from "./make-learning-dialog";
 
 export const metadata: Metadata = { title: "Learn · Polymath" };
 
@@ -41,11 +43,14 @@ async function LearnSurface() {
 
   return (
     <main className="page-content mx-auto w-full max-w-4xl">
-      <header className="mb-6">
-        <h1 className="text-2xl font-medium">Learn</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Continue a quiz or review flashcards due across your Notebooks.
-        </p>
+      <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-medium">Learn</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Review the flashcards that are due, continue a quiz, or make new ones from any sources.
+          </p>
+        </div>
+        <MakeLearningButton />
       </header>
       {/* Home's Up next card leads, so both pages agree on where Continue goes;
           the lists below are everything behind it. */}
@@ -62,11 +67,8 @@ async function LearnSurface() {
           <ul className="mt-3 divide-y divide-border">
             {dueCards.map((item) => (
               <li key={item.flashcardId} className="py-3 first:pt-0 last:pb-0">
-                <Link
-                  href={"/projects/" + item.notebookId + "/notebook/flashcards?deck=" + item.deckId}
-                  className="font-medium underline-offset-4 hover:underline"
-                >
-                  {item.notebookTitle}: {item.deckTitle}
+                <Link href={deckReviewHref(item)} className="font-medium underline-offset-4 hover:underline">
+                  {item.notebookTitle ? `${item.notebookTitle}: ${item.deckTitle}` : item.deckTitle}
                 </Link>
                 <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{item.prompt}</p>
               </li>
@@ -80,7 +82,7 @@ async function LearnSurface() {
         </h2>
         {quizzes.length === 0 ? (
           <p className="mt-2 text-sm text-muted-foreground">
-            No quizzes ready yet. Create one from selected sources inside a Notebook.
+            No quizzes ready yet. Use New flashcards or quiz to make one from any sources.
           </p>
         ) : (
           <ul className="mt-3 divide-y divide-border">
@@ -102,13 +104,6 @@ async function LearnSurface() {
           </ul>
         )}
       </section>
-      <p className="mt-4 text-sm text-muted-foreground">
-        Create quizzes and flashcards from pinned sources in a{" "}
-        <Link href="/projects" className="underline underline-offset-4">
-          Notebook
-        </Link>
-        .
-      </p>
     </main>
   );
 }

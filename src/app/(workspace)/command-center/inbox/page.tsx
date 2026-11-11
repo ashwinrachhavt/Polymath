@@ -163,6 +163,7 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
                 kindLabel: capture.kindLabel,
                 kindReason: capture.kindReason,
                 preview: capture.preview,
+                hasText: capture.hasText,
                 url: capture.url,
                 version: capture.version,
                 convertedType: capture.convertedType,

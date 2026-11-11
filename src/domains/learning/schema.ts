@@ -165,9 +165,8 @@ export const flashcardDecks = pgTable(
   {
     id: primaryId(),
     workspaceId: tenantId(),
-    notebookId: uuid("notebook_id")
-      .notNull()
-      .references(() => notebooks.id, { onDelete: "cascade" }),
+    /** The Notebook the deck was made in; null for a deck made from sources picked on Learn or in the inbox. */
+    notebookId: uuid("notebook_id").references(() => notebooks.id, { onDelete: "cascade" }),
     title: text("title").notNull(),
     sourceManifest: jsonb("source_manifest").$type<FlashcardSourceSnapshot[]>().notNull(),
     generationKey: text("generation_key").notNull(),

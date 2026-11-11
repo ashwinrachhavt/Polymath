@@ -25,6 +25,12 @@ vi.mock("@/app/(workspace)/command-center/inbox/zettel-actions", () => ({
   generateZettelsAction: (...args: unknown[]) => generateZettelsAction(...args),
 }));
 
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
+vi.mock("@/app/(workspace)/learn/make-actions", () => ({
+  makeFlashcardsOrQuizAction: vi.fn(),
+  findLearningSourcesAction: vi.fn(async () => ({ ok: true, documents: [], captures: [] })),
+}));
+
 import { InboxList, type InboxRow } from "@/app/(workspace)/command-center/inbox/inbox-list";
 
 function row(id: string, title: string, overrides: Partial<InboxRow> = {}): InboxRow {
@@ -36,6 +42,7 @@ function row(id: string, title: string, overrides: Partial<InboxRow> = {}): Inbo
     createdAt: "2026-11-03T10:00:00.000Z",
     title,
     preview: "A line of the capture.",
+    hasText: true,
     url: null,
     version: 1,
     convertedType: null,
@@ -160,3 +167,27 @@ async function await_select(screen: ReturnType<typeof renderList>) {
     screen.getByLabelText("Select capture: First capture").click();
   });
 }
+
+describe("InboxList bulk flashcards or quiz", () => {
+  it("leaves out a selected capture with no text yet, and says so", async () => {
+    const voice = row("55555555-5555-4555-8555-555555555555", "Voice memo", {
+      kind: "voice",
+      preview: null,
+      hasText: false,
+    });
+    const screen = renderList([FIRST, voice]);
+    await act(async () => {
+      screen.getByLabelText("Select capture: First capture").click();
+    });
+    await act(async () => {
+      screen.getByLabelText("Select capture: Voice memo").click();
+    });
+
+    const button = screen.getByRole("button", { name: "Flashcards or quiz" });
+    expect(button.getAttribute("title")).toContain("Leaves out 1 selected capture that cannot be a source");
+    await act(async () => {
+      button.click();
+    });
+    expect(screen.getByText("1 of 8 sources picked.")).toBeTruthy();
+  });
+});

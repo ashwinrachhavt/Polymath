@@ -901,6 +901,13 @@
       "when": 1794380853899,
       "tag": "0302_tidy_findings",
       "breakpoints": true
+    },
+    {
+      "idx": 303,
+      "version": "7",
+      "when": 1794426759108,
+      "tag": "0303_flashcard_deck_optional_notebook",
+      "breakpoints": true
     }
   ]
 }

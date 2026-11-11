@@ -1,6 +1,7 @@
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
+import { escapeLike } from "@/lib/list-params";
 import { documents } from "@/domains/knowledge/schema";
 import { currentExtractionSql } from "@/domains/knowledge/versions";
 import { quizAttempts, quizQuestions, quizzes, type QuizEvidence, type QuizSourceSnapshot } from "./schema";
@@ -45,6 +46,33 @@ export type QuizForSitting = {
     evidence: QuizEvidence;
   }>;
 };
+
+/**
+ * Library documents a learner can pick as flashcard or quiz sources, newest
+ * first, matched on title. `ready` is false while a document is still being
+ * read: generation needs its text, so the picker shows it but cannot use it.
+ */
+export async function searchLearningDocuments(
+  auth: AuthContext,
+  input: { query?: string; limit: number },
+): Promise<Array<{ id: string; title: string; ready: boolean }>> {
+  const query = input.query?.trim();
+  return db
+    .select({
+      id: documents.id,
+      title: documents.title,
+      ready: sql<boolean>`coalesce(${currentExtractionSql("status")} = 'succeeded', false)`,
+    })
+    .from(documents)
+    .where(
+      and(
+        eq(documents.workspaceId, auth.workspaceId),
+        query ? ilike(documents.title, `%${escapeLike(query)}%`) : undefined,
+      ),
+    )
+    .orderBy(desc(documents.createdAt), desc(documents.id))
+    .limit(input.limit);
+}
 
 /** Latest ready quiz per document, latest generation winning. */
 function latestReadyQuizByDocument<T extends { documentId: string; createdAt: Date }>(rows: T[]): Map<string, T> {

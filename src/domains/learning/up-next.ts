@@ -21,7 +21,7 @@ export type UpNext = {
   /** Every card due for this user now, across all decks. */
   dueCards: number;
   /** The deck holding the card that has waited longest. */
-  firstDue: { notebookId: string; deckId: string } | null;
+  firstDue: { notebookId: string | null; deckId: string } | null;
   /** The newest Notebook quiz this user has never sat, linked inside its Notebook. */
   quizWaiting: { quizId: string; title: string; href: string } | null;
   /** Consecutive local days with learning, ending today or yesterday; 0 when broken. */

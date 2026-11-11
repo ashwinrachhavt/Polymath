@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { rateDeckFlashcardAction } from "@/app/(workspace)/learn/actions";
 import { rateNotebookFlashcardAction } from "./flashcard-actions";
 import { ArtifactFeedback } from "@/app/(workspace)/artifacts/[artifactId]/artifact-feedback";
 import type { ArtifactRating } from "@/domains/knowledge/artifact-feedback";
@@ -27,7 +28,8 @@ export function FlashcardSession({
   initialCards,
   rating,
 }: {
-  projectId: string;
+  /** The Notebook the deck belongs to; null for a deck made on Learn or in the inbox. */
+  projectId: string | null;
   deckId: string;
   title: string;
   initialCards: Card[];
@@ -44,7 +46,10 @@ export function FlashcardSession({
     if (!card) return;
     setError(null);
     startTransition(async () => {
-      const result = await rateNotebookFlashcardAction({ projectId, deckId, flashcardId: card.id, rating });
+      const input = { deckId, flashcardId: card.id, rating };
+      const result = projectId
+        ? await rateNotebookFlashcardAction({ ...input, projectId })
+        : await rateDeckFlashcardAction(input);
       if (!result.ok) {
         setError(result.error);
         return;
