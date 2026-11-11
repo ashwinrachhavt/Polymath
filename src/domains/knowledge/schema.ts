@@ -1343,3 +1343,55 @@ export const taxonomyNodes = pgTable(
     index("taxonomy_nodes_tree_idx").on(t.workspaceId, t.parentSlug, t.sortOrder),
   ],
 );
+
+/*
+ * Tidy findings: what the Tidy pass noticed about notes and ideas, for a
+ * person to decide. A row is a proposal, never an edit: nothing here deletes or
+ * rewrites an artifact. `dedupe_key` is unique per workspace so a decided
+ * finding (resolved or dismissed) is never raised again, and a pair has one key
+ * whichever kind it was judged. `detail` is kind-specific, parsed in tidy.ts.
+ * Status transitions live in tidy.ts; the checks below keep the decided fields
+ * consistent with the status.
+ */
+export const TIDY_FINDING_KINDS = ["disagreement", "duplicate", "source_changed", "unlinked", "broken_link"] as const;
+export const TIDY_FINDING_STATUSES = ["open", "resolved", "dismissed", "cleared"] as const;
+export const TIDY_RESOLUTIONS = ["first_holds", "second_holds", "both_hold"] as const;
+
+const sqlList = (values: readonly string[]) => values.map((v) => `'${v}'`).join(", ");
+
+export const tidyFindings = pgTable(
+  "tidy_findings",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    kind: text("kind").notNull(),
+    subjectId: uuid("subject_id")
+      .notNull()
+      .references(() => artifacts.id, { onDelete: "cascade" }),
+    otherId: uuid("other_id").references(() => artifacts.id, { onDelete: "cascade" }),
+    detail: jsonb("detail").notNull().default({}),
+    dedupeKey: text("dedupe_key").notNull(),
+    status: text("status").notNull().default("open"),
+    resolution: text("resolution"),
+    resolutionNote: text("resolution_note"),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    resolvedBy: uuid("resolved_by"),
+    ...recorded,
+  },
+  (t) => [
+    uniqueIndex("tidy_findings_dedupe_key").on(t.workspaceId, t.dedupeKey),
+    index("tidy_findings_status_idx").on(t.workspaceId, t.status, t.kind, t.createdAt),
+    index("tidy_findings_subject_idx").on(t.subjectId),
+    index("tidy_findings_other_idx").on(t.otherId),
+    check("tidy_findings_kind_check", sql.raw(`kind in (${sqlList(TIDY_FINDING_KINDS)})`)),
+    check("tidy_findings_status_check", sql.raw(`status in (${sqlList(TIDY_FINDING_STATUSES)})`)),
+    check(
+      "tidy_findings_resolution_check",
+      sql.raw(
+        `(status = 'resolved') = (resolution is not null) and (resolution is null or resolution in (${sqlList(TIDY_RESOLUTIONS)}))`,
+      ),
+    ),
+    check("tidy_findings_decided_check", sql.raw(`(status in ('resolved', 'dismissed')) = (resolved_at is not null)`)),
+    check("tidy_findings_pair_check", sql.raw(`(kind in ('disagreement', 'duplicate')) = (other_id is not null)`)),
+  ],
+);

@@ -5,6 +5,7 @@ import { dispatchPendingOutbox, recoverStrandedOutbox } from "@/domains/audit/ou
 import { outboxHandlers } from "@/domains/audit/outbox-handlers";
 import { syncAllGmailSenders } from "@/domains/crm/sender-sync";
 import { scheduleMonthlyFactRefresh } from "@/domains/facts/schedule";
+import { scheduleDailyTidyPasses } from "@/domains/knowledge/tidy";
 import { InstantTools } from "@/domains/integrations/instant-tools";
 import { composioTransport } from "@/domains/integrations/transport";
 import { runSuperagentDispatch } from "@/domains/superagent/effects";
@@ -120,6 +121,15 @@ async function drain(): Promise<Response> {
     } catch (cause) {
       factRefresh = { error: cause instanceof Error ? cause.message : "unknown error" };
     }
+    // Each workspace gets one Tidy pass a day: the dispatch key carries the
+    // workspace and the UTC date, so later ticks that day enqueue nothing. A
+    // failure must not break the rest of the pass.
+    let tidySchedule: { enqueued: number } | { error: string };
+    try {
+      tidySchedule = await scheduleDailyTidyPasses();
+    } catch (cause) {
+      tidySchedule = { error: cause instanceof Error ? cause.message : "unknown error" };
+    }
     return Response.json({
       recovered: recovered.length,
       ...result,
@@ -129,6 +139,7 @@ async function drain(): Promise<Response> {
       senderSync,
       quotaReap,
       factRefresh,
+      tidySchedule,
     });
   } finally {
     await client.end({ timeout: 5 });

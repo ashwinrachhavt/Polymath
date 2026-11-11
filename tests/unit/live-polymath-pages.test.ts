@@ -77,7 +77,7 @@ vi.mock("@/domains/skills/queries", () => ({ listSkills: vi.fn(async () => []) }
 // Up next is its own domain read (tests/integration/up-next.test.ts); a fresh
 // workspace has nothing due, no quiz and no streak.
 vi.mock("@/domains/learning/up-next", () => ({
-  getUpNext: vi.fn(async () => ({ dueCards: 0, firstDue: null, quizWaiting: null, streakDays: 0 })),
+  getUpNext: vi.fn(async () => ({ dueCards: 0, firstDue: null, quizWaiting: null, streakDays: 0, disagreement: null })),
 }));
 
 const document = {
@@ -292,18 +292,51 @@ describe("live Alfred route functionality", () => {
     const quizWaiting = { quizId: "quiz-1", title: "Lease", href: "/projects/nb-2/notebook?quiz=quiz-1" };
     const due = renderToStaticMarkup(
       UpNextCard({
-        upNext: { dueCards: 12, firstDue: { notebookId: "nb-1", deckId: "deck-1" }, quizWaiting, streakDays: 4 },
+        upNext: {
+          dueCards: 12,
+          firstDue: { notebookId: "nb-1", deckId: "deck-1" },
+          quizWaiting,
+          streakDays: 4,
+          disagreement: null,
+        },
       }),
     );
     expect(due).toContain('href="/projects/nb-1/notebook/flashcards?deck=deck-1"');
     expect(due).toContain("12 cards due · 4-day streak");
 
     const quiz = renderToStaticMarkup(
-      UpNextCard({ upNext: { dueCards: 0, firstDue: null, quizWaiting, streakDays: 1 } }),
+      UpNextCard({ upNext: { dueCards: 0, firstDue: null, quizWaiting, streakDays: 1, disagreement: null } }),
     );
     expect(quiz).toContain('href="/projects/nb-2/notebook?quiz=quiz-1"');
     expect(quiz).toContain("Take the quiz on Lease.");
     expect(quiz).toContain("No cards due · 1-day streak");
+  });
+
+  it("Up next puts two disagreeing ideas after due cards and before the waiting quiz", () => {
+    const quizWaiting = { quizId: "quiz-1", title: "Lease", href: "/projects/nb-2/notebook?quiz=quiz-1" };
+    const disagreement = { findingId: "f-1", firstTitle: "Rent is weekly", secondTitle: "Rent is monthly", open: 2 };
+    const settle = renderToStaticMarkup(
+      UpNextCard({ upNext: { dueCards: 0, firstDue: null, quizWaiting, streakDays: 0, disagreement } }),
+    );
+    expect(settle).toContain('href="/polymath/ideas?tidy=f-1#tidy-f-1"');
+    expect(settle).toContain(
+      "Two ideas disagree: &quot;Rent is weekly&quot; and &quot;Rent is monthly&quot;. Decide which holds.",
+    );
+    expect(settle).toContain("No cards due · 2 disagreements to settle");
+
+    const due = renderToStaticMarkup(
+      UpNextCard({
+        upNext: {
+          dueCards: 3,
+          firstDue: { notebookId: "nb-1", deckId: "deck-1" },
+          quizWaiting,
+          streakDays: 0,
+          disagreement,
+        },
+      }),
+    );
+    expect(due).toContain('href="/projects/nb-1/notebook/flashcards?deck=deck-1"');
+    expect(due).toContain("3 cards due · 2 disagreements to settle");
   });
 
   it("lists recent runs as plain rows: objective and time, no status vocabulary", async () => {

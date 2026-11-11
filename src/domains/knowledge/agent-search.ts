@@ -70,7 +70,10 @@ export type AgentSearchResult =
       /** Present when hits came back but none passed the evidence rule. */
       reason?: "no_relevant_passages";
     }
-  | { ok: false; error: string };
+  /** `retryable` marks a temporary failure of a read: the same call may be
+   * tried once more. Absent means the answer is final (denied, misconfigured,
+   * bad arguments) and repeating it cannot help. */
+  | { ok: false; error: string; retryable?: true };
 
 /** Rank 0 counts as 1/60, rank 1 as 1/61 - the same K the artifact search uses. */
 const RRF_K = 60;
@@ -216,7 +219,7 @@ export async function searchDocumentsForAgent(
       ) {
         return { ok: false, error: "document search is not configured (no embedding key)" };
       }
-      return { ok: false, error: "document search failed, try again" };
+      return { ok: false, error: "document search failed, try again", retryable: true };
     }
     let hits: ScoredHit[];
     let mode: "semantic" | "text" | "hybrid";
@@ -263,6 +266,6 @@ export async function searchDocumentsForAgent(
       return { ok: false, error: "document search is not configured (no embedding key)" };
     }
     // Provider text can carry account details; the model gets a fixed message.
-    return { ok: false, error: "document search failed, try again" };
+    return { ok: false, error: "document search failed, try again", retryable: true };
   }
 }

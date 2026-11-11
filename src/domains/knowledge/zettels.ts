@@ -8,8 +8,9 @@ import { escapeLike } from "@/lib/list-params";
 import { currentExtractionIdSubquery } from "./versions";
 import { mergeCandidates, type SectionCandidate } from "./zettel-merge";
 import { splitSections } from "./zettel-chunking";
-import { capForSize } from "./zettel-capacity";
-import { defaultZettelExtractor, type ZettelExtractor } from "@/integrations/zettels/extractor";
+import { capForSize, ZETTEL_DUPLICATE_MAX_DISTANCE, ZETTEL_DUPLICATE_STRONG_DISTANCE } from "./zettel-capacity";
+import { recordDisagreement } from "./tidy";
+import { defaultZettelExtractor, type IdeaVerdict, type ZettelExtractor } from "@/integrations/zettels/extractor";
 import { generationProvider } from "@/integrations/generation/provider";
 import {
   EmbeddingUnconfiguredError,
@@ -52,13 +53,7 @@ import {
 
 const MAX_TITLE = 120;
 
-/*
- * This is the maximum cosine distance at which an existing Zettel becomes a
- * duplicate candidate. Very close matches are reused directly; ambiguous
- * near-matches go through the extractor's budgeted comparison before a card
- * is reused or created.
- */
-export const ZETTEL_DUPLICATE_MAX_DISTANCE = 0.15;
+export { ZETTEL_DUPLICATE_MAX_DISTANCE };
 
 export function isDuplicateDistance(distance: number): boolean {
   return distance <= ZETTEL_DUPLICATE_MAX_DISTANCE;
@@ -112,8 +107,6 @@ async function findDuplicateIdea(
     ? { artifactId: hit.id, title: hit.title, content: hit.content, distance: Number(hit.distance) }
     : null;
 }
-
-const ZETTEL_DUPLICATE_STRONG_DISTANCE = 0.04;
 
 async function linkSourceToExistingZettel(
   auth: AuthContext,
@@ -518,8 +511,10 @@ export async function createZettelFromSource(
   input: ZettelCardCreateInput,
   tx?: TxDrizzle,
   options: {
-    compareDuplicate?: ZettelExtractor["compareDuplicate"];
+    compareIdeas?: ZettelExtractor["compareIdeas"];
     excludeArtifactId?: string;
+    /** A contradiction the caller already judged (the same-source repeat check), recorded once the card exists. */
+    contradicts?: { artifactId: string; reason: string };
   } = {},
 ): Promise<ZettelCardCreateResult> {
   const origin =
@@ -546,22 +541,24 @@ export async function createZettelFromSource(
     if (existing) return { skipped: "same-span" };
   }
 
+  const contradictions = options.contradicts ? [options.contradicts] : [];
   try {
     const hit = await findDuplicateIdea(auth, content, { excludeArtifactId: options.excludeArtifactId });
     if (hit) {
-      const sameIdea =
-        hit.distance <= ZETTEL_DUPLICATE_STRONG_DISTANCE ||
-        (options.compareDuplicate
-          ? await options.compareDuplicate({
+      const verdict: IdeaVerdict =
+        hit.distance <= ZETTEL_DUPLICATE_STRONG_DISTANCE || !options.compareIdeas
+          ? { verdict: "same" }
+          : await options.compareIdeas({
               candidate: { title, content, ...(quote ? { quote } : {}) },
               existing: { title: hit.title, content: hit.content },
-            })
-          : true);
-      if (sameIdea) {
+            });
+      if (verdict.verdict === "same") {
         if (tx) await linkSourceToExistingZettel(auth, hit.artifactId, origin, quote, tx);
         else await withTransaction((conn) => linkSourceToExistingZettel(auth, hit.artifactId, origin, quote, conn));
         return { skipped: "duplicate" };
       }
+      if (verdict.verdict === "contradicts")
+        contradictions.push({ artifactId: hit.artifactId, reason: verdict.reason });
     }
   } catch (cause) {
     if (!(cause instanceof EmbeddingUnconfiguredError)) throw cause;
@@ -805,6 +802,15 @@ export async function createZettelFromSource(
       },
       conn,
     );
+    // A contradiction does not stop the card: both ideas stand, and the
+    // disagreement becomes a finding for the person to settle.
+    for (const contradiction of contradictions) {
+      await recordDisagreement(conn, auth, {
+        subjectId: card.id,
+        otherId: contradiction.artifactId,
+        reason: contradiction.reason,
+      });
+    }
     return { artifactId: card.id, conceptId: concept.id, claimId: claim.id };
   };
 
@@ -865,23 +871,25 @@ export async function createZettelsFromSource(auth: AuthContext, input: ZettelSo
     }
 
     let excludeArtifactId: string | undefined;
+    let contradicts: { artifactId: string; reason: string } | undefined;
     const sourceRepeat = findQuoteOverlap(z, earlier);
     if (sourceRepeat) {
       const sameText = z.content.trim().toLocaleLowerCase() === sourceRepeat.claim.trim().toLocaleLowerCase();
-      const sameIdea =
-        sameText ||
-        (pass.extractor.compareDuplicate
-          ? await pass.extractor.compareDuplicate({
+      const verdict: IdeaVerdict =
+        sameText || !pass.extractor.compareIdeas
+          ? { verdict: "same" }
+          : await pass.extractor.compareIdeas({
               candidate: { title: z.title, content: z.content, ...(z.quote ? { quote: z.quote } : {}) },
               existing: { title: sourceRepeat.title, content: sourceRepeat.claim },
-            })
-          : true);
-      if (sameIdea) {
+            });
+      if (verdict.verdict === "same") {
         await linkSourceToExistingZettel(auth, sourceRepeat.artifactId, pass.origin, z.quote, conn);
         skippedRepeats += 1;
         continue;
       }
       excludeArtifactId = sourceRepeat.artifactId;
+      if (verdict.verdict === "contradicts")
+        contradicts = { artifactId: sourceRepeat.artifactId, reason: verdict.reason };
     }
 
     const result = await createZettelFromSource(
@@ -899,7 +907,7 @@ export async function createZettelsFromSource(auth: AuthContext, input: ZettelSo
         proposer: pass.extractor.name,
       },
       input.tx,
-      { compareDuplicate: pass.extractor.compareDuplicate, excludeArtifactId },
+      { compareIdeas: pass.extractor.compareIdeas, excludeArtifactId, contradicts },
     );
     if ("skipped" in result) {
       if (result.skipped === "duplicate") skippedDuplicates += 1;
