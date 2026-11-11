@@ -17,7 +17,7 @@
  * code change.
  */
 
-export type Capability = "generate" | "classify" | "search" | "read" | "retrieve" | "action";
+export type Capability = "generate" | "classify" | "search" | "read" | "retrieve" | "action" | "transcribe";
 
 export type FreeClass =
   /** Allowance renews daily or monthly without a payment card. */
@@ -33,7 +33,7 @@ export type FreeClass =
   /** Paid usage the workspace already runs on its own key (status quo). */
   | "paid";
 
-export type QuotaUnit = "credits" | "requests" | "tokens" | "neurons";
+export type QuotaUnit = "credits" | "requests" | "tokens" | "neurons" | "seconds";
 
 export type ProviderQuota = {
   unit: QuotaUnit;
@@ -189,7 +189,8 @@ const REGISTRY: readonly ProviderEntry[] = [
     quota: null,
     verifiedAt: null,
     verificationSource: null,
-    notes: "Existing keyed adapter. Current free entitlement not verified; confirm renewal and endpoint costs before enabling.",
+    notes:
+      "Existing keyed adapter. Current free entitlement not verified; confirm renewal and endpoint costs before enabling.",
   },
   {
     id: "exa",
@@ -343,7 +344,26 @@ const REGISTRY: readonly ProviderEntry[] = [
     quota: null,
     verifiedAt: CHECKED,
     verificationSource: "https://www.cerebras.ai/",
-    notes: "$5 trial credit with a verified payment method, expiring after 30 days; no recurring free tier. Evaluation only.",
+    notes:
+      "$5 trial credit with a verified payment method, expiring after 30 days; no recurring free tier. Evaluation only.",
+  },
+  {
+    id: "deepgram",
+    capability: "transcribe",
+    freeClass: "trial",
+    enabled: true,
+    allowPaidUsage: false,
+    allowPaidFallback: false,
+    // Every request sends mip_opt_out=true, so audio is retained only while it is processed.
+    sensitiveDataAllowed: true,
+    quota: { unit: "seconds", allowance: 720_000, renewal: "lifetime", allowanceEnv: "DEEPGRAM_LIFETIME_SECONDS" },
+    verifiedAt: "2026-11-10",
+    verificationSource: "https://deepgram.com/pricing",
+    notes:
+      "One-time $200 credit. Recorded Nova-3 is $0.0043/min, so 720,000 s (200 h) is about $52 of it. " +
+      "Every request sends mip_opt_out=true; whether opting out changes the per-minute price is " +
+      "unverified, so check the first real usage line. Adapter: integrations/transcription/deepgram.ts, " +
+      "explicit opt-in via TRANSCRIPTION_PROVIDER=deepgram.",
   },
   {
     id: "jev",
@@ -375,7 +395,10 @@ export function providerRegistry(): readonly ProviderEntry[] {
 }
 
 /** The allowance for a quota, with the entry's env override winning when set and sane. */
-export function quotaAllowance(entry: ProviderEntry, env: Record<string, string | undefined> = process.env): number | null {
+export function quotaAllowance(
+  entry: ProviderEntry,
+  env: Record<string, string | undefined> = process.env,
+): number | null {
   if (!entry.quota) return null;
   const override = entry.quota.allowanceEnv ? Number(env[entry.quota.allowanceEnv]) : NaN;
   return Number.isFinite(override) && override > 0 ? Math.floor(override) : entry.quota.allowance;
