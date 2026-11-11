@@ -9,8 +9,12 @@
  * the fallback for text controls if a browser ever refuses it.
  */
 
-/** Input types that hold free text. Number, date, password and the rest are not dictation targets. */
-const TEXT_INPUT_TYPES = new Set(["text", "search", "url", "email", "tel"]);
+/**
+ * Input types that hold free text and expose a caret. Email is left out with
+ * number and date: browsers refuse setSelectionRange on it, so there is no
+ * caret to insert at.
+ */
+const TEXT_INPUT_TYPES = new Set(["text", "search", "url", "tel"]);
 
 export type DictationTarget = HTMLTextAreaElement | HTMLInputElement | HTMLElement;
 

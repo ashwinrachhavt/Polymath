@@ -24,7 +24,6 @@ describe("editableTarget", () => {
     '<input type="text">',
     "<input>",
     '<input type="search">',
-    '<input type="email">',
     '<input type="url">',
     '<input type="tel">',
   ])("accepts %s", (html) => {
@@ -34,6 +33,7 @@ describe("editableTarget", () => {
 
   it.each([
     '<input type="password">',
+    '<input type="email">',
     '<input type="number">',
     '<input type="date">',
     '<input type="checkbox">',
