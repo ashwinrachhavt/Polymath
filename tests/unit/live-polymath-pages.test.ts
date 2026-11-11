@@ -306,7 +306,13 @@ describe("live Alfred route functionality", () => {
 
     const looseDeck = renderToStaticMarkup(
       UpNextCard({
-        upNext: { dueCards: 3, firstDue: { notebookId: null, deckId: "deck-2" }, quizWaiting, streakDays: 0 },
+        upNext: {
+          dueCards: 3,
+          firstDue: { notebookId: null, deckId: "deck-2" },
+          quizWaiting,
+          streakDays: 0,
+          disagreement: null,
+        },
       }),
     );
     expect(looseDeck).toContain('href="/learn/decks/deck-2"');

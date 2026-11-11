@@ -51,8 +51,8 @@ export async function UpNextContent({ auth }: { auth: AuthContext }) {
  * Home's trigger: one place to pick learning back up and one button to do it.
  * Continue goes to the cards that are due, else two ideas that disagree, else
  * the quiz never sat, else Learn, where flashcards and quizzes are made from
- * any sources. A broken
- * streak simply disappears; the card never counts what was missed.
+ * any sources. A broken streak simply disappears; the card never counts what
+ * was missed.
  */
 export function UpNextCard({ upNext }: { upNext: UpNext }) {
   const { dueCards, firstDue, quizWaiting, streakDays, disagreement } = upNext;
