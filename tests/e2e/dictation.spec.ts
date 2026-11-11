@@ -355,3 +355,21 @@ test("inside the capture dialog, Retry on the pill works and leaves the dialog o
   await expect(dialog).toBeVisible();
   expect(attempts).toBe(2);
 });
+
+test("closing the capture dialog stops the microphone and offers what was said", async ({ page }) => {
+  await page.goto("/command-center/inbox");
+  await waitSettled(page);
+  await controllerReady(page);
+  await page.getByRole("button", { name: "Capture", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Dictate" }).click();
+  await microphoneOpen(page);
+  await page.waitForTimeout(500);
+  await dialog.getByRole("button", { name: "Close" }).click();
+  await expect(dialog).toBeHidden();
+
+  const pill = page.locator("[data-dictation]");
+  await expect(pill).not.toHaveAttribute("data-dictation", "listening", { timeout: 10_000 });
+  await expect(pill).toContainText("The field closed before your words arrived", ANSWERED);
+  await expect(pill).toContainText(FIXTURE);
+});

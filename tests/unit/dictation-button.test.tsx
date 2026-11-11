@@ -109,6 +109,8 @@ describe("DictationButton", () => {
     const button = screen.getByRole("button", { name: "Dictate" });
     expect((button as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(button);
+    // The click handler reaches the controller through a promise; let it run.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
     expect(controller.startDictation).not.toHaveBeenCalled();
   });
 

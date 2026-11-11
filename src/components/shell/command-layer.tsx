@@ -316,7 +316,8 @@ export function CommandLayer({
       .catch(() => setSaveError("Microphone access was refused. Type or attach a file instead."));
   }
 
-  // The mic never outlives the dialog: closing or switching modes stops it.
+  // The voice-note recorder never outlives the dialog: closing or switching
+  // modes stops it. (Dictation stops itself when its field leaves the page.)
   useEffect(() => {
     if (mode === null && recorder.current) recorder.current.stop();
   }, [mode]);
@@ -531,8 +532,8 @@ export function CommandLayer({
                     {recording ? "Stop and save" : "Voice note"}
                   </Button>
                   <span className="text-data text-muted-foreground">
-                    Up to {MAX_UPLOAD_LABEL}. Files are stored as-is; a voice note is kept and transcribed once
-                    transcription is set up.
+                    Up to {MAX_UPLOAD_LABEL}. Files are stored as-is; a voice note is transcribed when transcription is
+                    configured, otherwise the audio is kept.
                   </span>
                 </div>
                 <div className="flex flex-col gap-2">
