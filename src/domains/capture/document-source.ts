@@ -3,55 +3,78 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import { documents } from "@/domains/knowledge/schema";
 import { db } from "@/lib/db";
 import { ConflictError, convertCaptureToDocument, StaleWriteError } from "./commands";
+import { workingText } from "./mode";
 import { captures } from "./schema";
 
 /** What a converted capture became, in words, for the refusal below. */
 const CONVERTED_NOUN: Record<string, string> = { task: "a task", note: "a note" };
 
 /**
- * The library document that holds a capture's words, filing the capture
- * first when it is still open. Learning reads documents, never captures, so
- * this is how an inbox capture becomes a flashcard or quiz source.
+ * Whether a capture can be a flashcard or quiz source, without filing it:
+ * the library document it already resolves to, or null when it is open and
+ * documentForCapture would file it. Throws the refusal documentForCapture
+ * would throw, so a request can check every source before filing any.
  *
  * - Already filed as a document: that document, whatever the caller's version.
  * - Its URL already in the library (the same article captured twice): the
  *   library's document; the capture stays open, as Save to library leaves it.
- * - Open: filed through convertCaptureToDocument, which checks the version.
  * - Turned into a task, note or draft: refused with a ConflictError.
- *
- * Throws convertCaptureToDocument's errors otherwise (stale version, no text).
+ * - Open: refused when the caller's version is stale or it has no text to file.
  */
-export async function documentForCapture(
+export async function checkCaptureSource(
   auth: AuthContext,
   input: { captureId: string; expectedVersion: number },
-): Promise<string> {
+): Promise<{ documentId: string | null }> {
   const [capture] = await db
     .select({
       processingState: captures.processingState,
       convertedType: captures.convertedType,
       convertedId: captures.convertedId,
       url: captures.url,
+      version: captures.version,
+      captureMode: captures.captureMode,
+      text: captures.text,
+      fetchedText: captures.fetchedText,
     })
     .from(captures)
     .where(and(eq(captures.workspaceId, auth.workspaceId), eq(captures.id, input.captureId)))
     .limit(1);
   if (!capture) throw new StaleWriteError("That capture no longer exists. Reload the inbox.");
   if (capture.processingState === "converted") {
-    if (capture.convertedType === "document" && capture.convertedId) return capture.convertedId;
+    if (capture.convertedType === "document" && capture.convertedId) return { documentId: capture.convertedId };
     const noun = CONVERTED_NOUN[capture.convertedType ?? ""] ?? "a draft";
     throw new ConflictError(`That capture became ${noun}, so it cannot be a source.`);
   }
-
   const filed = capture.url ? await documentForUrl(auth, capture.url) : null;
-  if (filed) return filed;
+  if (filed) return { documentId: filed };
+  if (capture.version !== input.expectedVersion) {
+    throw new StaleWriteError("The capture changed since you loaded it. Reload and try again.");
+  }
+  if (!workingText(capture)?.trim()) throw new ConflictError("That capture has no text to file.");
+  return { documentId: null };
+}
+
+/**
+ * The library document that holds a capture's words, filing the capture
+ * first when it is still open (checkCaptureSource names the cases). Learning
+ * reads documents, never captures, so this is how an inbox capture becomes a
+ * flashcard or quiz source.
+ */
+export async function documentForCapture(
+  auth: AuthContext,
+  input: { captureId: string; expectedVersion: number },
+): Promise<string> {
+  const { documentId } = await checkCaptureSource(auth, input);
+  if (documentId) return documentId;
   try {
-    const { documentId } = await convertCaptureToDocument(auth, input);
-    if (!documentId) throw new ConflictError("That capture could not be filed to the library.");
-    return documentId;
+    const filed = await convertCaptureToDocument(auth, input);
+    if (!filed.documentId) throw new ConflictError("That capture could not be filed to the library.");
+    return filed.documentId;
   } catch (cause) {
-    // Another request filed the same article between the lookup and the insert.
-    const raced = cause instanceof ConflictError && capture.url ? await documentForUrl(auth, capture.url) : null;
-    if (raced) return raced;
+    if (!(cause instanceof ConflictError || cause instanceof StaleWriteError)) throw cause;
+    // Another request filed this capture, or the same article, between the check and the insert.
+    const raced = await checkCaptureSource(auth, input);
+    if (raced.documentId) return raced.documentId;
     throw cause;
   }
 }

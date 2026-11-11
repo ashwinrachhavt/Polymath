@@ -28,6 +28,16 @@ vi.mock("@/lib/db-transaction", () => ({
   },
 }));
 
+// Delegates to the real command; a test can make one call lose a race first.
+const realCommands = vi.hoisted(() => ({
+  convert: undefined as unknown as typeof import("@/domains/capture/commands").convertCaptureToDocument,
+}));
+vi.mock("@/domains/capture/commands", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/domains/capture/commands")>();
+  realCommands.convert = actual.convertCaptureToDocument;
+  return { ...actual, convertCaptureToDocument: vi.fn(actual.convertCaptureToDocument) };
+});
+
 import { ConflictError, convertCaptureToDocument, createCapture } from "@/domains/capture/commands";
 import { documentForCapture } from "@/domains/capture/document-source";
 
@@ -120,5 +130,21 @@ suite("documentForCapture", () => {
 
     expect(error).toBeInstanceOf(ConflictError);
     expect((error as Error).message).toBe("That capture became a note, so it cannot be a source.");
+  });
+
+  it("returns the document another request filed a URL-less capture as while this one was filing it", async () => {
+    const auth = await workspace("race");
+    const capture = await createCapture(auth, { text: BODY });
+    vi.mocked(convertCaptureToDocument).mockImplementationOnce(async (raceAuth, input) => {
+      const winner = await realCommands.convert(raceAuth, input);
+      await realCommands.convert(raceAuth, input);
+      return winner;
+    });
+
+    const documentId = await documentForCapture(auth, { captureId: capture.id, expectedVersion: capture.version });
+
+    const [after] = await holder.db!.select().from(captures).where(eq(captures.id, capture.id));
+    expect(after).toMatchObject({ convertedType: "document", convertedId: documentId });
+    expect(await documentCount(auth.workspaceId)).toBe(1);
   });
 });
