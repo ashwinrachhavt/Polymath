@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { currentPeriod, QuotaExhaustedError, withQuota, type QuotaStore } from "@/integrations/providers/quota";
+import { deepgramTranscriptionProvider } from "@/integrations/transcription/deepgram";
 import { providerEntry } from "@/integrations/providers/registry";
 
 /*
@@ -33,6 +34,12 @@ function fakeStore(allowance: number) {
   };
   return { store, bucket, events };
 }
+
+const deepgramBody = (transcript: string, duration: number) => ({
+  metadata: { duration },
+  results: { channels: [{ alternatives: [{ transcript }] }] },
+});
+const fakeDeepgram = (respond: () => Response): typeof fetch => (async () => respond()) as unknown as typeof fetch;
 
 const firecrawl = providerEntry("firecrawl")!;
 
@@ -75,8 +82,35 @@ describe("withQuota", () => {
 
   it("settles the actual units when they differ from the estimate", async () => {
     const { store, bucket } = fakeStore(1000);
-    await withQuota(store, firecrawl, "w1", 10, async () => 3, (n) => n);
+    await withQuota(
+      store,
+      firecrawl,
+      "w1",
+      10,
+      async () => 3,
+      (n) => n,
+    );
     expect(bucket).toEqual({ reserved: 0, consumed: 3 });
+  });
+
+  it("a seconds-unit transcriber reserves its byte-derived bound and settles the reported duration", async () => {
+    const { store, bucket, events } = fakeStore(720_000);
+    const deepgram = providerEntry("deepgram")!;
+    const provider = deepgramTranscriptionProvider(
+      { DEEPGRAM_API_KEY: "k" },
+      fakeDeepgram(() => Response.json(deepgramBody("hello", 4.2))),
+    );
+    const input = { bytes: new Uint8Array(40_000), mimeType: "audio/webm" };
+    await withQuota(
+      store,
+      deepgram,
+      "w1",
+      provider.reserveUnits(input),
+      () => provider.transcribe(input),
+      (r) => r.units,
+    );
+    expect(events).toEqual(["reserve:20", "settle:5"]);
+    expect(bucket).toEqual({ reserved: 0, consumed: 5 });
   });
 });
 

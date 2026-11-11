@@ -455,7 +455,8 @@ async function tryJevTriage(
  * are the immutable original in raw_payload/blob storage; the transcript is
  * derived material and lands in `text`, where the ladder and the owner can
  * read and correct it. Quota admission wraps the provider call exactly like
- * the generation seam: the registry's gemini entry carries the allowance.
+ * the generation seam: the provider's registry entry carries the allowance, in the unit the
+ * provider reports (requests for Gemini, seconds for Deepgram).
  */
 async function transcribeVoiceCapture(
   token: string,
@@ -498,7 +499,14 @@ async function transcribeVoiceCapture(
   const call = () => provider.transcribe({ bytes, mimeType: blob.mimeType });
   const { text } =
     entry?.quota && entry.enabled
-      ? await withQuota(drizzleQuotaStore(), entry, event.workspaceId, 1, call)
+      ? await withQuota(
+          drizzleQuotaStore(),
+          entry,
+          event.workspaceId,
+          provider.reserveUnits({ bytes, mimeType: blob.mimeType }),
+          call,
+          (r) => r.units,
+        )
       : await call();
   const transcript = text.trim();
 

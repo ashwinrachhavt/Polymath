@@ -39,7 +39,7 @@ const WEBM = new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 0x01, 0x02, 0x03, 0x04]);
 // the outcome and no generation key decides what this suite proves.
 const TRANSCRIPT = "Send the Q3 roadmap to Priya by Friday.";
 
-const transcribe = vi.fn(async () => ({ text: TRANSCRIPT }));
+const transcribe = vi.fn(async () => ({ text: TRANSCRIPT, units: 1 }));
 
 const handle = makeTestDb();
 const suite = handle ? describe : describe.skip;
@@ -76,7 +76,9 @@ async function runEnrichment(captureId: string, deps: Parameters<typeof handler.
   const event = events.find((e) => (e.payload as { captureId: string }).captureId === captureId);
   if (!event) throw new Error("no enrichment event enqueued for the voice capture");
   await handler.runCaptureEnrichment(
-    { id: event.id, workspaceId, topic: event.topic, payload: event.payload } as Parameters<typeof handler.runCaptureEnrichment>[0],
+    { id: event.id, workspaceId, topic: event.topic, payload: event.payload } as Parameters<
+      typeof handler.runCaptureEnrichment
+    >[0],
     deps,
   );
 }
@@ -102,7 +104,7 @@ suite("voice capture transcription", () => {
     transcribe.mockClear();
     const { captureId } = await voiceCapture();
     await runEnrichment(captureId, {
-      transcriber: { name: "fixture:transcription", registryId: "fixture", transcribe },
+      transcriber: { name: "fixture:transcription", registryId: "fixture", reserveUnits: () => 1, transcribe },
     });
 
     expect(transcribe).toHaveBeenCalledOnce();
@@ -122,11 +124,15 @@ suite("voice capture transcription", () => {
     transcribe.mockClear();
     const { captureId } = await voiceCapture();
     await runEnrichment(captureId, {
-      transcriber: { name: "fixture:transcription", registryId: "fixture", transcribe },
+      transcriber: { name: "fixture:transcription", registryId: "fixture", reserveUnits: () => 1, transcribe },
     });
-    await commands.updateCaptureText(auth, { captureId, expectedVersion: (await getCapture(captureId)).version, text: "Corrected by the owner." });
+    await commands.updateCaptureText(auth, {
+      captureId,
+      expectedVersion: (await getCapture(captureId)).version,
+      text: "Corrected by the owner.",
+    });
     await runEnrichment(captureId, {
-      transcriber: { name: "fixture:transcription", registryId: "fixture", transcribe },
+      transcriber: { name: "fixture:transcription", registryId: "fixture", reserveUnits: () => 1, transcribe },
     });
     expect(transcribe).toHaveBeenCalledOnce();
     expect((await getCapture(captureId)).text).toBe("Corrected by the owner.");
@@ -150,10 +156,13 @@ suite("voice capture transcription", () => {
     const { captureId } = await voiceCapture();
     await db
       .update(captures)
-      .set({ failureReason: "Transcription is not configured on this deployment - the audio is kept; ask the owner to set TRANSCRIPTION_PROVIDER." })
+      .set({
+        failureReason:
+          "Transcription is not configured on this deployment - the audio is kept; ask the owner to set TRANSCRIPTION_PROVIDER.",
+      })
       .where(eq(captures.id, captureId));
     await runEnrichment(captureId, {
-      transcriber: { name: "fixture:transcription", registryId: "fixture", transcribe },
+      transcriber: { name: "fixture:transcription", registryId: "fixture", reserveUnits: () => 1, transcribe },
     });
 
     const row = await getCapture(captureId);
@@ -165,7 +174,12 @@ suite("voice capture transcription", () => {
   it("no speech in the audio enriches clean instead of inventing words", async () => {
     const { captureId } = await voiceCapture();
     await runEnrichment(captureId, {
-      transcriber: { name: "fixture:transcription", registryId: "fixture", transcribe: vi.fn(async () => ({ text: "" })) },
+      transcriber: {
+        name: "fixture:transcription",
+        registryId: "fixture",
+        reserveUnits: () => 1,
+        transcribe: vi.fn(async () => ({ text: "", units: 1 })),
+      },
     });
 
     const row = await getCapture(captureId);
