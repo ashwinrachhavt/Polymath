@@ -14,6 +14,10 @@ const TRANSCRIPTIONS = "/api/v1/speech/transcriptions";
 // The first upload compiles the route under `next dev`; later ones answer at once.
 const ANSWERED = { timeout: 30_000 };
 
+// The answer wait (ANSWERED) has to fit inside the test's own budget, or a cold
+// compile fails the first try however long the assertion is willing to wait.
+test.setTimeout(90_000);
+
 test.beforeEach(async ({ context }) => {
   await context.grantPermissions(["microphone"]);
 });
@@ -210,4 +214,26 @@ test("a failed clip is kept and Retry sends it again without re-recording", asyn
   await expect(composer).toHaveValue(FIXTURE, ANSWERED);
   expect(attempts).toBe(2);
   await expect(status).not.toContainText("Transcription failed");
+});
+
+test("words still land at the note's caret when focus has moved to another field by the time they arrive", async ({
+  page,
+}) => {
+  let answer!: () => void;
+  const held = new Promise<void>((resolve) => (answer = resolve));
+  await page.route(`**${TRANSCRIPTIONS}`, async (route) => {
+    await held;
+    await route.continue();
+  });
+  const editor = await openNewNote(page);
+  await page.keyboard.type("alpha beta");
+  for (let i = 0; i < " beta".length; i += 1) await page.keyboard.press("ArrowLeft");
+  await expect(page.getByText("Saved", { exact: true })).toBeVisible({ timeout: 15_000 });
+  await hold(page);
+  const title = page.getByLabel("Note title");
+  await title.click();
+  answer();
+  await expect(editor).toContainText(`alpha ${FIXTURE} beta`, ANSWERED);
+  await expect(title).not.toHaveValue(/Fixture transcript/);
+  await expect(title).toBeFocused();
 });

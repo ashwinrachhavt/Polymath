@@ -228,6 +228,14 @@ describe("failures", () => {
     expect(run([{ type: "dismiss" }], state)).toEqual({ state: IDLE, effects: [] });
   });
 
+  it("a microphone refused after the key is already up still ends in the permission message", () => {
+    const stopped = run([press(0), release(400)]).state;
+    expect(stopped.kind).toBe("transcribing");
+    const { state } = run([{ type: "recorderFailed", reason: "permission" }], stopped);
+    expect(state).toMatchObject({ kind: "error", reason: "permission", failed: null });
+    expect(run([{ type: "dismiss" }], state).state).toEqual(IDLE);
+  });
+
   it("dismissing drops the kept audio and releases a still-stopping recorder", () => {
     const listening = run([press(0), release(10), { type: "clipReady", clip: clip(1), final: false }]).state;
     const failed = run([{ type: "clipFailed", clipId: 1, reason: "failed" }], listening).state;

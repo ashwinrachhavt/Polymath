@@ -36,7 +36,11 @@ let savedRange: Range | null = null;
 let recorder: Recorder | null = null;
 let sessionTimer: ReturnType<typeof setTimeout> | undefined;
 let hintTimer: ReturnType<typeof setTimeout> | undefined;
+let targetWatch: ReturnType<typeof setInterval> | undefined;
+const TARGET_WATCH_MS = 1_000;
 let nextClipId = 1;
+/** The upload in flight; aborted when the session ends, so a cancelled clip is not transcribed and metered. */
+let upload: AbortController | null = null;
 /** AltRight is physically down and was pressed alone. */
 let triggerDown = false;
 
@@ -56,6 +60,19 @@ function dispatch(event: DictationEvent): void {
     target = null;
     savedRange = null;
     clearTimeout(sessionTimer);
+    upload?.abort();
+    upload = null;
+  }
+  // A field that leaves the page (a dialog closed, another note opened) can no
+  // longer take words, and nothing else would turn the microphone off: stop,
+  // and what was said is offered for copying.
+  if (state.kind === "listening" && targetWatch === undefined) {
+    targetWatch = setInterval(() => {
+      if (target && !target.isConnected) stopDictation();
+    }, TARGET_WATCH_MS);
+  } else if (state.kind !== "listening" && targetWatch !== undefined) {
+    clearInterval(targetWatch);
+    targetWatch = undefined;
   }
   clearTimeout(hintTimer);
   if (state.kind === "idle" && state.notice?.kind === "no-field") {
@@ -113,7 +130,8 @@ function failureFor(status: number): FailureReason {
 async function transcribe(clipId: number, audio: Blob): Promise<void> {
   let outcome: { text: string } | { reason: FailureReason };
   try {
-    const response = await fetch(TRANSCRIPTIONS_URL, { method: "POST", body: audio });
+    upload = new AbortController();
+    const response = await fetch(TRANSCRIPTIONS_URL, { method: "POST", body: audio, signal: upload.signal });
     if (response.ok) {
       const body: unknown = await response.json();
       const text = typeof body === "object" && body !== null && "text" in body ? body.text : null;
@@ -128,7 +146,11 @@ async function transcribe(clipId: number, audio: Blob): Promise<void> {
   if (!isHead(clipId)) return;
   if ("reason" in outcome) return dispatch({ type: "clipFailed", clipId, reason: outcome.reason });
   const text = outcome.text.trim();
-  const delivered = !text || (target !== null && insertDictation(target, text, savedRange) === "inserted");
+  const delivered =
+    !text ||
+    (target !== null &&
+      // The next clip goes after this one even if focus is elsewhere by then.
+      insertDictation(target, text, savedRange, (after) => (savedRange = after)) === "inserted");
   dispatch({ type: "clipTranscribed", clipId, stranded: delivered ? "" : text });
 }
 
@@ -190,6 +212,9 @@ export function handleKeyDown(event: KeyboardEvent): void {
 
 export function handleKeyUp(event: KeyboardEvent): void {
   if (event.code !== "AltRight" || !triggerDown) return;
+  // On Windows a lone Alt release moves focus to the browser's menu, which
+  // would take it from the field the words are going to.
+  event.preventDefault();
   triggerDown = false;
   dispatch({ type: "keyUp", at: event.timeStamp });
 }
@@ -200,10 +225,12 @@ export function handleKeyUp(event: KeyboardEvent): void {
  */
 export function installDictation(early: KeyboardEvent[] = []): () => void {
   const onBlur = () => {
-    // The key-up goes to another window, so the release is now.
+    // The key-up goes to another window, so the release is now. It is a stop
+    // however short the press was: a tap's latch would leave the microphone
+    // on behind a window nobody is looking at.
     if (!triggerDown) return;
     triggerDown = false;
-    dispatch({ type: "keyUp", at: performance.now() });
+    stopDictation();
   };
   const onSelectionChange = () => {
     if (target && !(target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement)) {
