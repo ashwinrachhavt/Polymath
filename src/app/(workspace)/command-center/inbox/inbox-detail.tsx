@@ -27,11 +27,13 @@ import {
   CAPTURE_KIND_NAMES,
   CaptureKindChip,
   captureDetailHeading,
+  captureLearningSource,
   captureKindLabel,
   captureStateLabel,
   captureTitle,
   type InboxRow,
 } from "./inbox-list";
+import { MakeLearningButton } from "@/app/(workspace)/learn/make-learning-dialog";
 import { generateZettelsAction } from "./zettel-actions";
 import { ZettelQueueWatch } from "./zettel-queue-watch";
 
@@ -125,7 +127,7 @@ export function InboxDetail({
   zettelProviderReason,
 }: {
   capture:
-    | (Omit<InboxRow, "preview"> & {
+    | (Omit<InboxRow, "preview" | "hasText"> & {
         text: string | null;
         cleanText?: string | null;
         failureReason?: string | null;
@@ -204,6 +206,8 @@ export function InboxDetail({
   }
 
   const state = optimisticState ?? capture.processingState;
+  // Flashcards and quizzes read the same words: an open capture's text, or the document it was filed as.
+  const learningSource = captureLearningSource({ ...capture, processingState: state, hasText: zettelEligible });
   const isUrlOnly = !capture.text?.trim() && capture.url;
   const extraction = readExtensionExtraction(capture.rawPayload);
   const title = captureTitle(capture);
@@ -576,6 +580,19 @@ export function InboxDetail({
               Archive
             </Button>
           </>
+        ) : null}
+        {/* One instance across states: making from an open capture files it, and the
+            re-render as converted must keep the open dialog and its error. */}
+        {learningSource ? (
+          <MakeLearningButton
+            key={capture.id}
+            size="sm"
+            variant="outline"
+            disabled={pending}
+            initialSources={[learningSource]}
+          >
+            Make flashcards or a quiz
+          </MakeLearningButton>
         ) : null}
         {capture.parkedAt && state !== "discarded" && state !== "converted" ? (
           <Button

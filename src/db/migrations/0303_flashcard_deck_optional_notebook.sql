@@ -1,0 +1,1 @@
+ALTER TABLE "flashcard_decks" ALTER COLUMN "notebook_id" DROP NOT NULL;

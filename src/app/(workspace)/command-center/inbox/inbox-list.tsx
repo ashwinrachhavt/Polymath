@@ -7,6 +7,8 @@ import { useOptimistic, useRef, useState, useTransition } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { CaptureKind } from "@/domains/capture/kind-label";
+import type { LearningSourceOption } from "@/app/(workspace)/learn/make-actions";
+import { MakeLearningButton } from "@/app/(workspace)/learn/make-learning-dialog";
 import { listHref } from "@/lib/list-params";
 import { setCaptureStateAction } from "./actions";
 import { generateZettelsAction } from "./zettel-actions";
@@ -34,6 +36,8 @@ export type InboxRow = {
   /** Why it has that label, or with no label, why it is not classified. */
   kindReason?: string | null;
   preview: string | null;
+  /** Whether the capture has words to file to the library; a voice note before its transcript does not. */
+  hasText: boolean;
   url: string | null;
   version: number;
   convertedType: string | null;
@@ -154,6 +158,29 @@ export function captureDetailHeading(capture: {
   return null;
 }
 
+/**
+ * A capture as a flashcard or quiz source: an open one with words to file
+ * (picking it files it to the library) or one already filed as a document.
+ * A capture turned into a task, note or draft is not a source, and neither
+ * is one with nothing to file yet, such as a voice note before its transcript.
+ */
+export function captureLearningSource(capture: {
+  id: string;
+  version: number;
+  processingState: string;
+  convertedType: string | null;
+  hasText: boolean;
+  title?: string | null;
+  preview?: string | null;
+  text?: string | null;
+  url?: string | null;
+  rawPayload?: unknown;
+}): LearningSourceOption | null {
+  if (capture.processingState === "discarded") return null;
+  if (capture.processingState === "converted" ? capture.convertedType !== "document" : !capture.hasText) return null;
+  return { type: "capture", id: capture.id, version: capture.version, title: captureTitle(capture) };
+}
+
 function when(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const minutes = Math.round(diff / 60_000);
@@ -201,6 +228,9 @@ export function InboxList({
   // Converted rows cannot transition; every other selected row is sent and
   // non-permitting rows fail through the setCaptureState domain guard (D15).
   const bulkTargets = optimisticRows.filter((row) => selected.has(row.id) && row.processingState !== "converted");
+  const selectedRows = optimisticRows.filter((row) => selected.has(row.id));
+  const learningSources = selectedRows.map(captureLearningSource).filter((source) => source !== null);
+  const notSources = selectedRows.length - learningSources.length;
 
   function bulkAct(next: "discarded" | "unprocessed") {
     // Focus origin is tracked explicitly: on click the toolbar button (not
@@ -384,6 +414,21 @@ export function InboxList({
             >
               Zettelize
             </Button>
+            <MakeLearningButton
+              size="sm"
+              variant="outline"
+              disabled={pending || learningSources.length === 0}
+              initialSources={learningSources}
+              title={
+                learningSources.length === 0
+                  ? "Archived captures, tasks, notes and captures with no text yet cannot be sources."
+                  : notSources > 0
+                    ? `Leaves out ${notSources} selected ${notSources === 1 ? "capture that cannot be a source" : "captures that cannot be sources"} (archived, a task or note, or no text yet).`
+                    : "Files the selected captures to your library, then makes flashcards or a quiz from them."
+              }
+            >
+              Flashcards or quiz
+            </MakeLearningButton>
             <Button
               size="sm"
               variant="ghost"

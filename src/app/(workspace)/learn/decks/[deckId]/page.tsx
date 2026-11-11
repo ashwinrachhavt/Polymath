@@ -1,0 +1,61 @@
+import Link from "next/link";
+import { notFound, redirect } from "next/navigation";
+import { io } from "next/cache";
+import { Suspense } from "react";
+import { z } from "zod";
+import { FlashcardSession } from "@/app/(workspace)/projects/[projectId]/notebook/flashcard-session";
+import { getArtifactFeedback } from "@/domains/knowledge/artifact-feedback";
+import { getFlashcardDeck } from "@/domains/learning/flashcards";
+import { deckReviewHref } from "@/domains/learning/review-href";
+import { getAuthContext } from "@/lib/auth";
+
+export const metadata = { title: "Flashcards · Polymath" };
+
+/*
+ * Review for a deck made from picked sources on Learn or in the inbox. A deck
+ * made inside a Notebook is reviewed there, so this page sends it on.
+ */
+export default function LearnDeckPage({ params }: { params: Promise<{ deckId: string }> }) {
+  return (
+    <Suspense
+      fallback={
+        <p role="status" className="p-6 text-body-dense text-muted-foreground">
+          Opening the flashcards…
+        </p>
+      }
+    >
+      <DeckReview params={params} />
+    </Suspense>
+  );
+}
+
+async function DeckReview({ params }: { params: Promise<{ deckId: string }> }) {
+  await io();
+  const { deckId } = await params;
+  if (!z.uuid().safeParse(deckId).success) notFound();
+  const auth = await getAuthContext();
+  const deck = await getFlashcardDeck(auth, deckId, true);
+  if (!deck) notFound();
+  if (deck.notebookId) redirect(deckReviewHref({ deckId: deck.id, notebookId: deck.notebookId }));
+  const rating = await getArtifactFeedback(auth, { kind: "flashcard_deck", id: deck.id });
+  // The deck's title already names a single source; several are listed so "X + 2 more" is not a riddle.
+  const sources = deck.sourceManifest.length > 1 ? deck.sourceManifest.map((source) => source.title).join(", ") : null;
+  return (
+    <div className="page-content">
+      <div className="mb-5">
+        <Link href="/learn" className="text-sm text-muted-foreground underline-offset-4 hover:underline">
+          Back to Learn
+        </Link>
+        <h1 className="mt-2 text-xl font-medium">Flashcards</h1>
+        {sources ? <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">From {sources}</p> : null}
+      </div>
+      <FlashcardSession
+        projectId={null}
+        deckId={deck.id}
+        title={deck.title}
+        initialCards={deck.cards}
+        rating={rating}
+      />
+    </div>
+  );
+}

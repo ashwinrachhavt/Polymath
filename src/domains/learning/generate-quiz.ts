@@ -18,6 +18,7 @@ import {
   defaultItemCount,
   generateInBatches,
   MAX_ITEM_COUNT,
+  MAX_LEARNING_SOURCES,
   MIN_ITEM_COUNT,
   type GenerationOutcome,
 } from "./item-count";
@@ -67,7 +68,7 @@ export class QuizGenerationError extends Error {
 export const GENERATION_COPY: Record<QuizGenerationError["code"], string> = {
   document_not_found: "That document is not in this workspace.",
   no_extraction: "This document is still being read. Try again once its text is ready.",
-  invalid_sources: "Choose up to eight distinct sources from this notebook.",
+  invalid_sources: "Choose one to eight distinct sources.",
   insufficient_evidence: "Not enough of this document could be verified against its text to build an honest quiz.",
   generation_failed: "The quiz generator did not answer. Try again in a moment.",
 };
@@ -207,8 +208,12 @@ export function sameSourceVersions(stored: QuizSourceSnapshot[], current: QuizSo
 }
 
 export async function loadCurrentQuizSources(auth: AuthContext, documentIds: string[]): Promise<QuizSourceText[]> {
-  if (documentIds.length === 0 || documentIds.length > 8 || new Set(documentIds).size !== documentIds.length) {
-    throw new QuizGenerationError("invalid_sources", "Choose between one and eight distinct notebook sources.");
+  if (
+    documentIds.length === 0 ||
+    documentIds.length > MAX_LEARNING_SOURCES ||
+    new Set(documentIds).size !== documentIds.length
+  ) {
+    throw new QuizGenerationError("invalid_sources", "Choose between one and eight distinct sources.");
   }
   const docs = await db
     .select({ id: documents.id, title: documents.title })
