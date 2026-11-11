@@ -16,6 +16,9 @@
  */
 const TEXT_INPUT_TYPES = new Set(["text", "search", "url", "tel"]);
 
+/** Fired on a target after dictated words were inserted, once the browser's own input event has run. */
+export const DICTATED_EVENT = "polymath:dictated";
+
 export type DictationTarget = HTMLTextAreaElement | HTMLInputElement | HTMLElement;
 
 export function editableTarget(element: Element | null): DictationTarget | null {

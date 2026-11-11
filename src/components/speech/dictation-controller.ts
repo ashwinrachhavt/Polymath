@@ -6,7 +6,7 @@ import {
   type DictationState,
   type FailureReason,
 } from "./dictation-machine";
-import { editableTarget, insertDictation, type DictationTarget } from "./dictation-target";
+import { DICTATED_EVENT, editableTarget, insertDictation, type DictationTarget } from "./dictation-target";
 import { startRecorder, type Recorder } from "./recorder";
 
 /*
@@ -19,7 +19,8 @@ import { startRecorder, type Recorder } from "./recorder";
  * or an AltGr character, and that audio is thrown away unsent.
  *
  * The module-level functions are the API other UI calls (mic buttons):
- * startDictation, stopDictation, subscribe and getDictationState.
+ * startDictation, stopDictation, subscribe, getDictationState and
+ * getDictationTarget.
  */
 
 const TRANSCRIPTIONS_URL = "/api/v1/speech/transcriptions";
@@ -42,6 +43,11 @@ let triggerDown = false;
 
 export function getDictationState(): DictationState {
   return state;
+}
+
+/** The field the current session's words go into; null while idle. */
+export function getDictationTarget(): DictationTarget | null {
+  return target;
 }
 
 export function subscribe(listener: () => void): () => void {
@@ -129,6 +135,7 @@ async function transcribe(clipId: number, audio: Blob): Promise<void> {
   if ("reason" in outcome) return dispatch({ type: "clipFailed", clipId, reason: outcome.reason });
   const text = outcome.text.trim();
   const delivered = !text || (target !== null && insertDictation(target, text, savedRange) === "inserted");
+  if (text && delivered) target?.dispatchEvent(new CustomEvent(DICTATED_EVENT));
   dispatch({ type: "clipTranscribed", clipId, stranded: delivered ? "" : text });
 }
 
