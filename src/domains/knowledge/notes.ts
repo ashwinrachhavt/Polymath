@@ -211,16 +211,21 @@ export async function syncNoteLinks(tx: TxDrizzle, auth: AuthContext, artifactId
   const upgraded = new Set(upgradable.map((row) => row.targetId));
   const fresh = [...wanted.entries()].filter(([id]) => !kept.has(id) && !upgraded.has(id));
   if (fresh.length) {
-    await tx.insert(artifactLinks).values(
-      fresh.map(([targetId, w]) => ({
-        workspaceId: auth.workspaceId,
-        artifactId,
-        targetType: w.kind,
-        targetId,
-        label: w.label,
-        linkType: "reference" as const,
-      })),
-    );
+    // A typed edge to the same card (a person's "supports", a settled
+    // disagreement) already stands for this [[link]]; it keeps its type.
+    await tx
+      .insert(artifactLinks)
+      .values(
+        fresh.map(([targetId, w]) => ({
+          workspaceId: auth.workspaceId,
+          artifactId,
+          targetType: w.kind,
+          targetId,
+          label: w.label,
+          linkType: "reference" as const,
+        })),
+      )
+      .onConflictDoNothing({ target: [artifactLinks.artifactId, artifactLinks.targetType, artifactLinks.targetId] });
   }
 }
 

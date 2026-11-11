@@ -183,6 +183,7 @@ suite("up next", () => {
       firstDue: null,
       quizWaiting: null,
       streakDays: 0,
+      disagreement: null,
     });
   });
 
@@ -282,6 +283,7 @@ suite("up next", () => {
       firstDue: null,
       quizWaiting: null,
       streakDays: 0,
+      disagreement: null,
     });
   });
 });

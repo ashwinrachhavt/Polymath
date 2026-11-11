@@ -66,6 +66,42 @@ claim in the extractor's own words of whatever length the idea needs, and an
 optional verbatim quote. The domain re-locates the quote in the extraction text
 and drops anything that is not verbatim, so a card's evidence is real. Successful extraction automatically starts a bounded Zettel pass. Generated artifacts are marked `generated`, and their claims remain `proposed` until reviewed. The source quote must be found in the extraction before a card is written. Exact source spans are idempotent. Very close global matches reuse the existing Zettel and attach the new source as evidence. Ambiguous vector-near matches receive a model comparison; distinct ideas and contradictions remain separate. A missing embedding provider does not block reading. Cards use the `zettel` artifact kind and keep source provenance in `artifact_links`.
 
+## Tidy
+
+`tidy.ts` keeps notes and ideas trustworthy without chores. It proposes; a
+person decides; it never deletes or rewrites a note or idea. Findings live in
+`tidy_findings`, one row per `(workspace, dedupe_key)`: a pair of ideas has one
+key (`pair:<smaller>:<larger>`) whichever kind it was judged, single-subject
+kinds use `<kind>:<subject>[:<discriminator>]`. Kinds: `disagreement`,
+`duplicate`, `source_changed`, `unlinked`, `broken_link`.
+
+- Status moves only through `nextStatus`: open to resolved (a disagreement
+  settled: first holds, second holds, both hold), open to dismissed (not a
+  problem), open to cleared (the condition went away). Resolved and dismissed
+  rows are never reopened; a cleared derivable finding reopens if the
+  condition returns. Pair kinds are judgments and are never cleared.
+- The idea comparison returns `same | contradicts | distinct` in its one model
+  call. At read time a contradiction still creates the new idea, then records
+  an open disagreement and a `contradicts` link (context = the reason) in the
+  same transaction. Comparisons run before the write transaction opens.
+- `runTidyPass` is bounded (25 notes and ideas, 3 neighbours each within 0.15,
+  20 model comparisons) and idempotent: derived findings reconcile under a
+  per-workspace transaction lock, pair writes are keyed, and an artifact is
+  stamped `metadata.tidy.pairsReviewedVersionId` only after every neighbour
+  was judged, without a new version. With no model or embedding provider,
+  pair review is skipped and reported; loose ends and sources still run.
+- `source_changed`: an idea whose source document is archived, or whose claim
+  evidence names an extraction older than the document's current succeeded
+  one. `unlinked`: a note older than 7 days with no explicit link either way
+  (`semantic`, `dismissed`, `source` do not count). `broken_link`: a
+  `[[Title]]` in a note's current body that matches no live note or idea.
+- Settling a disagreement orients `contradicts` from the idea that holds, or
+  makes it `contrasts`; dismissing one makes the link `dismissed`. A duplicate
+  is kept or dismissed; there is no archive or merge for ideas.
+- The daily cron enqueues one `knowledge.tidy_pass_requested` per workspace
+  per UTC day; the handler runs as the workspace owner. Home's Up next offers
+  the oldest open disagreement after due flashcards.
+
 ## The note link graph
 
 `artifact_links` is the one graph over notes and zettels. `link_type` says why

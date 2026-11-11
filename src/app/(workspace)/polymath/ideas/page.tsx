@@ -6,6 +6,7 @@ import { Panel, Screen } from "@/components/workspace/ui";
 import { getNote, listNoteSources, listNoteTags, type NoteDetail } from "@/domains/knowledge/notes";
 import { linkedNotes, mergeIdeaLinks, relatedNotes, type RelatedNote } from "@/domains/knowledge/relations";
 import { pageZettelCards } from "@/domains/knowledge/zettels";
+import { listTidyFindings } from "@/domains/knowledge/tidy";
 import { IdeaGrid, type IdeaView } from "@/components/polymath/ideas/idea-grid";
 import { IdeaModal } from "@/components/polymath/ideas/idea-modal";
 import { blocksOf } from "@/components/polymath/ideas/idea-blocks";
@@ -16,6 +17,8 @@ import { ListToolbar } from "@/components/list/list-toolbar";
 import { NoResults } from "@/components/list/no-results";
 import { Pagination } from "@/components/list/pagination";
 import { listHref, offsetFor, parseListParams, type RawSearchParams } from "@/lib/list-params";
+import { TidySection } from "./tidy-section";
+import { TidyNowButton } from "./tidy-controls";
 
 export const metadata = { title: "Ideas · Polymath" };
 
@@ -171,9 +174,10 @@ export async function IdeasSurface({ searchParams }: { searchParams: Promise<Raw
   const view: IdeaView = (VIEWS as readonly string[]).includes(requested) ? (requested as IdeaView) : "cards";
   const tag = typeof raw.tag === "string" && raw.tag.trim() ? raw.tag.trim().toLowerCase() : undefined;
   const ideaParam = typeof raw.idea === "string" && raw.idea.trim() ? raw.idea.trim() : undefined;
-  // The two reads are independent given the workspace; resolve them in one
+  const tidyParam = typeof raw.tidy === "string" && raw.tidy.trim() ? raw.tidy.trim() : undefined;
+  // The reads are independent given the workspace; resolve them in one
   // wave and gate the page-end redirect on the page's total afterwards (spec W2).
-  const [found, allTags] = await Promise.all([
+  const [found, allTags, tidy] = await Promise.all([
     pageZettelCards(auth, {
       query: list.q,
       tag,
@@ -184,6 +188,7 @@ export async function IdeasSurface({ searchParams }: { searchParams: Promise<Raw
       sort: view === "dictionary" ? "title" : "recent",
     }),
     listNoteTags(auth),
+    listTidyFindings(auth),
   ]);
   redirectPastEnd(BASE, raw, list.page, list.pageSize, found.total);
   const filtered = Boolean(list.q || tag);
@@ -209,7 +214,19 @@ export async function IdeasSurface({ searchParams }: { searchParams: Promise<Raw
   return (
     <Screen title="Ideas" description={purpose()}>
       <Panel>
-        <ViewTabs view={view} raw={raw} />
+        <TidySection
+          findings={tidy.findings}
+          total={tidy.total}
+          openFindingId={tidyParam}
+          hrefs={{
+            open: (card) =>
+              card.kind === "zettel" ? ideaHref(card.id) : `/polymath/notes?id=${encodeURIComponent(card.id)}`,
+          }}
+        />
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <ViewTabs view={view} raw={raw} />
+          <TidyNowButton />
+        </div>
         <div className="mb-3">
           <ListToolbar searchPlaceholder="Search ideas" />
         </div>
