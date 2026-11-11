@@ -7,6 +7,8 @@ import { useOptimistic, useRef, useState, useTransition } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { CaptureKind } from "@/domains/capture/kind-label";
+import type { LearningSourceOption } from "@/app/(workspace)/learn/make-actions";
+import { MakeLearningButton } from "@/app/(workspace)/learn/make-learning-dialog";
 import { listHref } from "@/lib/list-params";
 import { setCaptureStateAction } from "./actions";
 import { generateZettelsAction } from "./zettel-actions";
@@ -154,6 +156,27 @@ export function captureDetailHeading(capture: {
   return null;
 }
 
+/**
+ * A capture as a flashcard or quiz source: an open one (picking it files it
+ * to the library) or one already filed as a document. A capture turned into
+ * a task, note or draft is not a source.
+ */
+export function captureLearningSource(capture: {
+  id: string;
+  version: number;
+  processingState: string;
+  convertedType: string | null;
+  title?: string | null;
+  preview?: string | null;
+  text?: string | null;
+  url?: string | null;
+  rawPayload?: unknown;
+}): LearningSourceOption | null {
+  if (capture.processingState === "discarded") return null;
+  if (capture.processingState === "converted" && capture.convertedType !== "document") return null;
+  return { type: "capture", id: capture.id, version: capture.version, title: captureTitle(capture) };
+}
+
 function when(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const minutes = Math.round(diff / 60_000);
@@ -201,6 +224,10 @@ export function InboxList({
   // Converted rows cannot transition; every other selected row is sent and
   // non-permitting rows fail through the setCaptureState domain guard (D15).
   const bulkTargets = optimisticRows.filter((row) => selected.has(row.id) && row.processingState !== "converted");
+  const learningSources = optimisticRows
+    .filter((row) => selected.has(row.id))
+    .map(captureLearningSource)
+    .filter((source) => source !== null);
 
   function bulkAct(next: "discarded" | "unprocessed") {
     // Focus origin is tracked explicitly: on click the toolbar button (not
@@ -384,6 +411,19 @@ export function InboxList({
             >
               Zettelize
             </Button>
+            <MakeLearningButton
+              size="sm"
+              variant="outline"
+              disabled={pending || learningSources.length === 0}
+              initialSources={learningSources}
+              title={
+                learningSources.length === 0
+                  ? "Archived captures, tasks and notes cannot be sources."
+                  : "Files the selected captures to your library, then makes flashcards or a quiz from them."
+              }
+            >
+              Flashcards or quiz
+            </MakeLearningButton>
             <Button
               size="sm"
               variant="ghost"

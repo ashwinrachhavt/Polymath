@@ -27,11 +27,13 @@ import {
   CAPTURE_KIND_NAMES,
   CaptureKindChip,
   captureDetailHeading,
+  captureLearningSource,
   captureKindLabel,
   captureStateLabel,
   captureTitle,
   type InboxRow,
 } from "./inbox-list";
+import { MakeLearningButton } from "@/app/(workspace)/learn/make-learning-dialog";
 import { generateZettelsAction } from "./zettel-actions";
 import { ZettelQueueWatch } from "./zettel-queue-watch";
 
@@ -192,6 +194,8 @@ export function InboxDetail({
   // without its transcript does not.
   const hasReadableText = Boolean((capture?.cleanText ?? capture?.text)?.trim());
   const zettelEligible = Boolean(capture) && !voiceWithoutTranscript && hasReadableText;
+  // Flashcards and quizzes read the same words: an open capture's text, or the document it was filed as.
+  const learningSource = capture ? captureLearningSource(capture) : null;
 
   if (!capture) {
     return (
@@ -540,6 +544,11 @@ export function InboxDetail({
                 Zettelize
               </Button>
             ) : null}
+            {zettelEligible && learningSource ? (
+              <MakeLearningButton size="sm" variant="outline" disabled={pending} initialSources={[learningSource]}>
+                Make flashcards or a quiz
+              </MakeLearningButton>
+            ) : null}
             {voiceWithoutTranscript ? null : (
               <Button size="sm" variant="outline" disabled={pending} onClick={() => act("converted")}>
                 Make task
@@ -614,6 +623,11 @@ export function InboxDetail({
               Open in Document Vault
             </Link>
           </Button>
+        ) : null}
+        {state === "converted" && capture.convertedType === "document" && learningSource ? (
+          <MakeLearningButton size="sm" variant="outline" initialSources={[learningSource]}>
+            Make flashcards or a quiz
+          </MakeLearningButton>
         ) : null}
         {state === "converted" && capture.convertedType === "task" && capture.convertedId ? (
           <Button asChild size="sm" variant="outline">
