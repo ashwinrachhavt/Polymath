@@ -57,13 +57,24 @@ suite("drizzleQuotaStore", () => {
     const store = quota!.drizzleQuotaStore(db);
     const key = { workspaceId, provider: "gemini", period: "2099-01-15" };
     // Ten racers for a cap of 5, one unit each: exactly five may land.
-    const outcomes = await Promise.all(
-      Array.from({ length: 10 }, () => store.reserve(key, 1, 5, "requests")),
-    );
+    const outcomes = await Promise.all(Array.from({ length: 10 }, () => store.reserve(key, 1, 5, "requests")));
     expect(outcomes.filter(Boolean)).toHaveLength(5);
     expect(outcomes.filter((o) => o === null)).toHaveLength(5);
     // And once full, it stays full: the eleventh is refused too.
     expect(await store.reserve(key, 1, 5, "requests")).toBeNull();
+  });
+
+  it("a raised allowance admits again on a bucket the old allowance had exhausted", async () => {
+    const { workspaceId } = await seedWorkspace(db, `quota-raise-${Date.now()}`);
+    const store = quota!.drizzleQuotaStore(db);
+    const key = { workspaceId, provider: "deepgram", period: "lifetime" };
+    const first = await store.reserve(key, 10, 10, "seconds");
+    await store.settle(first!.bucketId, first!.reservationId, 10, 10);
+    expect(await store.reserve(key, 1, 10, "seconds")).toBeNull();
+    // A lifetime bucket never rolls over, so the override is the only way back in.
+    expect(await store.reserve(key, 1, 20, "seconds")).not.toBeNull();
+    // And a lowered allowance refuses at once, even though the stored one was higher.
+    expect(await store.reserve(key, 1, 5, "seconds")).toBeNull();
   });
 
   it("a released reservation frees the units for the next attempt", async () => {
@@ -153,7 +164,9 @@ suite("drizzleQuotaStore", () => {
       consumed: 0,
     });
     // The reservation is reusable.
-    expect(await store.reserve({ workspaceId, provider: "firecrawl", period: "2099-05" }, 3, 1000, "credits")).not.toBeNull();
+    expect(
+      await store.reserve({ workspaceId, provider: "firecrawl", period: "2099-05" }, 3, 1000, "credits"),
+    ).not.toBeNull();
     // And a late settle for the reaped reservation cannot double-apply.
     await store.settle(r!.bucketId, r!.reservationId, 3, 3);
     const after = await db.execute(sql`

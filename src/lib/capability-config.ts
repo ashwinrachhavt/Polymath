@@ -139,7 +139,8 @@ const generation = (env: Record<string, string | undefined>) =>
 
 // No key-detection fallback: an unset TRANSCRIPTION_PROVIDER is "not configured".
 const TRANSCRIPTION_CHOICES: Record<string, Alternatives> = {
-  gemini: [["GEMINI_API_KEY"]],
+  // The adapter reads either name for the same key.
+  gemini: [["GEMINI_API_KEY"], ["GOOGLE_GENERATIVE_AI_API_KEY"]],
   deepgram: [["DEEPGRAM_API_KEY"]],
   fixture: [[]],
 };
@@ -228,7 +229,7 @@ const DEFINITIONS: readonly Definition[] = [
   {
     id: "transcription",
     label: "Voice transcription",
-    watches: ["TRANSCRIPTION_PROVIDER", "GEMINI_API_KEY", "DEEPGRAM_API_KEY"],
+    watches: ["TRANSCRIPTION_PROVIDER", "GEMINI_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY", "DEEPGRAM_API_KEY"],
     // Mirrors transcriptionProvider(): explicit opt-in only, a key alone never selects one.
     ready: (env) => transcription(env).ready,
     missing: (env) => transcription(env).missing,

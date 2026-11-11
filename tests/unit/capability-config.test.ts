@@ -23,6 +23,10 @@ describe("capabilityStatus", () => {
     expect(find({ TRANSCRIPTION_PROVIDER: "deepgram" }, "transcription").missingEnv).toEqual(["DEEPGRAM_API_KEY"]);
     expect(find({ TRANSCRIPTION_PROVIDER: "deepgram", DEEPGRAM_API_KEY: "k" }, "transcription").configured).toBe(true);
     expect(find({ TRANSCRIPTION_PROVIDER: "fixture" }, "transcription").configured).toBe(true);
+    // The Gemini adapter reads either name for its key.
+    expect(
+      find({ TRANSCRIPTION_PROVIDER: "gemini", GOOGLE_GENERATIVE_AI_API_KEY: "k" }, "transcription").configured,
+    ).toBe(true);
   });
 
   it("reports a capability missing when none of its variables are set, and names them", () => {
