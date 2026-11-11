@@ -57,7 +57,7 @@ export function transcriptionProvider(
   env: Record<string, string | undefined> = process.env,
   fetchImpl: typeof fetch = fetch,
 ): TranscriptionProvider {
-  const choice = env.TRANSCRIPTION_PROVIDER?.toLowerCase();
+  const choice = env.TRANSCRIPTION_PROVIDER?.trim().toLowerCase();
   if (choice === "fixture") return fixtureTranscriptionProvider();
   if (choice === "deepgram") return deepgramTranscriptionProvider(env, fetchImpl);
   if (choice === "gemini") return geminiTranscriptionProvider(env, fetchImpl);

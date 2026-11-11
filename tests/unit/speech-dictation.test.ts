@@ -75,10 +75,11 @@ describe("transcribeDictation", () => {
     expect(outcome).toEqual({ kind: "transcribed", text: "" });
   });
 
-  it("reports seconds as null for a provider metered in requests", async () => {
+  it("reports seconds as null for a provider not metered in seconds", async () => {
+    // Firecrawl's entry stands in: metered in credits and cleared for sensitive content.
     const provider: TranscriptionProvider = {
-      name: "gemini:flash",
-      registryId: "gemini",
+      name: "credits:test",
+      registryId: "firecrawl",
       reserveUnits: () => 1,
       transcribe: async () => ({ text: "hi", units: 1 }),
     };
@@ -142,5 +143,37 @@ describe("transcribeDictation", () => {
         quotaStore: store as QuotaStore,
       }),
     ).rejects.toThrow("connection refused");
+  });
+  it("a provider the registry does not clear for sensitive content never hears dictation", async () => {
+    const { store, calls } = ledger();
+    const transcribe = vi.fn(async () => ({ text: "private words", units: 1 }));
+    const outcome = await transcribeDictation(auth, audio, {
+      provider: () => ({ name: "gemini:test", registryId: "gemini", reserveUnits: () => 1, transcribe }),
+      quotaStore: store,
+    });
+    expect(outcome).toEqual({ kind: "unconfigured" });
+    expect(transcribe).not.toHaveBeenCalled();
+    expect(calls).toEqual([]);
+  });
+
+  it("an unknown provider name is a setup problem, not a failed call", async () => {
+    const outcome = await transcribeDictation(auth, audio, {
+      provider: () => {
+        throw new TranscriptionRequestError("whisper", 0);
+      },
+      quotaStore: ledger().store,
+    });
+    expect(outcome).toEqual({ kind: "unconfigured" });
+  });
+
+  it("the words still come back when the audit row cannot be written", async () => {
+    recordAudit.mockRejectedValueOnce(new Error("connection lost"));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const outcome = await transcribeDictation(auth, audio, {
+      provider: () => deepgramLike(async () => ({ text: "keep these words", units: 3 })),
+      quotaStore: ledger().store,
+    });
+    warn.mockRestore();
+    expect(outcome).toEqual({ kind: "transcribed", text: "keep these words" });
   });
 });

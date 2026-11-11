@@ -6,10 +6,10 @@
  * ceiling: 2 minutes at 64 kbps is under 1 MB.
  */
 
-export const CLIP_MAX_MS = 2 * 60_000;
+const CLIP_MAX_MS = 2 * 60_000;
 const AUDIO_BITS_PER_SECOND = 64_000;
 
-export type RecorderFailure = "permission" | "no-microphone" | "unsupported";
+type RecorderFailure = "permission" | "no-microphone" | "unsupported";
 
 export type Recorder = {
   /** Finish: the last clip arrives through onClip with final = true, then the microphone is released. */

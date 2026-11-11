@@ -14,6 +14,10 @@ const TRANSCRIPTIONS = "/api/v1/speech/transcriptions";
 // The first upload compiles the route under `next dev`; later ones answer at once.
 const ANSWERED = { timeout: 30_000 };
 
+// The answer wait (ANSWERED) has to fit inside the test's own budget, or a cold
+// compile fails the first try however long the assertion is willing to wait.
+test.setTimeout(90_000);
+
 test.beforeEach(async ({ context }) => {
   await context.grantPermissions(["microphone"]);
 });
@@ -299,4 +303,55 @@ test("retyping the dictated why saves it as typed", async ({ page }) => {
   const context = page.getByRole("article").getByRole("region", { name: "Capture context" });
   await expect(context).toContainText(`${FIXTURE}!`);
   await expect(context).not.toContainText("dictated");
+});
+
+test("words still land at the note's caret when focus has moved to another field by the time they arrive", async ({
+  page,
+}) => {
+  let answer!: () => void;
+  const held = new Promise<void>((resolve) => (answer = resolve));
+  await page.route(`**${TRANSCRIPTIONS}`, async (route) => {
+    await held;
+    await route.continue();
+  });
+  const editor = await openNewNote(page);
+  await page.keyboard.type("alpha beta");
+  for (let i = 0; i < " beta".length; i += 1) await page.keyboard.press("ArrowLeft");
+  await expect(page.getByText("Saved", { exact: true })).toBeVisible({ timeout: 15_000 });
+  await hold(page);
+  const title = page.getByLabel("Note title");
+  await title.click();
+  answer();
+  await expect(editor).toContainText(`alpha ${FIXTURE} beta`, ANSWERED);
+  await expect(title).not.toHaveValue(/Fixture transcript/);
+  await expect(title).toBeFocused();
+});
+
+test("inside the capture dialog, Retry on the pill works and leaves the dialog open", async ({ page }) => {
+  test.setTimeout(90_000);
+  let attempts = 0;
+  await page.route(`**${TRANSCRIPTIONS}`, async (route) => {
+    attempts += 1;
+    if (attempts === 1) await route.fulfill({ status: 502, contentType: "application/problem+json", body: "{}" });
+    else await route.continue();
+  });
+  await page.goto("/command-center/inbox");
+  await waitSettled(page);
+  await controllerReady(page);
+  await page.getByRole("button", { name: "Capture", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  const why = dialog.getByLabel("Why does this matter?");
+  await dialog.getByRole("button", { name: "Dictate" }).click();
+  await microphoneOpen(page);
+  await page.waitForTimeout(500);
+  await dialog.getByRole("button", { name: "Stop dictating" }).click();
+
+  const pill = page.locator("[data-dictation]");
+  await expect(pill).toContainText("Transcription failed");
+  // A real pointer press: this fails if the dialog's overlay covers the pill
+  // or the page's pointer events are off.
+  await pill.getByRole("button", { name: "Retry", includeHidden: true }).click();
+  await expect(why).toHaveValue(FIXTURE, ANSWERED);
+  await expect(dialog).toBeVisible();
+  expect(attempts).toBe(2);
 });

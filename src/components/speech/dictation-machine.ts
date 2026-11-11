@@ -33,7 +33,7 @@ type Session = {
  */
 type Press = { kind: "held"; since: number } | { kind: "latched" } | { kind: "latched-pressed" };
 
-export type Notice = { kind: "no-field" } | { kind: "stranded"; text: string };
+type Notice = { kind: "no-field" } | { kind: "stranded"; text: string };
 
 export type DictationState =
   | { kind: "idle"; notice: Notice | null }
@@ -193,7 +193,10 @@ export function transition(state: DictationState, event: DictationEvent): Step {
     }
 
     case "recorderFailed":
-      if (state.kind !== "listening") return stay(state);
+      // Also after a stop: the microphone can be refused once the key is
+      // already up (the permission prompt outlives a short hold), and nothing
+      // else would ever end the wait for its last clip.
+      if (state.kind !== "listening" && !(state.kind === "transcribing" && state.session.recording)) return stay(state);
       return stay({
         kind: "error",
         reason: event.reason,

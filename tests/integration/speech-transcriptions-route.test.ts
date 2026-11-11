@@ -1,5 +1,5 @@
-import { and, eq } from "drizzle-orm";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { and, eq, sql } from "drizzle-orm";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { auditEvents } from "@/domains/audit/schema";
 import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
 
@@ -11,7 +11,7 @@ import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
  * transcription allowance, a text file is sent to the provider because it was labelled audio, a 5 MB
  * body is buffered and transcribed, or the transcript lands in the audit log; why_new=the route is
  * new; seam=Clerk mocked, the companion bearer path and the database real, TRANSCRIPTION_PROVIDER=fixture;
- * no_claim=Deepgram (unit tests cover the quota and failure outcomes)
+ * no_claim=a real Deepgram call (the outbound request is refused by the suite's fetch guard)
  */
 
 const handle = makeTestDb();
@@ -133,5 +133,58 @@ suite("POST /api/v1/speech/transcriptions", () => {
     expect(row.actorId).toBe(workspace.userId);
     expect(row.metadata).toMatchObject({ provider: "fixture:transcription", seconds: null });
     expect(JSON.stringify(row)).not.toContain("Priya");
+  });
+  it("refuses on the declared length alone, before reading the body", async () => {
+    const res = await post(WEBM, { "content-type": "audio/webm", "content-length": String(4 * 1024 * 1024 + 1) });
+    expect(res.status).toBe(413);
+  });
+
+  describe("when transcription cannot answer", () => {
+    afterEach(() => {
+      vi.stubEnv("TRANSCRIPTION_PROVIDER", "fixture");
+      vi.stubEnv("DEEPGRAM_API_KEY", "");
+      vi.stubEnv("DEEPGRAM_LIFETIME_SECONDS", "");
+    });
+
+    it("answers 503 when no provider is selected", async () => {
+      vi.stubEnv("TRANSCRIPTION_PROVIDER", "");
+      const res = await post(WEBM);
+      expect(res.status).toBe(503);
+      expect((await res.json()).code).toBe("transcription_unconfigured");
+    });
+
+    it("answers 502 when the provider cannot be reached, and holds no allowance for it", async () => {
+      // The suite's fetch guard refuses the outbound call, which is a provider failure to the route.
+      vi.stubEnv("TRANSCRIPTION_PROVIDER", "deepgram");
+      vi.stubEnv("DEEPGRAM_API_KEY", "test-key-never-sent");
+      const res = await post(WEBM);
+      expect(res.status).toBe(502);
+      expect((await res.json()).code).toBe("transcription_failed");
+      const rows = await handle!.db.execute(
+        sql`SELECT reserved, consumed FROM provider_quota_buckets WHERE workspace_id = ${workspace.workspaceId}::uuid AND provider = 'deepgram'`,
+      );
+      expect((rows as unknown as Array<{ reserved: number; consumed: number }>)[0]).toMatchObject({
+        reserved: 0,
+        consumed: 0,
+      });
+    });
+
+    it("answers 429 once the allowance is used up", async () => {
+      vi.stubEnv("TRANSCRIPTION_PROVIDER", "deepgram");
+      vi.stubEnv("DEEPGRAM_API_KEY", "test-key-never-sent");
+      vi.stubEnv("DEEPGRAM_LIFETIME_SECONDS", "1");
+      const { drizzleQuotaStore } = await import("@/integrations/providers/quota");
+      const store = drizzleQuotaStore(handle!.db);
+      const held = await store.reserve(
+        { workspaceId: workspace.workspaceId, provider: "deepgram", period: "lifetime" },
+        1,
+        1,
+        "seconds",
+      );
+      await store.settle(held!.bucketId, held!.reservationId, 1, 1);
+      const res = await post(WEBM);
+      expect(res.status).toBe(429);
+      expect((await res.json()).code).toBe("quota_exhausted");
+    });
   });
 });

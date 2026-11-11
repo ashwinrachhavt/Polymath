@@ -30,6 +30,7 @@ import { QuotaExhaustedError, drizzleQuotaStore, withQuota } from "@/integration
 import { readBlob } from "@/integrations/object-store/object-store";
 import {
   transcriptionProvider,
+  TranscriptionRequestError,
   TranscriptionUnconfiguredError,
   type TranscriptionProvider,
 } from "@/integrations/transcription/provider";
@@ -468,7 +469,11 @@ async function transcribeVoiceCapture(
   try {
     provider = injected ?? transcriptionProvider();
   } catch (cause) {
-    if (cause instanceof TranscriptionUnconfiguredError) {
+    // An unknown provider name (status 0) is the same owner-side fix as none at all.
+    if (
+      cause instanceof TranscriptionUnconfiguredError ||
+      (cause instanceof TranscriptionRequestError && cause.status === 0)
+    ) {
       await ownedUpdate(token, capture.id, {
         processingState: "failed",
         failureReason:
@@ -511,12 +516,11 @@ async function transcribeVoiceCapture(
           )
         : await call());
   } catch (cause) {
-    if (!(cause instanceof QuotaExhaustedError)) throw cause;
-    // Redelivery cannot refill an allowance, so this settles on the capture
-    // instead of retrying into the dead-letter queue.
+    const failureReason = terminalTranscriptionFailure(cause);
+    if (!failureReason) throw cause;
     await ownedUpdate(token, capture.id, {
       processingState: "failed",
-      failureReason: "The transcription allowance is used up - the audio is kept.",
+      failureReason,
       updatedAt: new Date(),
       ...RELEASE,
     });
@@ -543,6 +547,26 @@ async function transcribeVoiceCapture(
     });
   }
   return transcript;
+}
+
+/**
+ * The failures a redelivery cannot cure, as the reason shown on the capture;
+ * null for the ones worth retrying. Without this a refused clip would retry
+ * into the dead-letter queue and leave the capture unprocessed with no reason.
+ */
+function terminalTranscriptionFailure(cause: unknown): string | null {
+  if (cause instanceof QuotaExhaustedError) return "The transcription allowance is used up - the audio is kept.";
+  if (
+    cause instanceof TranscriptionRequestError &&
+    cause.status >= 400 &&
+    cause.status < 500 &&
+    // A timeout or a throttle is the provider asking for a later attempt.
+    cause.status !== 408 &&
+    cause.status !== 429
+  ) {
+    return `The transcription service refused this audio (HTTP ${cause.status}) - the audio is kept.`;
+  }
+  return null;
 }
 
 type ImageRung = { case: "not-image" } | { case: "handled" } | { case: "text"; text: string };

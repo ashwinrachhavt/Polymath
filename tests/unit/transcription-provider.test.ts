@@ -36,6 +36,10 @@ describe("transcriptionProvider selection", () => {
     expect(provider.registryId).toBe("gemini");
   });
 
+  it("the selector tolerates stray whitespace and case, as the configuration panel does", () => {
+    expect(transcriptionProvider({ TRANSCRIPTION_PROVIDER: " Fixture " }).name).toBe("fixture:transcription");
+  });
+
   it("an unknown provider names the choice in the refusal", () => {
     expect(() => transcriptionProvider({ TRANSCRIPTION_PROVIDER: "whisper" })).toThrowError(/whisper/);
   });

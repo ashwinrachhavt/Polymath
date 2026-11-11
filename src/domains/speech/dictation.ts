@@ -3,6 +3,7 @@ import { drizzleQuotaStore, QuotaExhaustedError, withQuota, type QuotaStore } fr
 import { providerEntry } from "@/integrations/providers/registry";
 import {
   transcriptionProvider,
+  TranscriptionRequestError,
   TranscriptionUnconfiguredError,
   type TranscriptionProvider,
 } from "@/integrations/transcription/provider";
@@ -68,11 +69,18 @@ export async function transcribeDictation(
   try {
     provider = deps.provider();
   } catch (cause) {
-    if (cause instanceof TranscriptionUnconfiguredError) return failure("unconfigured", null);
-    return failure("failed", null);
+    // An unknown provider name (status 0) is a deployment setting to fix, not a call to retry.
+    const misconfigured =
+      cause instanceof TranscriptionUnconfiguredError ||
+      (cause instanceof TranscriptionRequestError && cause.status === 0);
+    return failure(misconfigured ? "unconfigured" : "failed", null);
   }
 
   const entry = providerEntry(provider.registryId);
+  // Dictation is whatever the person would have typed, private or not, so it
+  // only goes to a provider the registry clears for sensitive content. A
+  // voice note may still use the other kind; that is a separate, deliberate upload.
+  if (entry && !entry.sensitiveDataAllowed) return failure("unconfigured", provider.name);
   const call = () =>
     provider.transcribe(audio).catch((cause: unknown) => {
       throw new ProviderCallError(cause);
@@ -91,16 +99,22 @@ export async function transcribeDictation(
   }
   const durationMs = Math.round(performance.now() - startedAt);
 
-  await recordAudit(auth, {
-    action: "speech.dictation_transcribed",
-    subjectType: "dictation",
-    subjectId: attemptId,
-    summary: `Dictation transcribed with ${provider.name}`,
-    metadata: {
-      provider: provider.name,
-      seconds: entry?.quota?.unit === "seconds" ? result.units : null,
-      durationMs,
-    },
-  });
+  // The words are paid for and exist nowhere else: a failed audit write must
+  // not cost the person their dictation.
+  try {
+    await recordAudit(auth, {
+      action: "speech.dictation_transcribed",
+      subjectType: "dictation",
+      subjectId: attemptId,
+      summary: `Dictation transcribed with ${provider.name}`,
+      metadata: {
+        provider: provider.name,
+        seconds: entry?.quota?.unit === "seconds" ? result.units : null,
+        durationMs,
+      },
+    });
+  } catch (cause) {
+    console.warn("dictation: the audit row was not written:", cause instanceof Error ? cause.message : cause);
+  }
   return { kind: "transcribed", text: result.text.trim() };
 }
