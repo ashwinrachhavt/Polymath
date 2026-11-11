@@ -30,6 +30,7 @@ import { QuotaExhaustedError, drizzleQuotaStore, withQuota } from "@/integration
 import { readBlob } from "@/integrations/object-store/object-store";
 import {
   transcriptionProvider,
+  TranscriptionRequestError,
   TranscriptionUnconfiguredError,
   type TranscriptionProvider,
 } from "@/integrations/transcription/provider";
@@ -455,7 +456,8 @@ async function tryJevTriage(
  * are the immutable original in raw_payload/blob storage; the transcript is
  * derived material and lands in `text`, where the ladder and the owner can
  * read and correct it. Quota admission wraps the provider call exactly like
- * the generation seam: the registry's gemini entry carries the allowance.
+ * the generation seam: the provider's registry entry carries the allowance, in the unit the
+ * provider reports (requests for Gemini, seconds for Deepgram).
  */
 async function transcribeVoiceCapture(
   token: string,
@@ -467,7 +469,11 @@ async function transcribeVoiceCapture(
   try {
     provider = injected ?? transcriptionProvider();
   } catch (cause) {
-    if (cause instanceof TranscriptionUnconfiguredError) {
+    // An unknown provider name (status 0) is the same owner-side fix as none at all.
+    if (
+      cause instanceof TranscriptionUnconfiguredError ||
+      (cause instanceof TranscriptionRequestError && cause.status === 0)
+    ) {
       await ownedUpdate(token, capture.id, {
         processingState: "failed",
         failureReason:
@@ -496,10 +502,30 @@ async function transcribeVoiceCapture(
 
   const entry = providerEntry(provider.registryId);
   const call = () => provider.transcribe({ bytes, mimeType: blob.mimeType });
-  const { text } =
-    entry?.quota && entry.enabled
-      ? await withQuota(drizzleQuotaStore(), entry, event.workspaceId, 1, call)
-      : await call();
+  let text: string;
+  try {
+    ({ text } =
+      entry?.quota && entry.enabled
+        ? await withQuota(
+            drizzleQuotaStore(),
+            entry,
+            event.workspaceId,
+            provider.reserveUnits({ bytes, mimeType: blob.mimeType }),
+            call,
+            (r) => r.units,
+          )
+        : await call());
+  } catch (cause) {
+    const failureReason = terminalTranscriptionFailure(cause);
+    if (!failureReason) throw cause;
+    await ownedUpdate(token, capture.id, {
+      processingState: "failed",
+      failureReason,
+      updatedAt: new Date(),
+      ...RELEASE,
+    });
+    return null;
+  }
   const transcript = text.trim();
 
   await ownedUpdate(token, capture.id, {
@@ -521,6 +547,26 @@ async function transcribeVoiceCapture(
     });
   }
   return transcript;
+}
+
+/**
+ * The failures a redelivery cannot cure, as the reason shown on the capture;
+ * null for the ones worth retrying. Without this a refused clip would retry
+ * into the dead-letter queue and leave the capture unprocessed with no reason.
+ */
+function terminalTranscriptionFailure(cause: unknown): string | null {
+  if (cause instanceof QuotaExhaustedError) return "The transcription allowance is used up - the audio is kept.";
+  if (
+    cause instanceof TranscriptionRequestError &&
+    cause.status >= 400 &&
+    cause.status < 500 &&
+    // A timeout or a throttle is the provider asking for a later attempt.
+    cause.status !== 408 &&
+    cause.status !== 429
+  ) {
+    return `The transcription service refused this audio (HTTP ${cause.status}) - the audio is kept.`;
+  }
+  return null;
 }
 
 type ImageRung = { case: "not-image" } | { case: "handled" } | { case: "text"; text: string };

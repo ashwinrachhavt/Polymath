@@ -23,7 +23,10 @@ export interface TranscriptionProvider {
   readonly name: string;
   /** The registry id used for quota admission, e.g. "gemini". */
   readonly registryId: string;
-  transcribe(input: TranscribeInput): Promise<{ text: string }>;
+  /** Upper bound of quota units (in the registry entry's unit) to reserve before the call. */
+  reserveUnits(input: TranscribeInput): number;
+  /** `units` is what the call actually used, in the same unit; settlement refunds the difference. */
+  transcribe(input: TranscribeInput): Promise<{ text: string; units: number }>;
 }
 
 export class TranscriptionUnconfiguredError extends Error {
@@ -47,14 +50,16 @@ export class TranscriptionRequestError extends Error {
 export const TRANSCRIPTION_TIMEOUT_MS = 60_000;
 
 import { fixtureTranscriptionProvider } from "./fixture";
+import { deepgramTranscriptionProvider } from "./deepgram";
 import { geminiTranscriptionProvider } from "./gemini";
 
 export function transcriptionProvider(
   env: Record<string, string | undefined> = process.env,
   fetchImpl: typeof fetch = fetch,
 ): TranscriptionProvider {
-  const choice = env.TRANSCRIPTION_PROVIDER?.toLowerCase();
+  const choice = env.TRANSCRIPTION_PROVIDER?.trim().toLowerCase();
   if (choice === "fixture") return fixtureTranscriptionProvider();
+  if (choice === "deepgram") return deepgramTranscriptionProvider(env, fetchImpl);
   if (choice === "gemini") return geminiTranscriptionProvider(env, fetchImpl);
   if (choice) throw new TranscriptionRequestError(choice, 0);
   throw new TranscriptionUnconfiguredError();

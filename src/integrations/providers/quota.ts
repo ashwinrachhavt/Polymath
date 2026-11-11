@@ -24,7 +24,9 @@ export class QuotaExhaustedError extends Error {
     readonly period: string,
     readonly allowance: number,
   ) {
-    super(`Free allowance exhausted for ${provider} (${period}, cap ${allowance}). No paid fallback: the work stops here.`);
+    super(
+      `Free allowance exhausted for ${provider} (${period}, cap ${allowance}). No paid fallback: the work stops here.`,
+    );
     this.name = "QuotaExhaustedError";
   }
 }
@@ -94,7 +96,7 @@ export function drizzleQuotaStore(database: typeof db = db): QuotaStore {
                 allowance = EXCLUDED.allowance,
                 updated_at = now()
             WHERE provider_quota_buckets.consumed + provider_quota_buckets.reserved + EXCLUDED.reserved
-                  <= provider_quota_buckets.allowance
+                  <= EXCLUDED.allowance
           RETURNING id
         `);
         const row = (rows as unknown as Array<{ id: string }>)[0];
@@ -207,7 +209,12 @@ export async function withQuota<T>(
   if (!reservation) throw new QuotaExhaustedError(entry.id, period, allowance);
   try {
     const result = await fn();
-    await store.settle(reservation.bucketId, reservation.reservationId, estimate, actualOf ? actualOf(result) : estimate);
+    await store.settle(
+      reservation.bucketId,
+      reservation.reservationId,
+      estimate,
+      actualOf ? actualOf(result) : estimate,
+    );
     return result;
   } catch (cause) {
     await store.release(reservation.bucketId, reservation.reservationId, estimate);

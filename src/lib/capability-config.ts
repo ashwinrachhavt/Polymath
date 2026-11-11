@@ -22,6 +22,7 @@ type CapabilityId =
   | "document-extraction-hosted"
   | "web-search-keyed"
   | "generation"
+  | "transcription"
   | "embeddings"
   | "agent-execution"
   | "calendar-sync"
@@ -136,6 +137,16 @@ const generation = (env: Record<string, string | undefined>) =>
     ["OPENROUTER_API_KEY"],
   ]);
 
+// No key-detection fallback: an unset TRANSCRIPTION_PROVIDER is "not configured".
+const TRANSCRIPTION_CHOICES: Record<string, Alternatives> = {
+  // The adapter reads either name for the same key.
+  gemini: [["GEMINI_API_KEY"], ["GOOGLE_GENERATIVE_AI_API_KEY"]],
+  deepgram: [["DEEPGRAM_API_KEY"]],
+  fixture: [[]],
+};
+const transcription = (env: Record<string, string | undefined>) =>
+  selectorResolution(env, "TRANSCRIPTION_PROVIDER", TRANSCRIPTION_CHOICES, [], ["TRANSCRIPTION_PROVIDER"]);
+
 const EMBEDDING_CHOICES: Record<string, Alternatives> = {
   openrouter: [["OPENROUTER_API_KEY"]],
   openai: [["OPENAI_API_KEY"]],
@@ -214,6 +225,17 @@ const DEFINITIONS: readonly Definition[] = [
     missing: (env) => generation(env).missing,
     subject: "Drafting and classification that call a model are unavailable",
     action: "set MERCURY_API_KEY (or INCEPTION_API_KEY), GEMINI_API_KEY or OPENROUTER_API_KEY",
+  },
+  {
+    id: "transcription",
+    label: "Voice transcription",
+    watches: ["TRANSCRIPTION_PROVIDER", "GEMINI_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY", "DEEPGRAM_API_KEY"],
+    // Mirrors transcriptionProvider(): explicit opt-in only, a key alone never selects one.
+    ready: (env) => transcription(env).ready,
+    missing: (env) => transcription(env).missing,
+    subject: "Voice notes are kept but never transcribed",
+    action:
+      "set TRANSCRIPTION_PROVIDER=deepgram with DEEPGRAM_API_KEY, or TRANSCRIPTION_PROVIDER=gemini with GEMINI_API_KEY",
   },
   {
     id: "embeddings",

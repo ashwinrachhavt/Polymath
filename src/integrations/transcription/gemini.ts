@@ -38,6 +38,7 @@ export function geminiTranscriptionProvider(
   return {
     name: `gemini:${model}`,
     registryId: "gemini",
+    reserveUnits: () => 1,
     async transcribe({ bytes, mimeType }) {
       const response = await fetchImpl(`${ENDPOINT}/${model}:generateContent`, {
         method: "POST",
@@ -58,8 +59,11 @@ export function geminiTranscriptionProvider(
       });
       if (!response.ok) throw new TranscriptionRequestError("gemini", response.status);
       const body = (await response.json().catch(() => null)) as GeminiResponse | null;
-      const text = (body?.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? "").join("").trim();
-      return { text };
+      const text = (body?.candidates?.[0]?.content?.parts ?? [])
+        .map((p) => p.text ?? "")
+        .join("")
+        .trim();
+      return { text, units: 1 };
     },
   };
 }

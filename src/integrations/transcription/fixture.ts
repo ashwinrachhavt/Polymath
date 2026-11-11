@@ -14,8 +14,9 @@ export function fixtureTranscriptionProvider(): TranscriptionProvider {
   return {
     name: "fixture:transcription",
     registryId: "fixture",
+    reserveUnits: () => 1,
     async transcribe() {
-      return { text: FIXTURE_TRANSCRIPT };
+      return { text: FIXTURE_TRANSCRIPT, units: 1 };
     },
   };
 }

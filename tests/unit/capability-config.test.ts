@@ -12,10 +12,23 @@ import { capabilityStatus, capabilitySummary } from "@/lib/capability-config";
  * A panel that lies in exactly those states is worse than no panel.
  */
 
-const find = (env: Record<string, string | undefined>, id: string) =>
-  capabilityStatus(env).find((c) => c.id === id)!;
+const find = (env: Record<string, string | undefined>, id: string) => capabilityStatus(env).find((c) => c.id === id)!;
 
 describe("capabilityStatus", () => {
+  it("transcription needs an explicit selector; a key alone never configures it", () => {
+    expect(find({ DEEPGRAM_API_KEY: "k" }, "transcription")).toMatchObject({
+      configured: false,
+      missingEnv: ["TRANSCRIPTION_PROVIDER"],
+    });
+    expect(find({ TRANSCRIPTION_PROVIDER: "deepgram" }, "transcription").missingEnv).toEqual(["DEEPGRAM_API_KEY"]);
+    expect(find({ TRANSCRIPTION_PROVIDER: "deepgram", DEEPGRAM_API_KEY: "k" }, "transcription").configured).toBe(true);
+    expect(find({ TRANSCRIPTION_PROVIDER: "fixture" }, "transcription").configured).toBe(true);
+    // The Gemini adapter reads either name for its key.
+    expect(
+      find({ TRANSCRIPTION_PROVIDER: "gemini", GOOGLE_GENERATIVE_AI_API_KEY: "k" }, "transcription").configured,
+    ).toBe(true);
+  });
+
   it("reports a capability missing when none of its variables are set, and names them", () => {
     const generation = find({}, "generation");
     expect(generation.configured).toBe(false);
@@ -25,7 +38,9 @@ describe("capabilityStatus", () => {
       "GEMINI_API_KEY",
       "OPENROUTER_API_KEY",
     ]);
-    expect(generation.reason).toContain("set MERCURY_API_KEY (or INCEPTION_API_KEY), GEMINI_API_KEY or OPENROUTER_API_KEY");
+    expect(generation.reason).toContain(
+      "set MERCURY_API_KEY (or INCEPTION_API_KEY), GEMINI_API_KEY or OPENROUTER_API_KEY",
+    );
   });
 
   it("needs only one Mercury credential, not both, when mercury is selected", () => {
@@ -63,7 +78,9 @@ describe("capabilityStatus", () => {
     });
 
     it("SEARCH_PROVIDER=firecrawl with its key is ready even when another provider key is absent", () => {
-      expect(find({ SEARCH_PROVIDER: "firecrawl", FIRECRAWL_HOSTED_API_KEY: "k" }, "web-search-keyed").configured).toBe(true);
+      expect(find({ SEARCH_PROVIDER: "firecrawl", FIRECRAWL_HOSTED_API_KEY: "k" }, "web-search-keyed").configured).toBe(
+        true,
+      );
     });
 
     it("an unknown selector is never ready", () => {
@@ -120,7 +137,7 @@ describe("capabilityStatus", () => {
       expect.arrayContaining(["generation", "embeddings", "calendar-sync", "email-send"]),
     );
     expect(missing.map((c) => c.id)).toEqual(expect.arrayContaining(["document-extraction-hosted"]));
-    expect(configured.length + missing.length).toBe(8);
+    expect(configured.length + missing.length).toBe(9);
   });
 
   it("agrees with the extraction adapter's provider order", () => {

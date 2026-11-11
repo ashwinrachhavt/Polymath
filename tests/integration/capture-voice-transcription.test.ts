@@ -1,9 +1,11 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { auditEvents, outboxEvents } from "@/domains/audit/schema";
+import { providerQuotaBuckets } from "@/domains/integrations/schema";
 import { captures } from "@/domains/capture/schema";
 import { workspaces } from "@/domains/identity/schema";
 import { validateFile } from "@/lib/file-validation";
+import { TranscriptionRequestError } from "@/integrations/transcription/provider";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 import type { AuthContext } from "@/domains/identity/resolve";
 
@@ -39,7 +41,7 @@ const WEBM = new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 0x01, 0x02, 0x03, 0x04]);
 // the outcome and no generation key decides what this suite proves.
 const TRANSCRIPT = "Send the Q3 roadmap to Priya by Friday.";
 
-const transcribe = vi.fn(async () => ({ text: TRANSCRIPT }));
+const transcribe = vi.fn(async () => ({ text: TRANSCRIPT, units: 1 }));
 
 const handle = makeTestDb();
 const suite = handle ? describe : describe.skip;
@@ -76,7 +78,9 @@ async function runEnrichment(captureId: string, deps: Parameters<typeof handler.
   const event = events.find((e) => (e.payload as { captureId: string }).captureId === captureId);
   if (!event) throw new Error("no enrichment event enqueued for the voice capture");
   await handler.runCaptureEnrichment(
-    { id: event.id, workspaceId, topic: event.topic, payload: event.payload } as Parameters<typeof handler.runCaptureEnrichment>[0],
+    { id: event.id, workspaceId, topic: event.topic, payload: event.payload } as Parameters<
+      typeof handler.runCaptureEnrichment
+    >[0],
     deps,
   );
 }
@@ -102,7 +106,7 @@ suite("voice capture transcription", () => {
     transcribe.mockClear();
     const { captureId } = await voiceCapture();
     await runEnrichment(captureId, {
-      transcriber: { name: "fixture:transcription", registryId: "fixture", transcribe },
+      transcriber: { name: "fixture:transcription", registryId: "fixture", reserveUnits: () => 1, transcribe },
     });
 
     expect(transcribe).toHaveBeenCalledOnce();
@@ -122,11 +126,15 @@ suite("voice capture transcription", () => {
     transcribe.mockClear();
     const { captureId } = await voiceCapture();
     await runEnrichment(captureId, {
-      transcriber: { name: "fixture:transcription", registryId: "fixture", transcribe },
+      transcriber: { name: "fixture:transcription", registryId: "fixture", reserveUnits: () => 1, transcribe },
     });
-    await commands.updateCaptureText(auth, { captureId, expectedVersion: (await getCapture(captureId)).version, text: "Corrected by the owner." });
+    await commands.updateCaptureText(auth, {
+      captureId,
+      expectedVersion: (await getCapture(captureId)).version,
+      text: "Corrected by the owner.",
+    });
     await runEnrichment(captureId, {
-      transcriber: { name: "fixture:transcription", registryId: "fixture", transcribe },
+      transcriber: { name: "fixture:transcription", registryId: "fixture", reserveUnits: () => 1, transcribe },
     });
     expect(transcribe).toHaveBeenCalledOnce();
     expect((await getCapture(captureId)).text).toBe("Corrected by the owner.");
@@ -146,14 +154,89 @@ suite("voice capture transcription", () => {
     expect(row.blobId).not.toBeNull();
   });
 
+  it("a seconds-metered provider is charged the audio's length, not the reservation", async () => {
+    const { captureId } = await voiceCapture();
+    await runEnrichment(captureId, {
+      transcriber: {
+        name: "deepgram:test",
+        registryId: "deepgram",
+        reserveUnits: () => 120,
+        transcribe: vi.fn(async () => ({ text: TRANSCRIPT, units: 7 })),
+      },
+    });
+
+    expect((await getCapture(captureId)).text).toBe(TRANSCRIPT);
+    const [bucket] = await db
+      .select()
+      .from(providerQuotaBuckets)
+      .where(and(eq(providerQuotaBuckets.workspaceId, workspaceId), eq(providerQuotaBuckets.provider, "deepgram")));
+    expect(bucket).toMatchObject({ unit: "seconds", consumed: 7, reserved: 0 });
+  });
+
+  it("allowance used up: refused before the provider is called, and the capture says why", async () => {
+    const overCap = vi.fn(async () => ({ text: TRANSCRIPT, units: 1 }));
+    const { captureId } = await voiceCapture();
+    vi.stubEnv("DEEPGRAM_LIFETIME_SECONDS", "10");
+    await runEnrichment(captureId, {
+      transcriber: { name: "deepgram:test", registryId: "deepgram", reserveUnits: () => 11, transcribe: overCap },
+    });
+    vi.stubEnv("DEEPGRAM_LIFETIME_SECONDS", "");
+
+    expect(overCap).not.toHaveBeenCalled();
+    const row = await getCapture(captureId);
+    expect(row.processingState).toBe("failed");
+    expect(row.failureReason).toContain("allowance is used up");
+    expect(row.text).toBeNull();
+    expect(row.blobId).not.toBeNull();
+  });
+
+  it("audio the provider refuses settles on the capture instead of retrying into the dead-letter queue", async () => {
+    const { captureId } = await voiceCapture();
+    await runEnrichment(captureId, {
+      transcriber: {
+        name: "deepgram:test",
+        registryId: "fixture",
+        reserveUnits: () => 1,
+        transcribe: vi.fn(async () => {
+          throw new TranscriptionRequestError("deepgram", 400);
+        }),
+      },
+    });
+
+    const row = await getCapture(captureId);
+    expect(row.processingState).toBe("failed");
+    expect(row.failureReason).toContain("refused this audio (HTTP 400)");
+    expect(row.blobId).not.toBeNull();
+  });
+
+  it("a provider outage is left to the outbox to retry", async () => {
+    const { captureId } = await voiceCapture();
+    await expect(
+      runEnrichment(captureId, {
+        transcriber: {
+          name: "deepgram:test",
+          registryId: "fixture",
+          reserveUnits: () => 1,
+          transcribe: vi.fn(async () => {
+            throw new TranscriptionRequestError("deepgram", 503);
+          }),
+        },
+      }),
+    ).rejects.toThrow(TranscriptionRequestError);
+    expect((await getCapture(captureId)).processingState).not.toBe("failed");
+  });
+
   it("a stale failure clears once a transcript lands on retry", async () => {
     const { captureId } = await voiceCapture();
     await db
       .update(captures)
-      .set({ failureReason: "Transcription is not configured on this deployment - the audio is kept; ask the owner to set TRANSCRIPTION_PROVIDER." })
+      .set({
+        failureReason:
+          "Transcription is not configured on this deployment - the audio is kept; ask the owner to set TRANSCRIPTION_PROVIDER.",
+      })
       .where(eq(captures.id, captureId));
     await runEnrichment(captureId, {
-      transcriber: { name: "fixture:transcription", registryId: "fixture", transcribe },
+      transcriber: { name: "fixture:transcription", registryId: "fixture", reserveUnits: () => 1, transcribe },
     });
 
     const row = await getCapture(captureId);
@@ -165,7 +248,12 @@ suite("voice capture transcription", () => {
   it("no speech in the audio enriches clean instead of inventing words", async () => {
     const { captureId } = await voiceCapture();
     await runEnrichment(captureId, {
-      transcriber: { name: "fixture:transcription", registryId: "fixture", transcribe: vi.fn(async () => ({ text: "" })) },
+      transcriber: {
+        name: "fixture:transcription",
+        registryId: "fixture",
+        reserveUnits: () => 1,
+        transcribe: vi.fn(async () => ({ text: "", units: 1 })),
+      },
     });
 
     const row = await getCapture(captureId);
