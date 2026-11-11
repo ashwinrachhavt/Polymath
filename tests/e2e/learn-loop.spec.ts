@@ -199,7 +199,7 @@ test("the learning loop: library states, a sitting with instant feedback, and on
   // questions share one passage, the source's own words, shown before them.
   await docRow.getByRole("link", { name: "Continue" }).click();
   await expect(content.getByText("Passage 1 of 1")).toBeVisible();
-  await expect(content.getByRole("heading", { name: DOC_TITLE })).toBeVisible();
+  await expect(content.getByRole("heading", { name: "Read this first" })).toBeVisible();
   await expect(content.getByText(DOC_TEXT)).toBeVisible();
   await content.getByRole("button", { name: "Continue" }).click();
 

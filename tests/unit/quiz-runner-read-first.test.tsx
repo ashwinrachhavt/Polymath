@@ -87,7 +87,9 @@ describe("read-first quiz runner", () => {
     render(<QuizRunner quiz={QUIZ} rating={null} />);
 
     expect(screen.getByText("Passage 1 of 2")).toBeTruthy();
-    expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Field guide" }));
+    expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Read this first" }));
+    // One source: its title is already the quiz title, so the passage does not repeat it.
+    expect(screen.queryByText("From Field guide")).toBeNull();
     continuePast("Otters hold hands while they sleep.");
     expect(screen.getByText("Question 1 of 4")).toBeTruthy();
     answerAndGo(3);
@@ -121,7 +123,7 @@ describe("read-first quiz runner", () => {
     expect(screen.getByText("Prompt 2?")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Re-read the passage" }));
     expect(screen.queryByText("Prompt 2?")).toBeNull();
-    expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Field guide" }));
+    expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Read this first" }));
     continuePast("Otters eat sea urchins.");
     expect(screen.getByText("Question 3 of 4")).toBeTruthy();
     expect(screen.getByText("Prompt 2?")).toBeTruthy();

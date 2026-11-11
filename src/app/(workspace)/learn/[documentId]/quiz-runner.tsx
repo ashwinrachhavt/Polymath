@@ -319,6 +319,7 @@ function Sitting({
           key={step.passage.id}
           quizTitle={quiz.title}
           passage={step.passage}
+          showSource={new Set(quiz.passages.map((p) => p.sourceTitle)).size > 1}
           number={step.number}
           total={quiz.passages.length}
           onContinue={() => (rereading === null ? setStepIndex(stepIndex + 1) : setRereading(null))}
@@ -442,12 +443,15 @@ function Sitting({
 function PassageScreen({
   quizTitle,
   passage,
+  showSource,
   number,
   total,
   onContinue,
 }: {
   quizTitle: string;
   passage: QuizPassage;
+  /** Names the source only when the quiz reads more than one: a one-source quiz is already titled after it. */
+  showSource: boolean;
   number: number;
   total: number;
   onContinue: () => void;
@@ -463,8 +467,9 @@ function PassageScreen({
         tabIndex={-1}
         className="text-xs font-medium tracking-wide text-muted-foreground uppercase outline-none"
       >
-        {passage.sourceTitle}
+        Read this first
       </h3>
+      {showSource ? <p className="mt-1 text-xs text-muted-foreground">From {passage.sourceTitle}</p> : null}
       <p className="mt-2 max-w-[var(--measure-prose)] font-[family-name:var(--font-reading)] text-ui leading-relaxed whitespace-pre-wrap">
         {passage.body}
       </p>
