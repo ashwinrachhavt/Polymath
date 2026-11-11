@@ -19,6 +19,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { DictationButton } from "@/components/speech/dictation-button";
 import { destinations } from "@/lib/navigation";
 import { useWorkspace } from "@/components/workspace/workspace-provider";
 import { ImportDrop } from "@/components/workspace/import-drop";
@@ -91,51 +92,13 @@ export function CommandLayer({
     initialMode === "capture" && typeof window !== "undefined" ? snapshotCaptureContext() : null,
   );
   const [why, setWhy] = useState<NonNullable<CaptureContext["why"]> | null>(null);
-  const [dictating, setDictating] = useState(false);
-  const dictation = useRef<SpeechRecognitionLike | null>(null);
+  const whyInput = useRef<HTMLInputElement>(null);
 
   function beginCapture() {
     const next = snapshotCaptureContext();
     setSnapshot(next);
     setWhy(null);
     if (next.passage) setText((current) => current || next.passage || "");
-  }
-
-  function toggleDictation() {
-    if (dictating) {
-      dictation.current?.stop();
-      return;
-    }
-    const Recognition = speechRecognition();
-    if (!Recognition) {
-      setSaveError("This browser cannot dictate. Type the answer instead.");
-      return;
-    }
-    const session = new Recognition();
-    session.interimResults = false;
-    session.continuous = false;
-    session.onresult = (event) => {
-      const heard = Array.from(event.results)
-        .map((result) => result[0]?.transcript ?? "")
-        .join(" ")
-        .trim();
-      // Clamped like the typed field: an answer past the schema's limit would
-      // make the server drop the whole context, passage and source included.
-      if (heard)
-        setWhy((current) => ({
-          kind: "answer",
-          text: (current?.kind === "answer" ? `${current.text} ${heard}` : heard).slice(0, WHY_MAX),
-          via: "voice",
-        }));
-    };
-    session.onend = () => {
-      dictation.current = null;
-      setDictating(false);
-    };
-    session.onerror = () => setSaveError("Dictation stopped. Type the answer instead.");
-    dictation.current = session;
-    session.start();
-    setDictating(true);
   }
 
   function open(next: "search" | "capture") {
@@ -356,9 +319,7 @@ export function CommandLayer({
   // The mic never outlives the dialog: closing or switching modes stops it.
   useEffect(() => {
     if (mode === null && recorder.current) recorder.current.stop();
-    if (mode === null) dictation.current?.stop();
   }, [mode]);
-  useEffect(() => () => dictation.current?.stop(), []);
 
   // Triggerless mount: the wrapper in command-layer-mount.tsx owns the
   // triggers, so a palette loaded from it renders the dialog alone. The
@@ -570,7 +531,8 @@ export function CommandLayer({
                     {recording ? "Stop and save" : "Voice note"}
                   </Button>
                   <span className="text-data text-muted-foreground">
-                    Up to {MAX_UPLOAD_LABEL}. Files are stored as-is; audio transcribes when that ships.
+                    Up to {MAX_UPLOAD_LABEL}. Files are stored as-is; a voice note is kept and transcribed once
+                    transcription is set up.
                   </span>
                 </div>
                 <div className="flex flex-col gap-2">
@@ -580,6 +542,7 @@ export function CommandLayer({
                   <div className="flex items-center gap-2">
                     <Input
                       id="capture-why"
+                      ref={whyInput}
                       value={why?.kind === "answer" ? why.text : ""}
                       disabled={why?.kind === "unknown"}
                       maxLength={WHY_MAX}
@@ -590,17 +553,15 @@ export function CommandLayer({
                       }
                       placeholder={why?.kind === "unknown" ? "Not yet - that's fine" : "Say it in a line, or skip"}
                     />
-                    <Button
-                      type="button"
-                      variant={dictating ? "secondary" : "outline"}
+                    <DictationButton
                       size="icon-sm"
-                      aria-pressed={dictating}
-                      aria-label={dictating ? "Stop dictating" : "Dictate why it matters"}
+                      variant="outline"
+                      field={() => whyInput.current}
                       disabled={why?.kind === "unknown"}
-                      onClick={toggleDictation}
-                    >
-                      {dictating ? <Square aria-hidden /> : <Mic aria-hidden />}
-                    </Button>
+                      onDictated={() =>
+                        setWhy((current) => (current?.kind === "answer" ? { ...current, via: "voice" } : current))
+                      }
+                    />
                     <Button
                       type="button"
                       variant={why?.kind === "unknown" ? "secondary" : "outline"}
@@ -676,20 +637,3 @@ function CaptureProvenance({ snapshot }: { snapshot: CaptureSnapshot | null }) {
 }
 
 const WHY_MAX = 4_000;
-
-/* The Web Speech API is not in the DOM typings; this is the slice used here. */
-type SpeechRecognitionLike = {
-  interimResults: boolean;
-  continuous: boolean;
-  onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
-  onend: (() => void) | null;
-  onerror: (() => void) | null;
-  start: () => void;
-  stop: () => void;
-};
-
-function speechRecognition(): (new () => SpeechRecognitionLike) | null {
-  const scope = window as unknown as Record<string, unknown>;
-  const ctor = scope.SpeechRecognition ?? scope.webkitSpeechRecognition;
-  return typeof ctor === "function" ? (ctor as new () => SpeechRecognitionLike) : null;
-}
