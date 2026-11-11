@@ -1,5 +1,5 @@
 import type { AuthContext } from "@/domains/identity/resolve";
-import { scrapeToMarkdown, type FirecrawlScrapeResult } from "@/integrations/firecrawl/client";
+import { FirecrawlNotConfiguredError, scrapeToMarkdown, type FirecrawlScrapeResult } from "@/integrations/firecrawl/client";
 import { fetchTranscript, isYouTubeUrl, type TranscriptResult } from "@/integrations/youtube/transcript";
 import { withTransaction } from "@/lib/db-transaction";
 import { canonicalCaptureUrl } from "@/lib/safe-fetch";
@@ -135,7 +135,10 @@ export async function fetchPageForAgent(
       markdown: truncated ? page.markdown.slice(0, maxChars) : page.markdown,
       truncated,
     };
-  } catch {
+  } catch (cause) {
+    if (cause instanceof FirecrawlNotConfiguredError) {
+      return { ok: false, error: "web fetch is not configured on this deployment" };
+    }
     return { ok: false, error: "fetch failed, try again", retryable: true };
   }
 }
