@@ -137,7 +137,9 @@ export default function RichEditor({
     <div className={minimal ? "relative flex flex-1 flex-col" : "space-y-3"}>
       {minimal ? (
         ai || autocomplete ? (
-          <div className="mb-2 flex items-center justify-end gap-1">
+          // Floats in the gap above the document instead of taking a row of
+          // its own, so the first line of text sits right under the title.
+          <div className="absolute -top-12 right-0 z-10 flex items-center justify-end gap-1">
             {autocomplete && mode === "rich" && editable ? <AutocompleteToggle /> : null}
             {ai ? (
               <NoteAIMenu
@@ -181,10 +183,8 @@ export default function RichEditor({
         </div>
       )}
       {reason && (
-        <p role="status" className="mb-3 text-body-dense leading-relaxed text-muted-foreground">
-          This document contains {reason}, which this rich editor cannot preserve. Source mode keeps the original
-          Markdown, URLs and states intact. Rich editing is disabled until you deliberately remove or rewrite those
-          constructs in source.
+        <p role="status" className="mb-3 text-data text-muted-foreground">
+          Rich editing is disabled: this note has {reason}, which rich text would lose.
         </p>
       )}
       {mode === "source" ? (
@@ -192,7 +192,9 @@ export default function RichEditor({
           aria-label="Markdown source"
           className={
             minimal
-              ? "writing-surface min-h-24 flex-1 border-0 bg-transparent px-0 font-mono text-body-dense shadow-none focus-visible:ring-0"
+              ? // The page scrolls as one document: no max-height slot, and the
+                // note's reading type rather than a code font.
+                "writing-surface min-h-24 max-h-none flex-1 resize-none overflow-hidden rounded-none border-0 bg-transparent px-0 py-0 text-body leading-7 shadow-none focus-visible:ring-0 md:text-body"
               : "min-h-72 font-mono text-body-dense"
           }
           value={content}

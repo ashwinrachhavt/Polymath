@@ -4,6 +4,7 @@ import { auditEvents } from "@/domains/audit/schema";
 import { getPreferences, isValidTimezone } from "@/domains/identity/preferences";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { projectDocumentIds } from "@/domains/knowledge/projects";
+import { oldestOpenDisagreement } from "@/domains/knowledge/tidy";
 import { db } from "@/lib/db";
 import { shiftDateKey, todayKeyInTimezone } from "@/lib/local-date";
 import { countDueFlashcards, getFlashcardDueQueue } from "./flashcards";
@@ -11,8 +12,9 @@ import { quizAttempts, quizzes } from "./schema";
 
 /*
  * Home's Up next: the one place to continue learning, and whether the habit
- * is holding. Due cards come first because they decay; a quiz the user has
- * never sat waits behind them.
+ * is holding. Due cards come first because they decay; two ideas that
+ * disagree are the next lesson; a quiz the user has never sat waits behind
+ * them.
  */
 
 export type UpNext = {
@@ -24,20 +26,24 @@ export type UpNext = {
   quizWaiting: { quizId: string; title: string; href: string } | null;
   /** Consecutive local days with learning, ending today or yesterday; 0 when broken. */
   streakDays: number;
+  /** The open disagreement between two ideas that has waited longest, with how many are open. */
+  disagreement: { findingId: string; firstTitle: string; secondTitle: string; open: number } | null;
 };
 
 export async function getUpNext(auth: AuthContext): Promise<UpNext> {
-  const [dueCards, [firstCard], quiz, streakDays] = await Promise.all([
+  const [dueCards, [firstCard], quiz, streakDays, disagreement] = await Promise.all([
     countDueFlashcards(auth),
     getFlashcardDueQueue(auth, 1),
     quizWaiting(auth),
     learningStreakDays(auth),
+    oldestOpenDisagreement(auth),
   ]);
   return {
     dueCards,
     firstDue: firstCard ? { notebookId: firstCard.notebookId, deckId: firstCard.deckId } : null,
     quizWaiting: quiz,
     streakDays,
+    disagreement,
   };
 }
 

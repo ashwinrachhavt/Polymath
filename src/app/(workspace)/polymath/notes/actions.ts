@@ -22,6 +22,7 @@ import { createEveDriver, eveBridgeUnavailableReason } from "@/domains/agents/ev
 import { LinkEditError, RELATION_TYPES, removeLink, setLinkRelation } from "@/domains/knowledge/relations";
 import {
   NOTE_AI_ACTIONS,
+  type NoteAICoverage,
   NoteAIError,
   applyNoteAIResult,
   getNoteAIRunOutput,
@@ -252,7 +253,9 @@ const aiStartInput = z.object({
   language: z.string().trim().max(60).optional(),
 });
 
-export async function startNoteAIAction(input: z.input<typeof aiStartInput>): Promise<Result<{ runId: string }>> {
+export async function startNoteAIAction(
+  input: z.input<typeof aiStartInput>,
+): Promise<Result<{ runId: string; coverage: NoteAICoverage }>> {
   const parsed = aiStartInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "That AI request is not valid." };
   const unavailable = eveBridgeUnavailableReason();
@@ -260,7 +263,8 @@ export async function startNoteAIAction(input: z.input<typeof aiStartInput>): Pr
   const auth = await authorize();
   return guarded(async () => {
     await ensureProfile(auth.workspaceId);
-    return startNoteAIRun(auth, parsed.data, createEngine(createEveDriver()));
+    const run = await startNoteAIRun(auth, parsed.data, createEngine(createEveDriver()));
+    return { runId: run.runId, coverage: run.coverage };
   });
 }
 

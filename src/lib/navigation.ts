@@ -262,26 +262,6 @@ export function isConversationSurface(pathname: string) {
   return !polymathStaticSegments.has(head);
 }
 
-/*
- * A focus page hides the app rail so the page owns the full width: the note,
- * a learning session, a single conversation, a source being read. The rail
- * peeks from the left edge and can be pinned (see side-nav.tsx). List and
- * overview pages (Home, Inbox, the Notebook list, People, Today) are not
- * focus pages. The chat home keeps its folded icon rail; only a run is focus.
- */
-const focusSurfacePatterns = [
-  /^\/polymath\/notes$/,
-  /^\/projects\/[^/]+\/notebook\/(flashcards|explain|graph)$/,
-  /^\/learn\/[^/]+$/,
-  /^\/command-center\/conversations\/[^/]+$/,
-  /^\/polymath\/library\/[^/]+$/,
-];
-
-export function isFocusSurface(pathname: string) {
-  if (pathname !== "/polymath" && isConversationSurface(pathname)) return true;
-  return focusSurfacePatterns.some((pattern) => pattern.test(pathname));
-}
-
 export const moreDestination = {
   href: "/more" as const,
   label: "More",

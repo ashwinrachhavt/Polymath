@@ -167,6 +167,54 @@ suite("notebook AI (Neon)", () => {
     expect(calls).toHaveLength(0);
   });
 
+  it("a long note is never rewritten from its start: rewrites are refused unspent, reads report partial coverage", async () => {
+    if (!handle) return;
+    const text = `${"Opening section. ".repeat(600)}The closing decision lives only here.`;
+    const [long] = await handle.db
+      .insert(artifacts)
+      .values({
+        workspaceId: auth.workspaceId,
+        kind: "note",
+        title: "Long plan",
+        createdBy: auth.userId,
+        updatedBy: auth.userId,
+      })
+      .returning();
+    const [version] = await handle.db
+      .insert(artifactVersions)
+      .values({
+        workspaceId: auth.workspaceId,
+        artifactId: long.id,
+        versionNumber: 1,
+        content: { format: "markdown", text },
+        plainText: text,
+        reason: "created",
+        createdBy: auth.userId,
+      })
+      .returning();
+    await handle.db.update(artifacts).set({ currentVersionId: version.id }).where(eq(artifacts.id, long.id));
+
+    const { engine, calls } = stubEngine();
+    for (const action of ["improve", "shorten"] as const) {
+      await expect(startNoteAIRun(auth, { artifactId: long.id, action }, engine)).rejects.toThrow("too long to rewrite");
+    }
+    expect(calls).toHaveLength(0);
+
+    const summary = await startNoteAIRun(auth, { artifactId: long.id, action: "summarize" }, engine);
+    expect(summary.coverage).toBe("note_start");
+    expect(calls[0].objective).not.toContain("The closing decision lives only here.");
+
+    const passage = await startNoteAIRun(
+      auth,
+      { artifactId: long.id, action: "improve", selection: "The closing decision lives only here." },
+      engine,
+    );
+    expect(passage.coverage).toBe("selection");
+
+    const whole = await startNoteAIRun(auth, { artifactId: noteId, action: "improve" }, engine);
+    expect(whole.coverage).toBe("whole_note");
+  });
+
   it("listNoteAIRuns returns only Notebook AI runs bound to the note", async () => {
     if (!handle) return;
     const runs = await listNoteAIRuns(auth, noteId);

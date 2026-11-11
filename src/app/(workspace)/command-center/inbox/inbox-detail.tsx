@@ -453,7 +453,7 @@ export function InboxDetail({
       {/* Opt-in: a link is fetched and summarized only when the person asks. */}
       {capture.url && isHttpUrl(capture.url) ? (
         <EnrichPanel
-          key={capture.id}
+          key={`enrich:${capture.id}`}
           captureId={capture.id}
           enrichment={readEnrichment(capture.rawPayload)}
           canRequest={state !== "converted" && state !== "discarded"}

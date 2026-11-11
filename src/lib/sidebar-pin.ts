@@ -1,5 +1,5 @@
 /*
- * Whether the person pinned the rail open on focus pages (see
+ * Whether the person keeps the rail pinned open on every page (see
  * components/shell/side-nav.tsx). The choice lives in this browser's
  * localStorage, mirrored onto <html data-sidebar-pinned> so the first paint
  * can lay the page out around a pinned rail before React reads storage: the
@@ -19,11 +19,12 @@ function mirror(pinned: boolean) {
   document.documentElement.toggleAttribute(PINNED_ATTRIBUTE, pinned);
 }
 
+/** Pinned unless the person hid the rail: a first visit shows the navigation. */
 export function readPinned(): boolean {
   try {
-    return window.localStorage.getItem(PINNED_KEY) === "1";
+    return window.localStorage.getItem(PINNED_KEY) !== "0";
   } catch {
-    return false;
+    return true;
   }
 }
 
@@ -59,4 +60,4 @@ export function writePinned(pinned: boolean) {
    a string. */
 export const SIDEBAR_PIN_BOOT_SCRIPT = `(function(){try{if(localStorage.getItem(${JSON.stringify(
   PINNED_KEY,
-)})==="1")document.documentElement.setAttribute(${JSON.stringify(PINNED_ATTRIBUTE)},"");}catch(e){}})();`;
+)})!=="0")document.documentElement.setAttribute(${JSON.stringify(PINNED_ATTRIBUTE)},"");}catch(e){}})();`;

@@ -19,10 +19,18 @@ export type FirecrawlScrapeResult = {
   error: string | null;
 };
 
-export class FirecrawlError extends Error {
+class FirecrawlError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "FirecrawlError";
+  }
+}
+
+/** The deployment has no Firecrawl endpoint. Repeating the call cannot help, so callers must not offer a retry. */
+export class FirecrawlNotConfiguredError extends FirecrawlError {
+  constructor() {
+    super("FIRECRAWL_API_URL is not set (e.g. http://127.0.0.1:3002).");
+    this.name = "FirecrawlNotConfiguredError";
   }
 }
 
@@ -34,7 +42,7 @@ type FirecrawlConfig = { baseUrl: string; apiKey: string | null };
 function config(env: Record<string, string | undefined>): FirecrawlConfig {
   const baseUrl = env.FIRECRAWL_API_URL?.trim();
   if (!baseUrl) {
-    throw new FirecrawlError("FIRECRAWL_API_URL is not set (e.g. http://127.0.0.1:3002).");
+    throw new FirecrawlNotConfiguredError();
   }
   return { baseUrl: baseUrl.replace(/\/+$/, ""), apiKey: env.FIRECRAWL_API_KEY?.trim() || null };
 }

@@ -8,6 +8,7 @@ import { FACT_SUGGESTION_TOPIC, factSuggestionRequestedHandler } from "@/domains
 import { intakeFile } from "@/domains/knowledge/intake";
 import { documents } from "@/domains/knowledge/schema";
 import { recordSource } from "@/domains/knowledge/sources";
+import { TIDY_PASS_TOPIC, tidyPassRequestedHandler } from "@/domains/knowledge/tidy";
 import { RUN_CRITIQUE_TOPIC, runCritiqueRequestedHandler } from "@/domains/agents/critique";
 import { THREAD_CHANGED_TOPIC, threadChangedHandler } from "@/domains/knowledge/thread-graph";
 import { FOCUS_FOLLOW_UP_TOPIC, followUpRequestedHandler } from "@/domains/focus/follow-up";
@@ -297,6 +298,7 @@ export function outboxHandlers(): Record<string, OutboxHandler> {
     [RUN_CRITIQUE_TOPIC]: runCritiqueRequestedHandler(workspaceOwnerAuth),
     [EMBEDDING_RETRY_TOPIC]: embeddingRetryRequestedHandler(workspaceOwnerAuth),
     [FACT_SUGGESTION_TOPIC]: factSuggestionRequestedHandler,
+    [TIDY_PASS_TOPIC]: tidyPassRequestedHandler(workspaceOwnerAuth),
   };
   return handlers;
 }
