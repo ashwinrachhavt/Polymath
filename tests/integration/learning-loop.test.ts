@@ -277,6 +277,41 @@ suite("learning loop", () => {
     expect(await db.select().from(rewardLedger).where(eq(rewardLedger.workspaceId, auth.workspaceId))).toHaveLength(1);
   });
 
+  it("cuts read-first passages from the quiz's own extraction, never another workspace's", async () => {
+    const auth = await seed();
+    const other = await seed();
+    const { doc } = await seedDocument(auth, TEXT);
+    const { extraction: foreign } = await seedDocument(other, TEXT);
+    const { quizId } = await generate.generateQuiz(auth, { documentId: doc.id }, fixtureGenerator());
+
+    const sitting = await learningQueries.getQuizForSitting(auth, quizId);
+    // The source is shorter than a passage, so it is the whole passage.
+    expect(sitting!.passages).toEqual([
+      {
+        id: expect.any(String),
+        sourceTitle: "Fixture lease",
+        body: TEXT,
+        questionIds: sitting!.questions.map((q) => q.id),
+      },
+    ]);
+
+    // A question whose evidence names another workspace's extraction reads
+    // nothing from it: no passage, and none of that text.
+    const [moved] = sitting!.questions;
+    await db
+      .update(quizQuestions)
+      .set({
+        evidence: {
+          ...moved.evidence,
+          source: { documentId: foreign.documentId, extractionId: foreign.id, title: "Theirs" },
+        },
+      })
+      .where(eq(quizQuestions.id, moved.id));
+    const after = await learningQueries.getQuizForSitting(auth, quizId);
+    expect(after!.passages.flatMap((p) => p.questionIds)).toEqual(sitting!.questions.slice(1).map((q) => q.id));
+    expect(after!.passages.map((p) => p.sourceTitle)).toEqual(["Fixture lease"]);
+  });
+
   it("rejects answers that are not a full sitting over the quiz's own questions", async () => {
     const auth = await seed();
     const { doc } = await seedDocument(auth, TEXT);
