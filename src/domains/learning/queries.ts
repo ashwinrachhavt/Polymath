@@ -2,8 +2,9 @@ import { and, desc, eq, ilike, inArray, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { escapeLike } from "@/lib/list-params";
-import { documents } from "@/domains/knowledge/schema";
+import { documentExtractions, documents } from "@/domains/knowledge/schema";
 import { currentExtractionSql } from "@/domains/knowledge/versions";
+import { buildQuizPassages, type QuizPassage } from "./quiz-passages";
 import { quizAttempts, quizQuestions, quizzes, type QuizEvidence, type QuizSourceSnapshot } from "./schema";
 
 /*
@@ -45,6 +46,8 @@ export type QuizForSitting = {
     explanation: string;
     evidence: QuizEvidence;
   }>;
+  /** Reading order. Empty when no question's evidence could be placed in its source text. */
+  passages: QuizPassage[];
 };
 
 /**
@@ -160,7 +163,8 @@ export async function getLearnLibrary(auth: AuthContext): Promise<LearnLibraryRo
  * The quiz a sitting runs against, with its questions in ordinal order and
  * everything instant feedback needs: values, explanations, evidence. The
  * server re-grades on completion, so revealing answerValue to the runner is
- * a UX choice, not a scoring trust.
+ * a UX choice, not a scoring trust. Passages are cut here, on the server, so
+ * the whole extraction text never reaches the client.
  */
 export async function getQuizForSitting(auth: AuthContext, quizId: string): Promise<QuizForSitting | null> {
   const [quiz] = await db
@@ -170,6 +174,7 @@ export async function getQuizForSitting(auth: AuthContext, quizId: string): Prom
       documentId: quizzes.documentId,
       title: quizzes.title,
       sourceManifest: quizzes.sourceManifest,
+      sourceExtractionId: quizzes.sourceExtractionId,
     })
     .from(quizzes)
     .where(and(eq(quizzes.id, quizId), eq(quizzes.workspaceId, auth.workspaceId), eq(quizzes.status, "ready")))
@@ -188,5 +193,32 @@ export async function getQuizForSitting(auth: AuthContext, quizId: string): Prom
     .from(quizQuestions)
     .where(and(eq(quizQuestions.quizId, quiz.id), eq(quizQuestions.workspaceId, auth.workspaceId)))
     .orderBy(quizQuestions.ordinal);
-  return { ...quiz, questions };
+
+  const titles = new Map(quiz.sourceManifest.map((source) => [source.extractionId, source.title]));
+  for (const { evidence } of questions) {
+    if (evidence.source && !titles.has(evidence.source.extractionId))
+      titles.set(evidence.source.extractionId, evidence.source.title);
+  }
+  const extractionIds = [...new Set(questions.map((q) => q.evidence.source?.extractionId ?? quiz.sourceExtractionId))];
+  const extractionRows =
+    extractionIds.length === 0
+      ? []
+      : await db
+          .select({ id: documentExtractions.id, text: documentExtractions.text, documentTitle: documents.title })
+          .from(documentExtractions)
+          .innerJoin(documents, eq(documents.id, documentExtractions.documentId))
+          .where(
+            and(
+              eq(documentExtractions.workspaceId, auth.workspaceId),
+              eq(documents.workspaceId, auth.workspaceId),
+              inArray(documentExtractions.id, extractionIds),
+            ),
+          );
+  const sources = new Map(
+    extractionRows.flatMap((row) =>
+      row.text === null ? [] : [[row.id, { title: titles.get(row.id) ?? row.documentTitle, text: row.text }] as const],
+    ),
+  );
+  const { sourceExtractionId, ...sitting } = quiz;
+  return { ...sitting, questions, passages: buildQuizPassages(questions, sources, sourceExtractionId) };
 }

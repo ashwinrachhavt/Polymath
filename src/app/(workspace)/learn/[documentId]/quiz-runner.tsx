@@ -1,13 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { Panel } from "@/components/workspace/ui";
 import { CoachMark } from "@/components/shell/coach-mark";
 import { ArtifactFeedback } from "@/app/(workspace)/artifacts/[artifactId]/artifact-feedback";
 import type { ArtifactRating } from "@/domains/knowledge/artifact-feedback";
 import type { QuizForSitting } from "@/domains/learning/queries";
+import type { QuizPassage } from "@/domains/learning/quiz-passages";
 import { completeQuizAttemptAction, type StoneAnnouncement } from "../actions";
 
 /*
@@ -17,6 +19,11 @@ import { completeQuizAttemptAction, type StoneAnnouncement } from "../actions";
  * finish replays the key and reads the recorded attempt instead of earning
  * a second stone.
  *
+ * Read first: when the quiz has passages and the learner has not turned it
+ * off, the sitting walks each passage and then that passage's questions;
+ * questions with no passage come last. Only questions are steps that count,
+ * and every question is asked once in either order.
+ *
  * Instant feedback is graded locally against the question's answerValue.
  * The server re-grades on completion, so showing the answer client-side is
  * a UX choice, not a scoring trust. Choices are shuffled per sitting with a
@@ -24,6 +31,7 @@ import { completeQuizAttemptAction, type StoneAnnouncement } from "../actions";
  * corrupt a score. The shuffle keys on the hydrated flag (server render and
  * first client render agree on the stored order, so hydration never
  * disagrees with itself) and on the sitting counter (a retake reshuffles).
+ * The shuffle is keyed by question id, so the reading order cannot move it.
  */
 
 /** True only after hydration; React's documented two-pass read for values that must not render on the server. */
@@ -41,6 +49,55 @@ function fisherYates<T>(items: T[]): T[] {
     [out[i], out[j]] = [out[j], out[i]];
   }
   return out;
+}
+
+const READ_FIRST_KEY = "axiom.quiz.read-first";
+const READ_FIRST_LABEL = "Read the passage before each question";
+
+/** The stored preference, on unless this browser turned it off. Storage can throw (blocked site data). */
+function storedReadFirst(): boolean {
+  try {
+    return window.localStorage.getItem(READ_FIRST_KEY) !== "off";
+  } catch {
+    return true;
+  }
+}
+
+function storeReadFirst(on: boolean) {
+  try {
+    window.localStorage.setItem(READ_FIRST_KEY, on ? "on" : "off");
+  } catch {
+    // The choice still holds for this sitting; it just is not remembered.
+  }
+}
+
+/** One screen of a sitting. `number` counts passages or questions, never both. */
+type Step =
+  | { kind: "passage"; passage: QuizPassage; number: number }
+  | { kind: "question"; questionIndex: number; number: number; passageStep: number | null };
+
+function sittingSteps(quiz: QuizForSitting, readFirst: boolean): Step[] {
+  const indexById = new Map(quiz.questions.map((q, i) => [q.id, i]));
+  const asked = new Set<number>();
+  const steps: Step[] = [];
+  const ask = (questionIndex: number, passageStep: number | null) => {
+    asked.add(questionIndex);
+    steps.push({ kind: "question", questionIndex, number: asked.size, passageStep });
+  };
+  if (readFirst) {
+    quiz.passages.forEach((passage, n) => {
+      const passageStep = steps.length;
+      steps.push({ kind: "passage", passage, number: n + 1 });
+      for (const id of passage.questionIds) {
+        const index = indexById.get(id);
+        if (index !== undefined && !asked.has(index)) ask(index, passageStep);
+      }
+    });
+  }
+  quiz.questions.forEach((_, index) => {
+    if (!asked.has(index)) ask(index, null);
+  });
+  return steps;
 }
 
 type SittingAnswer = { questionId: string; selectedValue: string | null; dontKnow: boolean };
@@ -76,11 +133,24 @@ function Sitting({
 }) {
   const hydrated = useHydrated();
   const shuffled = useMemo(
-    () => quiz.questions.map((q) => (hydrated ? fisherYates(q.choices) : q.choices)),
+    () => new Map(quiz.questions.map((q) => [q.id, hydrated ? fisherYates(q.choices) : q.choices])),
     [quiz, hydrated],
   );
 
-  const [index, setIndex] = useState(0);
+  const stored = useSyncExternalStore(
+    () => () => {},
+    storedReadFirst,
+    () => true,
+  );
+  // Set by the toggle, and pinned at the first answer so the order cannot
+  // change under a sitting in progress.
+  const [readFirstChoice, setReadFirstChoice] = useState<boolean | null>(null);
+  const hasPassages = quiz.passages.length > 0;
+  const readFirst = (readFirstChoice ?? stored) && hasPassages;
+  const steps = useMemo(() => sittingSteps(quiz, readFirst), [quiz, readFirst]);
+  const [stepIndex, setStepIndex] = useState(0);
+  // The passage step a learner went back to from an unanswered question.
+  const [rereading, setRereading] = useState<number | null>(null);
   const [answers, setAnswers] = useState<SittingAnswer[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [dontKnow, setDontKnow] = useState(false);
@@ -91,13 +161,26 @@ function Sitting({
   // one. Never rendered, so server and client need not agree on the value.
   const sittingKey = useRef(crypto.randomUUID());
 
-  const question = quiz.questions[index];
+  const step = steps[rereading ?? stepIndex];
+  const questionStep = steps[stepIndex];
+  // Read only on a question step; a passage step never renders it.
+  const question = quiz.questions[questionStep.kind === "question" ? questionStep.questionIndex : 0];
   const answered = dontKnow || selected !== null;
-  const isLast = index === quiz.questions.length - 1;
+  // The last step is always a question: every passage is followed by its own.
+  const isLast = stepIndex === steps.length - 1;
   const correctChoice = question.choices.find((c) => c.value === question.answerValue) ?? null;
 
   const record = (chosen: SittingAnswer) => {
+    setReadFirstChoice(readFirst);
     setAnswers((prev) => [...prev, chosen]);
+  };
+
+  const changeReadFirst = (on: boolean) => {
+    if (answers.length > 0) return;
+    setReadFirstChoice(on);
+    storeReadFirst(on);
+    setStepIndex(0);
+    setRereading(null);
   };
 
   const choose = (value: string) => {
@@ -138,7 +221,7 @@ function Sitting({
         });
       });
     } else {
-      setIndex(index + 1);
+      setStepIndex(stepIndex + 1);
     }
   };
 
@@ -216,98 +299,185 @@ function Sitting({
     );
   }
 
-  return (
-    <Panel title={quiz.title} description={`Question ${index + 1} of ${quiz.questions.length}`}>
-      <p className="text-body font-medium">{question.prompt}</p>
+  const readFirstToggle = hasPassages ? (
+    <div className="mb-2 flex items-center justify-end gap-2 text-xs text-muted-foreground">
+      <span aria-hidden>{READ_FIRST_LABEL}</span>
+      <Switch
+        checked={readFirst}
+        disabled={answers.length > 0}
+        aria-label={READ_FIRST_LABEL}
+        onCheckedChange={changeReadFirst}
+      />
+    </div>
+  ) : null;
 
-      <div role="group" aria-label="Answer choices" className="mt-3 flex flex-col gap-2">
-        {(shuffled[index] ?? question.choices).map((choice) => {
-          const isAnswer = question.answerValue === choice.value;
-          const isChosen = selected === choice.value;
-          const mark = answered ? (isAnswer ? "✓" : isChosen ? "✗" : "") : "";
-          return (
+  if (step.kind === "passage") {
+    return (
+      <div>
+        {readFirstToggle}
+        <PassageScreen
+          key={step.passage.id}
+          quizTitle={quiz.title}
+          passage={step.passage}
+          showSource={new Set(quiz.passages.map((p) => p.sourceTitle)).size > 1}
+          number={step.number}
+          total={quiz.passages.length}
+          onContinue={() => (rereading === null ? setStepIndex(stepIndex + 1) : setRereading(null))}
+        />
+      </div>
+    );
+  }
+
+  const passageStep = step.passageStep;
+  return (
+    <div>
+      {readFirstToggle}
+      <Panel
+        title={quiz.title}
+        description={`Question ${step.number} of ${quiz.questions.length}`}
+        actions={
+          passageStep !== null && !answered ? (
+            <Button type="button" size="sm" variant="ghost" onClick={() => setRereading(passageStep)}>
+              Re-read the passage
+            </Button>
+          ) : null
+        }
+      >
+        <p className="text-body font-medium">{question.prompt}</p>
+
+        <div role="group" aria-label="Answer choices" className="mt-3 flex flex-col gap-2">
+          {(shuffled.get(question.id) ?? question.choices).map((choice) => {
+            const isAnswer = question.answerValue === choice.value;
+            const isChosen = selected === choice.value;
+            const mark = answered ? (isAnswer ? "✓" : isChosen ? "✗" : "") : "";
+            return (
+              <button
+                key={choice.value}
+                type="button"
+                disabled={answered}
+                onClick={() => choose(choice.value)}
+                className={
+                  "flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-left text-body-dense transition-colors " +
+                  (answered && isAnswer
+                    ? "border-(--tone-teal-wash)/60 bg-(--tone-teal-wash)/10"
+                    : answered && isChosen
+                      ? "border-destructive/60 bg-destructive/5"
+                      : answered
+                        ? "border-border text-muted-foreground"
+                        : "border-border hover:border-foreground/30 hover:bg-muted")
+                }
+              >
+                <span>{choice.label}</span>
+                {mark ? (
+                  <span aria-hidden className={isAnswer ? "text-(--tone-teal)" : "text-destructive"}>
+                    {mark}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
+
+          <div className="mt-1 border-t border-dashed border-border pt-3">
             <button
-              key={choice.value}
               type="button"
               disabled={answered}
-              onClick={() => choose(choice.value)}
+              onClick={giveUp}
               className={
-                "flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-left text-body-dense transition-colors " +
-                (answered && isAnswer
-                  ? "border-(--tone-teal-wash)/60 bg-(--tone-teal-wash)/10"
-                  : answered && isChosen
-                    ? "border-destructive/60 bg-destructive/5"
-                    : answered
-                      ? "border-border text-muted-foreground"
-                      : "border-border hover:border-foreground/30 hover:bg-muted")
+                "flex w-full items-center justify-between gap-3 rounded-md border border-dashed px-3 py-2 text-left text-body-dense transition-colors " +
+                (answered && dontKnow
+                  ? "border-border bg-muted/60 text-foreground"
+                  : answered
+                    ? "border-border text-muted-foreground"
+                    : "border-border text-muted-foreground hover:border-foreground/30 hover:text-foreground")
               }
             >
-              <span>{choice.label}</span>
-              {mark ? (
-                <span aria-hidden className={isAnswer ? "text-(--tone-teal)" : "text-destructive"}>
-                  {mark}
+              <span>I don&apos;t know</span>
+              {dontKnow ? (
+                <span aria-hidden className="text-muted-foreground">
+                  ·
                 </span>
               ) : null}
             </button>
-          );
-        })}
-
-        <div className="mt-1 border-t border-dashed border-border pt-3">
-          <button
-            type="button"
-            disabled={answered}
-            onClick={giveUp}
-            className={
-              "flex w-full items-center justify-between gap-3 rounded-md border border-dashed px-3 py-2 text-left text-body-dense transition-colors " +
-              (answered && dontKnow
-                ? "border-border bg-muted/60 text-foreground"
-                : answered
-                  ? "border-border text-muted-foreground"
-                  : "border-border text-muted-foreground hover:border-foreground/30 hover:text-foreground")
-            }
-          >
-            <span>I don&apos;t know</span>
-            {dontKnow ? (
-              <span aria-hidden className="text-muted-foreground">
-                ·
-              </span>
-            ) : null}
-          </button>
-        </div>
-      </div>
-
-      {answered ? (
-        <div className="mt-4 rounded-md border border-border bg-muted/40 p-3" role="status">
-          {dontKnow ? (
-            <p className="text-body-dense">
-              Kept as an honest gap. The correct answer is: <span className="font-medium">{correctChoice?.label}</span>
-            </p>
-          ) : selected === question.answerValue ? (
-            <p className="text-body-dense font-medium">Correct!</p>
-          ) : (
-            <p className="text-body-dense">
-              Incorrect. The correct answer is: <span className="font-medium">{correctChoice?.label}</span>
-            </p>
-          )}
-          <p className="mt-2 text-body-dense leading-relaxed text-muted-foreground">{question.explanation}</p>
-          {question.evidence.quote ? (
-            <p className="mt-2 border-l-2 border-border pl-3 text-xs italic leading-relaxed text-muted-foreground">
-              From {question.evidence.source?.title ?? "the document"}: {question.evidence.quote}
-            </p>
-          ) : null}
-          <div className="mt-3">
-            <Button type="button" size="sm" disabled={pending} onClick={advance}>
-              {isLast ? (pending ? "Recording…" : "Finish") : "Next question"}
-            </Button>
           </div>
         </div>
-      ) : null}
 
-      {error ? (
-        <p role="alert" className="mt-3 text-body-dense text-destructive">
-          {error}
-        </p>
-      ) : null}
+        {answered ? (
+          <div className="mt-4 rounded-md border border-border bg-muted/40 p-3" role="status">
+            {dontKnow ? (
+              <p className="text-body-dense">
+                Kept as an honest gap. The correct answer is:{" "}
+                <span className="font-medium">{correctChoice?.label}</span>
+              </p>
+            ) : selected === question.answerValue ? (
+              <p className="text-body-dense font-medium">Correct!</p>
+            ) : (
+              <p className="text-body-dense">
+                Incorrect. The correct answer is: <span className="font-medium">{correctChoice?.label}</span>
+              </p>
+            )}
+            <p className="mt-2 text-body-dense leading-relaxed text-muted-foreground">{question.explanation}</p>
+            {question.evidence.quote ? (
+              <p className="mt-2 border-l-2 border-border pl-3 text-xs italic leading-relaxed text-muted-foreground">
+                From {question.evidence.source?.title ?? "the document"}: {question.evidence.quote}
+              </p>
+            ) : null}
+            <div className="mt-3">
+              <Button type="button" size="sm" disabled={pending} onClick={advance}>
+                {isLast ? (pending ? "Recording…" : "Finish") : "Next question"}
+              </Button>
+            </div>
+          </div>
+        ) : null}
+
+        {error ? (
+          <p role="alert" className="mt-3 text-body-dense text-destructive">
+            {error}
+          </p>
+        ) : null}
+      </Panel>
+    </div>
+  );
+}
+
+/** A passage on its own screen. Focus moves to its heading so a screen reader starts reading here. */
+function PassageScreen({
+  quizTitle,
+  passage,
+  showSource,
+  number,
+  total,
+  onContinue,
+}: {
+  quizTitle: string;
+  passage: QuizPassage;
+  /** Names the source only when the quiz reads more than one: a one-source quiz is already titled after it. */
+  showSource: boolean;
+  number: number;
+  total: number;
+  onContinue: () => void;
+}) {
+  const heading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    heading.current?.focus();
+  }, []);
+  return (
+    <Panel title={quizTitle} description={`Passage ${number} of ${total}`}>
+      <h3
+        ref={heading}
+        tabIndex={-1}
+        className="text-xs font-medium tracking-wide text-muted-foreground uppercase outline-none"
+      >
+        Read this first
+      </h3>
+      {showSource ? <p className="mt-1 text-xs text-muted-foreground">From {passage.sourceTitle}</p> : null}
+      <p className="mt-2 max-w-[var(--measure-prose)] font-[family-name:var(--font-reading)] text-ui leading-relaxed whitespace-pre-wrap">
+        {passage.body}
+      </p>
+      <div className="mt-4">
+        <Button type="button" onClick={onContinue}>
+          Continue
+        </Button>
+      </div>
     </Panel>
   );
 }
