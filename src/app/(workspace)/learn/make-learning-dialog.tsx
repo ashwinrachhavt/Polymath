@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { WorkStatus } from "@/components/work-status";
+import { useWorkspace } from "@/components/workspace/workspace-provider";
 import { MAX_ITEM_COUNT, MAX_LEARNING_SOURCES, MIN_ITEM_COUNT } from "@/domains/learning/item-count";
 import {
   findLearningSourcesAction,
@@ -62,7 +63,7 @@ export function MakeLearningButton({
   );
 }
 
-export function MakeLearningDialog({
+function MakeLearningDialog({
   open,
   onOpenChange,
   initialSources,
@@ -78,6 +79,7 @@ export function MakeLearningDialog({
         {/* Content mounts on open, so each opening starts from initialSources. */}
         <MakeLearningForm
           initialSources={initialSources.slice(0, MAX_LEARNING_SOURCES)}
+          leftOut={Math.max(0, initialSources.length - MAX_LEARNING_SOURCES)}
           onPendingChange={setPending}
           onCancel={() => onOpenChange(false)}
         />
@@ -88,14 +90,18 @@ export function MakeLearningDialog({
 
 function MakeLearningForm({
   initialSources,
+  leftOut,
   onPendingChange,
   onCancel,
 }: {
   initialSources: LearningSourceOption[];
+  /** Selected sources past the limit, which the dialog did not pick. */
+  leftOut: number;
   onPendingChange: (pending: boolean) => void;
   onCancel: () => void;
 }) {
   const router = useRouter();
+  const { notify } = useWorkspace();
   const [kind, setKind] = useState<Kind>("flashcards");
   const [selected, setSelected] = useState<LearningSourceOption[]>(initialSources);
   const [query, setQuery] = useState("");
@@ -104,7 +110,9 @@ function MakeLearningForm({
   const [countText, setCountText] = useState("");
   const [error, setError] = useState<{ message: string; sourceId?: string } | null>(null);
   const [pending, startTransition] = useTransition();
-  // A retry of the same request replays its key; any change makes a new one.
+  // A double submit of the same request while it runs replays its key; once
+  // it answers, the next attempt is a new request, so a retry after a failure
+  // is not refused as a replay of the failed one.
   const attempt = useRef<{ signature: string; key: string } | null>(null);
 
   useEffect(() => {
@@ -175,11 +183,12 @@ function MakeLearningForm({
         failedSourceId: undefined,
       }));
       onPendingChange(false);
+      attempt.current = null;
       if (!result.ok) {
         setError({ message: result.error, sourceId: result.failedSourceId });
         return;
       }
-      attempt.current = null;
+      if (result.notice) notify(result.notice);
       router.push(result.href);
     });
   }
@@ -223,6 +232,12 @@ function MakeLearningForm({
               ? "No sources picked yet."
               : `${selected.length} of ${MAX_LEARNING_SOURCES} sources picked.`}
           </p>
+          {leftOut > 0 ? (
+            <p className="text-xs text-muted-foreground">
+              {leftOut} more selected {leftOut === 1 ? "was" : "were"} left out: one request reads up to{" "}
+              {MAX_LEARNING_SOURCES}.
+            </p>
+          ) : null}
           {selected.length > 0 ? (
             <ul className="flex flex-wrap gap-1.5">
               {selected.map((source) => (
