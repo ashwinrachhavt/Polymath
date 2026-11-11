@@ -18,6 +18,8 @@ const groups: { name: string; items: { keys: string; action: string }[] }[] = [
       { keys: "Ctrl/⌘ Shift C", action: "Capture without leaving the screen" },
       { keys: "Shift ?", action: "Open this list" },
       { keys: "/", action: "Insert a block in the note editor" },
+      { keys: "Hold Right Option (Alt)", action: "Dictate into the focused text field; release to insert" },
+      { keys: "Tap Right Option (Alt)", action: "Start dictating; tap again to stop, Escape to cancel" },
     ],
   },
   {

@@ -10,6 +10,7 @@ import { TopBar } from "@/components/shell/top-bar";
 import type { TriageFeed } from "@/domains/notifications/triage";
 import { isConversationSurface, isBrowserPreviewPath, isFocusSurface } from "@/lib/navigation";
 import { FocusDock } from "@/components/shell/focus-dock";
+import { DictationMount } from "@/components/speech/dictation-mount";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { WorkspaceSwitcherData } from "@/components/shell/workspace-switcher";
 import type { ShellPreferenceSnapshot } from "@/components/shell/shell-preferences";
@@ -103,6 +104,9 @@ export function AppShell({
             </div>
             <FocusDock />
           </main>
+          {/* Here rather than in TopBar: the conversation routes render no top
+              bar, and the chat composer is where dictation matters most. */}
+          <DictationMount />
           <MobileNav />
         </div>
       </div>
