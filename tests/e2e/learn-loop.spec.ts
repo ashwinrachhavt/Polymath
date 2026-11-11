@@ -195,9 +195,15 @@ test("the learning loop: library states, a sitting with instant feedback, and on
   if (!client) throw new Error("DATABASE_URL disappeared mid-journey");
   const stonesBefore = await ledgerTotal(client, fixture!.workspaceId);
 
-  // Open the quiz: one question at a time, choices plus the apart
-  // I-don't-know option.
+  // Open the quiz: read first. The seeded text is short, so all three
+  // questions share one passage, the source's own words, shown before them.
   await docRow.getByRole("link", { name: "Continue" }).click();
+  await expect(content.getByText("Passage 1 of 1")).toBeVisible();
+  await expect(content.getByRole("heading", { name: DOC_TITLE })).toBeVisible();
+  await expect(content.getByText(DOC_TEXT)).toBeVisible();
+  await content.getByRole("button", { name: "Continue" }).click();
+
+  // Then one question at a time, choices plus the apart I-don't-know option.
   await expect(content.getByText("Question 1 of 3")).toBeVisible();
   await expect(content.getByRole("button", { name: "I don't know" })).toBeVisible();
 
@@ -234,6 +240,7 @@ test("the learning loop: library states, a sitting with instant feedback, and on
   // A retake that clears the gate (2 of 3, the gap still honest) earns the
   // stone; one ledger row, exactly once.
   await content.getByRole("button", { name: "Retake" }).click();
+  await content.getByRole("button", { name: "Continue" }).click();
   await expect(content.getByText("Question 1 of 3")).toBeVisible();
   await content.getByRole("button", { name: "In the same transaction" }).click();
   await content.getByRole("button", { name: "Next question" }).click();
