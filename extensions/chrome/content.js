@@ -619,6 +619,12 @@
     }
   });
 
+  // The worker delivers after the dock has already drawn "pending sync", then
+  // rewrites captureHistory; redraw so the label follows the real sync state.
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === "local" && changes.captureHistory && contextAlive()) refreshRecentCaptures();
+  });
+
   // ── Keyboard shortcuts ──────────────────────────────────────────────
 
   document.addEventListener("keydown", (e) => {
