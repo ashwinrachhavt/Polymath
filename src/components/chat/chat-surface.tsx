@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ArrowUp, BookOpen, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { DictationButton } from "@/components/speech/dictation-button";
 import type { DocumentCitation } from "@/domains/knowledge/agent-search";
 import type { ChatBlock } from "@/domains/agents/stream-contract";
 import { useChatStream } from "./use-chat-stream";
@@ -564,23 +565,26 @@ export function ChatSurface({
               />
               <span className="px-1 truncate text-data text-muted-foreground">{attachNote}</span>
             </div>
-            <Button
-              type="submit"
-              size="icon"
-              aria-label={sending ? "Sending" : "Send"}
-              title={sending ? "Sending" : "Send"}
-              className="size-8 shrink-0 rounded-full"
-              disabled={
-                !draft.trim() ||
-                sending ||
-                // A chip still loading or sitting on a failed fetch has no
-                // context to serialize: sending would drop it silently. The
-                // retry is one click; the removal is another.
-                chips.some((chip) => chip.error !== null || chip.context === null)
-              }
-            >
-              <ArrowUp aria-hidden className="size-4" />
-            </Button>
+            <div className="flex shrink-0 items-center gap-1">
+              <DictationButton className="size-8 rounded-full" field={() => composerRef.current} />
+              <Button
+                type="submit"
+                size="icon"
+                aria-label={sending ? "Sending" : "Send"}
+                title={sending ? "Sending" : "Send"}
+                className="size-8 shrink-0 rounded-full"
+                disabled={
+                  !draft.trim() ||
+                  sending ||
+                  // A chip still loading or sitting on a failed fetch has no
+                  // context to serialize: sending would drop it silently. The
+                  // retry is one click; the removal is another.
+                  chips.some((chip) => chip.error !== null || chip.context === null)
+                }
+              >
+                <ArrowUp aria-hidden className="size-4" />
+              </Button>
+            </div>
           </div>
         </form>
       )}
