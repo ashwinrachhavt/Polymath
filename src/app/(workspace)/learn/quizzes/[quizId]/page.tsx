@@ -34,9 +34,12 @@ async function QuizSitting({ params }: { params: Promise<{ quizId: string }> }) 
   const quiz = await getQuizForSitting(auth, quizId);
   if (!quiz) notFound();
   const rating = await getArtifactFeedback(auth, { kind: "quiz", id: quiz.id });
-  const sources = quiz.sourceManifest.map((source) => source.title).join(", ");
+  // A one-source quiz is titled after its source; naming it again says nothing.
+  const sources = quiz.sourceManifest.map((source) => source.title);
+  const description =
+    sources.length > 1 ? `From ${sources.length} sources: ${sources.join(", ")}` : "A graded quiz over what you saved.";
   return (
-    <Screen title={quiz.title} description={`From ${sources}`}>
+    <Screen title={quiz.title} description={description}>
       <QuizRunner quiz={quiz} rating={rating} />
       <Link href="/learn" className="text-body-dense font-medium underline-offset-4 hover:underline">
         Back to Learn

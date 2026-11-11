@@ -88,4 +88,14 @@ describe("MakeLearningButton", () => {
       "Made 8 of 30 flashcards before a batch failed. Make them again for more.",
     );
   });
+
+  it("closes once the deck or quiz is made, so going back does not show a stale dialog", async () => {
+    mocks.make.mockResolvedValueOnce({ ok: true, href: "/learn/decks/d", notice: null });
+    const dialog = open([capture(1)]);
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Make flashcards" }));
+
+    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/learn/decks/d"));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
 });

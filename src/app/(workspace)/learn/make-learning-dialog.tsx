@@ -189,6 +189,9 @@ function MakeLearningForm({
         return;
       }
       if (result.notice) notify(result.notice);
+      // Close before leaving: the router keeps this page's state alive, so an
+      // open dialog would still be open, with these picks, on the way back.
+      onCancel();
       router.push(result.href);
     });
   }
