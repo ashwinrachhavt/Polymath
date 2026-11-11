@@ -104,6 +104,7 @@ export async function generateFlashcardDeck(
   const [prior] = await db
     .select({
       id: flashcardDecks.id,
+      notebookId: flashcardDecks.notebookId,
       sourceManifest: flashcardDecks.sourceManifest,
       requestedCount: flashcardDecks.requestedCount,
       stoppedBy: flashcardDecks.stoppedBy,
@@ -115,7 +116,7 @@ export async function generateFlashcardDeck(
     )
     .limit(1);
   if (prior) {
-    if (!sameSourceVersions(prior.sourceManifest, manifest)) {
+    if (prior.notebookId !== (input.notebookId ?? null) || !sameSourceVersions(prior.sourceManifest, manifest)) {
       throw new FlashcardError("invalid_sources", "This request key belongs to a different source selection.");
     }
     const [{ count }] = await db
