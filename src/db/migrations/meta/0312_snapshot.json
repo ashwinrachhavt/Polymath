@@ -1,6 +1,6 @@
 {
-  "id": "65a3aa76-3e68-4014-90b2-2b39f7d02e52",
-  "prevId": "77fbdae5-c5ab-4f55-8360-1903803b542e",
+  "id": "31beffdd-8075-4c2f-8dfa-6e6b23ef704f",
+  "prevId": "65a3aa76-3e68-4014-90b2-2b39f7d02e52",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -10599,6 +10599,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'auto'"
+        },
+        "accent": {
+          "name": "accent",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'graphite'"
         },
         "notification_policy": {
           "name": "notification_policy",

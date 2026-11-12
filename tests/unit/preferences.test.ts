@@ -8,7 +8,12 @@ import { DEFAULT_PREFERENCES, resolveInterfaceMode, validatePreferencePatch } fr
 
 describe("validatePreferencePatch", () => {
   it("accepts a full valid patch", () => {
-    const patch = validatePreferencePatch({ timezone: "America/Los_Angeles", weekStart: 7, appearance: "dark", motion: "reduced" });
+    const patch = validatePreferencePatch({
+      timezone: "America/Los_Angeles",
+      weekStart: 7,
+      appearance: "dark",
+      motion: "reduced",
+    });
     expect(patch).toEqual({ timezone: "America/Los_Angeles", weekStart: 7, appearance: "dark", motion: "reduced" });
   });
 
@@ -37,7 +42,14 @@ describe("validatePreferencePatch", () => {
   });
 
   it("defaults stay the untouched account record for a user who never saved", () => {
-    expect(DEFAULT_PREFERENCES).toEqual({ timezone: "UTC", weekStart: 1, appearance: "system", motion: "full", interfaceMode: "auto" });
+    expect(DEFAULT_PREFERENCES).toEqual({
+      timezone: "UTC",
+      weekStart: 1,
+      appearance: "system",
+      motion: "full",
+      interfaceMode: "auto",
+      accent: "graphite",
+    });
   });
 });
 

@@ -1,9 +1,10 @@
 "use client";
 
-import { Check, Monitor, Moon, Sun } from "lucide-react";
+import { Monitor, Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useState, useSyncExternalStore } from "react";
-import { ACCENTS, PAPERS, readAppearance, saveAppearance, type AppearanceChoice } from "@/lib/appearance";
+import { AccentSwatches } from "@/components/accent-swatches";
+import { PAPERS, readAppearance, saveAppearance, type Accent, type AppearanceChoice } from "@/lib/appearance";
 
 const MODES = [
   { value: "light", label: "Light", icon: Sun },
@@ -15,11 +16,17 @@ const noop = () => () => {};
 
 /*
  * Settings > Appearance: mode, page colour and accent, each a single tap that
- * applies immediately. Mode also saves to the account through onModeChange
- * (the same row the header toggle writes); paper and accent live in this
- * browser.
+ * applies immediately. Mode and accent also save to the account through
+ * onModeChange/onAccentChange (the same row the header menu writes); paper
+ * lives in this browser.
  */
-export function AppearancePicker({ onModeChange }: { onModeChange?: (mode: "light" | "dark" | "system") => void }) {
+export function AppearancePicker({
+  onModeChange,
+  onAccentChange,
+}: {
+  onModeChange?: (mode: "light" | "dark" | "system") => void;
+  onAccentChange?: (accent: Accent) => void;
+}) {
   const { theme, setTheme } = useTheme();
   const mounted = useSyncExternalStore(
     noop,
@@ -89,28 +96,20 @@ export function AppearancePicker({ onModeChange }: { onModeChange?: (mode: "ligh
         </div>
       </fieldset>
 
-      <fieldset className="flex flex-col gap-2">
-        <legend className="mb-1 text-body-dense font-medium">Accent</legend>
+      <div className="flex flex-col gap-2">
+        <p className="mb-1 text-body-dense font-medium" aria-hidden>
+          Accent
+        </p>
         <p className="text-xs text-muted-foreground">Colours the main button, selection and focus ring.</p>
-        <div className={row}>
-          {ACCENTS.map((accent) => (
-            <button
-              key={accent.value}
-              type="button"
-              aria-pressed={current.accent === accent.value}
-              aria-label={accent.label}
-              title={accent.label}
-              className="flex size-9 items-center justify-center rounded-full border border-border"
-              style={{ background: accent.swatch }}
-              onClick={() => pick({ accent: accent.value })}
-            >
-              {current.accent === accent.value && (
-                <Check aria-hidden className="size-4 text-white mix-blend-difference" />
-              )}
-            </button>
-          ))}
-        </div>
-      </fieldset>
+        <AccentSwatches
+          name="accent-settings"
+          value={current.accent}
+          onChange={(accent) => {
+            pick({ accent });
+            onAccentChange?.(accent);
+          }}
+        />
+      </div>
     </div>
   );
 }

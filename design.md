@@ -91,8 +91,27 @@ wash behind hero marks, ink from the foreground token.
   only cards and floating layers lift.
 - Ruled lists: a 1px ink rule over a list, hairlines between rows, a 2px ink
   rule over a total. Density is the design: tables before cards.
-- Tangerine marks the primary action, the current selection and state —
+- The accent marks the primary action, the current selection and state —
   nothing else.
+
+## Accent
+
+- The accent is the person's choice, saved on their account
+  (`user_preferences.accent`) and picked from the top bar's Appearance menu
+  or Settings > Appearance: graphite (default), red, orange (the Furrow
+  tangerine), green, blue, purple. Each is a `:root[data-accent]` block in
+  `src/app/appearance.css` that re-points `--signal`, `--signal-ink`,
+  `--signal-soft` and `--focus` per mode; components only read the tokens.
+
+## Shared controls
+
+- Icon-only controls use `IconButton` (`src/components/ui/icon-button.tsx`):
+  the label is the accessible name and the hover/focus tooltip. Keep a text
+  label where the icon alone would be ambiguous (the page's primary action).
+- Deletes use `DeleteButton` (`src/components/ui/delete-button.tsx`): first
+  click arms, second confirms, no dialog; pass `undo` when the data can be
+  restored and the toast offers it.
+- Transient confirmations go through `toast()` (`src/components/ui/toast.tsx`).
 
 ## Exports
 

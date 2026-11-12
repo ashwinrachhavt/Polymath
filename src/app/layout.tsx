@@ -3,6 +3,8 @@ import type { Metadata } from "next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { MotionProvider } from "@/components/motion-config";
 import { ThemeProvider } from "@/components/theme-provider";
+import { Toaster } from "@/components/ui/toast";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { APPEARANCE_BOOT_SCRIPT } from "@/lib/appearance";
 import { SIDEBAR_PIN_BOOT_SCRIPT } from "@/lib/sidebar-pin";
 import "./globals.css";
@@ -27,7 +29,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       {/* Auth providers sit inside <body>; cacheComponents requires it. */}
       <body className="flex min-h-full flex-col">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-          <MotionProvider>{children}</MotionProvider>
+          <TooltipProvider>
+            <MotionProvider>{children}</MotionProvider>
+          </TooltipProvider>
+          <Toaster />
         </ThemeProvider>
         {/*
           Real-user Web Vitals (INP/LCP/CLS per route) in the Vercel dashboard.

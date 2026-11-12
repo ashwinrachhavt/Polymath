@@ -102,6 +102,7 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
         kind: "ready",
         version: preferences.version,
         appearance: preferences.appearance,
+        accent: preferences.accent,
       };
       notifications = feed;
       workspaceSwitcher = switcher;
