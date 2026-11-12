@@ -5,10 +5,9 @@ import type { LanguageModel } from "ai";
  * The model catalog: every provider the workspace holds a key for, and the
  * models a probe answered or a listing named — the probe field says which.
  *
- * Verified 2026-10-21 against the live keys; re-verified 2026-11-05 with the
- * Groq-first decision — the owner holds Groq credit, so a Groq model is the
- * default and Gemini stays in the catalog for narrower roles the owner will
- * pick later. NVIDIA advertises 83 models in its listing but most return 410
+ * Verified 2026-10-21 against the live keys. The default was Groq from
+ * 2026-11-05 until the owner moved it to GLM 5.3 Flash on TheHive on
+ * 2026-11-11; Groq and Gemini stay in the catalog as picker choices. NVIDIA advertises 83 models in its listing but most return 410
  * end-of-life or 404 not-found (meta/llama-3.2-11b-vision-instruct went 410
  * 2026-11-05 and was removed). Shipping an entry that does not answer is
  * worse than omitting it —
@@ -41,6 +40,7 @@ type ModelProviderId =
   | "zai"
   | "mercury"
   | "thehive"
+  | "radium"
   | "openrouter-free";
 
 export type ModelOption = {
@@ -64,10 +64,10 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     id: "openai/gpt-oss-120b",
     provider: "groq",
     label: "GPT-OSS 120B (Groq)",
-    note: "Default. Large open model on Groq's fast inference; works with tools.",
+    note: "Large open model on Groq's fast inference; works with tools.",
     baseUrl: "https://api.groq.com/openai/v1",
     keyEnv: "GROQ_API_KEY",
-    probe: "live 2026-11-05 (chat and tool calling verified; current default)",
+    probe: "live 2026-11-05 (chat and tool calling verified; default until 2026-11-11)",
   },
   {
     id: "qwen/qwen3.8-27b",
@@ -218,10 +218,11 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     id: "zai-org/glm-5.3-flash",
     provider: "thehive",
     label: "GLM 5.3 Flash (TheHive)",
-    note: "Zhipu's reasoning model on TheHive's hosted inference.",
+    note: "Default. Zhipu's reasoning model on TheHive's hosted inference; paid from the account balance.",
     baseUrl: "https://api-cdn.thehive.ai/api/v3",
     keyEnv: "THEHIVEAI_API_KEY",
-    probe: "live 2026-11-07 (chat, streaming, json_schema structured output, tool calling verified)",
+    probe:
+      "live 2026-11-07 (chat, streaming, json_schema structured output, tool calling verified); chat re-probed 2026-11-11; current default",
   },
   {
     id: "deepseek-ai/deepseek-v4.1-flash-1017",
@@ -231,6 +232,33 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     baseUrl: "https://api-cdn.thehive.ai/api/v3",
     keyEnv: "THEHIVEAI_API_KEY",
     probe: "live 2026-11-07 (chat, streaming, json_schema structured output, tool calling verified)",
+  },
+  {
+    id: "clarke-1.0",
+    provider: "radium",
+    label: "Clarke 1.0 (Radium)",
+    note: "Radium's balanced model; the provider documents a 1M-token context.",
+    baseUrl: "https://api.radium.cloud/v1",
+    keyEnv: "RADIUM_API_KEY",
+    probe: "live 2026-11-11 (chat, tool calling and SSE streaming verified; context size not probed)",
+  },
+  {
+    id: "hal-1.0",
+    provider: "radium",
+    label: "HAL 1.0 (Radium)",
+    note: "Radium's reasoning model for harder turns.",
+    baseUrl: "https://api.radium.cloud/v1",
+    keyEnv: "RADIUM_API_KEY",
+    probe: "live 2026-11-11 (chat and tool calling verified)",
+  },
+  {
+    id: "tycho-1.0",
+    provider: "radium",
+    label: "Tycho 1.0 (Radium)",
+    note: "Radium's fast model for short turns.",
+    baseUrl: "https://api.radium.cloud/v1",
+    keyEnv: "RADIUM_API_KEY",
+    probe: "live 2026-11-11 (chat and tool calling verified)",
   },
   {
     id: "deepseek/deepseek-chat",
@@ -272,8 +300,8 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
   },
 ];
 
-/** The model used when nothing is chosen, and the one every run used before this existed. */
-export const DEFAULT_MODEL_ID = "openai/gpt-oss-120b";
+/** The model used when nothing is chosen. */
+export const DEFAULT_MODEL_ID = "zai-org/glm-5.3-flash";
 
 /**
  * The assessor profile's designed-in default (superagent spec §9, owner
