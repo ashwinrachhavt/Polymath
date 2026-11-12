@@ -237,18 +237,25 @@ suite("the unaided mock and its readiness report", () => {
   it("resumes the open sitting instead of asking a second time", async () => {
     const auth = await signIn("resume");
     const { missionId } = await activeMission(auth, "resume");
-    const first = await resumeOrStartMock(auth, missionId);
-    const second = await resumeOrStartMock(auth, missionId);
+    // The fixture generator, not the real one: this suite has no model key,
+    // and a sitting must never depend on the network to exist.
+    const engine = grader("correct", "An idempotency key lets a server recognise a repeated request");
+    const first = await resumeOrStartMock(auth, missionId, {}, engine);
+    const second = await resumeOrStartMock(auth, missionId, {}, engine);
     expect(second.sessionId).toBe(first.sessionId);
     // A retake is a new sitting.
-    const retake = await resumeOrStartMock(auth, missionId, { retake: true });
+    const retake = await resumeOrStartMock(auth, missionId, { retake: true }, engine);
     expect(retake.sessionId).not.toBe(first.sessionId);
   });
 
   it("isolates a Mission's sitting from another workspace", async () => {
     const mine = await signIn("iso-mine");
     const { missionId } = await activeMission(mine, "iso");
-    const { sessionId } = await startMockSession(mine, { missionId, requestKey: crypto.randomUUID() });
+    const { sessionId } = await startMockSession(
+      mine,
+      { missionId, requestKey: crypto.randomUUID() },
+      grader("correct", "An idempotency key lets a server recognise a repeated request"),
+    );
 
     const theirs = await signIn("iso-theirs");
     expect(await getMockSession(theirs, sessionId)).toBeNull();
