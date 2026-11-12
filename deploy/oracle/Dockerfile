@@ -41,4 +41,4 @@ RUN --mount=type=secret,id=app_env,required=true \
     pnpm build
 
 EXPOSE 3000
-CMD ["pnpm", "start", "--hostname", "0.0.0.0", "--port", "3000"]
+CMD ["bash", "deploy/oracle/start-web.sh"]

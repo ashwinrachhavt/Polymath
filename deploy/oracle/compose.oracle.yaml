@@ -72,7 +72,8 @@ services:
       dockerfile: deploy/oracle/Dockerfile
       secrets:
         - app_env
-    command: ["pnpm", "start", "--hostname", "0.0.0.0", "--port", "3000"]
+    # Both eve agents on loopback ports, then `next start` (see start-web.sh).
+    command: ["bash", "deploy/oracle/start-web.sh"]
     environment:
       <<: *app-env
       HOSTNAME: 0.0.0.0
@@ -95,7 +96,7 @@ services:
           "CMD",
           "node",
           "-e",
-          "fetch('http://127.0.0.1:3000/landing').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))",
+          "Promise.all(['/landing','/eve/polymath/v1/health','/eve/specialist/v1/health'].map(p=>fetch('http://127.0.0.1:3000'+p).then(r=>{if(!r.ok)throw 0}))).then(()=>process.exit(0),()=>process.exit(1))",
         ]
       interval: 15s
       timeout: 10s
