@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stones: the inventory</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@600&family=Red+Hat+Mono:wght@400;500&family=Red+Hat+Text:wght@400;500&display=swap">
+<link rel="stylesheet" href="lib/board.css">
+<style>
+  .legend { display: grid; grid-template-columns: 6fr 12fr 4fr; gap: 0 28px; }
+  .legend > div { border-top: 1px solid var(--ink); padding-top: 12px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .legend h3 span { color: var(--ink-muted); font-weight: 600; }
+  .keys { display: grid; gap: 10px 6px; }
+  .keys.c6 { grid-template-columns: repeat(3, minmax(0, 1fr)); } .keys.c12 { grid-template-columns: repeat(6, minmax(0, 1fr)); } .keys.c4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .key { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 2px; min-width: 0; }
+  .key img { width: 56px; height: 56px; }
+  .key b { font-weight: 500; font-size: 0.8125rem; line-height: 1.2; } .key span { font-size: 0.72rem; color: var(--ink-muted); line-height: 1.25; }
+  .formula { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-family: var(--font-display); font-weight: 600; font-size: 1.5rem; letter-spacing: -0.03em; }
+  .formula .slot { border: 1px dashed var(--ink-muted); border-radius: 8px; padding: 4px 12px; }
+  .formula .slot small { display: block; font: 400 0.72rem/1.2 var(--font-body); letter-spacing: 0; color: var(--ink-muted); }
+  .builder { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 24px; padding: 20px; align-items: center; }
+  .builder .well { aspect-ratio: 1; padding: 12%; }
+  .builder label { display: flex; flex-direction: column; gap: 4px; font-size: 0.8125rem; color: var(--ink-muted); }
+  #b-name { font-family: var(--font-display); font-weight: 600; font-size: 1.75rem; letter-spacing: -0.035em; line-height: 1.1; }
+  .matrix { display: grid; grid-template-columns: 96px repeat(12, minmax(64px, 1fr)); gap: 6px; min-width: 940px; align-items: center; }
+  .matrix .ch { font-size: 0.75rem; line-height: 1.2; text-align: center; padding-bottom: 6px; align-self: end; } .matrix .ch b { display: block; font-weight: 500; font-size: 0.8125rem; } .matrix .ch span { color: var(--ink-muted); }
+  .matrix .rh { font-size: 0.75rem; line-height: 1.2; } .matrix .rh b { display: block; font-weight: 500; font-size: 0.875rem; } .matrix .rh span { color: var(--ink-muted); }
+  .matrix .well { aspect-ratio: 1; padding: 9%; }
+  .strip { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
+  #finishes { grid-template-columns: repeat(4, minmax(0, 1fr)); max-width: 760px; }
+  .strip figure { margin: 0; display: flex; flex-direction: column; gap: 6px; } .strip .well { aspect-ratio: 1; padding: 12%; }
+  .strip figcaption { font-size: 0.8125rem; line-height: 1.3; } .strip figcaption span { display: block; color: var(--ink-muted); font-size: 0.75rem; }
+  .geodes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+  .geodes figure { margin: 0; display: flex; flex-direction: column; gap: 8px; } .geodes .well { aspect-ratio: 4 / 3; padding: 4%; } .geodes .well img { height: 100%; width: auto; }
+  .two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 32px; }
+  @media (max-width: 860px) { .legend, .two, .geodes { grid-template-columns: minmax(0, 1fr); gap: 24px; } .builder { grid-template-columns: minmax(0, 1fr); } .builder .well { max-width: 220px; } }
+</style>
+</head>
+<body>
+<main class="page">
+  <div class="stack">
+    <h1>Every stone says three things</h1>
+    <p>Its shape says what kind of idea it is. Its material says which subject it belongs to. Its finish says how well you have held on to it. Six shapes, twelve materials and four finishes make 288 named stones, and no two are drawn exactly alike.</p>
+  </div>
+
+  <section aria-label="Legend">
+    <div class="legend">
+      <div><h3>Shape <span>is the kind of idea</span></h3><div class="keys c6" id="k-cuts"></div></div>
+      <div><h3>Material <span>is the subject</span></h3><div class="keys c12" id="k-mats"></div></div>
+      <div><h3>Finish <span>is how well it has held</span></h3><div class="keys c4" id="k-fins"></div></div>
+    </div>
+  </section>
+
+  <section>
+    <header><h2>The name is the meaning, read aloud</h2>
+      <p>Finish, then material, then shape. A fresh stone has no finish word, so the name grows as the learner proves the idea again.</p></header>
+    <div class="stack loose">
+      <div class="formula" aria-label="Naming rule"><span class="slot">Finish<small>blank, Polished, Brilliant, Star</small></span><span class="slot">Material<small>the subject</small></span><span class="slot">Shape<small>the kind of idea</small></span></div>
+      <div class="panel builder">
+        <div class="well" id="b-art"></div>
+        <div class="stack">
+          <div id="b-name"></div>
+          <p id="b-mean"></p>
+          <div class="row">
+            <label>Kind of idea<select id="b-cut"></select></label>
+            <label>Subject<select id="b-mat"></select></label>
+            <label>Evidence<select id="b-fin"></select></label>
+            <button class="btn" id="b-seed" type="button" style="align-self:end">Show another one</button>
+          </div>
+        </div>
+      </div>
+      <div class="scroll-x"><table class="ruled" id="name-table">
+        <thead><tr><th>Part of the name</th><th>What it tells you</th><th>The words</th><th>Example</th></tr></thead>
+        <tbody>
+          <tr><td>Finish (first)</td><td>How well the idea has held up over time</td><td>no word, Polished, Brilliant, Star</td><td><i>Polished</i> Amber Prism</td></tr>
+          <tr><td>Material (middle)</td><td>The subject the idea belongs to</td><td id="t-mats"></td><td>Polished <i>Amber</i> Prism</td></tr>
+          <tr><td>Shape (last)</td><td>What kind of idea it is</td><td id="t-cuts"></td><td>Polished Amber <i>Prism</i></td></tr>
+          <tr><td>Finished mission</td><td>A whole mission, one band per stone</td><td>Geode of, then the mission's name</td><td>Geode of “Trust an A/B test result”</td></tr>
+        </tbody></table></div>
+    </div>
+  </section>
+
+  <section>
+    <header><h2>Seventy-two stones on one board</h2>
+      <p>Every shape in every material, all at the Polished finish. Read across for subjects and down for kinds of idea.</p></header>
+    <div class="scroll-x"><div class="matrix" id="matrix"></div></div>
+  </section>
+
+  <section>
+    <header><h2>Four finishes, and a stone never goes back</h2>
+      <p>A stone due for review is not dulled. It keeps the finish it has and is marked ready to polish. Reviewing it moves it one finish up.</p></header>
+    <div class="strip" id="finishes"></div>
+  </section>
+
+  <section>
+    <header><h2>The same kind of stone, never the same stone</h2>
+      <p>Eight different writing principles. All are Amber Prisms, and each has its own tilt, tint and inclusions, fixed for good by the idea it stands for.</p></header>
+    <div class="strip" id="siblings"></div>
+  </section>
+
+  <section>
+    <header><h2>The rare one: a geode for a finished mission</h2>
+      <p>Finishing a mission opens a geode. Each band is one stone from that mission in that stone's material, so the geode is a record of what was learned, and no two missions give the same one.</p></header>
+    <div class="geodes" id="geodes"></div>
+  </section>
+
+  <section>
+    <header><h2>How an idea gets its stone</h2>
+      <p>The same idea must always be the same stone, on every device, for ever. So the stone is decided once, written down, and never worked out again.</p></header>
+    <div class="two">
+      <div class="stack">
+        <div class="scroll-x"><table class="ruled">
+          <thead><tr><th>Part</th><th>Comes from</th><th>Decided</th><th>Changes?</th></tr></thead>
+          <tbody>
+            <tr><td>Shape</td><td>The kind label given when the idea is first pulled from the learner's material</td><td>Once</td><td>Never</td></tr>
+            <tr><td>Material</td><td>The subject label given at the same moment</td><td>Once</td><td>Never</td></tr>
+            <tr><td>Individual look</td><td>A number computed from the idea's id</td><td>Once</td><td>Never</td></tr>
+            <tr><td>Finish</td><td>The review history</td><td>At each review</td><td>Only upward</td></tr>
+          </tbody></table></div>
+<pre>stone = {
+  cut:      concept.kind,       // one of 6, stored
+  material: concept.subject,    // one of 12, stored
+  seed:     hash(concept.id),   // stable number
+  finish:   fromReviews(concept) // cut → polished → brilliant → star
+}</pre>
+        <p class="small muted">Four small values per idea. No image and no SVG are stored; the engine draws from these.</p>
+      </div>
+      <div class="stack">
+        <h3>Should embeddings choose the stone? I tested it. No.</h3>
+        <p class="small">The idea was to place each concept in embedding space so that related concepts get related materials. I embedded 55 hand-labelled concept titles with Voyage (voyage-3.5) and assigned each to its nearest subject and nearest kind.</p>
+        <div class="scroll-x"><table class="ruled">
+          <thead><tr><th>Check</th><th>Result</th></tr></thead>
+          <tbody>
+            <tr><td>Right subject</td><td>34 of 55 (62%)</td></tr>
+            <tr><td>Right kind of idea</td><td>27 of 55 (49%)</td></tr>
+            <tr><td>Decided by a hair</td><td>22 of 55 had the top two subjects within 0.02 of each other</td></tr>
+            <tr><td>Same idea, reworded</td><td>Kept its material 5 times out of 8</td></tr>
+          </tbody></table></div>
+        <p class="small">Typical misses: “Borrow checker” landed in design and craft, “Occam's razor” in maths, “Spaced repetition” in writing. The deeper problem is the third and fourth rows: a small change of wording, or a new embedding model, moves a stone to a different material, and a stone must never change.</p>
+        <p class="small">The simpler rule wins. The model that pulls the idea out of the learner's material already reads the surrounding text, so it labels kind and subject there, the labels are stored, and the learner can correct one if it is wrong. Embeddings could still be used later to suggest neighbouring stones, but not to decide what a stone looks like.</p>
+        <p class="small muted">Limits of the test: titles only, one-line descriptions as anchors, one run. Fuller text would score higher, but would not fix the instability. The Voyage key is also limited to three requests a minute until billing is added.</p>
+      </div>
+    </div>
+  </section>
+</main>
+<script src="lib/stones.js"></script>
+<script src="lib/data.js"></script>
+<script src="lib/board.js"></script>
+<script>
+(function () {
+  const S = Stones, D = StoneData, $ = (id) => document.getElementById(id);
+  const img = (spec, size, alt) => S.stoneImg(spec, size, alt);
+  $("k-cuts").innerHTML = S.CUTS.map((c) => `<div class="key">${img({ cut: c.key, material: "amber", finish: "polished", seed: 3 }, 56, "")}<b>${c.kind}</b><span>${c.name}. ${c.why}</span></div>`).join("");
+  $("k-mats").innerHTML = S.MATERIALS.map((m, i) => `<div class="key">${img({ cut: "pebble", material: m.key, finish: "polished", seed: 11 + i }, 56, "")}<b>${m.name}</b><span>${m.subject}</span></div>`).join("");
+  $("k-fins").innerHTML = S.FINISHES.map((f) => `<div class="key">${img({ cut: "prism", material: "azurite", finish: f.key, seed: 5 }, 56, "")}<b>${f.label}</b><span>${f.evidence}</span></div>`).join("");
+  $("t-mats").textContent = S.MATERIALS.map((m) => m.name).join(", ");
+  $("t-cuts").textContent = S.CUTS.map((c) => c.name + " (" + c.kind.toLowerCase() + ")").join(", ");
+
+  // builder
+  const sc = $("b-cut"), sm = $("b-mat"), sf = $("b-fin"); let seed = 41;
+  sc.innerHTML = S.CUTS.map((c) => `<option value="${c.key}">${c.kind}</option>`).join("");
+  sm.innerHTML = S.MATERIALS.map((m) => `<option value="${m.key}">${m.subject}</option>`).join("");
+  sf.innerHTML = S.FINISHES.map((f) => `<option value="${f.key}">${f.evidence}</option>`).join("");
+  sc.value = "point"; sm.value = "coral"; sf.value = "brilliant";
+  function build() {
+    const spec = { cut: sc.value, material: sm.value, finish: sf.value, seed };
+    $("b-art").innerHTML = img(spec, 220); $("b-name").textContent = S.stoneName(spec); $("b-mean").textContent = S.stoneMeaning(spec);
+  }
+  [sc, sm, sf].forEach((s) => s.addEventListener("change", build));
+  $("b-seed").addEventListener("click", () => { seed = (seed * 31 + 7) % 99991; build(); });
+  build();
+
+  // matrix
+  let h = '<div></div>' + S.MATERIALS.map((m) => `<div class="ch"><b>${m.name}</b><span>${m.subject}</span></div>`).join("");
+  S.CUTS.forEach((c) => {
+    h += `<div class="rh"><b>${c.name}</b><span>${c.kind}</span></div>`;
+    S.MATERIALS.forEach((m) => { const spec = { cut: c.key, material: m.key, finish: "polished", seed: S.fnv(c.key + m.key) }; h += `<div class="well" title="${S.stoneName(spec)}">${img(spec, 96)}</div>`; });
+  });
+  $("matrix").innerHTML = h;
+
+  $("finishes").innerHTML = [["prism", "amber"], ["terrace", "hematite"], ["pebble", "malachite"]].map(([c, m]) => S.FINISHES.map((f) => { const spec = { cut: c, material: m, finish: f.key, seed: 5 }; return `<figure><div class="well">${img(spec, 150)}</div><figcaption>${S.stoneName(spec)}<span>${f.evidence}</span></figcaption></figure>`; }).join("")).join("");
+  const ideas = ["Show, don't tell", "Omit needless words", "One idea per paragraph", "Write for one reader", "Put the point first", "Concrete beats abstract", "Cut the throat-clearing", "Read it aloud"];
+  $("siblings").innerHTML = ideas.map((n) => { const spec = { cut: "prism", material: "amber", finish: "polished", seed: S.fnv(n) }; return `<figure><div class="well">${img(spec, 150)}</div><figcaption>${n}<span>${S.stoneName(spec)}</span></figcaption></figure>`; }).join("");
+  $("geodes").innerHTML = D.MISSIONS.map((m, i) => `<figure><div class="well"><img src="${S.dataUrl(S.drawGeode(m.concepts.map(D.spec), S.fnv(m.id)))}" alt="Geode with ${m.concepts.length} bands"></div><figcaption><b style="font-weight:500">Geode of “${m.name}”</b><br><span class="small muted">${m.concepts.length} bands: ${[...new Set(m.concepts.map((c) => S.MAT[c.subject].name))].join(", ")}</span></figcaption></figure>`).join("");
+})();
+</script>
+</body>
+</html>

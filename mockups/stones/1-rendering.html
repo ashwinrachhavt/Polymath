@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stones: rendering directions</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@600&family=Red+Hat+Mono:wght@400;500&family=Red+Hat+Text:wght@400;500&display=swap">
+<link rel="stylesheet" href="lib/board.css">
+<style>
+  .six { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; position: relative; }
+  .six .cell { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .six .well { aspect-ratio: 1; padding: 10%; }
+  .six .name { font-size: 0.8125rem; font-weight: 500; line-height: 1.25; }
+  .six .sub { font-size: 0.75rem; color: var(--ink-muted); line-height: 1.3; }
+  #gl { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  .direction { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
+  .costs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 28px; }
+  .fig { font-weight: 500; font-variant-numeric: tabular-nums; }
+  .costs div { border-top: 1px solid var(--rule); padding: 10px 0 12px; }
+  .costs dt { font-size: 0.8125rem; color: var(--ink-muted); }
+  .costs dd { margin: 2px 0 0; font-size: 0.875rem; }
+  dl { margin: 0; }
+  .plate { position: relative; width: 100%; aspect-ratio: 1; }
+  .plate img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+  .plate svg { position: absolute; inset: 0; }
+  @media (max-width: 720px) { .costs { grid-template-columns: minmax(0, 1fr); } .six { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+</style>
+</head>
+<body>
+<main class="page">
+  <div class="stack">
+    <h1>Three ways to draw a stone</h1>
+    <p>The same six stones, drawn three ways. Each stone is one idea a learner has proven: its shape, material and finish are decided by the system on board 2, so the only thing that changes here is the drawing method.</p>
+    <p class="muted small">Numbers marked “measured here” are timed in this browser when the page loads, so they change with the device you open it on.</p>
+  </div>
+
+  <section class="direction" id="dir-a">
+    <header>
+      <h2>A. Drawn by code as vector art</h2>
+      <p>A small engine turns four values (cut, material, finish, seed) into an SVG: flat facets shaded by a fixed light, gradients for inner glow and gloss, one blur filter for the pebble highlight. It extends the recipe renderer already in the app, which ships a stone as an SVG inside an image tag.</p>
+    </header>
+    <div class="six" id="row-a"></div>
+    <dl class="costs">
+      <div><dt>Download size</dt><dd><span id="a-bytes" class="fig"></span> of code, no image files. Each stone is built on the spot.</dd></div>
+      <div><dt>Speed</dt><dd><span id="a-speed" class="fig"></span> (measured here). The browser paints each stone once, then scrolls it as a bitmap. Fine on a phone.</dd></div>
+      <div><dt>Hundreds of unique stones</dt><dd>No extra cost. 288 named combinations and any number of seeds come from the same code.</dd></div>
+      <div><dt>Accessibility</dt><dd>A normal image with the stone's name and meaning as its text. Sharp at any zoom. No motion.</dd></div>
+      <div><dt>Needs from an image model</dt><dd>Nothing.</dd></div>
+      <div><dt>Weak point</dt><dd>Reads as a fine illustration, not a photograph. The light does not move.</dd></div>
+    </dl>
+    <p class="note small">Fit with today's code: the recipe schema stores a model-written SVG capped at 4,000 characters. These stones are <span id="a-range" class="fig"></span> characters each, so the better fit is to store the four values and let the engine draw, not to store the SVG.</p>
+  </section>
+
+  <section class="direction" id="dir-b">
+    <header>
+      <h2>B. Lit live, following your pointer</h2>
+      <p>A WebGL shader computes real facet angles for the same shapes and lights them from wherever the pointer is. Move across the row: facets flash, the glow inside the moonstone drifts, and the star in the baton slides with the light, as it does in a real star stone.</p>
+    </header>
+    <div class="six" id="row-b"><canvas id="gl" aria-hidden="true"></canvas></div>
+    <dl class="costs">
+      <div><dt>Download size</dt><dd><span id="b-bytes" class="fig"></span> of shader and glue, no image files.</dd></div>
+      <div><dt>Speed</dt><dd><span id="b-speed" class="fig"></span> (measured here). Comfortable for a handful of stones on a mid-range laptop. On a phone, redrawing a whole wall every frame costs battery, so it should only redraw while the light moves.</dd></div>
+      <div><dt>Hundreds of unique stones</dt><dd>Same values as A, so no extra art. But browsers allow about 16 live WebGL canvases, so a wall must share one canvas, and <span id="b-wall" class="fig"></span>.</dd></div>
+      <div><dt>Accessibility</dt><dd>A canvas says nothing to a screen reader, so every stone needs a text twin. The pointer effect does nothing for touch or keyboard users unless tilt or drag is added. Holds still under reduced motion.</dd></div>
+      <div><dt>Needs from an image model</dt><dd>Nothing.</dd></div>
+      <div><dt>Weak point</dt><dd>Does not work without WebGL, so A has to exist anyway as the fallback. Two renderers to keep looking alike.</dd></div>
+    </dl>
+  </section>
+
+  <section class="direction" id="dir-c">
+    <header>
+      <h2>C. Photographed once, varied by code</h2>
+      <p>An image model makes one picture per stone family, and code varies it: a hue shift per stone, a matte veil for a fresh cut, glints for the higher finishes. This is how the seven stones in the app are made today.</p>
+      <p class="note small">These six are stand-ins, and their shapes are wrong on purpose. The project's Gemini key is on the free tier, where image generation has a quota of zero, so I could not generate plates for the new cuts. What you see is four of the app's existing images recoloured and finished by code, which shows the method honestly. The prompts for the real plates are at the bottom of this section.</p>
+    </header>
+    <div class="six" id="row-c"></div>
+    <dl class="costs">
+      <div><dt>Download size</dt><dd>Today's images are 5 to 22 KB each at 320 px. One per family (6 cuts by 12 materials = 72) is about 1 MB, loaded as you scroll. A sharp large stone needs a second, bigger file.</dd></div>
+      <div><dt>Speed</dt><dd>The cheapest of the three while running: plain bitmaps.</dd></div>
+      <div><dt>Hundreds of unique stones</dt><dd>Every new cut or material is a paid batch plus a person checking it. Finishes either multiply the files by four or are faked with overlays, as here. A photo cannot be split into shards, so the forming state needs yet another drawing.</dd></div>
+      <div><dt>Accessibility</dt><dd>Same as A: an image with text. Goes soft when zoomed.</dd></div>
+      <div><dt>Needs from an image model</dt><dd>A paid image tier, a fixed reference image so angle and light match across 72 plates, background removal, and review. Three of today's seven images came back with a background baked in.</dd></div>
+      <div><dt>Weak point</dt><dd>Consistency. The set looks like a system only if every plate matches, and the model does not promise that.</dd></div>
+    </dl>
+    <details>
+      <summary class="small">Prompts for the six real plates</summary>
+      <pre id="prompts"></pre>
+    </details>
+  </section>
+
+  <section>
+    <header>
+      <h2>Recommendation</h2>
+      <p>Build A as the foundation and use B for one stone at a time.</p>
+    </header>
+    <div class="stack">
+      <p>A draws every stone everywhere: the wall, lists, the forming state, the share image. It is the only direction that can show a stone half-made from its shards, costs nothing per new stone, and is an ordinary labelled image for anyone using a screen reader.</p>
+      <p>B is where the pleasure is. Use it only where a single stone is the subject: the moment it forms and the detail view on the wall. Both read the same four values, so a stone looks like itself in either. When WebGL is missing the stone simply stays as A.</p>
+      <p>Leave C. It gives the richest single image, but it cannot show shards or finishes without many more files, and keeping 72 plates consistent is ongoing paid work.</p>
+    </div>
+  </section>
+</main>
+<script src="lib/stones.js"></script>
+<script src="lib/shader.js"></script>
+<script src="lib/data.js"></script>
+<script src="lib/board.js"></script>
+<script>
+(function () {
+  const S = Stones, D = StoneData;
+  const label = (c) => `<div class="name">${S.stoneName(D.spec(c))}</div><div class="sub">${c.name}</div>`;
+
+  // A
+  const rowA = document.getElementById("row-a");
+  rowA.innerHTML = D.SAMPLES.map((c) => `<div class="cell"><div class="well">${S.stoneImg(D.spec(c), 200, S.stoneName(D.spec(c)) + ". " + S.stoneMeaning(D.spec(c)))}</div>${label(c)}</div>`).join("");
+  const sizes = [];
+  for (const c of S.CUTS) for (const m of S.MATERIALS) for (const f of S.FINISHES) sizes.push(S.drawStone({ cut: c.key, material: m.key, finish: f.key, seed: 9 }).svg.length);
+  const t0 = performance.now();
+  for (let i = 0; i < 300; i++) S.drawStone({ cut: S.CUTS[i % 6].key, material: S.MATERIALS[i % 12].key, finish: S.FINISHES[i % 4].key, seed: i + 1 });
+  const dt = performance.now() - t0;
+  document.getElementById("a-speed").textContent = `300 stones built in ${dt.toFixed(0)} ms`;
+  document.getElementById("a-range").textContent = `${Math.min(...sizes).toLocaleString()} to ${Math.max(...sizes).toLocaleString()}`;
+  fetch("lib/stones.js").then((r) => r.text()).then((t) => { document.getElementById("a-bytes").textContent = (t.length / 1024).toFixed(0) + " KB unminified"; }).catch(() => { document.getElementById("a-bytes").textContent = "About 22 KB unminified"; });
+
+  // B
+  const rowB = document.getElementById("row-b"), canvas = document.getElementById("gl");
+  rowB.insertAdjacentHTML("beforeend", D.SAMPLES.map((c, i) => `<div class="cell"><div class="well" data-i="${i}" role="img" aria-label="${S.stoneName(D.spec(c))}"></div>${label(c)}</div>`).join(""));
+  const wells = [...rowB.querySelectorAll(".well")];
+  const items = D.SAMPLES.map((c) => ({ spec: D.spec(c), x: 0, y: 0, size: 10 }));
+  let gl = null, pointer = null;
+  function layout() {
+    const base = rowB.getBoundingClientRect();
+    wells.forEach((w, i) => { const r = w.getBoundingClientRect(), pad = r.width * 0.08; items[i].x = r.left - base.left + pad; items[i].y = r.top - base.top + pad; items[i].size = r.width - pad * 2; });
+  }
+  function light(it) {
+    if (!pointer) return [-0.5, 0.75, 0.9];
+    const base = rowB.getBoundingClientRect(), cx = base.left + it.x + it.size / 2, cy = base.top + it.y + it.size / 2;
+    const dx = (pointer[0] - cx) / (it.size * 1.4), dy = -(pointer[1] - cy) / (it.size * 1.4), l = Math.hypot(dx, dy), k = l > 1.6 ? 1.6 / l : 1;
+    return [dx * k, dy * k, 0.85];
+  }
+  let queued = false;
+  const redraw = () => { if (queued || !gl) return; queued = true; requestAnimationFrame(() => { queued = false; layout(); gl.draw(light); }); };
+  try { gl = S.GL.mount(canvas, items); } catch (e) { console.warn(e); }
+  if (gl) {
+    layout();
+    const ms = []; for (let i = 0; i < 8; i++) ms.push(gl.timed(light));
+    ms.sort((a, b) => a - b);
+    document.getElementById("b-speed").textContent = `one redraw of these six takes ${ms[4].toFixed(1)} ms`;
+    document.getElementById("b-bytes").textContent = (gl.shaderBytes / 1024 + 4).toFixed(0) + " KB";
+    // wall test: 300 small stones in one hidden canvas
+    const wc = document.createElement("canvas"); wc.style.cssText = "position:fixed;left:-9999px;top:0;width:1200px;height:900px"; document.body.appendChild(wc);
+    const many = Array.from({ length: 300 }, (_, i) => ({ spec: { cut: S.CUTS[i % 6].key, material: S.MATERIALS[i % 12].key, finish: S.FINISHES[i % 4].key, seed: i + 1 }, x: (i % 20) * 60, y: Math.floor(i / 20) * 60, size: 56 }));
+    try { const w = S.GL.mount(wc, many); w.timed(); const t = [w.timed(), w.timed(), w.timed()].sort((a, b) => a - b)[1]; document.getElementById("b-wall").textContent = `300 small stones redraw in ${t.toFixed(0)} ms here`; } catch (e) { document.getElementById("b-wall").textContent = "the 300-stone test failed here"; }
+    wc.remove();
+    window.addEventListener("pointermove", (e) => { pointer = [e.clientX, e.clientY]; redraw(); }, { passive: true });
+    window.addEventListener("resize", redraw); window.addEventListener("scroll", () => { if (pointer) redraw(); }, { passive: true });
+    redraw();
+  } else {
+    canvas.remove();
+    wells.forEach((w, i) => { w.innerHTML = S.stoneImg(D.spec(D.SAMPLES[i]), 200); });
+    document.getElementById("b-speed").textContent = "WebGL is not available in this browser, so the stones above fell back to direction A";
+    document.getElementById("b-bytes").textContent = "About 8 KB"; document.getElementById("b-wall").textContent = "that could not be timed here";
+  }
+
+  // C: existing plates, varied by code
+  const plates = [["topaz", "", "brilliant"], ["garnet", "grayscale(1) brightness(.55) contrast(1.5)", "polished"], ["ruby", "hue-rotate(150deg) saturate(.9)", "polished"], ["diamond", "brightness(.72) contrast(1.35)", "cut"], ["diamond", "sepia(1) hue-rotate(175deg) saturate(.7) brightness(1.05)", "polished"], ["ruby", "hue-rotate(238deg) saturate(1.1)", "star"]];
+  const glint = (x, y, s) => `<path d="M${x},${y - s}Q${x + 1},${y - 1} ${x + s},${y}Q${x + 1},${y + 1} ${x},${y + s}Q${x - 1},${y + 1} ${x - s},${y}Q${x - 1},${y - 1} ${x},${y - s}Z" fill="#fff"/>`;
+  document.getElementById("row-c").innerHTML = D.SAMPLES.map((c, i) => {
+    const [p, filter, fin] = plates[i];
+    const f = fin === "cut" ? (filter + " saturate(.7) contrast(.8) brightness(1.06)") : filter;
+    const over = fin === "brilliant" ? glint(28, 26, 9) + glint(74, 70, 5) : fin === "star" ? glint(30, 24, 9) + glint(72, 72, 5) + '<g stroke="#fff" stroke-width="1" opacity=".6"><path d="M22,50H78M36,26L64,74M64,26L36,74"/></g>' : "";
+    return `<div class="cell"><div class="well"><div class="plate"><img src="img/plate-${p}.webp" alt="Stand-in for ${S.stoneName(D.spec(c))}" style="filter:${f || "none"}"><svg viewBox="0 0 100 100" aria-hidden="true">${over}</svg></div></div>${label(c)}</div>`;
+  }).join("");
+  const base = "Studio product photograph of a single mineral specimen, seen from directly above, centred, filling about 70 percent of a square frame. Soft diffuse light from the upper left, one crisp highlight. Perfectly flat pure white background, no shadow, no text, no props.";
+  document.getElementById("prompts").textContent = [
+    "Amber Prism: a hexagonal step-cut gemstone of honey-yellow amber, transparent, concentric hexagonal facets and a small flat hexagonal top, a few tiny inclusions.",
+    "Obsidian Point: a knapped spearhead of black volcanic glass, a tall kite outline with its narrow tip pointing up, glossy, faint violet and teal sheen.",
+    "Malachite Delta: a triangular cut stone of green malachite with clipped corners and bevelled edges, opaque, concentric dark and light green bands.",
+    "Hematite Terrace: a rectangular step-cut stone with clipped corners in polished grey hematite, steel lustre, wider than tall.",
+    "Moonstone Pebble: a smooth oval tumbled moonstone, milky and translucent with a soft blue glow inside, no facets, wider than tall.",
+    "Azurite Baton: a long slim hexagonal baguette-cut gemstone of deep blue azurite with pointed ends, lying diagonally.",
+  ].join("\n") + "\n\nAppended to each: " + base;
+})();
+</script>
+</body>
+</html>

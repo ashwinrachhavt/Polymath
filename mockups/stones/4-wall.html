@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stones: the wall</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@600&family=Red+Hat+Mono:wght@400;500&family=Red+Hat+Text:wght@400;500&display=swap">
+<link rel="stylesheet" href="lib/board.css">
+<style>
+  .controls { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; padding: 10px 14px; border: 1px dashed var(--ink-muted); border-radius: 10px; font-size: 0.8125rem; }
+  .controls .btn[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 28px; align-items: start; }
+  .wallhead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; }
+  .key6 { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 0.8125rem; color: var(--ink-muted); align-items: center; }
+  .key6 span { display: inline-flex; align-items: center; gap: 5px; } .key6 img { width: 22px; height: 22px; }
+  .mission { display: flex; flex-direction: column; gap: 14px; }
+  .mission > header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; border-top: 1px solid var(--ink); padding-top: 12px; margin: 0; flex-direction: row; }
+  .mission > header h2 { font-size: 1.1875rem; letter-spacing: -0.025em; flex: 1 1 240px; }
+  .mission > header .geode { width: 64px; height: 64px; flex: none; }
+  .drawer { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 10px; }
+  .tile { all: unset; box-sizing: border-box; cursor: pointer; display: flex; flex-direction: column; gap: 8px; padding: 6px 6px 10px; border-radius: 12px; min-width: 0; }
+  .tile:hover { background: var(--paper-3); } .tile[aria-current="true"] { background: var(--paper-3); box-shadow: inset 0 0 0 1px var(--ink-muted); }
+  .tile:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .tile .well { aspect-ratio: 1; padding: 13%; position: relative; }
+  .tile .well > svg, .tile .well > img { width: 100%; height: 100%; }
+  .tile .t { font-size: 0.8125rem; font-weight: 500; line-height: 1.25; padding: 0 2px; overflow-wrap: anywhere; }
+  .tile .s { font-size: 0.75rem; color: var(--ink-muted); line-height: 1.25; padding: 0 2px; }
+  .tile .chip { align-self: flex-start; margin-left: 2px; }
+  /* ready to polish: the stone keeps its finish; one glint asks for attention */
+  .tile .well > svg.glint { position: absolute; top: 10%; right: 12%; width: 22%; height: 22%; animation: glint 3.2s ease-in-out infinite; pointer-events: none; }
+  @keyframes glint { 0%, 62%, 100% { opacity: 0.25; transform: scale(0.6) rotate(0deg); } 78% { opacity: 1; transform: scale(1.15) rotate(45deg); } }
+  /* forming */
+  svg.forming { overflow: visible; display: block; }
+  .forming .ghost { fill: none; stroke: var(--ink-muted); stroke-width: 1.6; stroke-dasharray: 3 5; opacity: 0.7; }
+  .forming .frag { opacity: 0; transform: translate(var(--dx), var(--dy)); } .forming .frag.on { opacity: 1; } .forming .rim { opacity: 0; }
+  /* detail */
+  .detail { position: sticky; top: 16px; padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+  .detail .well { aspect-ratio: 1; position: relative; padding: 14%; }
+  .detail .well canvas { position: absolute; inset: 6%; width: 88%; height: 88%; }
+  .detail .well > svg, .detail .well > img { width: 100%; height: 100%; }
+  .detail h3 { font-size: 1.5rem; letter-spacing: -0.035em; }
+  .reads { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0 14px; font-size: 0.875rem; margin: 0; }
+  .reads dt, .reads dd { border-top: 1px solid var(--rule); padding: 8px 0; margin: 0; } .reads dt { color: var(--ink-muted); }
+  .reads dd b { font-weight: 500; }
+  /* empty */
+  .empty { display: flex; flex-direction: column; gap: 18px; max-width: 760px; }
+  .empty .drawer { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .empty .well { aspect-ratio: 1; padding: 16%; } .empty .well svg { width: 100%; height: 100%; }
+  .empty .ghost { fill: none; stroke: var(--ink-muted); stroke-width: 2; stroke-dasharray: 3 6; opacity: 0.55; }
+  .empty .cap { font-size: 0.75rem; color: var(--ink-muted); text-align: center; margin-top: 6px; }
+  /* share image: a fixed 1200 x 630 card, scaled to fit */
+  .sharewrap { width: 100%; overflow: hidden; }
+  #share { width: 1200px; height: 630px; transform-origin: 0 0; background: var(--paper-2); border: 1px solid var(--rule); border-radius: 18px; padding: 48px 56px; display: grid; grid-template-columns: 400px minmax(0, 1fr); gap: 48px; align-items: center; position: relative; }
+  #share .geo { width: 400px; height: 400px; }
+  #share .kicker { font-size: 20px; color: var(--ink-muted); }
+  #share h2 { font-size: 52px; line-height: 1.04; letter-spacing: -0.04em; margin: 8px 0 14px; }
+  #share .facts { font-size: 20px; color: var(--ink-2); }
+  #share .rowstones { display: flex; gap: 10px; margin-top: 30px; } #share .rowstones div { width: 76px; text-align: center; font-size: 12px; line-height: 1.2; color: var(--ink-muted); } #share .rowstones img { width: 76px; height: 76px; }
+  #share .brand { position: absolute; right: 56px; bottom: 40px; font-family: var(--font-display); font-weight: 600; font-size: 22px; letter-spacing: -0.03em; }
+  @media (max-width: 900px) { .layout { grid-template-columns: minmax(0, 1fr); } .detail { position: static; } .empty .drawer { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+</style>
+</head>
+<body>
+<main class="page" style="gap:28px">
+  <div class="controls" aria-label="Prototype controls">
+    <span class="muted">Prototype controls. Show:</span>
+    <button class="btn" type="button" data-view="wall">The wall</button>
+    <button class="btn" type="button" data-view="empty">A new learner</button>
+    <button class="btn" type="button" data-view="share">The share image</button>
+    <span class="muted" style="margin-left:auto">Click a stone to read it. Try “Polish now” on one that is ready.</span>
+  </div>
+
+  <div id="view-wall" class="layout">
+    <div class="stack loose">
+      <div class="stack">
+        <div class="wallhead"><h1>Stones</h1><span class="muted" id="summary"></span></div>
+        <div class="key6" id="key6" aria-label="What the shapes mean"></div>
+      </div>
+      <div id="missions" class="stack" style="gap:36px"></div>
+    </div>
+    <aside class="panel detail" id="detail" aria-live="polite"></aside>
+  </div>
+
+  <div id="view-empty" hidden>
+    <div class="empty">
+      <div class="stack"><h1>Stones</h1>
+        <p>Nothing here yet. Each idea you prove becomes a stone, and this is where they are kept.</p></div>
+      <section class="mission"><header><h2>Your first mission</h2><span class="muted small">0 stones</span></header>
+        <div class="drawer" id="ghosts"></div></section>
+      <div class="stack">
+        <p>Answer a question right and a shard lands on the idea it was about. Three shards on one idea make its stone. The shape will tell you what kind of idea it is.</p>
+        <div class="row"><a class="btn primary" href="3-earning.html" style="display:inline-flex;align-items:center;text-decoration:none">Start a quiz</a></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="view-share" hidden>
+    <div class="stack">
+      <h1>One image for a finished mission</h1>
+      <p>1200 by 630, the size link previews use. It follows the light or dark theme. The geode carries one band per stone, so the picture is specific to this learner and this mission.</p>
+      <div class="sharewrap" id="sharewrap"><div id="share"></div></div>
+    </div>
+  </div>
+</main>
+<script src="lib/stones.js"></script>
+<script src="lib/shader.js"></script>
+<script src="lib/data.js"></script>
+<script src="lib/board.js"></script>
+<script>
+(function () {
+  const S = Stones, D = StoneData, $ = (id) => document.getElementById(id), NEED = D.SHARDS_PER_STONE;
+  const params = new URLSearchParams(location.search);
+  const all = () => D.MISSIONS.flatMap((m) => m.concepts);
+  const forming = (c) => c.shards != null && c.shards < NEED;
+  const glintSvg = '<svg class="glint" viewBox="0 0 20 20" aria-hidden="true"><path d="M10,0Q11,9 20,10Q11,11 10,20Q9,11 0,10Q9,9 10,0Z" fill="#fff" stroke="oklch(70% 0.19 40)" stroke-width="1.2"/></svg>';
+  let selected = params.get("select") || "r2", glView = null;
+  const glItems = [{ spec: null, x: 0, y: 0, size: 10 }];
+
+  function art(c, size, id) {
+    if (forming(c)) return S.drawForming(D.spec(c), c.shards, NEED, { id: id || "w" + c.id }).svg;
+    return S.stoneImg(D.spec(c), size, S.stoneName(D.spec(c)));
+  }
+  function renderWall() {
+    const cs = all(), f = cs.filter(forming).length, r = cs.filter((c) => c.ready).length;
+    $("summary").textContent = `${cs.length - f} stones, ${f} forming, ${r} ready to polish`;
+    $("missions").innerHTML = D.MISSIONS.map((m) => {
+      const made = m.concepts.filter((c) => !forming(c)).length;
+      const geode = m.done ? `<img class="geode" src="${S.dataUrl(S.drawGeode(m.concepts.map(D.spec), S.fnv(m.id)))}" alt="Geode for this finished mission">` : "";
+      return `<section class="mission"><header>${geode}<h2>${m.name}</h2><span class="readout muted">${m.date}</span><span class="small muted">${m.done ? "All " + made + " stones" : made + " of " + m.concepts.length + " stones"}</span>${m.done ? '<button class="btn" type="button" data-share="1">Share image</button>' : ""}</header>
+        <div class="drawer">${m.concepts.map((c) => {
+          const spec = D.spec(c), chip = forming(c) ? `<span class="chip">${c.shards} of ${NEED} shards</span>` : c.ready ? '<span class="chip signal">Ready to polish</span>' : "";
+          return `<button class="tile" type="button" data-id="${c.id}" aria-current="${c.id === selected}"><div class="well">${art(c, 132)}${c.ready ? glintSvg : ""}</div><div class="t">${c.name}</div><div class="s">${forming(c) ? "Forming" : S.stoneName(spec)}</div>${chip}</button>`;
+        }).join("")}</div></section>`;
+    }).join("");
+    document.querySelectorAll(".tile").forEach((b) => b.addEventListener("click", () => { selected = b.dataset.id; renderWall(); renderDetail(); }));
+    document.querySelectorAll("[data-share]").forEach((b) => b.addEventListener("click", () => show("share")));
+  }
+  function renderDetail(flash) {
+    const c = all().find((x) => x.id === selected), spec = D.spec(c), cut = S.CUT[spec.cut], mat = S.MAT[spec.material], fin = S.FIN[spec.finish];
+    const isForming = forming(c);
+    const body = isForming
+      ? `<p class="small">${c.shards} of ${NEED} shards. ${NEED - c.shards === 1 ? "One more right answer" : (NEED - c.shards) + " more right answers"} on this idea and the stone forms.</p>`
+      : `<p class="small muted">${c.ready ? "It has been a while. Review it and it moves up one finish." : "Next polish " + c.next + "."}</p>`;
+    $("detail").innerHTML = `<div class="well" id="hero">${isForming ? art(c, 280, "hero") : '<canvas aria-hidden="true"></canvas>'}</div>
+      <div class="stack tight"><div class="small muted">${c.name}</div><h3>${isForming ? "Forming" : S.stoneName(spec)}</h3></div>
+      <dl class="reads">
+        <dt>Shape</dt><dd><b>${cut.name}</b>, a ${cut.kind.toLowerCase()}. ${cut.why}</dd>
+        <dt>Material</dt><dd><b>${mat.name}</b>, for ${mat.subject.toLowerCase()}. ${mat.why}</dd>
+        <dt>Finish</dt><dd>${isForming ? "None yet. It gets one when it forms." : `<b>${fin.label}</b>. ${fin.evidence}.`}</dd>
+      </dl>${body}
+      ${c.ready ? '<button class="btn primary" type="button" id="polish">Polish now</button>' : ""}`;
+    if (!isForming) {
+      const hero = $("hero"), canvas = hero.querySelector("canvas");
+      glItems[0].spec = spec;
+      try { glView = S.GL.mount(canvas, glItems); } catch (e) { glView = null; }
+      if (glView) { drawHero(); } else { hero.innerHTML = S.stoneImg(spec, 280); }
+      if (flash) hero.animate([{ filter: "brightness(1.9) saturate(1.3)", transform: "scale(.97)" }, { filter: "brightness(1.2)", transform: "scale(1.04)", offset: 0.5 }, { filter: "brightness(1)", transform: "scale(1)" }], { duration: 420, easing: "cubic-bezier(.2,.7,.2,1)" });
+    } else glView = null;
+    const p = $("polish");
+    if (p) p.addEventListener("click", () => {
+      c.finish = S.FINISHES[Math.min(3, S.FIN[c.finish].index + 1)].key; c.ready = false; c.reviews = (c.reviews || 0) + 1; c.next = "in " + (c.reviews * 7) + " days";
+      renderWall(); renderDetail(true);
+    });
+  }
+  let pointer = null;
+  function drawHero() {
+    if (!glView) return;
+    const canvas = $("hero").querySelector("canvas"); if (!canvas) return;
+    const r = canvas.getBoundingClientRect(); glItems[0].size = r.width; glItems[0].x = 0; glItems[0].y = 0;
+    glView.draw(() => {
+      if (!pointer) return [-0.5, 0.75, 0.9];
+      const dx = (pointer[0] - (r.left + r.width / 2)) / (r.width * 1.2), dy = -(pointer[1] - (r.top + r.height / 2)) / (r.width * 1.2), l = Math.hypot(dx, dy), k = l > 1.6 ? 1.6 / l : 1;
+      return [dx * k, dy * k, 0.85];
+    });
+  }
+  let q = false;
+  window.addEventListener("pointermove", (e) => { pointer = [e.clientX, e.clientY]; if (q) return; q = true; requestAnimationFrame(() => { q = false; drawHero(); }); }, { passive: true });
+  window.addEventListener("resize", () => { drawHero(); fitShare(); });
+
+  // empty state: the six shapes as outlines, so the first screen already teaches the legend
+  $("ghosts").innerHTML = S.CUTS.map((c) => `<div><div class="well"><svg viewBox="0 0 200 200"><path class="ghost" d="${S.drawStone({ cut: c.key, material: "amber", finish: "cut", seed: 3 }).outlineD}"/></svg></div><div class="cap">${c.plural}</div></div>`).join("");
+  $("key6").innerHTML = "<span>Shape is the kind of idea:</span>" + S.CUTS.map((c) => `<span>${S.stoneImg({ cut: c.key, material: "hematite", finish: "cut", seed: 3 }, 22, "")}${c.kind}</span>`).join("") + '<span>Material is the subject. Finish is how well it has held.</span>';
+
+  // share image
+  function renderShare() {
+    const m = D.MISSIONS.find((x) => x.done), mats = [...new Set(m.concepts.map((c) => S.MAT[c.subject].name))];
+    $("share").innerHTML = `<img class="geo" src="${S.dataUrl(S.drawGeode(m.concepts.map(D.spec), S.fnv(m.id)))}" alt="">
+      <div><div class="kicker">Mission finished, ${m.span}</div><h2>${m.name}</h2>
+      <div class="facts">${m.concepts.length} ideas proven, one band each: ${mats.join(", ")}.</div>
+      <div class="rowstones">${m.concepts.map((c) => `<div>${S.stoneImg(D.spec(c), 76, "")}${c.name}</div>`).join("")}</div></div>
+      <div class="brand">Polymath</div>`;
+  }
+  function fitShare() {
+    const w = $("sharewrap").clientWidth; if (!w) return;
+    const k = Math.min(1, w / 1200); $("share").style.transform = `scale(${k})`; $("sharewrap").style.height = 630 * k + "px";
+  }
+  function show(v) {
+    ["wall", "empty", "share"].forEach((n) => { $("view-" + n).hidden = n !== v; });
+    document.querySelectorAll("[data-view]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.view === v));
+    if (v === "share") fitShare(); if (v === "wall") drawHero();
+  }
+  document.querySelectorAll("[data-view]").forEach((b) => b.addEventListener("click", () => show(b.dataset.view)));
+  renderWall(); renderDetail(); renderShare(); show(params.get("view") || "wall");
+})();
+</script>
+</body>
+</html>
