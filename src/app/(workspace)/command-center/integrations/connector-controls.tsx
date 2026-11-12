@@ -1,7 +1,10 @@
 "use client";
 
+import { Pencil, RefreshCw, Star } from "lucide-react";
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
+import { DeleteButton } from "@/components/ui/delete-button";
+import { IconButton } from "@/components/ui/icon-button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { CAPABILITIES, PROVIDER_TIERS, type Provider } from "@/domains/integrations/capabilities";
@@ -70,36 +73,20 @@ export function AccountControls({
   return (
     <div className="flex flex-wrap items-center gap-2">
       <RenameAccount accountId={accountId} version={version} alias={alias} />
-      {status !== "revoked" ? (
-        <Button
-          size="sm"
-          variant="ghost"
-          disabled={pending}
-          onClick={() => {
-            // The confirmation names the consequence, not the button: nothing
-            // in this workspace can use the account afterwards.
-            if (!window.confirm(`Disconnect ${alias}? Nothing in Polymath will be able to read or send with it.`))
-              return;
-            act(revokeAccountAction, { accountId, expectedVersion: version });
-          }}
-        >
-          Disconnect
-        </Button>
-      ) : null}
       {status === "active" && !isDefault && provider !== undefined && PROVIDERS_WITH_WRITES.has(provider) ? (
-        <Button
-          size="sm"
-          variant="outline"
+        <IconButton
+          label="Make write default"
+          size="icon-sm"
+          icon={<Star aria-hidden />}
           disabled={pending}
           onClick={() => act(setWriteDefaultAction, { accountId, expectedVersion: version })}
-        >
-          Make write default
-        </Button>
+        />
       ) : null}
       {(provider === "google-calendar" || provider === "notion") && status === "active" ? (
-        <Button
-          size="sm"
-          variant="outline"
+        <IconButton
+          label="Sync now"
+          size="icon-sm"
+          icon={<RefreshCw aria-hidden />}
           disabled={pending}
           onClick={() => {
             setError(null);
@@ -108,9 +95,21 @@ export function AccountControls({
               setError(result.ok ? `Synced: ${result.summary}` : result.error);
             });
           }}
-        >
-          Sync now
-        </Button>
+        />
+      ) : null}
+      {status !== "revoked" ? (
+        // No undo: reconnecting is the way back.
+        <DeleteButton
+          label="Disconnect account"
+          size="icon-sm"
+          deletedMessage="Account disconnected"
+          confirmHint="Click again to disconnect. Nothing here can read or send with it after."
+          disabled={pending}
+          onDelete={async () => {
+            const result = await revokeAccountAction({ accountId, expectedVersion: version });
+            if (!result.ok) throw new Error(result.error);
+          }}
+        />
       ) : null}
       {provider === "gmail" ? (
         <SenderProposalsRow
@@ -221,17 +220,16 @@ function RenameAccount({ accountId, version, alias }: { accountId: string; versi
 
   if (!editing) {
     return (
-      <Button
-        size="sm"
-        variant="ghost"
+      <IconButton
+        label="Rename account"
+        size="icon-sm"
+        icon={<Pencil aria-hidden />}
         onClick={() => {
           setName(alias);
           setError(null);
           setEditing(true);
         }}
-      >
-        Rename
-      </Button>
+      />
     );
   }
 

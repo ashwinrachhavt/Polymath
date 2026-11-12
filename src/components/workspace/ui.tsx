@@ -9,18 +9,28 @@ export function Screen({
   title,
   description,
   actions,
+  leading,
   children,
 }: {
   title: string;
   description?: string;
   actions?: ReactNode;
+  /** A control before the title, such as a back button; omitted, the heading is unchanged. */
+  leading?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <div className="suite-screen">
       <header className="screen-heading">
         <div className="min-w-0 flex-1">
-          <h1 className="screen-title">{title}</h1>
+          {leading ? (
+            <div className="flex items-center gap-2">
+              {leading}
+              <h1 className="screen-title min-w-0">{title}</h1>
+            </div>
+          ) : (
+            <h1 className="screen-title">{title}</h1>
+          )}
           {description && <p className="screen-description">{description}</p>}
         </div>
         {actions && <div className="screen-actions">{actions}</div>}

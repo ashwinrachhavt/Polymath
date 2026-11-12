@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Popover } from "radix-ui";
 import { cn } from "cn";
 import { Activity, Settings, UserRound } from "lucide-react";
+import { Tooltip } from "@/components/ui/tooltip";
 
 /* Shared account-menu pieces with no Clerk imports, so the anonymous menu
  * never pulls the Clerk runtime into the bundle. */
@@ -31,16 +32,21 @@ export function MenuItem({
 export function AnonymousMenu({ signInSlot }: { signInSlot?: React.ReactNode }) {
   return (
     <Popover.Root>
-      <Popover.Trigger
-        aria-label="Open account menu"
-        className={cn(
-          "text-muted-foreground hover:bg-muted hover:text-foreground flex size-7 items-center justify-center rounded-md outline-none",
-          "focus-visible:ring-ring focus-visible:ring-3",
-          "data-[state=open]:bg-muted data-[state=open]:text-foreground",
-        )}
-      >
-        <UserRound aria-hidden className="size-4" />
-      </Popover.Trigger>
+      <Tooltip content="Account">
+        <Popover.Trigger asChild>
+          <button
+            type="button"
+            aria-label="Open account menu"
+            className={cn(
+              "text-muted-foreground hover:bg-muted hover:text-foreground flex size-7 items-center justify-center rounded-md outline-none",
+              "focus-visible:ring-ring focus-visible:ring-3",
+              "data-[state=open]:bg-muted data-[state=open]:text-foreground",
+            )}
+          >
+            <UserRound aria-hidden className="size-4" />
+          </button>
+        </Popover.Trigger>
+      </Tooltip>
       <Popover.Portal>
         <Popover.Content
           align="end"

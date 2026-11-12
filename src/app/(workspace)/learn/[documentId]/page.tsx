@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { io } from "next/cache";
 import { Suspense } from "react";
@@ -8,6 +7,7 @@ import { LEARNING_JOB_KIND_PREFIX, learningJobSubject } from "@/domains/learning
 import { getLearnLibrary, getQuizForSitting } from "@/domains/learning/queries";
 import { getArtifactFeedback } from "@/domains/knowledge/artifact-feedback";
 import { getAuthContext } from "@/lib/auth";
+import { BackToLearn } from "../back-to-learn";
 import { GenerateQuizButton } from "../quiz-action";
 import { QuizRunner } from "./quiz-runner";
 
@@ -29,18 +29,12 @@ async function QuizShell({ documentId }: { documentId: string }) {
 
   if (!row.quizzable) {
     return (
-      <Screen title={row.title} description="Still reading this document.">
+      <Screen title={row.title} description="Still reading this document." leading={<BackToLearn />}>
         <Panel title="Not ready to quiz">
           <p className="text-body-dense text-muted-foreground">
             Quizzes are built from a document&apos;s read text, and this one has none yet. Its state shows honestly on
             the Learn page the moment reading finishes.
           </p>
-          <Link
-            href="/learn"
-            className="mt-3 inline-block text-body-dense font-medium underline-offset-4 hover:underline"
-          >
-            Back to Learn
-          </Link>
         </Panel>
       </Screen>
     );
@@ -55,7 +49,7 @@ async function QuizShell({ documentId }: { documentId: string }) {
   ]);
   if (!quiz) {
     return (
-      <Screen title={row.title} description="No quiz yet.">
+      <Screen title={row.title} leading={<BackToLearn />}>
         <Panel
           title="No quiz yet"
           description="Generate a short graded quiz from this document's text. Finishing one earns stones."
@@ -66,9 +60,6 @@ async function QuizShell({ documentId }: { documentId: string }) {
             out, generation says so instead of shipping a weak quiz.
           </p>
         </Panel>
-        <Link href="/learn" className="text-body-dense font-medium underline-offset-4 hover:underline">
-          Back to Learn
-        </Link>
       </Screen>
     );
   }
@@ -80,14 +71,12 @@ async function QuizShell({ documentId }: { documentId: string }) {
       description={
         row.bestCorrect !== null
           ? `Best score ${row.bestCorrect}/${row.questionCount ?? quiz.questions.length} on the latest quiz.`
-          : "A short graded quiz over what you saved."
+          : undefined
       }
+      leading={<BackToLearn />}
       actions={<GenerateQuizButton documentId={row.documentId} initialJobs={quizJobs} label="Regenerate" />}
     >
       <QuizRunner quiz={quiz} rating={rating} />
-      <Link href="/learn" className="text-body-dense font-medium underline-offset-4 hover:underline">
-        Back to Learn
-      </Link>
     </Screen>
   );
 }

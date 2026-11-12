@@ -26,6 +26,7 @@ export function DeleteButton({
   onDelete,
   undo,
   deletedMessage = "Deleted",
+  confirmHint = "Click again to delete",
   showLabel = false,
   side,
   size = "icon",
@@ -38,6 +39,8 @@ export function DeleteButton({
   /** Restores the item; offered as "Undo" in the toast. */
   undo?: () => void | Promise<void>;
   deletedMessage?: string;
+  /** The armed hint; name the consequence when it is not obvious ("Click again to disconnect. Sends stop."). */
+  confirmHint?: string;
   /** Show the word beside the icon, for places an icon alone is ambiguous. */
   showLabel?: boolean;
   side?: TooltipSide;
@@ -55,7 +58,7 @@ export function DeleteButton({
   }, [phase]);
 
   const armed = phase === "armed";
-  const hint = armed ? "Click again to delete" : label;
+  const hint = armed ? confirmHint : label;
 
   async function confirm() {
     setPhase("deleting");

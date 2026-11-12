@@ -364,7 +364,7 @@ test("Learn this: one primary action makes flashcards that open in place", async
     expect(Number.parseInt(countText, 10)).toBeGreaterThanOrEqual(5);
 
     // Opening it reviews the deck right here, on the Notebook.
-    await deckCard.getByRole("button", { name: "Open" }).click();
+    await deckCard.getByRole("button", { name: "Open result" }).click();
     await expect(deckCard.getByText(/^Card 1 of \d+$/)).toBeVisible();
     await deckCard.getByRole("button", { name: "Show answer" }).click();
     await expect(deckCard.getByText("How well did you recall it?")).toBeVisible();

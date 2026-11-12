@@ -21,16 +21,9 @@ export function ConceptOverviewSection({ overview }: { overview: ConceptOverview
 
   return (
     <section aria-labelledby="concepts-title" className="panel mt-4 rounded-xl p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 id="concepts-title" className="font-medium">
-            What you know
-          </h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Each idea your quizzes, cards and explanations cover, and whether you have proven it with no help.
-          </p>
-        </div>
-      </div>
+      <h2 id="concepts-title" className="font-medium">
+        What you know
+      </h2>
       {concepts.length === 0 ? (
         <p className="mt-3 text-sm text-muted-foreground">
           Nothing to show yet. Make a quiz, flashcards or an Explain It session and the ideas they cover appear here.

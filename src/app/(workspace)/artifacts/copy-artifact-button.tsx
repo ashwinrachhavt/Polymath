@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Copy } from "lucide-react";
+import { IconButton } from "@/components/ui/icon-button";
 
 /*
  * Copies the artifact's markdown to the clipboard. The toolbar used to show
@@ -26,9 +27,9 @@ export function CopyArtifactButton({ text }: { text: string }) {
           Copy failed
         </span>
       ) : null}
-      <button
-        type="button"
-        aria-label="Copy artifact markdown"
+      <IconButton
+        label="Copy artifact markdown"
+        icon={<Copy aria-hidden />}
         onClick={async () => {
           setCopied(false);
           setFailed(false);
@@ -39,10 +40,7 @@ export function CopyArtifactButton({ text }: { text: string }) {
             setFailed(true);
           }
         }}
-        className="rounded-md p-1.5 hover:bg-muted"
-      >
-        <Copy aria-hidden className="size-4" />
-      </button>
+      />
     </span>
   );
 }

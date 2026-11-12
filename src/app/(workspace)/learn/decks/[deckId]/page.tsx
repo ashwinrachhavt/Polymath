@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { io } from "next/cache";
 import { Suspense } from "react";
@@ -8,6 +7,7 @@ import { getArtifactFeedback } from "@/domains/knowledge/artifact-feedback";
 import { getFlashcardDeck } from "@/domains/learning/flashcards";
 import { deckReviewHref } from "@/domains/learning/review-href";
 import { getAuthContext } from "@/lib/auth";
+import { BackToLearn } from "../../back-to-learn";
 
 export const metadata = { title: "Flashcards · Polymath" };
 
@@ -42,11 +42,11 @@ async function DeckReview({ params }: { params: Promise<{ deckId: string }> }) {
   const sources = deck.sourceManifest.length > 1 ? deck.sourceManifest.map((source) => source.title).join(", ") : null;
   return (
     <div className="page-content">
-      <div className="mb-5">
-        <Link href="/learn" className="text-sm text-muted-foreground underline-offset-4 hover:underline">
-          Back to Learn
-        </Link>
-        <h1 className="mt-2 text-xl font-medium">Flashcards</h1>
+      <div className="mb-4">
+        <div className="flex items-center gap-2">
+          <BackToLearn />
+          <h1 className="min-w-0 text-xl font-medium">Flashcards</h1>
+        </div>
         {sources ? <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">From {sources}</p> : null}
       </div>
       <FlashcardSession

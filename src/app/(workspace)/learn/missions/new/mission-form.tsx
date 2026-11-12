@@ -1,7 +1,6 @@
 "use client";
 
 import { FileText, Inbox, Search, X } from "lucide-react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { cn } from "cn";
@@ -216,12 +215,7 @@ export function MissionForm({ initialSources }: { initialSources: LearningSource
             {pending ? "Starting…" : "Find my concepts"}
           </Button>
         </div>
-        <p className="text-xs text-muted-foreground">
-          You will review the concepts before anything starts.{" "}
-          <Link href="/learn" className="underline underline-offset-4">
-            Back to Learn
-          </Link>
-        </p>
+        <p className="text-xs text-muted-foreground">You will review the concepts before anything starts.</p>
       </div>
     </section>
   );

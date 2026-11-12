@@ -7,6 +7,7 @@ import { Popover } from "radix-ui";
 import { Grip } from "lucide-react";
 import { cn } from "cn";
 import { destinationForPath, destinations } from "@/lib/navigation";
+import { Tooltip } from "@/components/ui/tooltip";
 
 /*
  * The destination launcher, top right next to the account menu: one grid
@@ -25,17 +26,21 @@ export function AppLauncher() {
 
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
-      <Popover.Trigger
-        aria-label="Open destinations"
-        title="Destinations"
-        className={cn(
-          "text-muted-foreground hover:bg-muted hover:text-foreground flex size-8 items-center justify-center rounded-md outline-none",
-          "focus-visible:ring-ring focus-visible:ring-3",
-          "data-[state=open]:bg-muted data-[state=open]:text-foreground",
-        )}
-      >
-        <Grip aria-hidden className="size-4" />
-      </Popover.Trigger>
+      <Tooltip content="Destinations">
+        <Popover.Trigger asChild>
+          <button
+            type="button"
+            aria-label="Open destinations"
+            className={cn(
+              "text-muted-foreground hover:bg-muted hover:text-foreground flex size-8 items-center justify-center rounded-md outline-none",
+              "focus-visible:ring-ring focus-visible:ring-3",
+              "data-[state=open]:bg-muted data-[state=open]:text-foreground",
+            )}
+          >
+            <Grip aria-hidden className="size-4" />
+          </button>
+        </Popover.Trigger>
+      </Tooltip>
 
       <Popover.Portal>
         <Popover.Content

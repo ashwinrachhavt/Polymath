@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { inspectSource, parseSource } from "@/domains/skills/inspect";
 import { bundledSkill } from "@/domains/skills/bundled";
-import { installSkill, removeSkill, setSkillEnabled } from "@/domains/skills/commands";
+import { installSkill, removeSkill, restoreSkill, setSkillEnabled } from "@/domains/skills/commands";
 import { contentHashOf } from "@/domains/skills/package";
 import type { InspectResult, SourceRequest } from "@/domains/skills/sources/types";
 import { getAuthContext, type AuthContext } from "@/lib/auth";
@@ -66,10 +66,7 @@ function discoveryOf(result: Extract<InspectResult, { ok: true }>): InspectActio
  * checked against what is on disk instead and a moved folder is refused rather
  * than installed as something the person never saw.
  */
-async function inspectPinned(
-  request: SourceRequest,
-  revision: string,
-): Promise<InspectResult> {
+async function inspectPinned(request: SourceRequest, revision: string): Promise<InspectResult> {
   // A commit is a real pin; a folder has no history, so the local adapter
   // re-reads it and the caller compares the revision it reported.
   return inspectSource(request.kind === "github" ? { ...request, ref: revision } : request);
@@ -119,9 +116,7 @@ export async function installSkillAction(input: {
     };
   }
 
-  const skill = result.skills.find(
-    (candidate) => (candidate.sourcePath ?? candidate.slug) === parsed.data.sourcePath,
-  );
+  const skill = result.skills.find((candidate) => (candidate.sourcePath ?? candidate.slug) === parsed.data.sourcePath);
   if (!skill) {
     return {
       ok: false,
@@ -244,10 +239,7 @@ export async function createAuthoredSkillAction(input: {
   }
 }
 
-export async function setSkillEnabledAction(input: {
-  id: string;
-  enabled: boolean;
-}): Promise<SkillWriteAction> {
+export async function setSkillEnabledAction(input: { id: string; enabled: boolean }): Promise<SkillWriteAction> {
   const auth = await authorize();
   const parsed = enabledInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "That skill no longer exists." };
@@ -267,6 +259,25 @@ export async function removeSkillAction(input: { id: string }): Promise<SkillWri
 
   const { removed } = await removeSkill(auth, parsed.data);
   if (!removed) return { ok: false, error: "That skill no longer exists. Refresh to see the list." };
+  revalidate();
+  return { ok: true };
+}
+
+export async function restoreSkillAction(input: { id: string }): Promise<SkillWriteAction> {
+  const auth = await authorize();
+  const parsed = removeInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "That skill no longer exists." };
+
+  const result = await restoreSkill(auth, parsed.data);
+  if (!result.restored) {
+    return {
+      ok: false,
+      error:
+        result.reason === "reinstalled"
+          ? "That skill was installed again, so the removed copy stays removed."
+          : "That skill no longer exists. Refresh to see the list.",
+    };
+  }
   revalidate();
   return { ok: true };
 }

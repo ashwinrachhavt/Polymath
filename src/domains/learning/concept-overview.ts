@@ -84,12 +84,13 @@ export async function getConceptOverview(auth: AuthContext): Promise<ConceptOver
   `);
 
   // Concepts a Mission plans, at zero coverage. `coalesce` below keeps an
-  // item-backed concept's real counts when it is also in a Mission.
+  // item-backed concept's real counts when it is also in a Mission. A deleted
+  // (archived) Mission no longer plans anything.
   const missionRows = await db.execute<{ concept_id: string }>(sql`
     select distinct mc.concept_id
     from mission_concepts mc
     join missions m on m.id = mc.mission_id
-    where mc.workspace_id = ${auth.workspaceId}
+    where mc.workspace_id = ${auth.workspaceId} and m.status <> 'archived'
   `);
 
   const attemptRows = await db.execute<AttemptsRow>(sql`

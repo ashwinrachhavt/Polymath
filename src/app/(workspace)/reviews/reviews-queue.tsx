@@ -3,7 +3,9 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useOptimistic, useRef, useState, useTransition, type ReactNode } from "react";
 import { cn } from "cn";
+import { Pencil, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { IconButton } from "@/components/ui/icon-button";
 import { Textarea } from "@/components/ui/textarea";
 import { Check } from "@/components/products/command-center/controls";
 import { Field, Panel, Status } from "@/components/workspace/ui";
@@ -304,9 +306,14 @@ function ProposalCard({
             >
               Reject
             </Button>
-            <Button size="sm" variant="ghost" disabled={!item.latestRevision} onClick={() => setEditing(!editing)}>
-              {editing ? "Close editor" : "Edit payload"}
-            </Button>
+            <IconButton
+              label={editing ? "Close editor" : "Edit payload"}
+              icon={editing ? <X aria-hidden /> : <Pencil aria-hidden />}
+              size="icon-sm"
+              aria-expanded={editing}
+              disabled={!item.latestRevision}
+              onClick={() => setEditing(!editing)}
+            />
           </div>
           {editing && item.latestRevision ? (
             <div className="grid gap-2 border-t border-border pt-3">
