@@ -162,7 +162,7 @@
   }
 
   // C: existing plates, varied by code
-  const plates = [["topaz", "", "brilliant"], ["garnet", "grayscale(1) brightness(.55) contrast(1.5)", "polished"], ["ruby", "hue-rotate(150deg) saturate(.9)", "polished"], ["diamond", "brightness(.72) contrast(1.35)", "cut"], ["diamond", "sepia(1) hue-rotate(175deg) saturate(.7) brightness(1.05)", "polished"], ["ruby", "hue-rotate(238deg) saturate(1.1)", "star"]];
+  const plates = [["topaz", "", "brilliant"], ["diamond", "brightness(.72) contrast(1.35)", "polished"], ["ruby", "hue-rotate(150deg) saturate(.9)", "polished"], ["garnet", "grayscale(1) brightness(.55) contrast(1.5)", "cut"], ["diamond", "sepia(1) hue-rotate(175deg) saturate(.7) brightness(1.05)", "polished"], ["ruby", "hue-rotate(238deg) saturate(1.1)", "star"]];
   const glint = (x, y, s) => `<path d="M${x},${y - s}Q${x + 1},${y - 1} ${x + s},${y}Q${x + 1},${y + 1} ${x},${y + s}Q${x - 1},${y + 1} ${x - s},${y}Q${x - 1},${y - 1} ${x},${y - s}Z" fill="#fff"/>`;
   document.getElementById("row-c").innerHTML = D.SAMPLES.map((c, i) => {
     const [p, filter, fin] = plates[i];
@@ -173,9 +173,9 @@
   const base = "Studio product photograph of a single mineral specimen, seen from directly above, centred, filling about 70 percent of a square frame. Soft diffuse light from the upper left, one crisp highlight. Perfectly flat pure white background, no shadow, no text, no props.";
   document.getElementById("prompts").textContent = [
     "Amber Prism: a hexagonal step-cut gemstone of honey-yellow amber, transparent, concentric hexagonal facets and a small flat hexagonal top, a few tiny inclusions.",
-    "Obsidian Point: a knapped spearhead of black volcanic glass, a tall kite outline with its narrow tip pointing up, glossy, faint violet and teal sheen.",
+    "Hematite Point: a spearhead of polished grey hematite, a tall kite outline with its narrow tip pointing up, steel lustre.",
     "Malachite Delta: a triangular cut stone of green malachite with clipped corners and bevelled edges, opaque, concentric dark and light green bands.",
-    "Hematite Terrace: a rectangular step-cut stone with clipped corners in polished grey hematite, steel lustre, wider than tall.",
+    "Obsidian Terrace: a rectangular step-cut stone with clipped corners in black volcanic glass, glossy, faint violet and teal sheen, wider than tall.",
     "Moonstone Pebble: a smooth oval tumbled moonstone, milky and translucent with a soft blue glow inside, no facets, wider than tall.",
     "Azurite Baton: a long slim hexagonal baguette-cut gemstone of deep blue azurite with pointed ends, lying diagonally.",
   ].join("\n") + "\n\nAppended to each: " + base;

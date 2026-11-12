@@ -76,17 +76,17 @@
   ];
   // Material = the subject it belongs to. Palettes run darkest first.
   const MATERIALS = [
-    { key: "obsidian", name: "Obsidian", subject: "Code and languages", look: "glass", pal: ["#07080c", "#161a24", "#2a3140", "#5d6c88", "#b6cfe0"], accent: "#7a5cff", accent2: "#2fd6c0", why: "Dark, sharp glass." },
-    { key: "hematite", name: "Hematite", subject: "Systems and infrastructure", look: "metal", pal: ["#16181d", "#343a44", "#6b7380", "#aab2bd", "#f1f4f8"], accent: "#8fa3c2", why: "Iron, the stuff of machines." },
+    { key: "amethyst", name: "Amethyst", subject: "Languages and syntax", look: "clear", pal: ["#260d4f", "#51229c", "#8649d9", "#bc90f6", "#f0e3ff"], accent: "#ff8ad8", why: "Many small faces, one crystal." },
+    { key: "peridot", name: "Peridot", subject: "Software design", look: "clear", pal: ["#33420a", "#637f10", "#9cbf22", "#cfe566", "#f8ffcc"], accent: "#ffd84a", why: "Clean, bright and well cut." },
+    { key: "hematite", name: "Hematite", subject: "Tools and workflow", look: "metal", pal: ["#16181d", "#343a44", "#6b7380", "#aab2bd", "#f1f4f8"], accent: "#8fa3c2", why: "Iron, the stuff of tools." },
+    { key: "obsidian", name: "Obsidian", subject: "Systems and security", look: "glass", pal: ["#07080c", "#161a24", "#2a3140", "#5d6c88", "#b6cfe0"], accent: "#7a5cff", accent2: "#2fd6c0", why: "Dark, sharp glass." },
     { key: "azurite", name: "Azurite", subject: "Data and AI", look: "clear", pal: ["#071a5e", "#1436a6", "#2a5be0", "#74a0ff", "#d6e4ff"], accent: "#59e0ff", why: "Deep water." },
     { key: "fluorite", name: "Fluorite", subject: "Maths and logic", look: "clear", pal: ["#083f45", "#107874", "#2fb3a3", "#8de3cf", "#e6fff6"], accent: "#8a6cf0", why: "Grows in perfect cubes." },
     { key: "malachite", name: "Malachite", subject: "Science and nature", look: "banded", pal: ["#042a1b", "#0a5236", "#168457", "#52c08e", "#c6f2d6"], accent: "#0a3f2a", why: "Growth rings in green." },
-    { key: "peridot", name: "Peridot", subject: "Arts and music", look: "clear", pal: ["#33420a", "#637f10", "#9cbf22", "#cfe566", "#f8ffcc"], accent: "#ffd84a", why: "A bright, high note." },
     { key: "amber", name: "Amber", subject: "Writing and language", look: "clear", pal: ["#552503", "#9a5205", "#dc8c0c", "#f7bf45", "#fff1bd"], accent: "#ff6a1f", why: "Keeps what it holds." },
     { key: "copper", name: "Copper", subject: "Business and strategy", look: "metal", pal: ["#3d160a", "#823415", "#c26536", "#eda67b", "#ffe6d3"], accent: "#3fa796", why: "The metal of trade." },
-    { key: "jasper", name: "Jasper", subject: "History and society", look: "banded", pal: ["#350d08", "#742213", "#ad4229", "#d98a5a", "#f4d6ad"], accent: "#d9a441", why: "Old earth, laid down in layers." },
-    { key: "coral", name: "Coral", subject: "Design and craft", look: "milky", pal: ["#77192b", "#bf3d57", "#ee7187", "#ffaab4", "#ffe6e7"], accent: "#ffd0a8", why: "Built by many small hands." },
-    { key: "amethyst", name: "Amethyst", subject: "Philosophy and ideas", look: "clear", pal: ["#260d4f", "#51229c", "#8649d9", "#bc90f6", "#f0e3ff"], accent: "#ff8ad8", why: "Long prized for a clear head." },
+    { key: "coral", name: "Coral", subject: "Design and the arts", look: "milky", pal: ["#77192b", "#bf3d57", "#ee7187", "#ffaab4", "#ffe6e7"], accent: "#ffd0a8", why: "Built by many small hands." },
+    { key: "jasper", name: "Jasper", subject: "History and ideas", look: "banded", pal: ["#350d08", "#742213", "#ad4229", "#d98a5a", "#f4d6ad"], accent: "#d9a441", why: "Old earth, laid down in layers." },
     { key: "moonstone", name: "Moonstone", subject: "People and mind", look: "milky", pal: ["#56688a", "#8fa3c2", "#c7d5ea", "#edf3fb", "#ffffff"], accent: "#6fb0ff", why: "Lit from the inside." },
   ];
   // Finish = how well the idea has held up. It only ever goes up.

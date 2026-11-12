@@ -5,9 +5,9 @@
   const c = (id, name, kind, subject, finish, extra) => Object.assign({ id, name, kind, subject, finish }, extra || {});
   const SAMPLES = [
     c("c-show", "Show, don't tell", "prism", "amber", "brilliant"),
-    c("c-bisect", "git bisect", "point", "obsidian", "polished"),
+    c("c-bisect", "git bisect", "point", "hematite", "polished"),
     c("c-loops", "Feedback loops", "delta", "malachite", "polished"),
-    c("c-tcp", "TCP handshake", "terrace", "hematite", "cut"),
+    c("c-tcp", "TCP handshake", "terrace", "obsidian", "cut"),
     c("c-memory", "Working memory holds about four items", "pebble", "moonstone", "polished"),
     c("c-cv", "Cross-validation", "baton", "azurite", "star"),
   ];
@@ -15,15 +15,15 @@
     {
       id: "m-rust", name: "Ship a Rust command-line tool", date: "Due 12 Dec", done: false,
       concepts: [
-        c("r1", "Ownership moves by default", "prism", "obsidian", "brilliant", { reviews: 4, next: "in 23 days" }),
-        c("r2", "Borrow checker", "terrace", "obsidian", "polished", { ready: true, reviews: 1, next: "today" }),
-        c("r3", "Exponential backoff", "delta", "hematite", "polished", { reviews: 2, next: "in 6 days" }),
+        c("r1", "Ownership moves by default", "prism", "amethyst", "brilliant", { reviews: 4, next: "in 23 days" }),
+        c("r2", "Borrow checker", "terrace", "amethyst", "polished", { ready: true, reviews: 1, next: "today" }),
+        c("r3", "Exponential backoff", "delta", "obsidian", "polished", { reviews: 2, next: "in 6 days" }),
         c("r4", "Big-O notation", "point", "fluorite", "star", { reviews: 9, next: "in 4 months" }),
-        c("r5", "git bisect", "point", "obsidian", "cut", { reviews: 0, next: "in 2 days" }),
-        c("r6", "Exit codes: 0 means success", "pebble", "hematite", "polished", { ready: true, reviews: 1, next: "today" }),
-        c("r7", "Test-driven development", "baton", "obsidian", "cut", { reviews: 0, next: "tomorrow" }),
-        c("r8", "Builder pattern", "delta", "obsidian", "cut", { shards: 2 }),
-        c("r9", "Closures capture their environment", "terrace", "obsidian", "cut", { shards: 1 }),
+        c("r5", "git bisect", "point", "hematite", "cut", { reviews: 0, next: "in 2 days" }),
+        c("r6", "Exit codes: 0 means success", "pebble", "obsidian", "polished", { ready: true, reviews: 1, next: "today" }),
+        c("r7", "Test-driven development", "baton", "hematite", "cut", { reviews: 0, next: "tomorrow" }),
+        c("r8", "Builder pattern", "delta", "peridot", "cut", { shards: 2 }),
+        c("r9", "Closures capture their environment", "terrace", "amethyst", "cut", { shards: 1 }),
       ],
     },
     {
