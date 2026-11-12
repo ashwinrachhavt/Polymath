@@ -3,6 +3,7 @@ import { learningJobRunners } from "@/domains/learning/generation-jobs";
 import { missionJobRunners } from "@/domains/learning/mission-jobs";
 import { SITE_CRAWL_KIND, siteCrawlRunner } from "@/domains/knowledge/site-crawl";
 import { YOUTUBE_ABSORB_KIND, youtubeAbsorbRunner } from "@/domains/knowledge/youtube-absorb";
+import { ZETTELIZE_KIND, zettelizeRunner } from "@/domains/capture/zettel-generation";
 import type { GenerationJobResult } from "./schema";
 
 /** What a runner is handed besides its input. */
@@ -40,5 +41,6 @@ export function generationJobRunners(): Record<string, GenerationJobRunner> {
     ...missionJobRunners,
     [SITE_CRAWL_KIND]: siteCrawlRunner(),
     [YOUTUBE_ABSORB_KIND]: youtubeAbsorbRunner(),
+    [ZETTELIZE_KIND]: zettelizeRunner(),
   };
 }

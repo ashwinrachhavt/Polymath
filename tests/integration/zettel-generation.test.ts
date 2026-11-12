@@ -1,18 +1,19 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { auditEvents, outboxEvents } from "@/domains/audit/schema";
+import { auditEvents } from "@/domains/audit/schema";
+import { generationJobs } from "@/domains/jobs/schema";
 import { captures } from "@/domains/capture/schema";
 import { artifactVersions, artifacts, documents } from "@/domains/knowledge/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
  * "Generate zettels" from the inbox (real Postgres): the request half takes a
- * receipt and queues one outbox row per open capture that carries text; the
- * work half files each capture as a library document and creates zettel cards
- * from it. The invariants this suite exists to prove:
+ * receipt and accepts one zettelize job per open capture that carries text;
+ * the work half files each capture as a library document and creates zettel
+ * cards from it. The invariants this suite exists to prove:
  *
- *   - one click is one queue entry per capture, and a replay queues nothing;
+ *   - one click is one job per capture, and a replay queues nothing;
  *   - captures with no text (a file, an unfetched link) and captured rows that
  *     already became something are not sources;
  *   - the pass creates cards directly - the triggering click is the
@@ -38,13 +39,14 @@ vi.mock("@/lib/db-transaction", () => ({
 }));
 
 import {
-  ZETTEL_GENERATION_TOPIC,
+  ZETTELIZE_KIND,
   countZettelSourceCaptures,
   listZettelSourceCaptures,
   requestZettelGeneration,
-  runZettelGenerationRequested,
+  zettelizeCapture,
+  zettelizeRunner,
 } from "@/domains/capture/zettel-generation";
-import type { ClaimedOutboxEvent } from "@/domains/audit/outbox";
+import { runGenerationJob } from "@/domains/jobs/commands";
 import type { ZettelExtractor } from "@/integrations/zettels/extractor";
 
 const BODY =
@@ -72,15 +74,12 @@ const extractor = (cands: Array<{ title: string; content: string; quote?: string
   extract: async () => cands,
 });
 
-const ownerAuthFor = (workspaceId: string) => async () => ownerAuth(workspaceOf.get(workspaceId)!, workspaceId);
-const workspaceOf = new Map<string, string>();
 
 async function seed(slug: string) {
   const { userId, workspaceId } = await seedWorkspace(
     holder.db!,
     `zgen-${slug}-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`,
   );
-  workspaceOf.set(workspaceId, userId);
   return ownerAuth(userId, workspaceId);
 }
 
@@ -112,19 +111,15 @@ async function addCapture(
   return created;
 }
 
-function event(auth: { workspaceId: string }, captureId: string): ClaimedOutboxEvent {
-  return {
-    id: crypto.randomUUID(),
-    workspaceId: auth.workspaceId,
-    topic: ZETTEL_GENERATION_TOPIC,
-    payload: { captureId },
-    attempts: 0,
-    leaseToken: crypto.randomUUID(),
-  };
+async function zettelizeJobs(workspaceId: string) {
+  return holder
+    .db!.select()
+    .from(generationJobs)
+    .where(and(eq(generationJobs.workspaceId, workspaceId), eq(generationJobs.kind, ZETTELIZE_KIND)));
 }
 
 suite("zettel generation from the inbox", () => {
-  it("queues one outbox row per capture with text and an audit row in the same commit", async () => {
+  it("accepts one zettelize job per capture with text", async () => {
     const auth = await seed("queue");
     const withText = await addCapture(auth, { text: BODY });
     await addCapture(auth, { text: "   " });
@@ -141,11 +136,10 @@ suite("zettel generation from the inbox", () => {
     expect(queued.queued).toBe(1);
     expect(queued.captureIds).toEqual([withText.id]);
 
-    const rows = await holder
-      .db!.select()
-      .from(outboxEvents)
-      .where(and(eq(outboxEvents.workspaceId, auth.workspaceId), eq(outboxEvents.topic, ZETTEL_GENERATION_TOPIC)));
-    expect(rows.map((r) => (r.payload as { captureId: string }).captureId)).toEqual([withText.id]);
+    const rows = await zettelizeJobs(auth.workspaceId);
+    expect(rows.map((r) => (r.input as { captureId: string }).captureId)).toEqual([withText.id]);
+    expect(rows[0]).toMatchObject({ status: "queued", subject: `capture:${withText.id}` });
+    expect(queued.started).toEqual([{ jobId: rows[0].id, attempt: 1 }]);
 
     // A converted capture keeps the home the owner chose.
     const again = await requestZettelGeneration(auth, { idempotencyKey: crypto.randomUUID() });
@@ -162,10 +156,7 @@ suite("zettel generation from the inbox", () => {
     expect(first.queued).toBe(1);
     expect(second).toMatchObject({ queued: 1, replayed: true });
 
-    const rows = await holder
-      .db!.select()
-      .from(outboxEvents)
-      .where(and(eq(outboxEvents.workspaceId, auth.workspaceId), eq(outboxEvents.topic, ZETTEL_GENERATION_TOPIC)));
+    const rows = await zettelizeJobs(auth.workspaceId);
     expect(rows).toHaveLength(1);
   });
 
@@ -173,8 +164,7 @@ suite("zettel generation from the inbox", () => {
     const auth = await seed("create");
     const capture = await addCapture(auth, { text: BODY });
 
-    const result = await runZettelGenerationRequested(event(auth, capture.id), {
-      auth: ownerAuthFor(auth.workspaceId),
+    const result = await zettelizeCapture(auth, { captureId: capture.id }, {
       extractor: extractor([
         { title: "One idea per zettel", content: "A zettel holds exactly one idea.", quote: Q1 },
         { title: "Invented", content: "Never written.", quote: "this passage was never in the capture" },
@@ -220,16 +210,30 @@ suite("zettel generation from the inbox", () => {
     expect(audits[0].metadata).toMatchObject({ documentId: doc.id, skippedDuplicates: 0 });
   });
 
+  it("runs as a job with its steps, and says how many cards it made", async () => {
+    const auth = await seed("job");
+    await addCapture(auth, { text: BODY });
+    const { started } = await requestZettelGeneration(auth, { idempotencyKey: crypto.randomUUID() });
+    const steps: string[] = [];
+    const runner = zettelizeRunner({ extractor: extractor([{ title: "One idea", content: "One idea.", quote: Q1 }]) });
+    await runGenerationJob(started[0], {
+      [ZETTELIZE_KIND]: (a, input, run) =>
+        runner(a, input, { ...run, progress: async (step) => void steps.push(step) }),
+    });
+    expect(steps).toEqual(["Filing the capture", "Reading it", "Writing zettels"]);
+    const [job] = await zettelizeJobs(auth.workspaceId);
+    expect(job).toMatchObject({ status: "ready", result: { href: "/polymath/ideas", notice: "Made 1 zettel." } });
+  });
+
   it("creates nothing new on a second pass over the same document", async () => {
     const auth = await seed("second-pass");
     const capture = await addCapture(auth, { text: BODY });
     const deps = {
-      auth: ownerAuthFor(auth.workspaceId),
       extractor: extractor([{ title: "One idea", content: "One idea.", quote: Q1 }]),
     };
 
-    expect((await runZettelGenerationRequested(event(auth, capture.id), deps)).created).toBe(1);
-    expect((await runZettelGenerationRequested(event(auth, capture.id), deps)).created).toBe(0);
+    expect((await zettelizeCapture(auth, { captureId: capture.id }, deps)).created).toBe(1);
+    expect((await zettelizeCapture(auth, { captureId: capture.id }, deps)).created).toBe(0);
 
     const cards = await holder
       .db!.select()
@@ -243,12 +247,11 @@ suite("zettel generation from the inbox", () => {
     const file = await addCapture(auth, { text: null, kind: "file" });
     const archived = await addCapture(auth, { text: BODY, state: "discarded" });
     const deps = {
-      auth: ownerAuthFor(auth.workspaceId),
       extractor: extractor([{ title: "One idea", content: "One idea.", quote: Q1 }]),
     };
 
-    expect((await runZettelGenerationRequested(event(auth, file.id), deps)).created).toBe(0);
-    expect((await runZettelGenerationRequested(event(auth, archived.id), deps)).created).toBe(0);
+    expect((await zettelizeCapture(auth, { captureId: file.id }, deps)).created).toBe(0);
+    expect((await zettelizeCapture(auth, { captureId: archived.id }, deps)).created).toBe(0);
 
     const sources = await listZettelSourceCaptures(auth, { ids: [file.id, archived.id] });
     expect(sources).toEqual([]);
@@ -279,11 +282,8 @@ suite("zettel generation from the inbox", () => {
 
     // Only the named capture enters the queue, even though another open
     // capture carries text: the verb acts on one capture, never the inbox.
-    const rows = await holder
-      .db!.select()
-      .from(outboxEvents)
-      .where(and(eq(outboxEvents.workspaceId, auth.workspaceId), eq(outboxEvents.topic, ZETTEL_GENERATION_TOPIC)));
-    expect(rows.map((r) => (r.payload as { captureId: string }).captureId)).toEqual([capture.id]);
+    const rows = await zettelizeJobs(auth.workspaceId);
+    expect(rows.map((r) => (r.input as { captureId: string }).captureId)).toEqual([capture.id]);
   });
 
   it("counts ineligible named captures as skipped instead of queueing them", async () => {

@@ -4,33 +4,31 @@ import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
 import {
   MAX_ZETTEL_SOURCE_CAPTURES,
-  countQueuedZettelPasses,
   countZettelSourceCaptures,
   requestZettelGeneration,
-  zettelQueueLabel,
-  zettelQueuePhase,
 } from "@/domains/capture/zettel-generation";
+import { kickGenerationJob } from "@/domains/jobs/kick";
 import { getAuthContext, type AuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 import { capturesTag } from "@/lib/cache-tags";
 
 /*
  * "Generate zettels" from the inbox: one click over the open captures that
- * carry text. The action only queues the work - a model call never runs inside
- * the request - so the button returns as soon as the outbox rows commit, and
- * the cards appear in the Ideas collection at /polymath/ideas.
+ * carry text. The action only accepts the work - a model call never runs
+ * inside the request - so the button returns as soon as one job per capture
+ * commits. Each job's progress shows in the jobs panel, and the cards appear
+ * in the Ideas collection at /polymath/ideas.
  *
  * The client sends one idempotency key per click: a double-submit returns the
- * first answer and queues nothing new. Inside a request the outbox dispatch key
- * is the second guard, so even a fresh key cannot queue a capture twice.
+ * first answer and queues nothing new.
  */
 
 export type GenerateZettelsResult =
   | {
       ok: true;
       /**
-       * Captures queued for a creation pass. The model runs in the outbox rather
-       * than inside this request, so the number of cards is not known when the
+       * Captures queued for a creation pass. The model runs in a background job
+       * rather than inside this request, so the number of cards is not known when the
        * action returns - this count is what was asked for. Reporting a card
        * total here would be a number nobody has produced yet.
        */
@@ -76,6 +74,7 @@ export async function generateZettelsAction(raw: {
     return { ok: false, message: cause instanceof Error ? cause.message : "The request did not queue." };
   }
 
+  for (const job of outcome.started) kickGenerationJob(job);
   updateTag(capturesTag(auth));
   revalidatePath("/command-center/inbox");
   revalidatePath("/polymath/ideas");
@@ -88,22 +87,4 @@ export async function generateZettelsAction(raw: {
     skipped: outcome.skipped,
     replayed: outcome.replayed,
   };
-}
-
-export type ZettelQueueStatus = { ok: true; phase: "working" | "done"; label: string } | { ok: false; message: string };
-
-/**
- * The queue-wide status read a watching verb polls: how many zettelize passes
- * are still owed. The count is the whole story - the outbox owns the work,
- * this owns the words - because the cards, not a review queue, are where the
- * outcome lands.
- */
-export async function zettelQueueStatusAction(): Promise<ZettelQueueStatus> {
-  const auth = await authorize();
-  try {
-    const counts = { queuedPasses: await countQueuedZettelPasses(auth) };
-    return { ok: true, phase: zettelQueuePhase(counts), label: zettelQueueLabel(counts) };
-  } catch (cause) {
-    return { ok: false, message: cause instanceof Error ? cause.message : "Could not read the zettel queue." };
-  }
 }

@@ -1,9 +1,10 @@
 import { and, count, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
-import { enqueueOutbox, type ClaimedOutboxEvent } from "@/domains/audit/outbox";
-import { outboxEvents } from "@/domains/audit/schema";
+import { z } from "zod";
 import { recordAudit } from "@/domains/audit/record";
 import { withReceipt } from "@/domains/audit/receipt";
 import type { AuthContext } from "@/domains/identity/resolve";
+import { submitGenerationJob } from "@/domains/jobs/commands";
+import type { GenerationJobRunner } from "@/domains/jobs/runners";
 import { EmbeddingUnconfiguredError } from "@/integrations/embeddings/provider";
 import type { ZettelExtractor } from "@/integrations/zettels/extractor";
 import { extractDocument } from "@/domains/knowledge/extraction";
@@ -19,14 +20,15 @@ import { captures } from "./schema";
  * capture.
  *
  * Two halves, deliberately split. `requestZettelGeneration` is the request
- * half: it picks the captures, takes the receipt, and enqueues one outbox row
- * per capture - all in the caller's transaction, with no model call. The
- * handler is the work half: file the capture as a library document, read its
- * text, and create the zettel cards directly. A request never waits on a
- * generation call, and the queue, not the click, carries the retries.
+ * half: it picks the captures, takes the receipt, and accepts one generation
+ * job per capture ("capture.zettelize") - all in the caller's transaction,
+ * with no model call. The runner is the work half: file the capture as a
+ * library document, read its text, and create the zettel cards directly. A
+ * request never waits on a generation call; each capture's job shows its
+ * progress in the jobs panel and fails, with a retry, on its own.
  *
  * Nothing here proposes. The triggering click is the permission, so the
- * handler writes the cards (the same authorship-is-acceptance pattern a chat
+ * runner writes the cards (the same authorship-is-acceptance pattern a chat
  * save uses) and no proposal row waits for a second decision. Dedupe stands
  * in for review: a second pass lands on the cards the first one made (same
  * span, same dedupe key), and a near-duplicate of an existing card is
@@ -35,7 +37,7 @@ import { captures } from "./schema";
  * provenance on the audit row, never an invented quotation.
  */
 
-export const ZETTEL_GENERATION_TOPIC = "capture.zettels_requested";
+export const ZETTELIZE_KIND = "capture.zettelize";
 
 /** One request is bounded: a whole inbox is many model calls, and the queue is not a batch API. */
 export const MAX_ZETTEL_SOURCE_CAPTURES = 50;
@@ -92,52 +94,31 @@ export async function countZettelSourceCaptures(auth: AuthContext, input: { ids?
   return row?.n ?? 0;
 }
 
-/** Count outbox rows that have not settled yet: the pending zettelize passes. */
-export async function countQueuedZettelPasses(auth: AuthContext): Promise<number> {
-  const [row] = await db
-    .select({ n: count() })
-    .from(outboxEvents)
-    .where(
-      and(
-        eq(outboxEvents.workspaceId, auth.workspaceId),
-        eq(outboxEvents.topic, ZETTEL_GENERATION_TOPIC),
-        // The queue is the pending rows, not the table (the partial index's
-        // own rule): dispatched rows have landed, failed rows retry.
-        eq(outboxEvents.status, "pending"),
-      ),
-    );
-  return row?.n ?? 0;
-}
-
-/**
- * The status vocabulary a watching zettelize verb speaks, derived from the
- * count that already exists: no new table, no new state machine. Working
- * counts the outbox rows still owed; done covers the rest - the cards are in
- * the library. The watch never reports failure here: a queue-wide status read
- * with zero owed rows is simply caught up.
- */
-export function zettelQueuePhase(input: { queuedPasses: number }): "working" | "done" {
-  return input.queuedPasses > 0 ? "working" : "done";
-}
-
-export function zettelQueueLabel(input: { queuedPasses: number }): string {
-  return input.queuedPasses > 0 ? "Creating zettels…" : "The ideas queue is clear.";
-}
-
 export type ZettelGenerationRequest = {
   /** Captures this request newly queued. */
   queued: number;
   /** Targets that were not eligible (no text, archived, already converted). */
   skipped: number;
   captureIds: string[];
+  /** The jobs this request accepted, to start once it has committed. */
+  started: Array<{ jobId: string; attempt: number }>;
   /** True when the key was seen before: the numbers are the first request's. */
   replayed: boolean;
 };
 
+const MAX_TITLE_CHARS = 60;
+
+/** What the job's row says: the capture's own name, short. */
+function zettelizeTitle(capture: { title: string | null }): string {
+  const name = capture.title?.trim() || "a capture";
+  return `Zettels: ${name.length > MAX_TITLE_CHARS ? `${name.slice(0, MAX_TITLE_CHARS).trimEnd()}…` : name}`;
+}
+
 /**
  * Queue a generation pass. Idempotent on `idempotencyKey`: a replay returns the
- * first request's answer and enqueues nothing. The outbox row is the queue
- * record; the cards' own zettel.created rows are the activity trail.
+ * first request's answer and accepts nothing. Each capture's job is the queue
+ * record; the cards' own zettel.created rows are the activity trail. The
+ * caller starts `started` (kickGenerationJob) after this returns.
  */
 export async function requestZettelGeneration(
   auth: AuthContext,
@@ -153,32 +134,41 @@ export async function requestZettelGeneration(
       async () => {
         const rows = await listZettelSourceCaptures(auth, { ids });
         const captureIds: string[] = [];
+        const started: Array<{ jobId: string; attempt: number }> = [];
         for (const row of rows) {
-          const queued = await enqueueOutbox(tx, auth, {
-            topic: ZETTEL_GENERATION_TOPIC,
-            payload: { captureId: row.id },
-            dispatchKey: `zettel-generation:${input.idempotencyKey}:${row.id}`,
-          });
-          if (!queued.enqueued) continue;
+          const { job, created } = await submitGenerationJob(
+            auth,
+            {
+              kind: ZETTELIZE_KIND,
+              subject: `capture:${row.id}`,
+              idempotencyKey: `zettelize:${input.idempotencyKey}:${row.id}`,
+              title: zettelizeTitle(row),
+              input: { captureId: row.id },
+            },
+            tx,
+          );
+          if (!created) continue;
           captureIds.push(row.id);
+          started.push({ jobId: job.id, attempt: job.attempt });
         }
         const requested = ids?.length ?? rows.length;
-        return { queued: captureIds.length, skipped: Math.max(0, requested - captureIds.length), captureIds };
+        return {
+          queued: captureIds.length,
+          skipped: Math.max(0, requested - captureIds.length),
+          captureIds,
+          started,
+        };
       },
     );
     return { ...value, replayed };
   });
 }
 
-export type ZettelGenerationDeps = {
-  /**
-   * The actor for background work. The dispatcher runs outside a request, so
-   * the handler is registered with workspaceOwnerAuth rather than carrying a
-   * context of its own.
-   */
-  auth?: (workspaceId: string) => Promise<AuthContext | null>;
+export type ZettelizeDeps = {
   /** Test seam: a fake extractor keeps the pass free and deterministic. */
   extractor?: ZettelExtractor;
+  /** Says which step the pass is on; the job runner passes run.progress. */
+  progress?: (step: string) => Promise<void>;
 };
 
 /**
@@ -190,35 +180,26 @@ export type ZettelGenerationDeps = {
  *
  * Returns how many cards this pass created. Zero is a normal answer: the
  * capture offered no text to read, it made no claims, every candidate was a
- * repeat, or the model is not configured. A malformed event or a failed
- * extraction throws, so the dispatcher retries with backoff instead of
- * losing the request.
+ * repeat, or the model is not configured. A failed extraction throws, and the
+ * job fails with a retry.
  */
-export async function runZettelGenerationRequested(
-  event: ClaimedOutboxEvent,
-  deps: ZettelGenerationDeps = {},
+export async function zettelizeCapture(
+  auth: AuthContext,
+  input: { captureId: string },
+  deps: ZettelizeDeps = {},
 ): Promise<{ created: number; unreadChars: number }> {
-  const raw = event.payload ?? {};
-  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-    throw new Error(`${ZETTEL_GENERATION_TOPIC} has a malformed payload (${typeof raw}); redeploy the producer`);
-  }
-  const captureId =
-    typeof (raw as { captureId?: unknown }).captureId === "string" ? (raw as { captureId: string }).captureId : null;
-  if (!captureId) throw new Error(`${ZETTEL_GENERATION_TOPIC} is missing captureId`);
-  if (!deps.auth) throw new Error(`${ZETTEL_GENERATION_TOPIC} has no actor resolver`);
-
-  const auth = await deps.auth(event.workspaceId);
-  if (!auth) throw new Error("workspace has no active owner to act for the zettel pass");
-
+  const captureId = input.captureId;
+  const progress = deps.progress ?? (async () => {});
   const [capture] = await db
     .select()
     .from(captures)
-    .where(and(eq(captures.id, captureId), eq(captures.workspaceId, event.workspaceId)))
+    .where(and(eq(captures.id, captureId), eq(captures.workspaceId, auth.workspaceId)))
     .limit(1);
   if (!capture || capture.archivedAt || capture.parkedAt || capture.processingState === "discarded")
     return { created: 0, unreadChars: 0 };
 
   let documentId = capture.convertedType === "document" ? capture.convertedId : null;
+  await progress("Filing the capture");
   if (!documentId) {
     if (capture.convertedType) return { created: 0, unreadChars: 0 };
     if (!zettelSourceText(capture)) return { created: 0, unreadChars: 0 };
@@ -242,9 +223,11 @@ export async function runZettelGenerationRequested(
   }
   if (!documentId) return { created: 0, unreadChars: 0 };
 
+  await progress("Reading it");
   const extraction = await extractDocument(auth, { documentId });
   if (!extraction.ok) throw new Error(extraction.error);
 
+  await progress("Writing zettels");
   let pass: ZettelCardsResult;
   try {
     pass = await createZettelsFromSource(auth, { documentId, extractor: deps.extractor });
@@ -272,3 +255,18 @@ export async function runZettelGenerationRequested(
   }
   return { created: pass.created.length, unreadChars: pass.unreadChars };
 }
+
+const zettelizeInput = z.object({ captureId: z.uuid() });
+
+/** The capture.zettelize job: one capture's pass, as its maker, with its steps on the job. */
+export const zettelizeRunner =
+  (deps: Pick<ZettelizeDeps, "extractor"> = {}): GenerationJobRunner =>
+  async (auth, raw, run) => {
+    const parsed = zettelizeInput.safeParse(raw);
+    if (!parsed.success) throw new Error("malformed zettelize input");
+    const { created } = await zettelizeCapture(auth, parsed.data, { ...deps, progress: (step) => run.progress(step) });
+    return {
+      href: "/polymath/ideas",
+      notice: created > 0 ? `Made ${created} zettel${created === 1 ? "" : "s"}.` : "No new ideas were found in it.",
+    };
+  };

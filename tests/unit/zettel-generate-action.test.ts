@@ -17,12 +17,11 @@ vi.mock("@/lib/auth", () => ({
 const domain = vi.hoisted(() => ({
   MAX_ZETTEL_SOURCE_CAPTURES: 50,
   countZettelSourceCaptures: vi.fn(),
-  countQueuedZettelPasses: vi.fn(),
   requestZettelGeneration: vi.fn(),
-  zettelQueueLabel: vi.fn(() => "Creating zettels…"),
-  zettelQueuePhase: vi.fn(() => "working"),
 }));
 vi.mock("@/domains/capture/zettel-generation", () => domain);
+const kickGenerationJob = vi.hoisted(() => vi.fn());
+vi.mock("@/domains/jobs/kick", () => ({ kickGenerationJob }));
 
 const { revalidatePath, updateTag } = await import("next/cache");
 const { generateZettelsAction } = await import("@/app/(workspace)/command-center/inbox/zettel-actions");
@@ -34,6 +33,7 @@ const ok = (queued: number, replayed = false) => ({
   queued,
   skipped: 0,
   captureIds: [CAPTURE],
+  started: [{ jobId: "job-1", attempt: 1 }],
   replayed,
 });
 
@@ -74,6 +74,8 @@ describe("generateZettelsAction", () => {
       idempotencyKey: KEY,
     });
     expect(revalidatePath).toHaveBeenCalledWith("/polymath/ideas");
+    // The accepted jobs start once the request has committed.
+    expect(kickGenerationJob).toHaveBeenCalledWith({ jobId: "job-1", attempt: 1 });
     expect(updateTag).toHaveBeenCalledWith("captures:w1");
   });
 

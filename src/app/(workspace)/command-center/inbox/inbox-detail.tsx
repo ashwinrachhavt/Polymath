@@ -37,7 +37,7 @@ import {
 } from "./inbox-list";
 import { MakeLearningButton } from "@/app/(workspace)/learn/make-learning-dialog";
 import { generateZettelsAction } from "./zettel-actions";
-import { ZettelQueueWatch } from "./zettel-queue-watch";
+import { ZettelJobs } from "./zettel-jobs";
 import { randomId } from "@/lib/random-id";
 
 /*
@@ -269,10 +269,10 @@ export function InboxDetail({
   }
 
   /*
-   * The per-capture zettelize verb: queue one proposal pass for this capture.
-   * The capture is filed to the library as a side effect (the worker converts
-   * it before extracting), so the title says so up front; the answer is
-   * "queued", never "created" - proposals appear in Ideas for review.
+   * The per-capture zettelize verb: start one zettelize job for this capture.
+   * The capture is filed to the library as a side effect (the job converts it
+   * before extracting), so the title says so up front; the job's row says
+   * what it is doing and, once done, how many cards landed in Ideas.
    */
   function zettelize() {
     setError(null);
@@ -502,13 +502,10 @@ export function InboxDetail({
 
       {zettelPass > 0 ? (
         <div className="mt-3 flex flex-col items-start gap-1">
-          <p className="text-muted-foreground text-body-dense" role="status">
-            Creating zettels…{" "}
-            <Link href="/polymath/ideas" className="text-foreground font-medium underline underline-offset-4">
-              See in Ideas
-            </Link>
-          </p>
-          <ZettelQueueWatch key={zettelPass} />
+          <ZettelJobs captureId={capture.id} />
+          <Link href="/polymath/ideas" className="text-body-dense font-medium underline underline-offset-4">
+            See in Ideas
+          </Link>
         </div>
       ) : null}
 
