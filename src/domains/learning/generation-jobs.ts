@@ -94,6 +94,7 @@ function parse(input: unknown): LearningJobInput {
 
 const makeQuiz: GenerationJobRunner = async (auth, raw, run) => {
   const input = parse(raw);
+  await run.progress("Writing questions");
   try {
     const quiz = await generateQuiz(auth, {
       notebookId: input.notebookId,
@@ -118,6 +119,7 @@ const makeQuiz: GenerationJobRunner = async (auth, raw, run) => {
 
 const makeFlashcards: GenerationJobRunner = async (auth, raw, run) => {
   const input = parse(raw);
+  await run.progress("Writing cards");
   try {
     const deck = await generateFlashcardDeck(auth, {
       notebookId: input.notebookId,
