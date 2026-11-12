@@ -69,7 +69,8 @@ const CHECK_SYSTEM = [
   '  "drop"      the sessions contradict it and no correction is supported.',
   '  "unknown"   the sessions say nothing either way; leave it alone.',
   "Be conservative: correct only what the sessions actually show to be wrong.",
-  'Return only JSON: {"verdicts":[{"id":string,"verdict":"keep"|"correct"|"drop"|"unknown","body"?:string}]}.',
+  'Also name duplicates: two notes that say the same thing are one note. In "duplicates" give the id of the note to keep and the id of the one to fold into it. Keep the earlier, shorter statement of the same fact.',
+  'Return only JSON: {"verdicts":[{"id":string,"verdict":"keep"|"correct"|"drop"|"unknown","body"?:string}],"duplicates":[{"keepId":string,"dropId":string}]}.',
 ].join("\n");
 
 /** A parsed note proposal or a named reason there is none. */
@@ -79,8 +80,13 @@ type ModelNotes =
   | { kind: "empty" }
   | { kind: "invalid" };
 
+/** The checker's report: a verdict per note, plus the duplicate pairs it found. */
 type ModelVerdicts =
-  | { kind: "verdicts"; verdicts: { id: string; verdict: "keep" | "correct" | "drop" | "unknown"; body?: string }[] }
+  | {
+      kind: "verdicts";
+      verdicts: { id: string; verdict: "keep" | "correct" | "drop" | "unknown"; body?: string }[];
+      duplicates: { keepId: string; dropId: string }[];
+    }
   | { kind: "refused" }
   | { kind: "empty" }
   | { kind: "invalid" };
@@ -141,7 +147,17 @@ function parseNoteVerdicts(raw: string): ModelVerdicts {
       ...(typeof record.body === "string" && record.body.trim() ? { body: record.body.trim().slice(0, NOTE_MAX) } : {}),
     });
   }
-  return verdicts.length === 0 ? { kind: "empty" } : { kind: "verdicts", verdicts };
+  const duplicateList = (parsed as { duplicates?: unknown } | null)?.duplicates;
+  const duplicates: { keepId: string; dropId: string }[] = [];
+  if (Array.isArray(duplicateList)) {
+    for (const entry of duplicateList) {
+      const record = entry as { keepId?: unknown; dropId?: unknown } | null;
+      if (typeof record?.keepId !== "string" || typeof record?.dropId !== "string") continue;
+      duplicates.push({ keepId: record.keepId, dropId: record.dropId });
+    }
+  }
+  if (verdicts.length === 0 && duplicates.length === 0) return { kind: "empty" };
+  return { kind: "verdicts", verdicts, duplicates };
 }
 
 /**
@@ -348,6 +364,7 @@ export async function runDreamPass(auth: AuthContext, deps: DreamDeps = {}): Pro
 
   let proposals: { body: string; quote: string | null }[] = [];
   let verdicts: { id: string; verdict: "keep" | "correct" | "drop" | "unknown"; body?: string }[] = [];
+  let duplicates: { keepId: string; dropId: string }[] = [];
 
   const option = modelById(DEFAULT_MODEL_ID);
   if (!option && !deps.model) throw new Error(`${MEMORY_DREAM_TOPIC}: the default model is no longer in the catalog`);
@@ -389,15 +406,18 @@ export async function runDreamPass(auth: AuthContext, deps: DreamDeps = {}): Pro
     } else {
       const parsed = parseNoteVerdicts(check.text);
       summary.model.check = parsed.kind;
-      if (parsed.kind === "verdicts") verdicts = parsed.verdicts;
+      if (parsed.kind === "verdicts") {
+        verdicts = parsed.verdicts;
+        duplicates = parsed.duplicates;
+      }
     }
   }
 
   // A proposal whose body equals an existing note collides on the normalized
-  // key, so planConsolidation drops it: the row is not written twice. A
-  // restatement the model itself finds is a merge, not a proposal, and the
-  // checker names the note to keep.
-  const plan = planConsolidation({ proposals, existing, verdicts });
+  // key, so planConsolidation skips it: the row is not written twice. Notes the
+  // checker names as restatements of each other are folded, gaining the pass a
+  // merge instead of two rows that say the same thing.
+  const plan = planConsolidation({ proposals, existing, verdicts, restatements: duplicates });
 
   for (const correction of plan.correct) {
     if ((await correctMemoryNote(owner, { noteId: correction.id, body: correction.body })).corrected) {

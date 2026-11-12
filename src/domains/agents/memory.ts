@@ -220,8 +220,10 @@ export async function correctMemoryNote(
 }
 
 /**
- * Retires duplicate notes into the one that is kept. Archived, not deleted:
- * the provenance of a merged observation stays readable.
+ * Folds duplicate notes into the one that is kept: the duplicates are
+ * archived, not deleted, so the provenance of a merged observation stays
+ * readable. A note never merges into itself, and an id the caller does not
+ * own matches nothing.
  */
 export async function mergeMemoryNotes(
   owner: MemoryOwner & { changedBy?: string | null },

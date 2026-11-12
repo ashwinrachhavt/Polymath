@@ -64,7 +64,7 @@ afterAll(async () => {
 beforeEach(() => {
   generateText.mockClear();
   proposeReply = { text: '{"notes":[]}' };
-  checkReply = { text: '{"verdicts":[]}' };
+  checkReply = { text: '{"verdicts":[],"duplicates":[]}' };
 });
 
 async function seedRun(userId: string, workspaceId: string, lines: string[], createdAt?: Date) {
@@ -258,6 +258,38 @@ suite("dreaming over fixture transcripts (model mocked)", () => {
     expect(prompts.some((prompt) => prompt.includes("SOMEONE ELSE'S"))).toBe(false);
     // And the owner's injected index does not carry the other user's note.
     expect(await loadMemoryIndex(auth)).toBeNull();
+  });
+
+  it("merges two notes the checker names as restatements, keeping the earlier one live", async () => {
+    const seeded = await seedWorkspace(holder.db!, `dream-merge-${Date.now()}`);
+    const auth = ownerAuth(seeded.userId, seeded.workspaceId);
+    await seedRun(seeded.userId, seeded.workspaceId, ["user: We ship on Fridays."]);
+    const [keep, fold] = await holder
+      .db!.insert(memoryNotes)
+      .values([
+        { workspaceId: seeded.workspaceId, userId: seeded.userId, body: "Ships on Fridays.", key: "ships on fridays" },
+        {
+          workspaceId: seeded.workspaceId,
+          userId: seeded.userId,
+          body: "Friday is the release day.",
+          key: "friday is the release day",
+        },
+      ])
+      .returning();
+
+    checkReply = { text: JSON.stringify({ verdicts: [], duplicates: [{ keepId: keep.id, dropId: fold.id }] }) };
+    const summary = await runDreamPass(auth, { model: MODEL });
+    expect(summary.merged).toBe(1);
+
+    // The kept note stays live and injected; the folded one is archived, not
+    // deleted, so its provenance remains readable.
+    const live = await listMemoryNotes(auth);
+    expect(live.map((n) => n.id)).toEqual([keep.id]);
+    const injected = await loadMemoryIndex(auth);
+    expect(injected).toContain("Ships on Fridays.");
+    expect(injected).not.toContain("Friday is the release day.");
+    const [folded] = await holder.db!.select().from(memoryNotes).where(eq(memoryNotes.id, fold.id));
+    expect(folded.archivedAt).not.toBeNull();
   });
 
   it("treats refusal, empty output and invalid JSON as distinct, and writes nothing", async () => {
