@@ -41,7 +41,7 @@ merged="$(cat "$root/.env" "$root/.env.local" | awk -v drop="$drop" '
   END { for (i = 1; i <= n; i++) print line[order[i]] }
 ')"
 
-origin="http://localhost:${ORACLE_TUNNEL_PORT}"
+origin="$ORACLE_PUBLIC_URL"
 # The script travels as an argument so stdin is free for the values, which
 # never appear on a command line or in a process listing.
 # (read -d '' rather than $(cat <<...): macOS bash 3.2 misparses quotes in a
