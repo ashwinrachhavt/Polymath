@@ -10,6 +10,8 @@ import { countInboxTabsForPage, getCaptureForPage, searchCapturesForPage } from 
 import { listHref, offsetFor, parseListParams } from "@/lib/list-params";
 import { getAuthContext } from "@/lib/auth";
 import { capabilityStatus } from "@/lib/capability-config";
+import { ZETTEL_JOB_KIND_PREFIX } from "@/domains/capture/zettel-job-names";
+import { listUnfinishedGenerationJobs } from "@/domains/jobs/queries";
 import { CaptureForm } from "./inbox-client";
 import { InboxList } from "./inbox-list";
 import { InboxDetail } from "./inbox-detail";
@@ -52,7 +54,7 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
   await io();
   const auth = await getAuthContext();
   const kind = list.filters.kind as (typeof CAPTURE_KINDS)[number] | undefined;
-  const [found, tabs] = await Promise.all([
+  const [found, tabs, zettelJobs] = await Promise.all([
     searchCapturesForPage(auth, {
       filter,
       kind,
@@ -61,6 +63,7 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
       offset: offsetFor(list.page, list.pageSize),
     }),
     countInboxTabsForPage(auth),
+    listUnfinishedGenerationJobs(auth, { kindPrefix: ZETTEL_JOB_KIND_PREFIX }),
   ]);
   const rows = found.items;
   // No ?id= reads as "show the newest": the detail pane is the working half of
@@ -149,6 +152,7 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
               view={filter}
               selectedId={effectiveSelectedId}
               rawQuery={query}
+              zettelJobs={zettelJobs}
               zettelProviderReady={generation?.configured ?? false}
               zettelProviderReason={
                 generation?.reason ?? "Zettelize needs a model. Set OPENROUTER_API_KEY or GEMINI_API_KEY."
@@ -227,6 +231,7 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
                 : null
             }
             priorWriting={selected?.priorWriting ?? null}
+            zettelJobs={zettelJobs}
             zettelProviderReady={generation?.configured ?? false}
             zettelProviderReason={
               generation?.reason ?? "Zettelize needs a model. Set OPENROUTER_API_KEY or GEMINI_API_KEY."

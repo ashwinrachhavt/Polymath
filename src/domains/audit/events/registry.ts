@@ -225,6 +225,12 @@ const TIER_1: Tier1Spec[] = [
     verbPhrase: "created ideas from a capture",
     operation: "step",
   },
+  {
+    action: "document.zettels_created",
+    category: "knowledge",
+    verbPhrase: "created ideas from a document",
+    operation: "step",
+  },
   { action: "capture.transcribed", category: "knowledge", verbPhrase: "transcribed a voice capture" },
   // Ideas (direct creation: the triggering click is the permission, so the
   // pass writes the card and the audit row together. Accept and reject were

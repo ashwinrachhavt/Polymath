@@ -18,7 +18,7 @@ import {
 } from "./draft-templates";
 import { withTransaction } from "@/lib/db-transaction";
 import { db } from "@/lib/db";
-import { titleFromText } from "@/lib/display-text";
+import { displayTitle, titleFromText } from "@/lib/display-text";
 import { inferCaptureMode, contentHash, workingText, type CaptureMode } from "./mode";
 import { findCaptureByUrl, findCaptureReadingExtractor } from "./queries";
 import { deleteBlob, ObjectStoreUnconfiguredError, putBlob } from "@/integrations/object-store/object-store";
@@ -615,10 +615,12 @@ export async function convertCaptureToDocument(
   // text capture: the plain-text reader genuinely reads those bytes.
   const extractor = capture.captureMode === "blob" ? await findCaptureReadingExtractor(auth, capture.id) : null;
   const firstLine = titleFromText(body, "Captured text");
+  // A stored title written before titles were cleaned can be raw markup ("> ##
+  // Documentation Index"); the text's own heading names the document then.
+  const storedTitle = capture.title?.trim();
+  const cleanStoredTitle = storedTitle && displayTitle(storedTitle) === storedTitle ? storedTitle : null;
   const title =
-    input.title?.trim() ||
-    capture.title?.trim() ||
-    (firstLine.length > 120 ? `${firstLine.slice(0, 117)}…` : firstLine);
+    input.title?.trim() || cleanStoredTitle || (firstLine.length > 120 ? `${firstLine.slice(0, 117)}…` : firstLine);
 
   // Matching the constraint name keeps an unrelated 23505 out of this
   // message: the replay is only for a duplicate source_url, and an unnamed

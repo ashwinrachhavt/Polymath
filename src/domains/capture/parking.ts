@@ -17,7 +17,7 @@ import { captures } from "./schema";
  * What parking PAUSES (each reads parked_at):
  *  - the owner's to-clarify queue and its count (capture/queries.ts);
  *  - the home queue's classification suggestions for the capture (home/queue.ts);
- *  - zettel source selection and the zettel handler (capture/zettel-generation.ts);
+ *  - zettel source selection and the zettelize runner (capture/zettel-generation.ts);
  *  - NEW enrichment and URL-content work: the handlers return early, so no new
  *    model call, fetch or proposal is produced for a parked capture.
  * What parking LETS FINISH: work already past the handler's entry check (an

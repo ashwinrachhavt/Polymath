@@ -41,6 +41,7 @@ vi.mock("@/domains/knowledge/studio", () => ({
 }));
 vi.mock("@/domains/knowledge/parties", () => ({ resolvePartyCandidates: vi.fn(async () => []) }));
 vi.mock("@/domains/knowledge/search", () => ({ searchDocuments: vi.fn(async () => []) }));
+vi.mock("@/domains/jobs/queries", () => ({ listUnfinishedGenerationJobs: vi.fn(async () => []) }));
 vi.mock("@/domains/knowledge/vault-queries", () => ({ getVaultDocuments: vi.fn(async () => []) }));
 vi.mock("@/domains/knowledge/library", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/domains/knowledge/library")>()),
@@ -132,6 +133,7 @@ describe("live Alfred route functionality", () => {
         sizeBytes: 1200,
         pageCount: 2,
         docType: null,
+        version: 1,
         href: "/polymath/knowledge?doc=doc-fixture",
       },
     ]);
@@ -157,6 +159,7 @@ describe("live Alfred route functionality", () => {
         sizeBytes: 1200,
         pageCount: 2,
         docType: "statement",
+        version: 1,
         href: "/polymath/knowledge?doc=doc-review",
       },
     ]);
@@ -181,6 +184,7 @@ describe("live Alfred route functionality", () => {
         sizeBytes: null,
         pageCount: null,
         docType: null,
+        version: 1,
         href: "/polymath/knowledge?doc=page-fixture",
       },
     ]);

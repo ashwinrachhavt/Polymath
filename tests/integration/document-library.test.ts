@@ -1,13 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { blobObjects } from "@/domains/audit/schema";
-import {
-  documentExtractions,
-  documentObligations,
-  documents,
-  fieldProposals,
-  files,
-} from "@/domains/knowledge/schema";
+import { documentExtractions, documentObligations, documents, fieldProposals, files } from "@/domains/knowledge/schema";
 import { documentStatus } from "@/domains/knowledge/status";
 import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
 
@@ -26,7 +20,11 @@ const holder: {
   db: NonNullable<ReturnType<typeof makeTestDb>>["db"];
 } = { db: undefined as never };
 
-vi.mock("@/lib/db", () => ({ get db() { return holder.db; } }));
+vi.mock("@/lib/db", () => ({
+  get db() {
+    return holder.db;
+  },
+}));
 
 /*
  * Domain modules import lib/db-transaction, which binds DATABASE_URL at
@@ -67,7 +65,11 @@ suite("document library", () => {
       title: string;
       filename?: string;
       folderId?: string | null;
-      extraction?: { status: "pending" | "succeeded" | "failed"; proposalStatus?: "pending" | "succeeded" | "failed" | null; text?: string } | null;
+      extraction?: {
+        status: "pending" | "succeeded" | "failed";
+        proposalStatus?: "pending" | "succeeded" | "failed" | null;
+        text?: string;
+      } | null;
       undecidedProposals?: number;
     },
   ) {
@@ -75,7 +77,13 @@ suite("document library", () => {
     if (values.filename) {
       const [blob] = await holder.db
         .insert(blobObjects)
-        .values({ workspaceId: auth.workspaceId, storageKey: `key-${crypto.randomUUID()}`, contentHash: `hash-${crypto.randomUUID()}`, sizeBytes: 2048, mimeType: "application/pdf" })
+        .values({
+          workspaceId: auth.workspaceId,
+          storageKey: `key-${crypto.randomUUID()}`,
+          contentHash: `hash-${crypto.randomUUID()}`,
+          sizeBytes: 2048,
+          mimeType: "application/pdf",
+        })
         .returning();
       const [file] = await holder.db
         .insert(files)
@@ -98,10 +106,7 @@ suite("document library", () => {
       });
     }
     for (let i = 0; i < (values.undecidedProposals ?? 0); i += 1) {
-      const [extraction] = await holder.db
-        .select({ id: documentExtractions.id })
-        .from(documentExtractions)
-        .limit(1);
+      const [extraction] = await holder.db.select({ id: documentExtractions.id }).from(documentExtractions).limit(1);
       await holder.db.insert(fieldProposals).values({
         workspaceId: auth.workspaceId,
         documentId: document.id,
@@ -121,12 +126,18 @@ suite("document library", () => {
     const child = await folders.createFolder(auth, { name: "2026", parentId: root.id });
 
     // A folder cannot move into its own descendant.
-    await expect(folders.moveFolder(auth, { folderId: root.id, parentId: child.id, expectedVersion: 1 })).rejects.toMatchObject({ code: "cycle" });
+    await expect(
+      folders.moveFolder(auth, { folderId: root.id, parentId: child.id, expectedVersion: 1 }),
+    ).rejects.toMatchObject({ code: "cycle" });
 
     // Non-empty folders cannot be archived.
     const doc = await seedDocument(auth, { title: "Return", folderId: child.id });
-    await expect(folders.archiveFolder(auth, { folderId: root.id, expectedVersion: 1 })).rejects.toMatchObject({ code: "not_empty" });
-    await expect(folders.archiveFolder(auth, { folderId: child.id, expectedVersion: 1 })).rejects.toMatchObject({ code: "not_empty" });
+    await expect(folders.archiveFolder(auth, { folderId: root.id, expectedVersion: 1 })).rejects.toMatchObject({
+      code: "not_empty",
+    });
+    await expect(folders.archiveFolder(auth, { folderId: child.id, expectedVersion: 1 })).rejects.toMatchObject({
+      code: "not_empty",
+    });
 
     // Moving the document out empties the folder; archiving then works, and
     // the move lands in the activity feed.
@@ -148,9 +159,10 @@ suite("document library", () => {
     // even while opening them showed the files).
     const auth = await seedAuth("counts");
     const folder = await folders.createFolder(auth, { name: "Statements" });
-    await seedDocument(auth, { title: "Statement one", folderId: folder.id });
-    await seedDocument(auth, { title: "Statement two", folderId: folder.id });
-    await seedDocument(auth, { title: "At root", folderId: null });
+    // The count is the vault's: uploaded files (a seeded file is an upload).
+    await seedDocument(auth, { title: "Statement one", filename: "one.pdf", folderId: folder.id });
+    await seedDocument(auth, { title: "Statement two", filename: "two.pdf", folderId: folder.id });
+    await seedDocument(auth, { title: "At root", filename: "root.pdf", folderId: null });
 
     const folderList = await library.listFolders(auth);
     const counted = folderList.find((f) => f.id === folder.id);
@@ -175,7 +187,12 @@ suite("document library", () => {
     let cursor = page1.nextCursor;
     const rest: string[] = [];
     while (cursor) {
-      const page = await library.listDocuments(auth, { filters: { folder: folder.id }, sort: "title", limit: 2, cursor });
+      const page = await library.listDocuments(auth, {
+        filters: { folder: folder.id },
+        sort: "title",
+        limit: 2,
+        cursor,
+      });
       for (const row of page.rows) {
         expect(seen.has(row.id)).toBe(false);
         seen.add(row.id);
@@ -198,7 +215,10 @@ suite("document library", () => {
     const auth = await seedAuth("states");
     const cases: Array<{
       key: import("@/domains/knowledge/library").LibraryStateFilter;
-      extraction: { status: "pending" | "succeeded" | "failed"; proposalStatus?: "pending" | "succeeded" | "failed" | null } | null;
+      extraction: {
+        status: "pending" | "succeeded" | "failed";
+        proposalStatus?: "pending" | "succeeded" | "failed" | null;
+      } | null;
       undecided: number;
     }> = [
       { key: "added", extraction: null, undecided: 0 },
@@ -235,7 +255,9 @@ suite("document library", () => {
 
     // Parity spot check: a needs_check row's label is status.ts's own words.
     const needsCheck = await library.listDocuments(auth, { filters: { state: "needs_check" } });
-    expect(needsCheck.rows[0].state.label).toBe(documentStatus({ status: "succeeded", proposalStatus: "succeeded" }, 2).label);
+    expect(needsCheck.rows[0].state.label).toBe(
+      documentStatus({ status: "succeeded", proposalStatus: "succeeded" }, 2).label,
+    );
   });
 
   it("export manifests pin exact versions and report drift", async () => {
@@ -288,7 +310,11 @@ suite("document library", () => {
       filename: "statement.pdf",
       extraction: { status: "succeeded", proposalStatus: "succeeded", text: "opening balance four hundred dollars" },
     });
-    await seedDocument(auth, { title: "Scanned receipt", filename: "receipt-scan.pdf", extraction: { status: "failed" } });
+    await seedDocument(auth, {
+      title: "Scanned receipt",
+      filename: "receipt-scan.pdf",
+      extraction: { status: "failed" },
+    });
 
     const byText = await library.listDocuments(auth, { filters: { q: "balance" } });
     expect(byText.rows.map((r) => r.title)).toEqual(["Bank statement"]);
@@ -334,8 +360,16 @@ suite("document library", () => {
     // reports current again when the restore moves back.
     const manifest = await exports_.createExportManifest(auth, { name: "Packet", items: [{ documentId: doc.id }] });
 
-    const [fresh] = await holder.db.select({ version: documents.version }).from(documents).where(eq(documents.id, doc.id)).limit(1);
-    const result = await versions.restoreDocumentVersion(auth, { documentId: doc.id, extractionId: v1.id, expectedVersion: fresh!.version });
+    const [fresh] = await holder.db
+      .select({ version: documents.version })
+      .from(documents)
+      .where(eq(documents.id, doc.id))
+      .limit(1);
+    const result = await versions.restoreDocumentVersion(auth, {
+      documentId: doc.id,
+      extractionId: v1.id,
+      expectedVersion: fresh!.version,
+    });
     expect(result.restored).toBe(true);
 
     // The whole read surface follows the pin.
@@ -357,26 +391,72 @@ suite("document library", () => {
     // Refusals: failed versions, foreign versions, stale writes.
     const [bad] = await holder.db
       .insert(documentExtractions)
-      .values({ workspaceId: auth.workspaceId, documentId: doc.id, contentHash: `ch-${crypto.randomUUID()}`, status: "failed", createdAt: new Date("2026-03-01T00:00:00Z") })
+      .values({
+        workspaceId: auth.workspaceId,
+        documentId: doc.id,
+        contentHash: `ch-${crypto.randomUUID()}`,
+        status: "failed",
+        createdAt: new Date("2026-03-01T00:00:00Z"),
+      })
       .returning();
-    const [now1] = await holder.db.select({ version: documents.version }).from(documents).where(eq(documents.id, doc.id)).limit(1);
-    await expect(versions.restoreDocumentVersion(auth, { documentId: doc.id, extractionId: bad.id, expectedVersion: now1!.version })).rejects.toMatchObject({ code: "not_succeeded" });
+    const [now1] = await holder.db
+      .select({ version: documents.version })
+      .from(documents)
+      .where(eq(documents.id, doc.id))
+      .limit(1);
+    await expect(
+      versions.restoreDocumentVersion(auth, {
+        documentId: doc.id,
+        extractionId: bad.id,
+        expectedVersion: now1!.version,
+      }),
+    ).rejects.toMatchObject({ code: "not_succeeded" });
     const other = await seedAuth("restore-other");
-    const foreignDoc = await seedDocument(other, { title: "Foreign", extraction: { status: "succeeded", text: "not yours" } });
-    const [foreignV] = await holder.db.select({ id: documentExtractions.id }).from(documentExtractions).where(eq(documentExtractions.documentId, foreignDoc.id)).limit(1);
-    await expect(versions.restoreDocumentVersion(auth, { documentId: doc.id, extractionId: foreignV!.id, expectedVersion: now1!.version })).rejects.toMatchObject({ code: "not_found" });
-    await expect(versions.restoreDocumentVersion(auth, { documentId: doc.id, extractionId: v2.id, expectedVersion: 99999 })).rejects.toMatchObject({ code: "stale_write" });
+    const foreignDoc = await seedDocument(other, {
+      title: "Foreign",
+      extraction: { status: "succeeded", text: "not yours" },
+    });
+    const [foreignV] = await holder.db
+      .select({ id: documentExtractions.id })
+      .from(documentExtractions)
+      .where(eq(documentExtractions.documentId, foreignDoc.id))
+      .limit(1);
+    await expect(
+      versions.restoreDocumentVersion(auth, {
+        documentId: doc.id,
+        extractionId: foreignV!.id,
+        expectedVersion: now1!.version,
+      }),
+    ).rejects.toMatchObject({ code: "not_found" });
+    await expect(
+      versions.restoreDocumentVersion(auth, { documentId: doc.id, extractionId: v2.id, expectedVersion: 99999 }),
+    ).rejects.toMatchObject({ code: "stale_write" });
 
     // Restoring back to v2 makes the manifest current again.
-    const [now2] = await holder.db.select({ version: documents.version }).from(documents).where(eq(documents.id, doc.id)).limit(1);
-    await versions.restoreDocumentVersion(auth, { documentId: doc.id, extractionId: v2.id, expectedVersion: now2!.version });
+    const [now2] = await holder.db
+      .select({ version: documents.version })
+      .from(documents)
+      .where(eq(documents.id, doc.id))
+      .limit(1);
+    await versions.restoreDocumentVersion(auth, {
+      documentId: doc.id,
+      extractionId: v2.id,
+      expectedVersion: now2!.version,
+    });
     expect((await exports_.getExportManifest(auth, { manifestId: manifest.id }))?.items[0].isCurrent).toBe(true);
 
     // A fresh read clears the pin: the document is its newest bytes again.
     await versions.clearRestoreOnNewExtraction(doc.id);
     const [v3] = await holder.db
       .insert(documentExtractions)
-      .values({ workspaceId: auth.workspaceId, documentId: doc.id, contentHash: `ch-${crypto.randomUUID()}`, status: "succeeded", text: "final text", createdAt: new Date("2026-04-01T00:00:00Z") })
+      .values({
+        workspaceId: auth.workspaceId,
+        documentId: doc.id,
+        contentHash: `ch-${crypto.randomUUID()}`,
+        status: "succeeded",
+        text: "final text",
+        createdAt: new Date("2026-04-01T00:00:00Z"),
+      })
       .returning();
     expect((await versions.getCurrentExtraction(auth, { documentId: doc.id }))?.id).toBe(v3.id);
   });
@@ -404,7 +484,9 @@ suite("document library", () => {
     // A foreign document id fails the whole command.
     const other = await seedAuth("tags-other");
     const foreign = await seedDocument(other, { title: "Not yours" });
-    await expect(tags.addTag(auth, { documentIds: [a.id, foreign.id], tag: "x" })).rejects.toMatchObject({ code: "not_found" });
+    await expect(tags.addTag(auth, { documentIds: [a.id, foreign.id], tag: "x" })).rejects.toMatchObject({
+      code: "not_found",
+    });
   });
   it("taskId filter: documents whose accepted obligation made the task, workspace-scoped, superseded ignored, composes", async () => {
     const auth = await seedAuth("task-filter");
@@ -415,7 +497,11 @@ suite("document library", () => {
     const superseded = await seedDocument(auth, { title: "Old notice" });
     const unrelated = await seedDocument(auth, { title: "Other task doc" });
     await seedDocument(auth, { title: "No obligation" });
-    const obligation = (documentId: string, task: string, extra: Partial<typeof documentObligations.$inferInsert> = {}) =>
+    const obligation = (
+      documentId: string,
+      task: string,
+      extra: Partial<typeof documentObligations.$inferInsert> = {},
+    ) =>
       holder.db.insert(documentObligations).values({
         workspaceId: auth.workspaceId,
         documentId,
@@ -456,7 +542,12 @@ suite("document library", () => {
       taskId,
       status: "accepted",
     });
-    expect((await library.listDocuments(auth, { filters: { taskId } })).rows.map((r) => r.title).sort()).toEqual(["Insurance notice", "Lease renewal"]);
-    expect((await library.listDocuments(other, { filters: { taskId } })).rows.map((r) => r.title)).toEqual(["Their doc"]);
+    expect((await library.listDocuments(auth, { filters: { taskId } })).rows.map((r) => r.title).sort()).toEqual([
+      "Insurance notice",
+      "Lease renewal",
+    ]);
+    expect((await library.listDocuments(other, { filters: { taskId } })).rows.map((r) => r.title)).toEqual([
+      "Their doc",
+    ]);
   });
 });
