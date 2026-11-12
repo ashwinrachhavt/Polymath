@@ -47,7 +47,10 @@ export async function listUnfinishedGenerationJobs(
  * queued, then what settled in the last RECENT_DAYS days. This is what the
  * jobs panel and the Activity page render first; the stream moves it on.
  */
-export async function listRecentGenerationJobs(auth: Owner, input: { limit?: number } = {}): Promise<GenerationJobView[]> {
+export async function listRecentGenerationJobs(
+  auth: Owner,
+  input: { limit?: number } = {},
+): Promise<GenerationJobView[]> {
   const rows = await db
     .select(jobViewColumns)
     .from(generationJobs)

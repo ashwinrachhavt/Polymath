@@ -25,7 +25,9 @@ describe("speech clips", () => {
   });
 
   it("puts a clip's speech back on the video's own clock", () => {
-    expect(clipCues([{ start: 2.25, end: 5.5, text: "Hi." }], 1200)).toEqual([{ start: 1202.25, duration: 3.25, text: "Hi." }]);
+    expect(clipCues([{ start: 2.25, end: 5.5, text: "Hi." }], 1200)).toEqual([
+      { start: 1202.25, duration: 3.25, text: "Hi." },
+    ]);
   });
 
   it("prices speech at Groq's $0.04 an hour, with its ten second minimum", () => {

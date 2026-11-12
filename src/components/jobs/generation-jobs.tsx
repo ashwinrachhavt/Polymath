@@ -92,7 +92,10 @@ export function jobWorkState(job: GenerationJobView): WorkState {
   if (job.status === "cancelled") return { phase: "failed", label: "Stopped." };
   if (job.status === "ready") return { phase: "done", label: job.notice ?? "Ready." };
   if (job.status === "running") {
-    return { phase: "working", label: job.progress ? `${progressLabel(job.progress)}…` : "Being made. You can leave this page." };
+    return {
+      phase: "working",
+      label: job.progress ? `${progressLabel(job.progress)}…` : "Being made. You can leave this page.",
+    };
   }
   if (slowToStart.has(jobSignature(job) + job.id)) {
     return { phase: "queued", label: "Taking longer than usual to start. Still trying." };

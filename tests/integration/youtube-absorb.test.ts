@@ -72,7 +72,12 @@ async function absorb(
   const [job] = await handle.db
     .select()
     .from(generationJobs)
-    .where(and(eq(generationJobs.workspaceId, auth.workspaceId), eq(generationJobs.subject, `document:${queued.documentId}`)))
+    .where(
+      and(
+        eq(generationJobs.workspaceId, auth.workspaceId),
+        eq(generationJobs.subject, `document:${queued.documentId}`),
+      ),
+    )
     // The newest: a capture's video gets a job of its own beside the plain one.
     .orderBy(desc(generationJobs.createdAt));
   await runGenerationJob({ jobId: job.id, attempt: job.attempt }, { "knowledge.youtube": youtubeAbsorbRunner(deps) });
@@ -96,7 +101,10 @@ describe("YouTube absorption (real Postgres, stubbed providers)", () => {
     const [doc] = await handle.db.select().from(documents).where(eq(documents.id, documentId));
     expect(doc).toMatchObject({ title: "A talk", sourceUrl: `https://www.youtube.com/watch?v=${videoId}` });
     expect(doc.fileId).not.toBeNull();
-    const [cues] = await handle.db.select().from(youtubeTranscripts).where(eq(youtubeTranscripts.documentId, documentId));
+    const [cues] = await handle.db
+      .select()
+      .from(youtubeTranscripts)
+      .where(eq(youtubeTranscripts.documentId, documentId));
     expect(cues).toMatchObject({ videoId, language: "en", generated: false });
     const [cached] = await handle.db.select().from(videoTranscripts).where(eq(videoTranscripts.videoId, videoId));
     expect(cached).toMatchObject({ source: "captions", costMicroUsd: 0 });
@@ -136,7 +144,10 @@ describe("YouTube absorption (real Postgres, stubbed providers)", () => {
       { from: 2400, to: 3000 },
     ]);
     expect(job).toMatchObject({ status: "ready", costMicroUsd: 40_002 });
-    const [cues] = await handle.db.select().from(youtubeTranscripts).where(eq(youtubeTranscripts.documentId, documentId));
+    const [cues] = await handle.db
+      .select()
+      .from(youtubeTranscripts)
+      .where(eq(youtubeTranscripts.documentId, documentId));
     expect((cues.cues as Array<{ start: number }>).map((cue) => cue.start)).toEqual([1.5, 1201.5, 2401.5]);
     const [cached] = await handle.db.select().from(videoTranscripts).where(eq(videoTranscripts.videoId, videoId));
     expect(cached).toMatchObject({ source: "speech", costMicroUsd: 40_002, generated: true });
@@ -161,7 +172,9 @@ describe("YouTube absorption (real Postgres, stubbed providers)", () => {
     const { createCapture } = await import("@/domains/capture/commands");
     const auth = await signIn("again");
     const videoId = randomVideoId();
-    const first = await absorb(auth, videoId, { fetchCaptions: async () => ({ ok: false, error: "YouTube could not be reached." }) });
+    const first = await absorb(auth, videoId, {
+      fetchCaptions: async () => ({ ok: false, error: "YouTube could not be reached." }),
+    });
     expect(first.job.status).toBe("failed");
     const again = await absorb(auth, videoId, { fetchCaptions: captions(videoId) });
     expect(again.job).toMatchObject({ id: first.job.id, attempt: 2, status: "ready" });

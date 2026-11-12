@@ -74,7 +74,6 @@ const extractor = (cands: Array<{ title: string; content: string; quote?: string
   extract: async () => cands,
 });
 
-
 async function seed(slug: string) {
   const { userId, workspaceId } = await seedWorkspace(
     holder.db!,
@@ -164,13 +163,17 @@ suite("zettel generation from the inbox", () => {
     const auth = await seed("create");
     const capture = await addCapture(auth, { text: BODY });
 
-    const result = await zettelizeCapture(auth, { captureId: capture.id }, {
-      extractor: extractor([
-        { title: "One idea per zettel", content: "A zettel holds exactly one idea.", quote: Q1 },
-        { title: "Invented", content: "Never written.", quote: "this passage was never in the capture" },
-        { title: "Daily writing", content: "Writing daily turns reading into thinking.", quote: Q2 },
-      ]),
-    });
+    const result = await zettelizeCapture(
+      auth,
+      { captureId: capture.id },
+      {
+        extractor: extractor([
+          { title: "One idea per zettel", content: "A zettel holds exactly one idea.", quote: Q1 },
+          { title: "Invented", content: "Never written.", quote: "this passage was never in the capture" },
+          { title: "Daily writing", content: "Writing daily turns reading into thinking.", quote: Q2 },
+        ]),
+      },
+    );
     expect(result.created).toBe(2);
 
     const [row] = await holder.db!.select().from(captures).where(eq(captures.id, capture.id));

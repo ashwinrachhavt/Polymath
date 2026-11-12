@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Layers } from "lucide-react";
 import { useGenerationJobs } from "@/components/jobs/generation-jobs";
 import { JobsList, useJobActions, useLiveJobs } from "@/components/jobs/generation-job-rows";
@@ -36,15 +36,18 @@ export function JobsIndicator() {
   const jobs = useLiveJobs(recent.jobs, () => true, actions.dismissed);
 
   // The moment the last running job settles, show how it ended, then rest.
+  // Adjusted during render (the React-recommended way to react to a change).
   const [justSettled, setJustSettled] = useState<GenerationJobView | null>(null);
-  const wasRunning = useRef(0);
-  useEffect(() => {
-    const before = wasRunning.current;
-    wasRunning.current = running.length;
-    if (before === 0 || running.length > 0) return;
-    const last = [...live.values()].filter((job) => isSettled(job.status)).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
-    if (last) setJustSettled(last);
-  }, [running.length, live]);
+  const [runningBefore, setRunningBefore] = useState(running.length);
+  if (runningBefore !== running.length) {
+    setRunningBefore(running.length);
+    if (runningBefore > 0 && running.length === 0) {
+      const last = [...live.values()]
+        .filter((job) => isSettled(job.status))
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+      if (last) setJustSettled(last);
+    }
+  }
   useEffect(() => {
     if (!justSettled) return;
     const timer = setTimeout(() => setJustSettled(null), DONE_MARK_MS);
@@ -95,7 +98,9 @@ export function JobsIndicator() {
           <SheetDescription>What you started. It keeps going when you leave the page.</SheetDescription>
         </SheetHeader>
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
-          {recent.error ? <WorkStatus state={{ phase: "failed", label: recent.error }} className="mb-3 text-xs" /> : null}
+          {recent.error ? (
+            <WorkStatus state={{ phase: "failed", label: recent.error }} className="mb-3 text-xs" />
+          ) : null}
           {jobs.length === 0 ? (
             <p className="text-body-dense text-muted-foreground">Nothing is running, and nothing finished this week.</p>
           ) : (

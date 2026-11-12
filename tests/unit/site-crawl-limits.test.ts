@@ -63,7 +63,11 @@ describe("which crawled pages are filed", () => {
   });
 
   it("skips addresses filed on an earlier pass", () => {
-    const kept = pagesToFile(start, [page("https://docs.example/guide"), page("https://docs.example/next")], new Set(["https://docs.example/guide"]));
+    const kept = pagesToFile(
+      start,
+      [page("https://docs.example/guide"), page("https://docs.example/next")],
+      new Set(["https://docs.example/guide"]),
+    );
     expect(kept.map((entry) => entry.key)).toEqual(["https://docs.example/next"]);
   });
 });

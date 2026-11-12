@@ -45,7 +45,8 @@ const SITE = [
 
 beforeAll(async () => {
   server = createServer((req, res) => {
-    const json = (body: unknown) => res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(body));
+    const json = (body: unknown) =>
+      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(body));
     if (req.method === "POST" && req.url === "/v1/crawl") {
       let body = "";
       req.on("data", (chunk) => (body += chunk));
@@ -56,7 +57,13 @@ beforeAll(async () => {
       return;
     }
     if (req.method === "GET" && req.url === "/v1/crawl/crawl-1") {
-      return json({ success: true, status: crawl.status, completed: crawl.completed, total: crawl.total, data: crawl.data });
+      return json({
+        success: true,
+        status: crawl.status,
+        completed: crawl.completed,
+        total: crawl.total,
+        data: crawl.data,
+      });
     }
     if (req.method === "DELETE" && req.url === "/v1/crawl/crawl-1") {
       crawl.deleted += 1;
@@ -212,7 +219,10 @@ describe("site crawl jobs (real Postgres, Firecrawl fixture)", () => {
     await runGenerationJob({ jobId: job.id, attempt: 1 }, { "knowledge.crawl": runner });
     const before = await handle.db.select().from(documents).where(eq(documents.workspaceId, auth.workspaceId));
 
-    await handle.db.update(generationJobs).set({ status: "failed", error: "x", result: null }).where(eq(generationJobs.id, job.id));
+    await handle.db
+      .update(generationJobs)
+      .set({ status: "failed", error: "x", result: null })
+      .where(eq(generationJobs.id, job.id));
     await retryGenerationJob(auth, job.id);
     await runGenerationJob({ jobId: job.id, attempt: 2 }, { "knowledge.crawl": runner });
     const after = await handle.db.select().from(documents).where(eq(documents.workspaceId, auth.workspaceId));

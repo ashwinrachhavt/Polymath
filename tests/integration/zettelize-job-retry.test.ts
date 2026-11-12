@@ -67,9 +67,13 @@ describe("zettelize job retry and replay resilience", () => {
         updatedBy: userId,
       })
       .returning();
-    const request = await requestZettelGeneration(auth, { captureIds: [capture.id], idempotencyKey: crypto.randomUUID() });
+    const request = await requestZettelGeneration(auth, {
+      captureIds: [capture.id],
+      idempotencyKey: crypto.randomUUID(),
+    });
     const [started] = request.started;
-    const job = async () => (await holder.db!.select().from(generationJobs).where(eq(generationJobs.id, started.jobId)))[0];
+    const job = async () =>
+      (await holder.db!.select().from(generationJobs).where(eq(generationJobs.id, started.jobId)))[0];
 
     // A network drop inside extraction or the model call fails this attempt, visibly.
     const quiet = vi.spyOn(console, "error").mockImplementation(() => {});

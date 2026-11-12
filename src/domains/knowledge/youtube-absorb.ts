@@ -214,7 +214,14 @@ async function transcribeSpeech(
     cues.push(...clipCues(heard.segments, range.from));
   }
   if (cues.length === 0) throw new GenerationJobFailure("No speech was heard in this video.");
-  const transcript: Transcript = { title: null, cues, language: null, generated: true, source: "speech", cached: false };
+  const transcript: Transcript = {
+    title: null,
+    cues,
+    language: null,
+    generated: true,
+    source: "speech",
+    cached: false,
+  };
   await cacheTranscript(videoId, transcript, spent);
   return transcript;
 }

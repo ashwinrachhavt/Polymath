@@ -74,9 +74,10 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
   // The detail pane is a view of the record, not of the current filter: a
   // capture outside the view still renders, the list just shows no highlight.
   const selected = effectiveSelectedId ? await getCaptureForPage(auth, effectiveSelectedId) : null;
-  const site = selected?.capture.captureMode === "url-reference" && selected.capture.url && !parseVideoId(selected.capture.url)
-    ? await loadCaptureSite(auth, selected.capture.id)
-    : null;
+  const site =
+    selected?.capture.captureMode === "url-reference" && selected.capture.url && !parseVideoId(selected.capture.url)
+      ? await loadCaptureSite(auth, selected.capture.id)
+      : null;
   const generation = capabilityStatus().find((c) => c.id === "generation");
   const pageSize = list.pageSize;
   redirectPastEnd("/command-center/inbox", query, list.page, pageSize, found.total);

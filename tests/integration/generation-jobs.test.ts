@@ -235,9 +235,15 @@ describe("generation jobs", () => {
         },
       },
     );
-    await vi.waitFor(async () => expect((await stored(job.id)).progress).toEqual({ step: "Crawling", done: 3, total: 25 }));
+    await vi.waitFor(async () =>
+      expect((await stored(job.id)).progress).toEqual({ step: "Crawling", done: 3, total: 25 }),
+    );
     const tailed = (await tailGenerationJobs(auth, before)).jobs.find((view) => view.id === job.id);
-    expect(tailed).toMatchObject({ status: "running", progress: { step: "Crawling", done: 3, total: 25 }, costUsd: 0.00125 });
+    expect(tailed).toMatchObject({
+      status: "running",
+      progress: { step: "Crawling", done: 3, total: 25 },
+      costUsd: 0.00125,
+    });
     release();
     await run;
     expect(await stored(job.id)).toMatchObject({ status: "ready", progress: null, costMicroUsd: 1_250 });

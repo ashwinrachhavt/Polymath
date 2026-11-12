@@ -120,7 +120,9 @@ export function jobSignature(view: Pick<GenerationJobView, "status" | "attempt" 
 /** The step line a surface shows: "Crawling 12/25". */
 export function progressLabel(progress: GenerationJobProgress): string {
   if (progress.done === null) return progress.step;
-  return progress.total === null ? `${progress.step} ${progress.done}` : `${progress.step} ${progress.done}/${progress.total}`;
+  return progress.total === null
+    ? `${progress.step} ${progress.done}`
+    : `${progress.step} ${progress.done}/${progress.total}`;
 }
 
 /** 0..1 when the step counts toward a known total, else null (an indeterminate bar). */

@@ -21,8 +21,7 @@ import { YOUTUBE_ABSORB_KIND, type YouTubeAbsorbInput } from "./youtube-absorb";
  */
 
 export type QueueVideoResult =
-  | { ok: true; documentId: string; created: boolean; enqueued: boolean }
-  | { ok: false; error: string };
+  { ok: true; documentId: string; created: boolean; enqueued: boolean } | { ok: false; error: string };
 
 export async function queueYouTubeCapture(
   auth: AuthContext,

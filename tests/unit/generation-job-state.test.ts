@@ -94,7 +94,8 @@ describe("generation job state", () => {
   });
 
   it("gives every progress step its own signature, so the stream sends each one", () => {
-    const at = (done: number) => jobSignature({ status: "running", attempt: 1, progress: { step: "Crawling", done, total: 25 } });
+    const at = (done: number) =>
+      jobSignature({ status: "running", attempt: 1, progress: { step: "Crawling", done, total: 25 } });
     expect(at(3)).not.toBe(at(4));
     expect(at(4)).toBe(at(4));
   });
