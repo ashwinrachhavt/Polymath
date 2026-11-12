@@ -29,15 +29,21 @@ ARG NEXT_PUBLIC_APP_URL=http://localhost:3300
 ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
 
 # eve/next serves each agent from its built .output under `next start`, so the
-# agents are built before Next. Only NEXT_PUBLIC_* keys are read from the
-# server's env file (a build secret, never a layer): server secrets and the
-# in-network DATABASE_URL have no business in a build step.
+# agents are built before Next.
+#
+# The build reads two kinds of key from the server's env file, mounted as a
+# BuildKit secret (never written to a layer): NEXT_PUBLIC_* for the client
+# bundle, and CLERK_SECRET_KEY because `clerkConfigured` (src/lib/clerk.ts)
+# needs both Clerk keys while /sign-in is prerendered — without it the page is
+# baked in as a 404. Next inlines only NEXT_PUBLIC_*, so the secret key stays a
+# runtime read; README "Secrets" has the check that the image holds no value.
+# Everything else (the in-network DATABASE_URL, provider keys) stays out.
 RUN --mount=type=secret,id=app_env,required=true \
     set -eu; \
     (cd eve/polymath && /app/node_modules/.bin/eve build); \
     (cd eve/specialist && /app/node_modules/.bin/eve build); \
-    grep -E '^NEXT_PUBLIC_[A-Z0-9_]+=' /run/secrets/app_env | grep -v '^NEXT_PUBLIC_APP_URL=' > /tmp/public.env || true; \
-    set -a; . /tmp/public.env; set +a; rm -f /tmp/public.env; \
+    grep -E '^(NEXT_PUBLIC_[A-Z0-9_]+|CLERK_SECRET_KEY)=' /run/secrets/app_env | grep -v '^NEXT_PUBLIC_APP_URL=' > /tmp/build.env || true; \
+    set -a; . /tmp/build.env; set +a; rm -f /tmp/build.env; \
     pnpm build
 
 EXPOSE 3000
