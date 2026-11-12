@@ -11,6 +11,7 @@ import { providerEntry } from "@/integrations/providers/registry";
 import { drizzleQuotaStore, withQuota, type QuotaStore } from "@/integrations/providers/quota";
 
 export const EXPLAIN_IT_PROMPT_VERSION = "learning-explain-it@2";
+export const CHALLENGE_PROMPT_VERSION = "learning-challenge@1";
 const MAX_INPUT_CHARS = 12000;
 
 export type ExplainSource = { title: string; text: string };
@@ -28,9 +29,14 @@ export type ExplainEvaluation = {
   nextConcept: string | null;
 };
 
+/** A practice challenge as the model wrote it. The learning domain validates `content` and locates `evidence`. */
+export type ProposedChallenge = { content: unknown; evidence: ProposedEvidence[] };
+type ProposedChallengeFormat = "predict" | "bug_hunt";
+
 export interface ExplainItGenerator {
   readonly name: string;
   start(sources: ExplainSource[]): Promise<ExplainQuestion>;
+  challenge(format: ProposedChallengeFormat, sources: ExplainSource[]): Promise<ProposedChallenge>;
   evaluate(input: {
     sources: ExplainSource[];
     question: string;
@@ -60,8 +66,34 @@ const evaluationResponse = z.object({
   evidence: evidenceSchema,
   nextQuestion: z.string().max(600).nullable(),
   nextEvidence: evidenceSchema,
-  nextConcept: z.string().max(80).nullish().transform((value) => value ?? null),
+  nextConcept: z
+    .string()
+    .max(80)
+    .nullish()
+    .transform((value) => value ?? null),
 });
+
+const challengeResponse = z.object({
+  content: z.record(z.string(), z.unknown()),
+  evidence: evidenceSchema.min(1),
+});
+
+const TERMS_SHAPE =
+  '{"kind":"terms","accept":[[phrase,...],...],"reject":[phrase,...]}: every accept group must be stated and a group is stated by any one of its phrases, so give each group three to eight short lowercase wordings a learner might use (two to five words each, whole words, with singular, plural and tense variants listed separately); reject holds short wordings of the common wrong answer and must never share a phrase with accept';
+
+const CHALLENGE_SHARED =
+  "objective is one plain sentence naming the single ability shown. answer is a complete model answer that states every accept group in its own words. rule is the principle from the source in one sentence. hints is three hints, least revealing first, the first never giving the answer. evidence is the contiguous verbatim passage of the indicated source that states the rule. Build the challenge on one rule the sources state outright, and ask about a new concrete case the sources do not spell out, so it cannot be answered by copying a sentence. Use no outside knowledge. ";
+
+const CHALLENGE_SHAPES: Record<ProposedChallengeFormat, string> = {
+  predict:
+    'Write one "predict the outcome" practice challenge. Return JSON {content:{format:"predict",objective,situation,question,outcome,reason,answer,rule,hints},evidence:[{quote,sourceIndex}]}. situation is a concrete scenario of two to five sentences. question asks what happens next and why. outcome checks the predicted result and reason checks the explanation; each is ' +
+    TERMS_SHAPE +
+    ". ",
+  bug_hunt:
+    'Write one "find the bug" practice challenge. Return JSON {content:{format:"bug_hunt",objective,artifact:{kind,lines},question,fault,invariant,answer,rule,hints},evidence:[{quote,sourceIndex}]}. artifact.kind is "log" or "code"; artifact.lines is six to twenty short lines of a log or of generic pseudo-code that you write, in which exactly one line breaks a rule the sources state; never copy code from the sources. question asks which line goes wrong and which rule it breaks. fault is {"kind":"lines","lines":[n]} with the 1-based number of the faulty line. invariant checks the rule that was broken and is ' +
+    TERMS_SHAPE +
+    '. answer must name the faulty line as "line N". ',
+};
 
 function boundedSources(sources: ExplainSource[]) {
   const perSourceLimit = Math.floor((MAX_INPUT_CHARS * 0.75) / sources.length);
@@ -72,7 +104,8 @@ function boundedSources(sources: ExplainSource[]) {
   }));
 }
 
-function fromGeneration(
+/** The generator over one provider. `run` is where a caller adds quota or metering around each call. */
+function explainItGenerator(
   provider: GenerationProvider,
   run: (input: { system: string; prompt: string }) => Promise<{ text: string }>,
 ): ExplainItGenerator {
@@ -96,6 +129,10 @@ function fromGeneration(
         "Create one guided own-words question answerable from the provided selected sources only. Return JSON {prompt,evidence:[{quote,sourceIndex}],concept}. concept names the one idea the question asks about as a short noun phrase of one to five words in the source's own terms. The evidence must be a contiguous verbatim quote from the indicated source. Ask for reasoning, not recall of a trivial phrase. Use no outside knowledge. " +
         untrustedDataClauseJsonSafe("sources");
       return call(system, JSON.stringify({ sources: boundedSources(sources) }), startResponse);
+    },
+    challenge(format, sources) {
+      const system = CHALLENGE_SHAPES[format] + CHALLENGE_SHARED + untrustedDataClauseJsonSafe("sources");
+      return call(system, JSON.stringify({ sources: boundedSources(sources) }), challengeResponse);
     },
     evaluate(input) {
       const system =
@@ -129,7 +166,7 @@ export function defaultExplainItGenerator(
     throw cause;
   }
   const entry = providerEntry(provider.registryId);
-  return fromGeneration(provider, (input) => {
+  return explainItGenerator(provider, (input) => {
     const call = () => provider.generate({ ...input, json: true });
     if (workspaceId && entry?.quota && entry.enabled) {
       return withQuota(quotaStore ?? drizzleQuotaStore(), entry, workspaceId, 1, call);

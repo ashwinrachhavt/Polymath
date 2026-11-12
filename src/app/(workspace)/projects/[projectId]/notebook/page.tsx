@@ -27,9 +27,11 @@ import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { timeAgo } from "@/lib/time";
 import { listLinkableRecords, resolveLinkTitles } from "@/app/(workspace)/projects-links";
 import { DraftWorkbench } from "../../draft-workbench";
+import { PracticePanel } from "./practice-panel";
 import { listUnfinishedGenerationJobs } from "@/domains/jobs/queries";
 import { LEARNING_JOB_KIND_PREFIX, learningJobSubject } from "@/domains/learning/job-names";
 import { getNotebookLearningResults } from "@/domains/learning/notebook-results";
+import { listChallenges } from "@/domains/learning/challenges";
 import { describeShortfall } from "@/domains/learning/item-count";
 import { getArtifactFeedback } from "@/domains/knowledge/artifact-feedback";
 import { LearningResults } from "./learning-results";
@@ -112,6 +114,9 @@ async function NotebookData({
   const resultsPromise = documentIdsPromise.then((documentIds) =>
     getNotebookLearningResults(auth, projectId, { documentIds, quizId }),
   );
+  // Practice exercises (Predict, Bug Hunt) belong beside the generated quiz and
+  // deck; one read, started with the rest of the wave.
+  const challengesPromise = listChallenges(auth, projectId);
   // The Studio Runs panel lists generation/research runs. A conversation is a
   // run too, but it belongs to the chat's own history, not this panel.
   const runsPromise = listProjectRuns(auth, projectId).then((runs) =>
@@ -134,23 +139,36 @@ async function NotebookData({
         : { draftDetail: null, linkTitles: {}, linkable: null },
   );
 
-  const [sources, vault, chats, labels, chatView, generatedRows, runs, runDrafts, workbench, learning, learningJobs] =
-    await Promise.all([
-      sourcesPromise,
-      listAttachableDocuments(auth),
-      chatsPromise,
-      labelsPromise,
-      chatViewPromise,
-      generatedPromise,
-      runsPromise,
-      runDraftsPromise,
-      workbenchPromise,
-      resultsPromise,
-      listUnfinishedGenerationJobs(auth, {
-        kindPrefix: LEARNING_JOB_KIND_PREFIX,
-        subject: learningJobSubject.notebook(projectId),
-      }),
-    ]);
+  const [
+    sources,
+    vault,
+    chats,
+    labels,
+    chatView,
+    generatedRows,
+    runs,
+    runDrafts,
+    workbench,
+    learning,
+    challenges,
+    learningJobs,
+  ] = await Promise.all([
+    sourcesPromise,
+    listAttachableDocuments(auth),
+    chatsPromise,
+    labelsPromise,
+    chatViewPromise,
+    generatedPromise,
+    runsPromise,
+    runDraftsPromise,
+    workbenchPromise,
+    resultsPromise,
+    challengesPromise,
+    listUnfinishedGenerationJobs(auth, {
+      kindPrefix: LEARNING_JOB_KIND_PREFIX,
+      subject: learningJobSubject.notebook(projectId),
+    }),
+  ]);
   const { activeChat, activeChatLive, activeThread, lastAnswer } = chatView;
   const { draftDetail, linkTitles, linkable } = workbench;
   const [quizFeedback, deckFeedback] = await Promise.all([
@@ -196,44 +214,54 @@ async function NotebookData({
         runDrafts={Object.fromEntries(runDrafts)}
         learningJobs={learningJobs}
         results={
-          <LearningResults
-            projectId={project.id}
-            initiallyOpen={quizId && learning.quiz?.id === quizId ? "quiz" : null}
-            results={{
-              quiz: learning.quiz && {
-                id: learning.quiz.id,
-                title: learning.quiz.title,
-                ago: timeAgo(learning.quiz.createdAt),
-                questionCount: learning.quiz.questions.length,
-                note: describeShortfall({
-                  made: learning.quiz.questions.length,
-                  requested: learning.quiz.requested,
-                  stoppedBy: learning.quiz.stoppedBy,
-                }),
-                quiz: learning.quiz,
-                rating: quizFeedback,
-              },
-              deck: learning.deck && {
-                id: learning.deck.id,
-                title: learning.deck.title,
-                ago: timeAgo(learning.deck.createdAt),
-                cardCount: learning.deck.cardCount,
-                note: describeShortfall({
-                  made: learning.deck.cardCount,
-                  requested: learning.deck.requested,
-                  stoppedBy: learning.deck.stoppedBy,
-                }),
-                dueCards: learning.deck.cards,
-                rating: deckFeedback,
-              },
-              explain: learning.explain && {
-                id: learning.explain.id,
-                title: learning.explain.title,
-                ago: timeAgo(learning.explain.createdAt),
-                session: learning.explain,
-              },
-            }}
-          />
+          <>
+            <PracticePanel
+              projectId={project.id}
+              documentIds={sources
+                .filter((source) => source.readiness === "ready")
+                .slice(0, 8)
+                .map((source) => source.documentId)}
+              items={challenges.map(({ createdAt, ...challenge }) => ({ ...challenge, ago: timeAgo(createdAt) }))}
+            />
+            <LearningResults
+              projectId={project.id}
+              initiallyOpen={quizId && learning.quiz?.id === quizId ? "quiz" : null}
+              results={{
+                quiz: learning.quiz && {
+                  id: learning.quiz.id,
+                  title: learning.quiz.title,
+                  ago: timeAgo(learning.quiz.createdAt),
+                  questionCount: learning.quiz.questions.length,
+                  note: describeShortfall({
+                    made: learning.quiz.questions.length,
+                    requested: learning.quiz.requested,
+                    stoppedBy: learning.quiz.stoppedBy,
+                  }),
+                  quiz: learning.quiz,
+                  rating: quizFeedback,
+                },
+                deck: learning.deck && {
+                  id: learning.deck.id,
+                  title: learning.deck.title,
+                  ago: timeAgo(learning.deck.createdAt),
+                  cardCount: learning.deck.cardCount,
+                  note: describeShortfall({
+                    made: learning.deck.cardCount,
+                    requested: learning.deck.requested,
+                    stoppedBy: learning.deck.stoppedBy,
+                  }),
+                  dueCards: learning.deck.cards,
+                  rating: deckFeedback,
+                },
+                explain: learning.explain && {
+                  id: learning.explain.id,
+                  title: learning.explain.title,
+                  ago: timeAgo(learning.explain.createdAt),
+                  session: learning.explain,
+                },
+              }}
+            />
+          </>
         }
       />
       {draftDetail && linkable ? (

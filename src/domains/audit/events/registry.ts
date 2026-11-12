@@ -369,6 +369,8 @@ const TIER_2_ACTIONS: { action: string; category: EventCategory }[] = [
   { action: "learning.flashcards_generated", category: "knowledge" },
   { action: "learning.artifact_feedback_recorded", category: "knowledge" },
   { action: "learning.graph_recall_attempted", category: "knowledge" },
+  { action: "learning.challenge_attempted", category: "knowledge" },
+  { action: "learning.challenge_started", category: "knowledge" },
   { action: "learning.explain_answer_submitted", category: "knowledge" },
   { action: "learning.explain_session_started", category: "knowledge" },
   { action: "learning.quiz_completed", category: "knowledge" },

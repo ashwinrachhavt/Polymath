@@ -36,7 +36,7 @@ export class ExplainItError extends Error {
   }
 }
 
-function verifyEvidence(sources: ExplainSource[], proposed: ProposedEvidence[]): ExplainEvidence[] {
+export function verifyEvidence(sources: ExplainSource[], proposed: ProposedEvidence[]): ExplainEvidence[] {
   const verified: ExplainEvidence[] = [];
   for (const item of proposed) {
     const source = sources[item.sourceIndex];
@@ -169,7 +169,7 @@ export async function startExplainItSession(
   });
 }
 
-async function loadPinnedExplainSources(
+export async function loadPinnedExplainSources(
   auth: AuthContext,
   manifest: ExplainSourceSnapshot[],
 ): Promise<Array<ExplainSource & ExplainSourceSnapshot>> {

@@ -118,7 +118,12 @@ describe("concept links", () => {
     const auth = await seed("concept-idea");
     const [idea] = await db
       .insert(concepts)
-      .values({ workspaceId: auth.workspaceId, term: "Deposit", sense: "domain", definition: "Money held against damage." })
+      .values({
+        workspaceId: auth.workspaceId,
+        term: "Deposit",
+        sense: "domain",
+        definition: "Money held against damage.",
+      })
       .returning();
     const { documentId } = await seedReadDocument(db, auth, TEXT);
     await quiz.generateQuiz(
@@ -181,6 +186,9 @@ describe("concept links", () => {
         nextEvidence: [{ quote: "The deposit is held in escrow.", sourceIndex: 0 }],
         nextConcept: followUps.shift() ?? null,
       }),
+      challenge: async () => {
+        throw new Error("this fixture never makes a practice challenge");
+      },
     };
 
     const { sessionId } = await explain.startExplainItSession(

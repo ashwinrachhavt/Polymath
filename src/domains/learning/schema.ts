@@ -16,6 +16,8 @@ import {
 import { mutable, primaryId, recorded, tenantId } from "../../db/columns";
 import { artifacts, concepts, documentExtractions, documents, notebooks } from "../knowledge/schema";
 import { users } from "../identity/schema";
+import type { ChallengeContent, ChallengeFormat } from "./challenge-content";
+import type { ChallengeGrade } from "./challenge-grading";
 import type { GenerationOutcome } from "./item-count";
 
 /*
@@ -336,6 +338,92 @@ export const conceptLinks = pgTable(
     uniqueIndex("concept_links_flashcard_key").on(t.flashcardId, t.conceptId),
     uniqueIndex("concept_links_explain_turn_key").on(t.explainTurnId, t.conceptId),
     index("concept_links_concept_idx").on(t.workspaceId, t.conceptId),
+  ],
+);
+
+/*
+ * Practice challenges (Predict, Bug Hunt and later formats). One pair of
+ * tables for every format: the format's own fields live in `content`, a
+ * discriminated union parsed by `challenge-content.ts`, never in a table of
+ * their own. A challenge is made off the request, so it is `preparing` until
+ * its content is stored, and is then replayed from that content alone.
+ */
+export const learningChallenges = pgTable(
+  "learning_challenges",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    notebookId: uuid("notebook_id")
+      .notNull()
+      .references(() => notebooks.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    format: text("format").$type<ChallengeFormat>().notNull(),
+    status: text("status").$type<"preparing" | "ready" | "failed">().notNull().default("preparing"),
+    sourceManifest: jsonb("source_manifest").$type<ExplainSourceSnapshot[]>().notNull(),
+    generationKey: text("generation_key").notNull(),
+    /** What the challenge shows the learner can do; a concept link can attach to it later. */
+    objective: text("objective"),
+    content: jsonb("content").$type<ChallengeContent>(),
+    /** The source passage the challenge rests on, located in the pinned extraction. */
+    evidence: jsonb("evidence").$type<ExplainEvidence[]>().notNull().default([]),
+    promptVersion: text("prompt_version"),
+    /** Why preparing failed, in words the learner can read. */
+    error: text("error"),
+    /** Hints shown since the last submitted attempt. */
+    hintsShown: integer("hints_shown").notNull().default(0),
+    ...mutable,
+  },
+  (t) => [
+    uniqueIndex("learning_challenges_generation_key").on(t.workspaceId, t.userId, t.generationKey),
+    index("learning_challenges_notebook_user_idx").on(t.workspaceId, t.notebookId, t.userId, t.createdAt),
+    check("learning_challenges_format_check", sql.raw("format in ('predict', 'bug_hunt')")),
+    check("learning_challenges_status_check", sql.raw("status in ('preparing', 'ready', 'failed')")),
+    check("learning_challenges_ready_check", sql.raw("status <> 'ready' or content is not null")),
+    check("learning_challenges_hints_check", sql.raw("hints_shown between 0 and 3")),
+  ],
+);
+
+/** One committed answer. Written once: a retry is a new row with the next ordinal. */
+export const learningChallengeAttempts = pgTable(
+  "learning_challenge_attempts",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    challengeId: uuid("challenge_id")
+      .notNull()
+      .references(() => learningChallenges.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    ordinal: integer("ordinal").notNull(),
+    /** The client's key for this submit; a repeat returns the stored attempt. */
+    submitKey: text("submit_key").notNull(),
+    answer: text("answer").notNull(),
+    /** The learner said "I don't know": an honest gap, never graded as a wrong guess. */
+    dontKnow: boolean("dont_know").notNull().default(false),
+    hintsUsed: integer("hints_used").notNull().default(0),
+    /** Null only for "I don't know". */
+    grade: text("grade").$type<ChallengeGrade>(),
+    /** The step feedback names; null when every step was met. */
+    failedStep: text("failed_step"),
+    feedback: text("feedback").notNull(),
+    /** Whether the rules decided, or the model was asked because they could not. */
+    gradedBy: text("graded_by").$type<"rules" | "model">().notNull(),
+    evidence: jsonb("evidence").$type<ExplainEvidence[]>().notNull().default([]),
+    ...recorded,
+  },
+  (t) => [
+    uniqueIndex("learning_challenge_attempts_ordinal_key").on(t.challengeId, t.ordinal),
+    uniqueIndex("learning_challenge_attempts_submit_key").on(t.workspaceId, t.userId, t.submitKey),
+    check(
+      "learning_challenge_attempts_grade_check",
+      sql.raw("grade is null or grade in ('correct', 'partial', 'incorrect', 'uncertain')"),
+    ),
+    check("learning_challenge_attempts_dont_know_check", sql.raw("(grade is null) = dont_know")),
+    check("learning_challenge_attempts_graded_by_check", sql.raw("graded_by in ('rules', 'model')")),
+    check("learning_challenge_attempts_hints_check", sql.raw("hints_used between 0 and 3")),
   ],
 );
 
