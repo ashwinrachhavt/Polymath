@@ -214,6 +214,23 @@ async function makerAuth(job: { workspaceId: string; createdBy: string }): Promi
 }
 
 /**
+ * The attempt a job is still waiting to start, or null when it is not the
+ * caller's or is no longer queued. Lets a surface that has watched a job wait
+ * too long start it again (kickGenerationJob) without waiting for the worker.
+ */
+export async function queuedGenerationJobAttempt(
+  auth: Pick<AuthContext, "workspaceId" | "userId">,
+  jobId: string,
+): Promise<number | null> {
+  const [row] = await db
+    .select({ attempt: generationJobs.attempt })
+    .from(generationJobs)
+    .where(and(ownedBy(auth, jobId), eq(generationJobs.status, "queued")))
+    .limit(1);
+  return row?.attempt ?? null;
+}
+
+/**
  * Puts a failed (or stalled) job back in the queue as a new attempt. Returns
  * null when the job is not the caller's or is not in a state a retry applies
  * to, which includes a second click on Retry: one retry, one attempt.

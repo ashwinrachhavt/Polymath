@@ -9,7 +9,8 @@ import type { GenerationJobView } from "@/domains/jobs/state";
  * Value: protects=a row that turns ready or failed by itself and a finished
  * job announced on whatever page the person is on; fails_when=a pushed state
  * does not reach the row, a failure shows no reason or no retry, a repeated
- * frame announces twice, or the lists are not re-read when a job settles;
+ * frame announces twice, the lists are not re-read when a job settles, or a
+ * job nobody started sits in the queue in silence;
  * seam=the client components under jsdom with a scripted EventSource and the
  * server actions mocked; no_claim=the stream route and the job commands
  * (generation-job-state.test.ts, generation-jobs integration suite).
@@ -20,12 +21,14 @@ const mocks = vi.hoisted(() => ({
   refresh: vi.fn(),
   retry: vi.fn(),
   dismiss: vi.fn(),
+  startWaiting: vi.fn(async () => {}),
 }));
 vi.mock("@/components/workspace/workspace-provider", () => ({ useWorkspace: () => ({ notify: mocks.notify }) }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: mocks.refresh }), usePathname: () => "/learn" }));
 vi.mock("@/domains/jobs/actions", () => ({
   retryGenerationJobAction: mocks.retry,
   dismissGenerationJobAction: mocks.dismiss,
+  startWaitingGenerationJobAction: mocks.startWaiting,
 }));
 
 class FakeEventSource {
@@ -91,6 +94,7 @@ function mount(initialJobs: GenerationJobView[]) {
 
 beforeEach(() => {
   for (const mock of Object.values(mocks)) mock.mockReset();
+  mocks.startWaiting.mockResolvedValue(undefined);
   vi.stubGlobal("EventSource", FakeEventSource);
 });
 afterEach(() => {
@@ -142,6 +146,31 @@ describe("background generation in the browser", () => {
 
     await waitFor(() => expect(screen.queryByText("Quiz: Notes")).toBeNull());
     expect(mocks.dismiss).toHaveBeenCalledWith("job-1");
+  });
+
+  it("starts a job itself, once, and says it is slow when it has waited in the queue too long", async () => {
+    const queuedLongAgo: GenerationJobView = {
+      ...running,
+      status: "queued",
+      updatedAt: new Date(Date.now() - 60_000).toISOString(),
+    };
+    const { stream } = mount([]);
+    act(() => stream.push(queuedLongAgo));
+
+    await screen.findByText("Taking longer than usual to start. Still trying.");
+    expect(mocks.startWaiting).toHaveBeenCalledTimes(1);
+    expect(mocks.startWaiting).toHaveBeenCalledWith("job-1");
+
+    act(() => stream.push({ ...queuedLongAgo }));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(mocks.startWaiting).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves a freshly queued job alone", async () => {
+    const { stream } = mount([]);
+    act(() => stream.push({ ...running, status: "queued", updatedAt: new Date().toISOString() }));
+    await screen.findByText("Waiting to start. You can leave this page.");
+    expect(mocks.startWaiting).not.toHaveBeenCalled();
   });
 
   it("closes the connection when the shell unmounts", () => {

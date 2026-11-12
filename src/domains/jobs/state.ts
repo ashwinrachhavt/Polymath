@@ -32,6 +32,9 @@ export const HEARTBEAT_EVERY_MS = 15_000;
 /** Six missed heartbeats. Long enough for a slow database, short enough to be honest. */
 export const STALLED_AFTER_MS = 90_000;
 
+/** How long a job may sit in the queue before a watching page starts it itself and says it is slow. */
+export const SLOW_TO_START_AFTER_MS = 20_000;
+
 export const STALLED_COPY = "This stopped before it finished. Try again.";
 export const UNEXPECTED_FAILURE_COPY = "Something went wrong while making this. Try again.";
 

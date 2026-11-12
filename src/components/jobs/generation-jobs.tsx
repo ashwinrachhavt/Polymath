@@ -4,7 +4,14 @@ import { useEffect, useSyncExternalStore } from "react";
 import { z } from "zod";
 import { useWorkspace } from "@/components/workspace/workspace-provider";
 import type { WorkState } from "@/components/work-status";
-import { GENERATION_JOB_EVENT, isSettled, jobSignature, type GenerationJobView } from "@/domains/jobs/state";
+import { startWaitingGenerationJobAction } from "@/domains/jobs/actions";
+import {
+  GENERATION_JOB_EVENT,
+  isSettled,
+  jobSignature,
+  SLOW_TO_START_AFTER_MS,
+  type GenerationJobView,
+} from "@/domains/jobs/state";
 
 /*
  * The browser half of the generation jobs push channel. One EventSource per
@@ -36,6 +43,9 @@ type Jobs = ReadonlyMap<string, GenerationJobView>;
 const EMPTY: Jobs = new Map();
 let jobs: Jobs = EMPTY;
 const listeners = new Set<() => void>();
+
+/** Queued attempts this tab has already watched wait too long, keyed by signature and id. */
+const slowToStart = new Set<string>();
 
 function publish(next: Jobs) {
   jobs = next;
@@ -78,6 +88,9 @@ export function jobWorkState(job: GenerationJobView): WorkState {
   if (job.status === "failed") return { phase: "failed", label: job.error ?? "This could not be made." };
   if (job.status === "ready") return { phase: "done", label: job.notice ?? "Ready." };
   if (job.status === "running") return { phase: "working", label: "Being made. You can leave this page." };
+  if (slowToStart.has(jobSignature(job) + job.id)) {
+    return { phase: "queued", label: "Taking longer than usual to start. Still trying." };
+  }
   return { phase: "queued", label: "Waiting to start. You can leave this page." };
 }
 
@@ -88,6 +101,28 @@ export function jobWorkState(job: GenerationJobView): WorkState {
  */
 export function GenerationJobsMount() {
   const { notify } = useWorkspace();
+  const known = useGenerationJobs();
+
+  // A job still queued after SLOW_TO_START_AFTER_MS was not started by its submit: start it once, and say it is slow.
+  const waiting = [...known.values()].filter((job) => job.status === "queued");
+  const waitingKey = waiting.map((job) => jobSignature(job) + job.id).join(",");
+  useEffect(() => {
+    const timers = waiting
+      .filter((job) => !slowToStart.has(jobSignature(job) + job.id))
+      .map((job) => {
+        const overdueIn = Math.max(0, new Date(job.updatedAt).getTime() + SLOW_TO_START_AFTER_MS - Date.now());
+        return setTimeout(() => {
+          if (jobs.get(job.id)?.status !== "queued") return;
+          slowToStart.add(jobSignature(job) + job.id);
+          publish(new Map(jobs));
+          void startWaitingGenerationJobAction(job.id).catch(() => {});
+        }, overdueIn);
+      });
+    return () => timers.forEach(clearTimeout);
+    // The key names every waiting attempt; the list itself is rebuilt each render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [waitingKey]);
+
   useEffect(() => {
     const source = new EventSource(STREAM_URL);
     const onJob = (event: MessageEvent<string>) => {
@@ -113,6 +148,7 @@ export function GenerationJobsMount() {
     return () => {
       source.removeEventListener(GENERATION_JOB_EVENT, onJob);
       source.close();
+      slowToStart.clear();
       publish(EMPTY);
     };
   }, [notify]);

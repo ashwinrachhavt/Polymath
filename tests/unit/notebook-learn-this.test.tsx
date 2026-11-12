@@ -32,7 +32,11 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn() }),
   usePathname: () => "/projects/p/notebook",
 }));
-vi.mock("@/domains/jobs/actions", () => ({ retryGenerationJobAction: vi.fn(), dismissGenerationJobAction: vi.fn() }));
+vi.mock("@/domains/jobs/actions", () => ({
+  retryGenerationJobAction: vi.fn(),
+  dismissGenerationJobAction: vi.fn(),
+  startWaitingGenerationJobAction: vi.fn(),
+}));
 vi.mock("@/app/(workspace)/projects/[projectId]/notebook/flashcard-actions", () => ({
   rateNotebookFlashcardAction: actions.rate,
 }));

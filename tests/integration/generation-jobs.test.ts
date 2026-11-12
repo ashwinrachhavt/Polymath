@@ -36,6 +36,7 @@ import {
   GENERATION_JOB_TOPIC,
   GenerationJobConflictError,
   generationJobRequestedHandler,
+  queuedGenerationJobAttempt,
   retryGenerationJob,
   runGenerationJob,
   submitGenerationJob,
@@ -85,6 +86,10 @@ describe("generation jobs", () => {
     expect(await outboxFor(auth.workspaceId)).toEqual([
       { dispatchKey: `${job.id}:1`, payload: { jobId: job.id, attempt: 1 } },
     ]);
+    // Still waiting: a page that has watched it wait may start this attempt itself.
+    expect(await queuedGenerationJobAttempt(auth, job.id)).toBe(1);
+    await runGenerationJob({ jobId: job.id, attempt: 1 }, { [KIND]: async () => READY });
+    expect(await queuedGenerationJobAttempt(auth, job.id)).toBeNull();
   });
 
   it("returns the first job for a repeated submit and enqueues nothing more", async () => {
@@ -226,6 +231,7 @@ describe("generation jobs", () => {
       },
     );
 
+    expect(await queuedGenerationJobAttempt(stranger, job.id)).toBeNull();
     expect(await retryGenerationJob(stranger, job.id)).toBeNull();
     expect(await dismissGenerationJob(stranger, job.id)).toBe(false);
     expect(await listUnfinishedGenerationJobs(stranger, { kindPrefix: "test." })).toEqual([]);
