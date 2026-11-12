@@ -5,6 +5,7 @@ import { requireRole } from "@/lib/auth/guards";
 import { db } from "@/lib/db";
 import { problemResponse } from "@/lib/problems";
 import { eveAgentForProfile, eveBridgeUnavailableReason, eveSessionEndpoint } from "@/domains/agents/eve-driver";
+import { eveSessionEventCount } from "@/domains/agents/eve-recovery";
 import { getProfileNameForRun } from "@/domains/agents/queries";
 import { agentRuns, runEvents } from "@/domains/agents/schema";
 import { isFinished } from "@/domains/agents/thread";
@@ -205,13 +206,23 @@ export const GET = authedHandler<Ctx>(async (auth, request, ctx) => {
   }
 
   const profileName = await getProfileNameForRun(auth.workspaceId, run.id);
+  const agentName = eveAgentForProfile(profileName ?? "polymath");
+  // A run moved to a recovery session keeps its old cursor, but the new
+  // session counts events from zero. Opening the stream at the old cursor would
+  // return nothing for a replacement that already finished, so the client would
+  // sit forever on a thread whose answer it never receives. Detect the mismatch
+  // before opening and replay from zero instead.
+  const sessionStart =
+    startIndex > 0 ? await eveSessionEventCount({ agentName, sessionRef: run.sessionRef, auth }) : null;
+  const rewound = sessionStart !== null && sessionStart <= startIndex;
   const endpoint = await eveSessionEndpoint({
-    agentName: eveAgentForProfile(profileName ?? "polymath"),
+    agentName,
     sessionRef: run.sessionRef,
     auth,
-    startIndex,
+    startIndex: rewound ? 0 : startIndex,
     follow: !finished,
   });
+  const fromIndex = rewound ? 0 : startIndex;
 
   let upstream: Response;
   try {
@@ -269,7 +280,7 @@ export const GET = authedHandler<Ctx>(async (auth, request, ctx) => {
       // chunk gets a fresh decoder, which silently corrupts non-ASCII answers.
       const decoder = new TextDecoder();
       let buffer = "";
-      let cursor = startIndex;
+      let cursor = fromIndex;
       // Two different stops: `gone` means the consumer is no longer there (do
       // not enqueue), `terminal` means the run ended (stop reading). Conflating
       // them dropped a terminal event delivered as an unterminated tail line.
@@ -286,14 +297,22 @@ export const GET = authedHandler<Ctx>(async (auth, request, ctx) => {
       try {
         // The run's durable stage facts first: every connection opens with
         // what the rows know, before Eve's replay begins.
-        push(encodeFrame(runFrame(startIndex)));
-        // A recovery session starts at event 0 while the client still holds the
-        // cursor from the run's previous session, so replaying it from that
-        // cursor would skip the whole replacement turn. The head of a
-        // replacement replay is `session.started`, which the client has already
-        // applied once for the original session; seeing it again means the
-        // event space reset and the cursor has to start over.
-        let sawSessionStart = false;
+        push(encodeFrame(runFrame(fromIndex)));
+        // A rewind means this connection is reading the run's replacement
+        // session at cursor 0 while the surface still holds the old cursor; a
+        // snapshot clears the accumulator so the replayed turn is not layered
+        // over stale blocks.
+        if (rewound) {
+          const stored = await durableReplay(runId, 0, suppressObjectiveText);
+          push(
+            encodeFrame({
+              type: "snapshot",
+              runId,
+              blocks: stored.frames.flatMap((frame) => (frame.type === "snapshot" ? frame.blocks : [])),
+              cursor: 0,
+            }),
+          );
+        }
         for await (const chunk of upstream.body as unknown as AsyncIterable<Uint8Array>) {
           buffer += decoder.decode(chunk, { stream: true });
           const { lines, rest } = splitLines(buffer);
@@ -304,27 +323,6 @@ export const GET = authedHandler<Ctx>(async (auth, request, ctx) => {
             // advance the cursor: the cursor is Eve's absolute event count, and
             // counting a non-event would make every reconnect replay.
             if (!event) continue;
-            if (!sawSessionStart && event.type === "session.started") {
-              sawSessionStart = true;
-              if (startIndex > 0) {
-                // A live surface is holding a cursor from the run's previous
-                // session, which no longer addresses this one. Hand it the
-                // stored thread at cursor 0 before the replacement's frames so
-                // the next reconnect replays from the start instead of skipping
-                // the whole turn. Emitted here, not at close: the follow branch
-                // holds the stream open, so a close-time frame never arrives.
-                cursor = 0;
-                const stored = await durableReplay(runId, 0, suppressObjectiveText);
-                push(
-                  encodeFrame({
-                    type: "snapshot",
-                    runId,
-                    blocks: stored.frames.flatMap((frame) => (frame.type === "snapshot" ? frame.blocks : [])),
-                    cursor: 0,
-                  }),
-                );
-              }
-            }
             for (const frame of frameOf(runId, event, cursor, { suppressObjectiveText })) push(encodeFrame(frame));
             cursor += 1;
             if (event.type === "session.completed" || event.type === "session.failed") {

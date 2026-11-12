@@ -48,6 +48,32 @@ export async function isEveSessionStranded(input: {
 }
 
 /**
+ * How many events the session has recorded, or null when the session cannot be
+ * read. The stream's cursor is this count, so a caller comparing it against a
+ * stored cursor learns whether that cursor still addresses this session: a
+ * replacement session starts over at zero and would silently skip everything.
+ */
+export async function eveSessionEventCount(input: {
+  agentName: string;
+  sessionRef: string;
+  auth: AuthContext;
+}): Promise<number | null> {
+  try {
+    const response = await fetch(
+      `${await eveMount(input.agentName)}/session/${encodeURIComponent(input.sessionRef)}/stream?follow=false`,
+      {
+        signal: AbortSignal.timeout(RECOVERY_TIMEOUT_MS),
+        headers: { accept: "application/x-ndjson", ...bridgeHeaders(input.auth) },
+      },
+    );
+    if (!response.ok) return null;
+    return (await response.text()).split("\n").filter((line) => line.trim() !== "").length;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * The run's stored conversation, bounded for use as replacement context. The
  * most recent turns matter most, so the cap trims from the front.
  */
