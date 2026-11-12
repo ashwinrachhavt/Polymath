@@ -1,0 +1,271 @@
+# Polymath on the Oracle VM: the laptop stack minus Langfuse and dozzle, with
+# the web app as a production build. Driven by deploy.sh; see README.md.
+#
+# Private by construction: only `web` publishes a port, and only on the VM's
+# loopback (127.0.0.1:3000). Reach it through an SSH tunnel. Everything else
+# talks over the compose networks.
+#
+# Memory limits are ceilings that sum to about 20 GB of the VM's 24 GB, leaving
+# room for the host and the separate Transactwise docling stack in /opt/docling.
+#
+# Variables (deploy.sh sets them):
+#   POLYMATH_RELEASE   commit sha; the app image is polymath-app:<sha>
+#   POLYMATH_HOME      /opt/polymath — env file, searxng settings, backups
+
+x-app: &app
+  image: polymath-app:${POLYMATH_RELEASE:?set POLYMATH_RELEASE}
+  env_file:
+    - path: ${POLYMATH_HOME:-/opt/polymath}/.env
+      required: true
+  environment: &app-env
+    # The env file carries these too; pinning them here means a stale env file
+    # cannot point the app at the laptop's localhost services or dev auth.
+    NODE_ENV: production
+    POLYMATH_DEV_AUTH: "0"
+    DOCLING_SERVE_URL: http://docling:5001
+    SEARXNG_URL: http://searxng:8080
+    FIRECRAWL_API_URL: http://firecrawl:3002
+    POLYMATH_GATEWAY_URL: http://web:3000
+    TZ: ${LOCAL_TZ:-UTC}
+  networks:
+    - default
+    - search
+  restart: unless-stopped
+
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_DB: axiom
+      POSTGRES_USER: axiom
+      POSTGRES_PASSWORD: ${POLYMATH_DB_PASSWORD:?set POLYMATH_DB_PASSWORD in the env file}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U axiom -d axiom"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    mem_limit: 3g
+    shm_size: 256m
+    restart: unless-stopped
+
+  migrate:
+    <<: *app
+    command: ["pnpm", "db:migrate"]
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+    profiles: ["migrate"]
+
+  web:
+    <<: *app
+    build:
+      context: ../..
+      dockerfile: deploy/oracle/Dockerfile
+      secrets:
+        - app_env
+    command: ["pnpm", "start", "--hostname", "0.0.0.0", "--port", "3000"]
+    environment:
+      <<: *app-env
+      HOSTNAME: 0.0.0.0
+      PORT: "3000"
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      # eve's default Workflow world keeps run state here; keep it across
+      # releases so in-flight agent runs survive a deploy.
+      - eve-polymath:/app/eve/polymath/.eve/.workflow-data
+      - eve-specialist:/app/eve/specialist/.eve/.workflow-data
+    depends_on:
+      db:
+        condition: service_healthy
+      docling:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/landing').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+    mem_limit: 4g
+
+  worker:
+    <<: *app
+    command: ["pnpm", "exec", "tsx", "scripts/outbox-worker.ts"]
+    depends_on:
+      db:
+        condition: service_healthy
+    # The worker has no port; healthy means it can still reach Postgres.
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('net').connect(5432,'db').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    mem_limit: 2g
+
+  # The CPU build is the arm64 one; the same pinned image the Transactwise
+  # docling uses, so the VM stores it once.
+  docling:
+    image: ghcr.io/docling-project/docling-serve-cpu:v1.38.2
+    environment:
+      DOCLING_SERVE_ENABLE_UI: "false"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5001/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    mem_limit: 5g
+    restart: unless-stopped
+
+  # Private metasearch for the agents' web.search tool and Firecrawl.
+  searxng:
+    image: searxng/searxng:latest
+    environment:
+      SEARXNG_BASE_URL: "http://searxng:8080/"
+    volumes:
+      - ${POLYMATH_HOME:-/opt/polymath}/searxng/settings.yml:/etc/searxng/settings.yml:ro
+    depends_on:
+      redis-search:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    mem_limit: 512m
+    restart: unless-stopped
+    networks:
+      - search
+
+  redis-search:
+    image: redis:alpine
+    command: redis-server --bind 0.0.0.0 --save "" --appendonly no --maxmemory 192mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    mem_limit: 256m
+    restart: unless-stopped
+    networks:
+      - search
+
+  firecrawl:
+    image: ghcr.io/firecrawl/firecrawl:latest
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "3002"
+      ENV: local
+      REDIS_URL: redis://redis-search:6379
+      REDIS_RATE_LIMIT_URL: redis://redis-search:6379
+      PLAYWRIGHT_MICROSERVICE_URL: http://firecrawl-playwright:3000/scrape
+      POSTGRES_HOST: firecrawl-postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+      USE_DB_AUTHENTICATION: "false"
+      NUQ_RABBITMQ_URL: amqp://firecrawl-rabbitmq:5672
+      SEARXNG_ENDPOINT: http://searxng:8080
+      SEARXNG_ENGINES: duckduckgo,brave
+      SEARXNG_CATEGORIES: general
+      NUM_WORKERS_PER_QUEUE: "4"
+      CRAWL_CONCURRENT_REQUESTS: "5"
+      MAX_CONCURRENT_JOBS: "3"
+      BROWSER_POOL_SIZE: "3"
+      LOGGING_LEVEL: info
+    depends_on:
+      redis-search:
+        condition: service_healthy
+      firecrawl-postgres:
+        condition: service_healthy
+      firecrawl-rabbitmq:
+        condition: service_healthy
+      searxng:
+        condition: service_healthy
+      firecrawl-playwright:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('net').connect(3002,'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    mem_limit: 2g
+    restart: unless-stopped
+    networks:
+      - search
+
+  firecrawl-playwright:
+    image: ghcr.io/firecrawl/playwright-service:latest
+    environment:
+      PORT: "3000"
+      ALLOW_LOCAL_WEBHOOKS: "false"
+      BLOCK_MEDIA: "true"
+      MAX_CONCURRENT_PAGES: "5"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp/.cache:noexec,nosuid,size=512m
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('net').connect(3000,'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    mem_limit: 2g
+    restart: unless-stopped
+    networks:
+      - search
+
+  firecrawl-postgres:
+    image: ghcr.io/firecrawl/nuq-postgres:latest
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    volumes:
+      - firecrawl-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    mem_limit: 1g
+    restart: unless-stopped
+    networks:
+      - search
+
+  firecrawl-rabbitmq:
+    image: rabbitmq:3-management
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    mem_limit: 768m
+    restart: unless-stopped
+    networks:
+      - search
+
+networks:
+  search:
+    driver: bridge
+
+volumes:
+  pgdata:
+  firecrawl-pgdata:
+  eve-polymath:
+  eve-specialist:
+
+secrets:
+  app_env:
+    file: ${POLYMATH_HOME:-/opt/polymath}/.env
