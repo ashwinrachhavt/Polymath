@@ -46,6 +46,7 @@ async function seedDocument(
   auth: ReturnType<typeof ownerAuth>,
   text: string | null,
   status: "succeeded" | "failed" | null = "succeeded",
+  title = "Fixture lease",
 ) {
   const [blob] = await db
     .insert(blobObjects)
@@ -63,7 +64,7 @@ async function seedDocument(
     .returning();
   const [doc] = await db
     .insert(documents)
-    .values({ workspaceId: auth.workspaceId, title: "Fixture lease", fileId: file.id, mimeType: "text/plain" })
+    .values({ workspaceId: auth.workspaceId, title, fileId: file.id, mimeType: "text/plain" })
     .returning();
   const [extraction] = status
     ? await db
@@ -310,6 +311,75 @@ suite("learning loop", () => {
     const after = await learningQueries.getQuizForSitting(auth, quizId);
     expect(after!.passages.flatMap((p) => p.questionIds)).toEqual(sitting!.questions.slice(1).map((q) => q.id));
     expect(after!.passages.map((p) => p.sourceTitle)).toEqual(["Fixture lease"]);
+  });
+
+  it("names sources by their own headings and leaves a link index out of the quiz", async () => {
+    const auth = await seed();
+    // Three pasted docs pages: the first line of each, a quoted site notice, became its stored title.
+    const RAW_TITLE = "> ## Documentation Index";
+    const NOTICE = `${RAW_TITLE}\n> Fetch the complete documentation index at: https://docs.example.test/llms.txt\n\n`;
+    const LEASE = `${NOTICE}# Lease terms\n\n${TEXT}`;
+    const LINKS =
+      "* **[Alpha](https://example.test/alpha)** - Issue tracker access\n* **[Beta](https://example.test/beta)** - Calendar and scheduling";
+    const RULES =
+      "The deposit is returned within 30 days of the tenant moving out. The landlord may keep part of it only for damage beyond ordinary wear, and must list each deduction in writing. A tenant who disagrees with a deduction has 14 days to dispute it before the amount is treated as accepted.";
+    const MIXED = `${NOTICE}# Deposit rules\n\n${RULES}\n\n${LINKS}`;
+    const INDEX = `${NOTICE}# Community servers\n\n${LINKS}\n* **[Gamma](https://example.test/gamma)** - Object storage browsing`;
+    const docs = [];
+    for (const text of [LEASE, MIXED, INDEX]) docs.push((await seedDocument(auth, text, "succeeded", RAW_TITLE)).doc);
+
+    const shown: Array<{ title: string; text: string }> = [];
+    const generator = {
+      name: "fixture:quiz",
+      generate: async () => ({ questions: [] }),
+      generateFromSources: async (sources: Array<{ title: string; text: string }>) => {
+        shown.push(...sources);
+        return {
+          questions: [
+            ...leaseQuestions().map((question) => ({ ...question, sourceIndex: 0 })),
+            // Quotes an index entry: the model was never shown it, and it must not survive if it guesses.
+            { ...leaseQuestions()[0], prompt: "What does Beta do?", quote: "Calendar and scheduling", sourceIndex: 1 },
+          ],
+        };
+      },
+    };
+    const out = await generate.generateQuiz(
+      auth,
+      { documentId: docs[0].id, documentIds: docs.map((doc) => doc.id), questionCount: 5 },
+      generator,
+    );
+
+    expect(shown.map((source) => source.title)).toEqual(["Lease terms", "Deposit rules"]);
+    expect(shown.map((source) => source.text).join("\n")).not.toMatch(/llms\.txt|\]\(https:/);
+    expect(shown[1].text).toContain("The deposit is returned within 30 days");
+    expect(out).toMatchObject({ questionCount: 3, droppedQuestions: 1 });
+
+    const [row] = await db.select().from(quizzes).where(eq(quizzes.id, out.quizId));
+    expect(row.title).toBe("Lease terms + 1 more");
+    expect(row.sourceManifest.map(({ title, skipped }) => ({ title, skipped }))).toEqual([
+      { title: "Lease terms", skipped: undefined },
+      { title: "Deposit rules", skipped: undefined },
+      { title: "Community servers", skipped: true },
+    ]);
+
+    const sitting = await learningQueries.getQuizForSitting(auth, out.quizId);
+    expect(sitting!.title).toBe("Lease terms + 1 more");
+    expect(sitting!.sources.map(({ label, skipped }) => ({ label, skipped }))).toEqual([
+      { label: "Lease terms", skipped: false },
+      { label: "Deposit rules", skipped: false },
+      { label: "Community servers", skipped: true },
+    ]);
+    expect(sitting!.passages.map((passage) => passage.sourceTitle)).toEqual(["Lease terms"]);
+    expect(sitting!.passages[0].body).not.toContain("llms.txt");
+
+    // A selection of nothing but an index fails with a reason the library can show.
+    const indexOnly = (await seedDocument(auth, INDEX, "succeeded", RAW_TITLE)).doc;
+    await expect(generate.generateQuiz(auth, { documentId: indexOnly.id }, generator)).rejects.toMatchObject({
+      code: "insufficient_evidence",
+      message: "This source is a list of links, with nothing explained to ask about.",
+    });
+    const [failed] = await db.select().from(quizzes).where(eq(quizzes.documentId, indexOnly.id));
+    expect(failed).toMatchObject({ status: "failed", title: "Community servers" });
   });
 
   it("rejects answers that are not a full sitting over the quiz's own questions", async () => {

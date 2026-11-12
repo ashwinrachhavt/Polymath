@@ -13,6 +13,7 @@ import {
   type QuizGenerator,
 } from "@/integrations/learning/quiz-generator";
 import { quizzes, quizQuestions, type QuizEvidence, type QuizSourceSnapshot } from "./schema";
+import { explanatoryText, isExplanatorySpan, isLinkIndex, textBlocks, type TextBlock } from "./explanatory-text";
 import { quizGenerationContext } from "./generation-context";
 import {
   defaultItemCount,
@@ -22,6 +23,7 @@ import {
   MIN_ITEM_COUNT,
   type GenerationOutcome,
 } from "./item-count";
+import { quizHeading, sourceLabels } from "./source-labels";
 
 /*
  * The quiz generator's domain half (learn-harness replication). Producing a
@@ -93,13 +95,16 @@ export type QuizSourceText = QuizSourceSnapshot & { text: string };
  * Pure trust boundary between the model's proposal and a persistable quiz.
  * A question survives only when: the prompt is non-empty, choices number
  * 2-5 with unique non-empty values, answerValue names one of those values,
- * the explanation is non-empty, and the quote re-locates in the text
+ * the explanation is non-empty, the quote re-locates in the text
  * (normalized matching - formatting-tolerant, content-strict, see
- * locate-quote.ts). Everything else is dropped and counted, never repaired.
+ * locate-quote.ts), and the quote sits in text that explains something
+ * rather than in a link index (explanatory-text.ts). Everything else is
+ * dropped and counted, never repaired.
  */
 export function verifyQuiz(text: string, raw: GeneratedQuestion[], limit = MAX_ITEM_COUNT): VerifiedQuiz {
   const questions: VerifiedQuestion[] = [];
   let droppedQuestions = 0;
+  let blocks: TextBlock[] | undefined;
   for (const q of raw) {
     const prompt = q.prompt?.trim();
     const explanation = q.explanation?.trim();
@@ -135,7 +140,7 @@ export function verifyQuiz(text: string, raw: GeneratedQuestion[], limit = MAX_I
     }
     const storedQuote = quote.slice(0, MAX_EVIDENCE_QUOTE_CHARS);
     const span = locateQuoteNormalized(text, storedQuote);
-    if (!span) {
+    if (!span || !isExplanatorySpan((blocks ??= textBlocks(text)), span)) {
       droppedQuestions++;
       continue;
     }
@@ -207,7 +212,10 @@ export function sameSourceVersions(stored: QuizSourceSnapshot[], current: QuizSo
   );
 }
 
-export async function loadCurrentQuizSources(auth: AuthContext, documentIds: string[]): Promise<QuizSourceText[]> {
+export async function loadCurrentQuizSources(
+  auth: AuthContext,
+  documentIds: string[],
+): Promise<Array<QuizSourceText & { sourceUrl: string | null; createdAt: Date }>> {
   if (
     documentIds.length === 0 ||
     documentIds.length > MAX_LEARNING_SOURCES ||
@@ -216,7 +224,12 @@ export async function loadCurrentQuizSources(auth: AuthContext, documentIds: str
     throw new QuizGenerationError("invalid_sources", "Choose between one and eight distinct sources.");
   }
   const docs = await db
-    .select({ id: documents.id, title: documents.title })
+    .select({
+      id: documents.id,
+      title: documents.title,
+      sourceUrl: documents.sourceUrl,
+      createdAt: documents.createdAt,
+    })
     .from(documents)
     .where(and(eq(documents.workspaceId, auth.workspaceId), inArray(documents.id, documentIds)));
   if (docs.length !== documentIds.length) {
@@ -239,7 +252,7 @@ export async function loadCurrentQuizSources(auth: AuthContext, documentIds: str
       ),
     );
   const byDocument = new Map(extractions.map((row) => [row.documentId, row]));
-  const byTitle = new Map(docs.map((row) => [row.id, row.title]));
+  const byId = new Map(docs.map((row) => [row.id, row]));
   const sources = documentIds.map((documentId) => {
     const extraction = byDocument.get(documentId);
     if (!extraction || extraction.status !== "succeeded" || !extraction.text) {
@@ -249,7 +262,9 @@ export async function loadCurrentQuizSources(auth: AuthContext, documentIds: str
       documentId,
       extractionId: extraction.extractionId,
       text: extraction.text,
-      title: byTitle.get(documentId)!,
+      title: byId.get(documentId)!.title,
+      sourceUrl: byId.get(documentId)!.sourceUrl,
+      createdAt: byId.get(documentId)!.createdAt,
     };
   });
   return sources;
@@ -294,7 +309,10 @@ async function recordFailedQuiz(
  * MIN_ITEM_COUNT to MAX_ITEM_COUNT; omitted, it scales with the sources
  * (defaultItemCount). Questions are made in batches without repeats, and the
  * quiz is written once at the end: grading needs every question answered, so
- * a quiz never grows after someone can sit it. Returns the questions stored,
+ * a quiz never grows after someone can sit it. A source that is an index of
+ * links is not read: it stays in the manifest marked `skipped`, so the quiz
+ * can say which sources it left out, and a selection of nothing but indexes
+ * fails as insufficient evidence. Returns the questions stored,
  * the count requested and why the run stopped (GenerationOutcome), so the
  * surface can tell sources that support no more from a later batch that
  * failed; a replay returns the stored values. A generation that cannot prove at least
@@ -337,14 +355,18 @@ export async function generateQuiz(
       `Choose between ${MIN_ITEM_COUNT} and ${MAX_ITEM_COUNT} questions.`,
     );
   }
-  const sources = await loadCurrentQuizSources(auth, selectedIds);
+  const loaded = await loadCurrentQuizSources(auth, selectedIds);
+  const labels = sourceLabels(loaded);
+  const sources = loaded.map((source, i) => ({ ...source, title: labels[i] }));
   const primary = sources[0];
-  const manifest: QuizSourceSnapshot[] = sources.map(({ documentId, extractionId, title }) => ({
-    documentId,
-    extractionId,
-    title,
+  const read = sources.filter((source) => !isLinkIndex(source.text));
+  const manifest: QuizSourceSnapshot[] = sources.map((source) => ({
+    documentId: source.documentId,
+    extractionId: source.extractionId,
+    title: source.title,
+    ...(read.includes(source) ? {} : { skipped: true as const }),
   }));
-  const title = sources.length === 1 ? primary.title : `${primary.title} + ${sources.length - 1} more`;
+  const title = quizHeading((read.length > 0 ? read : sources).map((source) => source.title));
   if (input.idempotencyKey) {
     const [existing] = await db
       .select({
@@ -388,25 +410,42 @@ export async function generateQuiz(
   // creates a failed quiz row for an invalid or unready source selection.
   const engine = generator ?? defaultQuizGenerator(auth.workspaceId);
   const learningContext = await quizGenerationContext(auth, selectedIds);
+  if (read.length === 0) {
+    const message =
+      sources.length === 1
+        ? "This source is a list of links, with nothing explained to ask about."
+        : "Every selected source is a list of links, with nothing explained to ask about.";
+    await recordFailedQuiz(auth, {
+      notebookId: input.notebookId,
+      documentId: primary.documentId,
+      title,
+      model: engine.name,
+      error: message,
+      sourceExtractionId: primary.extractionId,
+      sourceManifest: manifest,
+      generationKey: input.idempotencyKey,
+    });
+    throw new QuizGenerationError("insufficient_evidence", message);
+  }
+  // The model reads only what explains something; quotes are still verified
+  // against the whole source, which holds every block it was shown.
+  const readable = read.map((source) => ({ title: source.title, text: explanatoryText(source.text) }));
   const questionCount =
-    input.questionCount ?? defaultItemCount(sources.reduce((sum, source) => sum + source.text.length, 0));
+    input.questionCount ?? defaultItemCount(readable.reduce((sum, source) => sum + source.text.length, 0));
 
   let proposedQuestions = 0;
   let droppedQuestions = 0;
   async function proposeVerifiedQuestions(count: number, avoidPrompts: string[], part: number) {
     const options = { questionCount: count, learningContext, avoidPrompts, part };
     let raw: { questions: GeneratedQuestion[] };
-    if (sources.length === 1) {
-      raw = await engine.generate(primary.text, options);
+    if (readable.length === 1) {
+      raw = await engine.generate(readable[0].text, options);
     } else if (engine.generateFromSources) {
-      raw = await engine.generateFromSources(
-        sources.map(({ title, text }) => ({ title, text })),
-        options,
-      );
+      raw = await engine.generateFromSources(readable, options);
     } else {
       throw new Error("This quiz generator does not support multiple sources.");
     }
-    const verified = verifyQuizAcrossSources(sources, raw.questions, count);
+    const verified = verifyQuizAcrossSources(read, raw.questions, count);
     proposedQuestions += raw.questions.length;
     droppedQuestions += verified.droppedQuestions;
     return verified.questions;
@@ -485,10 +524,11 @@ export async function generateQuiz(
         action: "learning.quiz_generated",
         subjectType: "quiz",
         subjectId: row.id,
-        summary: `Generated a ${questions.length}-question quiz from ${sources.length} source${sources.length === 1 ? "" : "s"}`,
+        summary: `Generated a ${questions.length}-question quiz from ${read.length} source${read.length === 1 ? "" : "s"}`,
         metadata: {
           documentIds: selectedIds,
           sourceCount: manifest.length,
+          skippedSources: manifest.length - read.length,
           droppedQuestions,
           requested: questionCount,
           stoppedBy,

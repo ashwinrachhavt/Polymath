@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { displayTitle, markdownToPlainText } from "@/lib/display-text";
+import { displayTitle, markdownToPlainText, titleFromText } from "@/lib/display-text";
 
 /*
  * Regression: ISSUE-001 — raw markdown leaked into conversation titles.
@@ -52,9 +52,7 @@ describe("displayTitle", () => {
  */
 describe("markdownToPlainText", () => {
   it("strips a leading heading marker but keeps the line", () => {
-    expect(markdownToPlainText("# When most projects begin\nBody here.")).toBe(
-      "When most projects begin\nBody here.",
-    );
+    expect(markdownToPlainText("# When most projects begin\nBody here.")).toBe("When most projects begin\nBody here.");
   });
 
   it("unwraps links and emphasis inside a line", () => {
@@ -63,5 +61,43 @@ describe("markdownToPlainText", () => {
 
   it("keeps list item text without the bullet marker", () => {
     expect(markdownToPlainText("- first\n- second")).toBe("first\nsecond");
+  });
+});
+
+/*
+ * Capture titles come from the captured text. A docs page saved as markdown
+ * opens with a quoted site notice, and its first line became the title of
+ * eight different pages: "> ## Documentation Index".
+ */
+describe("titleFromText", () => {
+  const NOTICE =
+    "> ## Documentation Index\n> Fetch the complete documentation index at: https://docs.example.test/llms.txt";
+
+  it("strips quote and heading marks from a stored title", () => {
+    expect(displayTitle("> ## Documentation Index")).toBe("Documentation Index");
+  });
+
+  it("takes the page heading over a quoted notice above it", () => {
+    expect(titleFromText(`${NOTICE}\n\n# Example Servers\n\nThis page lists servers.`, "Captured text")).toBe(
+      "Example Servers",
+    );
+  });
+
+  it("takes the first line when the text opens in plain words", () => {
+    expect(titleFromText("Call the landlord\n\n# Notes\nAsk about the deposit.", "Captured text")).toBe(
+      "Call the landlord",
+    );
+  });
+
+  it("strips emphasis and link markup from the line it takes", () => {
+    expect(titleFromText("**[Fetch](https://x.test/fetch)** - web content fetching", "Captured text")).toBe(
+      "Fetch - web content fetching",
+    );
+  });
+
+  it("uses the quoted line when nothing follows it, and the fallback when there are no words", () => {
+    expect(titleFromText(NOTICE, "Captured text")).toBe("Documentation Index");
+    expect(titleFromText("\n  \n", "Captured text")).toBe("Captured text");
+    expect(titleFromText("***", "Captured text")).toBe("***");
   });
 });

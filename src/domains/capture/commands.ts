@@ -18,6 +18,7 @@ import {
 } from "./draft-templates";
 import { withTransaction } from "@/lib/db-transaction";
 import { db } from "@/lib/db";
+import { titleFromText } from "@/lib/display-text";
 import { inferCaptureMode, contentHash, workingText, type CaptureMode } from "./mode";
 import { findCaptureByUrl, findCaptureReadingExtractor } from "./queries";
 import { deleteBlob, ObjectStoreUnconfiguredError, putBlob } from "@/integrations/object-store/object-store";
@@ -428,11 +429,7 @@ export async function convertCaptureToTask(
     // the working text is the fallback. A multi-line capture keeps its full
     // text as the description, so nothing the owner wrote is lost or crammed
     // into the title.
-    const firstLine =
-      sourceText
-        .split("\n")
-        .map((line) => line.trim())
-        .find(Boolean) ?? sourceText;
+    const firstLine = titleFromText(sourceText, sourceText);
     const title =
       input.title?.trim() ||
       capture.title?.trim() ||
@@ -514,11 +511,7 @@ export async function convertCaptureToNote(
     }
 
     const body = capture.text ?? (capture.url ? `[${capture.url}](${capture.url})` : "Captured item");
-    const firstLine =
-      (capture.text ?? capture.url ?? "Captured item")
-        .split("\n")
-        .map((line) => line.trim())
-        .find(Boolean) ?? "Captured item";
+    const firstLine = titleFromText(capture.text ?? capture.url ?? "Captured item", "Captured item");
     // Same title preference as the task conversion: the capture's own title
     // wins over the first-line fallback.
     const title =
@@ -621,11 +614,7 @@ export async function convertCaptureToDocument(
   // Text without such a row (the owner's words, a transcript) files like any
   // text capture: the plain-text reader genuinely reads those bytes.
   const extractor = capture.captureMode === "blob" ? await findCaptureReadingExtractor(auth, capture.id) : null;
-  const firstLine =
-    body
-      .split("\n")
-      .map((line) => line.trim())
-      .find(Boolean) ?? "Captured text";
+  const firstLine = titleFromText(body, "Captured text");
   const title =
     input.title?.trim() ||
     capture.title?.trim() ||
@@ -739,11 +728,7 @@ export async function convertCaptureToDraft(
     }
 
     const material = capture.text ?? (capture.url ? capture.url : "Captured item");
-    const firstLine =
-      material
-        .split("\n")
-        .map((line) => line.trim())
-        .find(Boolean) ?? "Captured item";
+    const firstLine = titleFromText(material, "Captured item");
     // Same title preference as the other conversions: the capture's own title
     // names the draft; the body still quotes the material verbatim.
     const preferredTitle = capture.title?.trim() || firstLine;

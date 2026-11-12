@@ -83,7 +83,8 @@ export function inline(raw: string): ReactNode[] {
       );
     }
     if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
-      return <strong key={i}>{part.slice(2, -2)}</strong>;
+      // A bold span can hold a link (`**[name](url)**`), which must still render as one.
+      return <strong key={i}>{inline(part.slice(2, -2))}</strong>;
     }
     if (part.startsWith("`") && part.endsWith("`") && part.length > 2) {
       return (
@@ -93,7 +94,7 @@ export function inline(raw: string): ReactNode[] {
       );
     }
     if (part.startsWith("*") && part.endsWith("*") && part.length > 2) {
-      return <em key={i}>{part.slice(1, -1)}</em>;
+      return <em key={i}>{inline(part.slice(1, -1))}</em>;
     }
     return part;
   });

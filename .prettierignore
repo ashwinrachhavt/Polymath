@@ -47,3 +47,7 @@ public/
 pnpm-lock.yaml
 *.min.js
 *.min.css
+
+# A captured page kept as it was saved: its `*` bullets and spacing are what
+# tests/unit/learning-explanatory-text.test.ts reads.
+tests/fixtures/learning/
