@@ -40,6 +40,7 @@ import type { LinkPreview } from "@/domains/knowledge/notes";
 import type { NoteAICoverage } from "@/domains/knowledge/note-ai";
 import { NotionAppendAction } from "./notion-append";
 import { NoteCommentsPanel, type PanelComment } from "./note-comments-panel";
+import { randomId } from "@/lib/random-id";
 
 /*
  * The editing island for Notes. The body is Markdown inside
@@ -125,7 +126,7 @@ export function NewNoteButton({ icon = false }: { icon?: boolean }) {
   const create = async () => {
     setPending(true);
     setError("");
-    const result = await createNoteAction({ title: "Untitled note", idempotencyKey: crypto.randomUUID() });
+    const result = await createNoteAction({ title: "Untitled note", idempotencyKey: randomId() });
     setPending(false);
     if (!result.ok) return setError(result.error);
     router.push(`/polymath/notes?id=${result.artifactId}`);
@@ -493,7 +494,7 @@ export function NoteEditor({
           expectedVersion: versionRef.current,
           content: body(markdown),
           plainText: markdown,
-          idempotencyKey: crypto.randomUUID(),
+          idempotencyKey: randomId(),
         });
         if (!result.ok) {
           setSaveState("error");
@@ -525,7 +526,7 @@ export function NoteEditor({
         artifactId: noteId,
         expectedVersion: versionRef.current,
         tags: next,
-        idempotencyKey: crypto.randomUUID(),
+        idempotencyKey: randomId(),
       });
       if (!result.ok) return setError(result.error);
       versionRef.current = result.version;
@@ -547,7 +548,7 @@ export function NoteEditor({
         artifactId: noteId,
         expectedVersion: versionRef.current,
         title: next,
-        idempotencyKey: crypto.randomUUID(),
+        idempotencyKey: randomId(),
       });
       if (!result.ok) return setError(result.error);
       versionRef.current = result.version;
@@ -568,7 +569,7 @@ export function NoteEditor({
         expectedVersion: versionRef.current,
         content: body(text),
         plainText: text,
-        idempotencyKey: crypto.randomUUID(),
+        idempotencyKey: randomId(),
       }),
     );
     setPending(false);
@@ -692,7 +693,7 @@ export function NoteEditor({
         expectedVersion: versionRef.current,
         content: body(next),
         plainText: next,
-        idempotencyKey: crypto.randomUUID(),
+        idempotencyKey: randomId(),
       }),
     );
     setPending(false);

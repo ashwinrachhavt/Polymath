@@ -6,9 +6,13 @@ import { getAuthContext } from "@/lib/auth";
 import { listUnfinishedGenerationJobs } from "@/domains/jobs/queries";
 import { LEARNING_JOB_KIND_PREFIX } from "@/domains/learning/job-names";
 import { getLearnLibrary } from "@/domains/learning/queries";
+import { getConceptOverview } from "@/domains/learning/concept-overview";
+import { listMissions } from "@/domains/learning/missions";
 import { getFlashcardDueQueue } from "@/domains/learning/flashcards";
 import { deckReviewHref } from "@/domains/learning/review-href";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ConceptOverviewSection } from "./concept-overview";
+import { MissionList } from "./missions/mission-list";
 import { LearnJobs } from "./learn-jobs";
 import { MakeLearningButton } from "./make-learning-dialog";
 
@@ -40,10 +44,12 @@ export default function LearnPage() {
 async function LearnSurface() {
   await connection();
   const auth = await getAuthContext();
-  const [library, dueCards, jobs] = await Promise.all([
+  const [library, dueCards, jobs, overview, missions] = await Promise.all([
     getLearnLibrary(auth),
     getFlashcardDueQueue(auth, 40),
     listUnfinishedGenerationJobs(auth, { kindPrefix: LEARNING_JOB_KIND_PREFIX }),
+    getConceptOverview(auth),
+    listMissions(auth),
   ]);
   const quizzes = library.filter((item) => item.quizId);
 
@@ -59,6 +65,8 @@ async function LearnSurface() {
         <MakeLearningButton />
       </header>
       <LearnJobs initialJobs={jobs} kindPrefix={LEARNING_JOB_KIND_PREFIX} />
+      <MissionList missions={missions} />
+      <ConceptOverviewSection overview={overview} />
       <section aria-labelledby="due-flashcards-title" className="panel rounded-xl p-4">
         <h2 id="due-flashcards-title" className="font-medium">
           Flashcards due

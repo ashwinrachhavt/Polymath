@@ -1,4 +1,5 @@
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL } from "@/lib/file-validation";
+import { randomId } from "@/lib/random-id";
 
 /*
  * The one client-side upload path into the inbox: POST /api/v1/captures/file,
@@ -22,7 +23,7 @@ export async function uploadCaptureFile(file: File): Promise<CaptureUploadResult
   try {
     const res = await fetch("/api/v1/captures/file", {
       method: "POST",
-      headers: { "idempotency-key": crypto.randomUUID() },
+      headers: { "idempotency-key": randomId() },
       body: form,
     });
     if (!res.ok) {

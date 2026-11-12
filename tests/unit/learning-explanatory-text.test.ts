@@ -116,6 +116,7 @@ describe("questions and passages from a link index", () => {
         { value: "b", label: "Another claim." },
       ],
       answerValue: "a",
+      concept: "Rate limits",
       explanation: "Because the page says so.",
       quote,
     });

@@ -34,6 +34,9 @@ const config = {
     "scripts/eve-dev.ts",
     "scripts/outbox-worker.ts",
     "scripts/sync-instant-catalog.ts",
+    // The grader eval is run by hand against a provider; it writes its numbers
+    // to stdout for the owner to set the bar against.
+    "scripts/grader-eval.mts",
 
     // The eve agent trees are compiled by the eve runner against root src —
     // through relative paths and the root tsconfig's @/ alias — so their

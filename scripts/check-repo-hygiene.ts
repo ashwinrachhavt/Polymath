@@ -19,6 +19,9 @@ export const SIZE_ALLOWLIST: readonly string[] = [
   "src/db/migrations/meta/*_snapshot.json",
   "tests/fixtures/**",
   "extensions/**",
+  // The stone design prototypes ship with reference screenshots; the owner
+  // asked for them to stay in the repo (2026-11-12).
+  "mockups/stones/screenshots/**",
 ];
 
 // Machine-local output that must never be tracked at any size, at any depth:
@@ -112,7 +115,11 @@ export function checkRepoHygiene(state: RepoHygieneState): string[] {
 export function readTrackedBlobs(repoRoot: string = process.cwd()): TrackedBlob[] {
   // -z: records are NUL-separated so paths survive verbatim; each record is
   // "<mode> <sha> <stage>\t<path>".
-  const index = execFileSync("git", ["ls-files", "--stage", "-z"], { cwd: repoRoot, encoding: "utf8" });
+  const index = execFileSync("git", ["ls-files", "--stage", "-z"], {
+    cwd: repoRoot,
+    encoding: "utf8",
+    env: withoutGitEnv(),
+  });
   const entries: { path: string; sha: string }[] = [];
   for (const record of index.split("\0")) {
     if (!record) continue;
@@ -134,12 +141,20 @@ export function readTrackedBlobs(repoRoot: string = process.cwd()): TrackedBlob[
   });
 }
 
+/** Git exports GIT_DIR/GIT_INDEX_FILE to hooks; every read below wants the target repo alone. */
+function withoutGitEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  for (const key of Object.keys(env)) if (key.startsWith("GIT_")) delete env[key];
+  return env;
+}
+
 function blobSizes(shas: string[], repoRoot: string): Map<string, number> {
   const sizes = new Map<string, number>();
   if (shas.length === 0) return sizes;
   const out = execFileSync("git", ["cat-file", "--batch-check=%(objectname) %(objecttype) %(objectsize)"], {
     cwd: repoRoot,
     encoding: "utf8",
+    env: withoutGitEnv(),
     input: shas.join("\n"),
   });
   for (const line of out.split("\n")) {

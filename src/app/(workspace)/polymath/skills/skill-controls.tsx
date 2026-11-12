@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { requestJson } from "@/lib/client-request";
 import { installBundledSkillAction, removeSkillAction, setSkillEnabledAction } from "./actions";
 import type { SkillWriteAction } from "./contract";
+import { randomId } from "@/lib/random-id";
 
 /*
  * The three controls a skill row carries. Each returns a typed refusal rather
@@ -185,7 +186,7 @@ async function requestRun(
   const result = await requestJson<{ runId: string }>("/api/v1/runs", {
     method: "POST",
     body: { objective, skillId },
-    idempotencyKey: crypto.randomUUID(),
+    idempotencyKey: randomId(),
   });
   return result.ok ? { ok: true, runId: result.data.runId } : { ok: false, error: result.failure.title };
 }

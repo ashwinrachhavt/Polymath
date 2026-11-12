@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { researchCompanyRecordAction } from "./actions";
+import { randomId } from "@/lib/random-id";
 
 /*
  * ASH-114: research this company from its record. The report lands as a
@@ -18,7 +19,7 @@ export function ResearchCompanyButton({ companyId }: { companyId: string }) {
     setError(null);
     setDone(null);
     try {
-      const result = await researchCompanyRecordAction({ companyId, idempotencyKey: crypto.randomUUID() });
+      const result = await researchCompanyRecordAction({ companyId, idempotencyKey: randomId() });
       if (!result.ok) throw new Error(result.error);
       setDone(result);
     } catch (cause) {

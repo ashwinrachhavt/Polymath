@@ -7,6 +7,7 @@ import { cn } from "cn";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { browseNotesAction } from "./actions";
+import { DAY_MS, startOfLocalDay } from "@/lib/history-groups";
 import { LIBRARY_PAGE_SIZE, type LibraryNote } from "./library-notes";
 import { NewNoteButton } from "./note-editor";
 
@@ -27,15 +28,38 @@ const SEARCH_DEBOUNCE_MS = 150;
 
 type Answer = { query: string; items: LibraryNote[]; total: number };
 
-/** The note's last edit, in the reader's zone; the server rendered UTC. */
-function editedLabel(iso: string): string {
+/** Days from today, DST-safe (23/25-hour days round to one). */
+function daysAgo(iso: string): number {
+  const today = startOfLocalDay(new Date());
+  return Math.round((today - startOfLocalDay(new Date(iso))) / DAY_MS);
+}
+
+/** The row's stamp: a time for today, a date for anything older. */
+function dayLabel(iso: string): string {
   const date = new Date(iso);
-  const sameYear = date.getFullYear() === new Date().getFullYear();
-  return `Edited ${date.toLocaleDateString("en", {
-    month: "short",
-    day: "numeric",
-    ...(sameYear ? {} : { year: "numeric" }),
-  })}`;
+  if (daysAgo(iso) === 0) return date.toLocaleTimeString("en", { hour: "numeric", minute: "2-digit" });
+  return date.toLocaleDateString("en", { month: "short", day: "numeric" });
+}
+
+/** Consecutive rows share a day because the query is newest-first. */
+function groupByDay(rows: LibraryNote[]): { key: string; label: string; rows: LibraryNote[] }[] {
+  const groups: { key: string; label: string; rows: LibraryNote[] }[] = [];
+  for (const row of rows) {
+    const days = daysAgo(row.updatedAt);
+    const day = new Date(row.updatedAt);
+    const key =
+      days === 0 ? "today" : days === 1 ? "yesterday" : `d-${day.getFullYear()}-${day.getMonth()}-${day.getDate()}`;
+    const label =
+      days === 0
+        ? "Today"
+        : days === 1
+          ? "Yesterday"
+          : day.toLocaleDateString("en", { month: "short", day: "numeric" });
+    const last = groups.at(-1);
+    if (last && last.key === key) last.rows.push(row);
+    else groups.push({ key, label, rows: [row] });
+  }
+  return groups;
 }
 
 function noteHref(id: string, page: number): string {
@@ -136,44 +160,56 @@ export function NotesLibrary({
               : "No notes yet. Write the first one."}
         </p>
       ) : (
-        <ul aria-label="Your notes" className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto">
-          {rows.map((note) => {
-            const selected = note.id === selectedId;
-            return (
-              <li key={note.id}>
-                <Link
-                  href={noteHref(note.id, 1)}
-                  aria-current={selected ? "page" : undefined}
-                  className={cn(
-                    "block rounded-md px-2.5 py-2 outline-none transition-colors",
-                    "focus-visible:ring-2 focus-visible:ring-ring",
-                    selected ? "bg-muted text-foreground" : "hover:bg-muted/50",
-                  )}
-                >
-                  <span className="flex items-baseline justify-between gap-2">
-                    <span className="min-w-0 flex-1 truncate text-body-dense font-medium">
-                      {note.title.trim() || "Untitled note"}
-                    </span>
-                    {note.kind === "zettel" && (
-                      <span className="shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground">zettel</span>
-                    )}
-                    {note.hasDraft && !selected && (
-                      <span className="shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground">draft</span>
-                    )}
-                  </span>
-                  <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-                    {note.excerpt ?? "Empty note"}
-                  </span>
-                  <span className="mt-1 block text-[11px] text-muted-foreground">
-                    <time dateTime={note.updatedAt} suppressHydrationWarning>
-                      {editedLabel(note.updatedAt)}
-                    </time>
-                  </span>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
+        /*
+         * One row per note, shaped like the /polymath conversation list: the
+         * title on the left, the day on the right, grouped by day. It reads as
+         * the same kind of list as chats so the two surfaces are learned once.
+         */
+        <div aria-label="Your notes" className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
+          {groupByDay(rows).map((group) => (
+            <section key={group.key} aria-label={group.label}>
+              <p className="text-muted-foreground px-2 pb-1 text-label font-medium">{group.label}</p>
+              <ul>
+                {group.rows.map((note) => {
+                  const selected = note.id === selectedId;
+                  return (
+                    <li key={note.id}>
+                      <Link
+                        href={noteHref(note.id, 1)}
+                        aria-current={selected ? "page" : undefined}
+                        className={cn(
+                          "flex h-9 items-center gap-3 rounded-md px-2 text-body-dense outline-none transition-colors",
+                          "focus-visible:ring-2 focus-visible:ring-ring",
+                          selected ? "bg-muted text-foreground" : "hover:bg-muted/70",
+                        )}
+                      >
+                        <span className="min-w-0 flex-1 truncate">
+                          {note.title.trim() || "Untitled note"}
+                          {note.kind === "zettel" ? (
+                            <span className="text-muted-foreground ml-2 text-[10px] uppercase tracking-wide">
+                              zettel
+                            </span>
+                          ) : null}
+                          {note.hasDraft && !selected ? (
+                            <span className="text-muted-foreground ml-2 text-[10px] uppercase tracking-wide">
+                              draft
+                            </span>
+                          ) : null}
+                        </span>
+                        <span
+                          className="text-muted-foreground shrink-0 text-data tabular-nums"
+                          suppressHydrationWarning
+                        >
+                          {dayLabel(note.updatedAt)}
+                        </span>
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          ))}
+        </div>
       )}
 
       {!trimmed && pageCount > 1 ? (

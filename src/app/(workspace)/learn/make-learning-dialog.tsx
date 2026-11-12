@@ -23,6 +23,7 @@ import {
   type LearningSourceOption,
   type LearningSourceRef,
 } from "./make-actions";
+import { randomId } from "@/lib/random-id";
 
 /*
  * Make flashcards or a quiz from any sources: library documents and inbox
@@ -173,7 +174,7 @@ function MakeLearningForm({
     setError(null);
     const sources = selected.map(sourceRef);
     const signature = JSON.stringify([kind, sources, count]);
-    if (attempt.current?.signature !== signature) attempt.current = { signature, key: crypto.randomUUID() };
+    if (attempt.current?.signature !== signature) attempt.current = { signature, key: randomId() };
     const idempotencyKey = attempt.current.key;
     onPendingChange(true);
     startTransition(async () => {

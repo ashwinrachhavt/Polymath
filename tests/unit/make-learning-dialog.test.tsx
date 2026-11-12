@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { MAX_LEARNING_SOURCES } from "@/domains/learning/item-count";
 
 /*
  * The Make flashcards or a quiz dialog, opened from Learn or with inbox
@@ -83,10 +84,10 @@ describe("MakeLearningButton", () => {
   });
 
   it("says how many picked sources were left out of a request", () => {
-    const dialog = open(Array.from({ length: 12 }, (_, i) => capture(i + 1)));
+    const dialog = open(Array.from({ length: MAX_LEARNING_SOURCES + 2 }, (_, i) => capture(i + 1)));
 
-    expect(within(dialog).getByText("8 of 8 sources picked.")).toBeTruthy();
-    expect(within(dialog).getByText(/4 more selected were left out/)).toBeTruthy();
+    expect(within(dialog).getByText(`${MAX_LEARNING_SOURCES} of ${MAX_LEARNING_SOURCES} sources picked.`)).toBeTruthy();
+    expect(within(dialog).getByText(/2 more selected were left out/)).toBeTruthy();
   });
 
   it("closes as soon as the work is accepted and puts the job on the page, without waiting or navigating", async () => {

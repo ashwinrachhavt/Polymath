@@ -37,6 +37,7 @@ import {
   type WorkspaceKnowledgeResult,
   type WorkspaceRecord,
 } from "./shell-actions";
+import { randomId } from "@/lib/random-id";
 
 const subscribeToHydration = () => () => {};
 
@@ -252,7 +253,7 @@ export function CommandLayer({
     // A selection the person replaced with their own words is still the
     // passage they were looking at, so it is kept either way.
     const context: CaptureContext = { ...snapshot?.context, ...(why ? { why } : {}) };
-    void quickCapture(text, crypto.randomUUID(), context)
+    void quickCapture(text, randomId(), context)
       .then((result) => {
         if (!result.ok) {
           setSaveError(result.error);

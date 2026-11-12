@@ -8,6 +8,7 @@ import { createIdeaDraftStore } from "../ideas/draft-store";
 import { createIdleDebouncer } from "../ideas/idle-debounce";
 import { saveIdeaAction } from "@/app/(workspace)/polymath/ideas/actions";
 import { Button } from "@/components/ui/button";
+import { randomId } from "@/lib/random-id";
 
 /*
  * The idea editor: a single authored card. The draft persists under the
@@ -54,7 +55,7 @@ export function IdeaEditor({
     if (!editor) return;
     const plainText = editor.getText();
     if (!plainText.trim()) return;
-    if (!idemBase.current) idemBase.current = crypto.randomUUID();
+    if (!idemBase.current) idemBase.current = randomId();
     saveSeq.current += 1;
     const key = `${idemBase.current}-save-${saveSeq.current}`;
     const { savedArtifactId, savedVersion } = store.getState();

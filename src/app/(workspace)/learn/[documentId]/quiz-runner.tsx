@@ -13,6 +13,7 @@ import type { QuizForSitting } from "@/domains/learning/queries";
 import type { QuizPassage } from "@/domains/learning/quiz-passages";
 import { displayTitle } from "@/lib/display-text";
 import { completeQuizAttemptAction, type StoneAnnouncement } from "../actions";
+import { randomId } from "@/lib/random-id";
 
 /*
  * The quiz runner's client island (the reviews-queue mechanics, scaled to a
@@ -161,7 +162,7 @@ function Sitting({
   const [pending, startTransition] = useTransition();
   // One key per sitting: a double-finish replays it; a retake mints a fresh
   // one. Never rendered, so server and client need not agree on the value.
-  const sittingKey = useRef(crypto.randomUUID());
+  const sittingKey = useRef(randomId());
 
   const step = steps[rereading ?? stepIndex];
   const questionStep = steps[stepIndex];

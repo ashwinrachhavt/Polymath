@@ -31,6 +31,7 @@ function question(overrides: Partial<GeneratedQuestion> & { quote: string }): Ge
       { value: "falls", label: "Rent falls by 4% unless notice is given within 60 days." },
     ],
     answerValue: "rises",
+    concept: "Rent increase",
     explanation: "The lease states a 4% rise absent notice.",
     ...overrides,
   };

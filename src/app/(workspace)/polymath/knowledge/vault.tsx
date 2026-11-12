@@ -43,6 +43,7 @@ import { phaseForReadiness } from "@/domains/knowledge/readiness-batch";
 import type { SourceReadiness } from "@/domains/knowledge/source-readiness";
 import { createVaultFolder } from "./actions";
 import { StatementStrip } from "./statement-section";
+import { randomId } from "@/lib/random-id";
 
 /*
  * The document vault, on the Drive pattern: breadcrumb, one search field, sort
@@ -540,7 +541,7 @@ export function DocumentVault({
 
   const upload = useCallback(
     async (file: File, folderPath: string | null) => {
-      const key = `${file.name}-${crypto.randomUUID()}`;
+      const key = `${file.name}-${randomId()}`;
       setUploads((prev) => [...prev, { key, name: file.name, state: "busy" }]);
       try {
         const body = new FormData();
@@ -552,7 +553,7 @@ export function DocumentVault({
         if (folderPath) body.append("folderPath", folderPath);
         const response = await fetch("/api/v1/files", {
           method: "POST",
-          headers: { "Idempotency-Key": crypto.randomUUID() },
+          headers: { "Idempotency-Key": randomId() },
           body,
         });
         const payload = (await response.json().catch(() => null)) as {

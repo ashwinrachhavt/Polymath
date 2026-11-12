@@ -2,6 +2,7 @@
 import { act, createElement } from "react";
 import { cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { MAX_LEARNING_SOURCES } from "@/domains/learning/item-count";
 
 /*
  * The bulk Zettelize verb (spec §4.2): the selection toolbar's control queues
@@ -188,6 +189,6 @@ describe("InboxList bulk flashcards or quiz", () => {
     await act(async () => {
       button.click();
     });
-    expect(screen.getByText("1 of 8 sources picked.")).toBeTruthy();
+    expect(screen.getByText(`1 of ${MAX_LEARNING_SOURCES} sources picked.`)).toBeTruthy();
   });
 });

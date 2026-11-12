@@ -11,6 +11,7 @@ import { useWorkspace } from "@/components/workspace/workspace-provider";
 import { decideHomeAgentAction } from "@/domains/home/actions";
 import { answerRunQuestion, dismissQuestionAction } from "@/app/(workspace)/polymath/[runId]/question-actions";
 import { triageTab, type TriageFeed, type TriageItem, type TriageTab } from "@/domains/notifications/triage";
+import { randomId } from "@/lib/random-id";
 
 /*
  * The notifications sheet, rebuilt as a zero-hop triage workspace (spec
@@ -141,7 +142,7 @@ export function NotificationsPanel({ feed }: { feed: TriageFeed }) {
   function decide(item: DecisionItem, intent: "approve" | "reject") {
     startTransition(async () => {
       applyRemove({ id: item.id });
-      const idempotencyKey = (decisionKeys.current[item.id] ??= crypto.randomUUID());
+      const idempotencyKey = (decisionKeys.current[item.id] ??= randomId());
       const result = await decideHomeAgentAction({
         idempotencyKey,
         proposalId: item.id,

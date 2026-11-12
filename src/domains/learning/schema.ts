@@ -2,6 +2,8 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
+  date,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -13,8 +15,10 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { mutable, primaryId, recorded, tenantId } from "../../db/columns";
-import { artifacts, documentExtractions, documents, notebooks } from "../knowledge/schema";
+import { artifacts, concepts, documentExtractions, documents, notebooks } from "../knowledge/schema";
 import { users } from "../identity/schema";
+import type { ChallengeContent, ChallengeFormat } from "./challenge-content";
+import type { ChallengeGrade } from "./challenge-grading";
 import type { GenerationOutcome } from "./item-count";
 
 /*
@@ -302,6 +306,128 @@ export const explainTurns = pgTable(
   ],
 );
 
+/*
+ * What a question, card or explanation is about. One row links one concept
+ * (the knowledge dictionary entry an Idea also upserts) to exactly one item;
+ * an item about two concepts has two rows. Generation writes the rows with the
+ * item, in the same transaction. Items made before this table have none, and
+ * every reader treats a missing link as "unassessed", never as a wrong answer.
+ */
+export const conceptLinks = pgTable(
+  "concept_links",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    conceptId: uuid("concept_id").notNull(),
+    quizQuestionId: uuid("quiz_question_id").references(() => quizQuestions.id, { onDelete: "cascade" }),
+    flashcardId: uuid("flashcard_id").references(() => flashcards.id, { onDelete: "cascade" }),
+    explainTurnId: uuid("explain_turn_id").references(() => explainTurns.id, { onDelete: "cascade" }),
+    ...recorded,
+  },
+  (t) => [
+    // Composite, so a link can never name another workspace's concept.
+    foreignKey({
+      name: "concept_links_concept_same_workspace_fk",
+      columns: [t.workspaceId, t.conceptId],
+      foreignColumns: [concepts.workspaceId, concepts.id],
+    }).onDelete("cascade"),
+    check(
+      "concept_links_one_subject_check",
+      sql`num_nonnulls("quiz_question_id", "flashcard_id", "explain_turn_id") = 1`,
+    ),
+    uniqueIndex("concept_links_quiz_question_key").on(t.quizQuestionId, t.conceptId),
+    uniqueIndex("concept_links_flashcard_key").on(t.flashcardId, t.conceptId),
+    uniqueIndex("concept_links_explain_turn_key").on(t.explainTurnId, t.conceptId),
+    index("concept_links_concept_idx").on(t.workspaceId, t.conceptId),
+  ],
+);
+
+/*
+ * Practice challenges (Predict, Bug Hunt and later formats). One pair of
+ * tables for every format: the format's own fields live in `content`, a
+ * discriminated union parsed by `challenge-content.ts`, never in a table of
+ * their own. A challenge is made off the request, so it is `preparing` until
+ * its content is stored, and is then replayed from that content alone.
+ */
+export const learningChallenges = pgTable(
+  "learning_challenges",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    notebookId: uuid("notebook_id")
+      .notNull()
+      .references(() => notebooks.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    format: text("format").$type<ChallengeFormat>().notNull(),
+    status: text("status").$type<"preparing" | "ready" | "failed">().notNull().default("preparing"),
+    sourceManifest: jsonb("source_manifest").$type<ExplainSourceSnapshot[]>().notNull(),
+    generationKey: text("generation_key").notNull(),
+    /** What the challenge shows the learner can do; a concept link can attach to it later. */
+    objective: text("objective"),
+    content: jsonb("content").$type<ChallengeContent>(),
+    /** The source passage the challenge rests on, located in the pinned extraction. */
+    evidence: jsonb("evidence").$type<ExplainEvidence[]>().notNull().default([]),
+    promptVersion: text("prompt_version"),
+    /** Why preparing failed, in words the learner can read. */
+    error: text("error"),
+    /** Hints shown since the last submitted attempt. */
+    hintsShown: integer("hints_shown").notNull().default(0),
+    ...mutable,
+  },
+  (t) => [
+    uniqueIndex("learning_challenges_generation_key").on(t.workspaceId, t.userId, t.generationKey),
+    index("learning_challenges_notebook_user_idx").on(t.workspaceId, t.notebookId, t.userId, t.createdAt),
+    check("learning_challenges_format_check", sql.raw("format in ('predict', 'bug_hunt')")),
+    check("learning_challenges_status_check", sql.raw("status in ('preparing', 'ready', 'failed')")),
+    check("learning_challenges_ready_check", sql.raw("status <> 'ready' or content is not null")),
+    check("learning_challenges_hints_check", sql.raw("hints_shown between 0 and 3")),
+  ],
+);
+
+/** One committed answer. Written once: a retry is a new row with the next ordinal. */
+export const learningChallengeAttempts = pgTable(
+  "learning_challenge_attempts",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    challengeId: uuid("challenge_id")
+      .notNull()
+      .references(() => learningChallenges.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    ordinal: integer("ordinal").notNull(),
+    /** The client's key for this submit; a repeat returns the stored attempt. */
+    submitKey: text("submit_key").notNull(),
+    answer: text("answer").notNull(),
+    /** The learner said "I don't know": an honest gap, never graded as a wrong guess. */
+    dontKnow: boolean("dont_know").notNull().default(false),
+    hintsUsed: integer("hints_used").notNull().default(0),
+    /** Null only for "I don't know". */
+    grade: text("grade").$type<ChallengeGrade>(),
+    /** The step feedback names; null when every step was met. */
+    failedStep: text("failed_step"),
+    feedback: text("feedback").notNull(),
+    /** Whether the rules decided, or the model was asked because they could not. */
+    gradedBy: text("graded_by").$type<"rules" | "model">().notNull(),
+    evidence: jsonb("evidence").$type<ExplainEvidence[]>().notNull().default([]),
+    ...recorded,
+  },
+  (t) => [
+    uniqueIndex("learning_challenge_attempts_ordinal_key").on(t.challengeId, t.ordinal),
+    uniqueIndex("learning_challenge_attempts_submit_key").on(t.workspaceId, t.userId, t.submitKey),
+    check(
+      "learning_challenge_attempts_grade_check",
+      sql.raw("grade is null or grade in ('correct', 'partial', 'incorrect', 'uncertain')"),
+    ),
+    check("learning_challenge_attempts_dont_know_check", sql.raw("(grade is null) = dont_know")),
+    check("learning_challenge_attempts_graded_by_check", sql.raw("graded_by in ('rules', 'model')")),
+    check("learning_challenge_attempts_hints_check", sql.raw("hints_used between 0 and 3")),
+  ],
+);
+
 /** Recall attempts are learner outcomes, separate from the verified graph edges. */
 export const graphRecallAttempts = pgTable(
   "graph_recall_attempts",
@@ -366,3 +492,162 @@ export const learningArtifactFeedback = pgTable(
 
 export type QuizQuestion = typeof quizQuestions.$inferSelect;
 export type QuizAttempt = typeof quizAttempts.$inferSelect;
+
+/*
+ * A Mission: what someone must be able to do, by when, from named sources.
+ * A Mission without a date is a draft; a dated one is the thing the buyer
+ * pays for (payment itself is not built here). The concept list is written
+ * by a background job and then edited by its owner before the Mission starts:
+ * `mission_concepts` is the plan, `mission_mock_sessions` and
+ * `mission_mock_answers` are the unaided proof.
+ *
+ * A concept choice always names the source passage it came from. A proposal
+ * with no locatable source is dropped, exactly like an unproven quiz question,
+ * so the plan can never invent work on material the person did not bring.
+ */
+export const missionStatus = pgEnum("mission_status", ["draft", "active", "archived"]);
+
+export const missions = pgTable(
+  "missions",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    /** One plain sentence: what the person must be able to do. */
+    goal: text("goal").notNull(),
+    /** Optional: the role or performance being prepared for. */
+    role: text("role"),
+    /** The day it must be performed. A Mission with a date is the paid one. */
+    dueOn: date("due_on", { mode: "string" }),
+    status: missionStatus("status").notNull().default("draft"),
+    /** The sources the concept list was drawn from, pinned by title. */
+    sourceManifest: jsonb("source_manifest").$type<MissionSourceSnapshot[]>().notNull().default([]),
+    /**
+     * The concept job this Mission is waiting on or failed on; null once it
+     * has concepts. `mission.job` is a generation job kind, so the wait and
+     * its retry are the shared outbox path, not a second queue.
+     */
+    conceptJobId: uuid("concept_job_id"),
+    /**
+     * The submitter's intent key: a double-click or a resend after a reload
+     * returns the Mission already made, never a second one. Unique per
+     * workspace, so the click is one row at most.
+     */
+    requestKey: text("request_key").notNull(),
+    ...mutable,
+  },
+  (t) => [
+    uniqueIndex("missions_request_key").on(t.workspaceId, t.requestKey),
+    index("missions_workspace_status_idx").on(t.workspaceId, t.status, t.createdAt),
+    check("missions_goal_check", sql`length(btrim("goal")) between 1 and 500`),
+    check("missions_role_check", sql`"role" is null or length("role") <= 2000`),
+  ],
+);
+
+/** A library document and exact extraction version a Mission's plan was drawn from. */
+export type MissionSourceSnapshot = { documentId: string; extractionId: string; title: string };
+
+export const missionConcepts = pgTable(
+  "mission_concepts",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    missionId: uuid("mission_id")
+      .notNull()
+      .references(() => missions.id, { onDelete: "cascade" }),
+    conceptId: uuid("concept_id").notNull(),
+    /** Where this concept sits in the plan; the mock asks in this order. */
+    ordinal: integer("ordinal").notNull(),
+    /** One line, in the model's words, saying why this concept matters for the goal. */
+    reason: text("reason").notNull(),
+    /** The verbatim passage the concept was drawn from; null for one the owner added by hand. */
+    sourceQuote: text("source_quote"),
+    /** The library document the passage came from; null for a hand-added concept. */
+    sourceDocumentId: uuid("source_document_id"),
+    ...recorded,
+  },
+  (t) => [
+    uniqueIndex("mission_concepts_ordinal_key").on(t.missionId, t.ordinal),
+    uniqueIndex("mission_concepts_concept_key").on(t.missionId, t.conceptId),
+    foreignKey({
+      name: "mission_concepts_concept_same_workspace_fk",
+      columns: [t.workspaceId, t.conceptId],
+      foreignColumns: [concepts.workspaceId, concepts.id],
+    }).onDelete("cascade"),
+    index("mission_concepts_mission_idx").on(t.workspaceId, t.missionId, t.ordinal),
+  ],
+);
+
+/**
+ * One unaided sitting of a Mission: free-response questions over its
+ * concepts, answered with nothing in front of the learner. The model writes
+ * the questions when the sitting opens and grades each answer against the
+ * same pinned sources Explain It uses; an uncertain grade stays uncertain.
+ */
+export const missionMockSessions = pgTable(
+  "mission_mock_sessions",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    missionId: uuid("mission_id")
+      .notNull()
+      .references(() => missions.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** The client's key: a double-click opens one sitting, never two. */
+    requestKey: text("request_key").notNull(),
+    /** Where the sitting stands: questions being written, being answered, or finished and reportable. */
+    status: text("status").$type<"preparing" | "asking" | "complete">().notNull().default("preparing"),
+    /** Why preparing failed, in words the person can read; null otherwise. */
+    error: text("error"),
+    ...mutable,
+  },
+  (t) => [
+    uniqueIndex("mission_mock_sessions_request_key").on(t.workspaceId, t.userId, t.requestKey),
+    index("mission_mock_sessions_mission_user_idx").on(t.workspaceId, t.missionId, t.userId, t.createdAt),
+    check("mission_mock_sessions_status_check", sql.raw("status in ('preparing', 'asking', 'complete')")),
+  ],
+);
+
+/**
+ * One question of a mock sitting. `conceptId` names the Mission concept it
+ * tests, so a report can be read per concept without joining through the
+ * generic concept link. The answer is stored exactly as written; `grade` is
+ * null until it is submitted, and may be `uncertain` - which never counts as
+ * proven.
+ */
+export const missionMockQuestions = pgTable(
+  "mission_mock_questions",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    sessionId: uuid("session_id")
+      .notNull()
+      .references(() => missionMockSessions.id, { onDelete: "cascade" }),
+    missionConceptId: uuid("mission_concept_id")
+      .notNull()
+      .references(() => missionConcepts.id, { onDelete: "cascade" }),
+    ordinal: integer("ordinal").notNull(),
+    prompt: text("prompt").notNull(),
+    /** The source passages the question rests on and the feedback cites. */
+    evidence: jsonb("evidence").$type<ExplainEvidence[]>().notNull().default([]),
+    answer: text("answer"),
+    grade: text("grade").$type<"correct" | "partial" | "incorrect" | "uncertain">(),
+    feedback: text("feedback"),
+    ...recorded,
+  },
+  (t) => [
+    uniqueIndex("mission_mock_questions_ordinal_key").on(t.sessionId, t.ordinal),
+    index("mission_mock_questions_session_idx").on(t.workspaceId, t.sessionId, t.ordinal),
+    index("mission_mock_questions_concept_idx").on(t.workspaceId, t.missionConceptId),
+    check(
+      "mission_mock_questions_grade_check",
+      sql.raw("grade is null or grade in ('correct', 'partial', 'incorrect', 'uncertain')"),
+    ),
+    check("mission_mock_questions_answer_check", sql.raw("(answer is null) = (grade is null)")),
+  ],
+);
+
+export type Mission = typeof missions.$inferSelect;
+export type MissionConcept = typeof missionConcepts.$inferSelect;
+export type MissionMockQuestion = typeof missionMockQuestions.$inferSelect;

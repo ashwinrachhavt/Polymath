@@ -12,6 +12,7 @@ import { decideProposalAction, reviseProposalAction } from "./actions";
 import { holdDecidedCard, mergeHeldDecidedCards, type HeldCards } from "./held-cards";
 import { outcomeLine } from "./outcome-line";
 import { NotionDiff } from "./notion-diff";
+import { randomId } from "@/lib/random-id";
 
 /*
  * The queue's client island. Decisions are optimistic: the card flips to the
@@ -209,7 +210,7 @@ function ProposalCard({
 
   function onSaveRevision() {
     setRevisionError(null);
-    if (!revisionKey.current) revisionKey.current = crypto.randomUUID();
+    if (!revisionKey.current) revisionKey.current = randomId();
     const idempotencyKey = revisionKey.current;
     startRevision(async () => {
       const result = await reviseProposalAction({
@@ -430,7 +431,7 @@ export function ReviewsQueue({
   function keyFor(item: QueueCardData): string {
     const stored = decisionKeys.current[item.id];
     if (!stored || stored.version !== item.version) {
-      decisionKeys.current[item.id] = { key: crypto.randomUUID(), version: item.version };
+      decisionKeys.current[item.id] = { key: randomId(), version: item.version };
     }
     return decisionKeys.current[item.id].key;
   }

@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { captures } from "@/domains/capture/schema";
 import { generationJobs } from "@/domains/jobs/schema";
 import { documents } from "@/domains/knowledge/schema";
+import { MAX_LEARNING_SOURCES } from "@/domains/learning/item-count";
 import { quizzes } from "@/domains/learning/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
@@ -15,7 +16,7 @@ import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace"
  *
  * Value: protects=the inbox from half-filed requests that made nothing;
  * fails_when=a capture is filed before a later source is refused, a request
- * of more than eight distinct sources files anything, a role rejection is
+ * of more distinct sources than the cap files anything, a role rejection is
  * thrown to the client instead of returned, the verb waits for generation
  * instead of handing it over, or a repeated click starts the work twice; seam=the server action against
  * a real database with auth stubbed; no_claim=generation itself
@@ -116,10 +117,11 @@ suite("makeFlashcardsOrQuizAction", () => {
     expect(await documentCount(auth.workspaceId)).toBe(0);
   });
 
-  it("refuses more than eight distinct sources before filing any", async () => {
+  it("refuses more than the cap of distinct sources before filing any", async () => {
     const auth = await signIn("many");
     const sources = [];
-    for (let i = 0; i < 9; i++) sources.push(await textCapture(auth, `Fact number ${i} stands on its own.`));
+    const over = MAX_LEARNING_SOURCES + 1;
+    for (let i = 0; i < over; i++) sources.push(await textCapture(auth, `Fact number ${i} stands on its own.`));
 
     const result = await makeFlashcardsOrQuizAction({
       kind: "flashcards",
@@ -129,9 +131,9 @@ suite("makeFlashcardsOrQuizAction", () => {
 
     expect(result).toEqual({
       ok: false,
-      error: "One request reads up to 8 sources, and these are 9. Remove 1 and try again.",
+      error: `One request reads up to ${MAX_LEARNING_SOURCES} sources, and these are ${over}. Remove 1 and try again.`,
     });
-    expect(await openCaptures(auth.workspaceId)).toBe(9);
+    expect(await openCaptures(auth.workspaceId)).toBe(over);
   });
 
   it("offers only captures with text to file in the source picker", async () => {

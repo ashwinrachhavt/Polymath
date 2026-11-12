@@ -5,6 +5,7 @@ import { dispatchPendingOutbox, recoverStrandedOutbox } from "@/domains/audit/ou
 import { outboxHandlers } from "@/domains/audit/outbox-handlers";
 import { syncAllGmailSenders } from "@/domains/crm/sender-sync";
 import { scheduleMonthlyFactRefresh } from "@/domains/facts/schedule";
+import { scheduleDailyMemoryDreams } from "@/domains/agents/memory-schedule";
 import { scheduleDailyTidyPasses } from "@/domains/knowledge/tidy";
 import { InstantTools } from "@/domains/integrations/instant-tools";
 import { composioTransport } from "@/domains/integrations/transport";
@@ -130,6 +131,15 @@ async function drain(): Promise<Response> {
     } catch (cause) {
       tidySchedule = { error: cause instanceof Error ? cause.message : "unknown error" };
     }
+    // One dreaming pass per owner per day: reads recent transcripts, checks
+    // the notes against them, and maintains the small injected index. Same
+    // dispatch-key discipline as Tidy, so later ticks that day enqueue nothing.
+    let memoryDreams: { enqueued: number } | { error: string };
+    try {
+      memoryDreams = await scheduleDailyMemoryDreams();
+    } catch (cause) {
+      memoryDreams = { error: cause instanceof Error ? cause.message : "unknown error" };
+    }
     return Response.json({
       recovered: recovered.length,
       ...result,
@@ -140,6 +150,7 @@ async function drain(): Promise<Response> {
       quotaReap,
       factRefresh,
       tidySchedule,
+      memoryDreams,
     });
   } finally {
     await client.end({ timeout: 5 });

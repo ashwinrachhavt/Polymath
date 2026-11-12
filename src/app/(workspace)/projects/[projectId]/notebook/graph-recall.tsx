@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import type { GraphEdge, GraphNode } from "@/domains/knowledge/relations";
 import { RELATION_LABELS, RELATION_TYPES, type RelationType } from "@/domains/knowledge/relation-vocabulary";
 import { submitNotebookGraphRecallAction } from "./graph-recall-action";
+import { randomId } from "@/lib/random-id";
 
 const CHOICES = RELATION_TYPES.filter((relation): relation is Exclude<RelationType, "source"> => relation !== "source");
 
@@ -31,7 +32,7 @@ export function NotebookGraphRecall({
   function submit() {
     if (!edge || !selection) return;
     setError(null);
-    const key = requestKey ?? crypto.randomUUID();
+    const key = requestKey ?? randomId();
     setRequestKey(key);
     startTransition(async () => {
       const response = await submitNotebookGraphRecallAction({

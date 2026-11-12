@@ -124,6 +124,33 @@ suite("zettel card views (real Postgres)", () => {
     expect(card.tags).toEqual([]);
   });
 
+  it("returns an idea once even when several sources produced it", async () => {
+    // The grid keys by id; a join on every source row rendered one idea twice
+    // when it had more than one source document.
+    const auth = await workspace();
+    const first = await seedDoc(auth);
+    const second = await seedDoc(auth);
+    const { created } = await createZettelsFromSource(auth, {
+      documentId: first.id,
+      extractor: extractor([{ title: "Two-source idea", content: "Rent is $1,200.", quote: Q1 }]),
+    });
+    await db.insert(artifactLinks).values({
+      workspaceId: auth.workspaceId,
+      artifactId: created[0]!.artifactId,
+      targetType: "document",
+      targetId: second.id,
+      linkType: "source",
+      label: "second lease",
+    });
+
+    const page = await pageZettelCards(auth, { limit: 10, offset: 0 });
+    const ids = page.items.map((item) => item.id);
+    expect(ids).toEqual([created[0]!.artifactId]);
+    expect(new Set(ids).size).toBe(ids.length);
+    // The first source by creation order is the one shown.
+    expect(page.items[0]!.sourceDocumentId).toBe(first.id);
+  });
+
   it("filters by query and by tag", async () => {
     const auth = await workspace();
     const doc = await seedDoc(auth);

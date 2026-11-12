@@ -7,6 +7,7 @@ import { MessageComments } from "./message-comments";
 import { MessageFeedback } from "./message-feedback";
 import { saveMessageAsIdeaAction, saveMessageAsNoteAction } from "@/app/(workspace)/polymath/[runId]/message-actions";
 import { zettelizeThreadAction } from "@/app/(workspace)/polymath/[runId]/zettel-actions";
+import { randomId } from "@/lib/random-id";
 
 const quietButton =
   "text-muted-foreground/70 hover:bg-muted hover:text-foreground flex size-7 items-center justify-center rounded-md outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring";
@@ -65,7 +66,7 @@ export function MessageActions({
     setSaving(kind);
     setError(null);
     // A fresh key per attempt: a retry after a failure is a new save.
-    const input = { runId, text, idempotencyKey: crypto.randomUUID() };
+    const input = { runId, text, idempotencyKey: randomId() };
     const result = kind === "note" ? await saveMessageAsNoteAction(input) : await saveMessageAsIdeaAction(input);
     setSaving(null);
     if (!result.ok) setError(result.error);
@@ -80,7 +81,7 @@ export function MessageActions({
       runId,
       scope,
       ...(scope === "message" ? { messageId: messageId ?? undefined } : {}),
-      idempotencyKey: crypto.randomUUID(),
+      idempotencyKey: randomId(),
     });
     setExtracting(null);
     if (!result.ok) {

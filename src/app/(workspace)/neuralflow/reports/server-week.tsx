@@ -13,6 +13,7 @@ import type { OutcomeNarrative } from "@/domains/work/outcome-narrative";
 import type { WeeklyReview } from "@/domains/work/reports";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/workspace/ui";
+import { randomId } from "@/lib/random-id";
 
 /* D15: this week from server rows (completion timestamps, finished focus sessions). */
 function DebtList({ label, section }: { label: string; section: KnowledgeDebtSection }) {
@@ -144,7 +145,7 @@ export function OutcomeNarrativePanel() {
   const [discarded, setDiscarded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedId, setSavedId] = useState("");
-  const [attemptKey] = useState(() => crypto.randomUUID());
+  const [attemptKey] = useState(() => randomId());
   useEffect(() => {
     void loadOutcomeNarrativeAction({})
       .then((r) => (r.ok ? setNarrative(r.narrative) : setError(r.error)))

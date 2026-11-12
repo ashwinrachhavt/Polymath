@@ -262,6 +262,16 @@ export function isConversationSurface(pathname: string) {
   return !polymathStaticSegments.has(head);
 }
 
+/**
+ * Notes is a focus surface: the reading and writing canvas is the page, so the
+ * rail yields the way it does on the conversation screen. Pinning does not
+ * override this — the person asked for a Notes view with no sidebar, and the
+ * opener at the top-left plus `[` still reach navigation.
+ */
+export function isFocusSurface(pathname: string) {
+  return pathname === "/polymath/notes" || pathname.startsWith("/polymath/notes/");
+}
+
 export const moreDestination = {
   href: "/more" as const,
   label: "More",

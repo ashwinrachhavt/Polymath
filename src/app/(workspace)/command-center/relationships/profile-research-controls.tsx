@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { ContactResearchFocus } from "@/domains/knowledge/profile-research";
 import { researchCompanyProfileAction, researchContactProfileAction } from "./actions";
+import { randomId } from "@/lib/random-id";
 
 /*
  * The research controls embedded on the company and person profiles
@@ -30,7 +31,7 @@ export function CompanyResearchControls({ companyId, researched }: { companyId: 
     setPending(true);
     setError(null);
     try {
-      const result = await researchCompanyProfileAction({ companyId, idempotencyKey: crypto.randomUUID() });
+      const result = await researchCompanyProfileAction({ companyId, idempotencyKey: randomId() });
       if (!result.ok) setError(result.error);
       else setDone(result);
     } catch {
@@ -73,7 +74,7 @@ export function ContactResearchControls({ contactId, researched }: { contactId: 
     setPending(key);
     setError(null);
     try {
-      const result = await researchContactProfileAction({ contactId, focus, idempotencyKey: crypto.randomUUID() });
+      const result = await researchContactProfileAction({ contactId, focus, idempotencyKey: randomId() });
       if (!result.ok) setError(result.error);
       else setDone(result);
     } catch {

@@ -4,6 +4,8 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { documentExtractions, documents } from "@/domains/knowledge/schema";
+import { conceptName } from "@/domains/knowledge/concepts";
+import { carryTurnConcepts, linkItemsToConcepts } from "./concept-links";
 import { locateQuoteNormalized } from "./locate-quote";
 import { loadCurrentQuizSources, QuizGenerationError } from "./generate-quiz";
 import { explainSessions, explainTurns, type ExplainEvidence, type ExplainSourceSnapshot } from "./schema";
@@ -16,6 +18,13 @@ import {
   type ExplainSource,
   type ProposedEvidence,
 } from "@/integrations/learning/explain-it";
+
+/**
+ * The most sources one Explain It session reads. The learn picker allows
+ * more per request (MAX_LEARNING_SOURCES), but the generator's prompt budget
+ * is sized for this many passages at once, so the cap lives here too.
+ */
+export const MAX_EXPLAIN_SOURCES = 20;
 
 export class ExplainItError extends Error {
   constructor(
@@ -34,7 +43,7 @@ export class ExplainItError extends Error {
   }
 }
 
-function verifyEvidence(sources: ExplainSource[], proposed: ProposedEvidence[]): ExplainEvidence[] {
+export function verifyEvidence(sources: ExplainSource[], proposed: ProposedEvidence[]): ExplainEvidence[] {
   const verified: ExplainEvidence[] = [];
   for (const item of proposed) {
     const source = sources[item.sourceIndex];
@@ -66,10 +75,10 @@ export async function startExplainItSession(
 ): Promise<{ sessionId: string }> {
   if (
     input.documentIds.length < 1 ||
-    input.documentIds.length > 8 ||
+    input.documentIds.length > MAX_EXPLAIN_SOURCES ||
     new Set(input.documentIds).size !== input.documentIds.length
   ) {
-    throw new ExplainItError("invalid_sources", "Choose one to eight distinct sources.");
+    throw new ExplainItError("invalid_sources", `Choose one to ${MAX_EXPLAIN_SOURCES} distinct sources.`);
   }
   let sources;
   try {
@@ -139,15 +148,19 @@ export async function startExplainItSession(
         updatedBy: auth.userId,
       })
       .returning({ id: explainSessions.id });
-    await tx.insert(explainTurns).values({
-      workspaceId: auth.workspaceId,
-      sessionId: session.id,
-      ordinal: 0,
-      prompt: question.prompt.trim(),
-      evidence,
-      createdBy: auth.userId,
-      updatedBy: auth.userId,
-    });
+    const [turn] = await tx
+      .insert(explainTurns)
+      .values({
+        workspaceId: auth.workspaceId,
+        sessionId: session.id,
+        ordinal: 0,
+        prompt: question.prompt.trim(),
+        evidence,
+        createdBy: auth.userId,
+        updatedBy: auth.userId,
+      })
+      .returning({ id: explainTurns.id });
+    await linkItemsToConcepts(auth, tx, [{ explainTurnId: turn.id, concept: question.concept }]);
     await recordAudit(
       auth,
       {
@@ -163,11 +176,11 @@ export async function startExplainItSession(
   });
 }
 
-async function loadPinnedExplainSources(
+export async function loadPinnedExplainSources(
   auth: AuthContext,
   manifest: ExplainSourceSnapshot[],
 ): Promise<Array<ExplainSource & ExplainSourceSnapshot>> {
-  if (manifest.length === 0 || manifest.length > 8)
+  if (manifest.length === 0 || manifest.length > MAX_EXPLAIN_SOURCES)
     throw new ExplainItError("invalid_sources", "This session has an invalid source selection.");
   const ids = manifest.map((item) => item.extractionId);
   const rows = await db
@@ -339,15 +352,21 @@ export async function answerExplainItTurn(
       .returning({ id: explainTurns.id });
     if (!updated) throw new ExplainItError("answer_already_submitted", "This answer has already been submitted.");
     if (mayContinue) {
-      await tx.insert(explainTurns).values({
-        workspaceId: auth.workspaceId,
-        sessionId: session.id,
-        ordinal: current.ordinal + 1,
-        prompt: evaluation.nextQuestion!.trim(),
-        evidence: nextEvidence,
-        createdBy: auth.userId,
-        updatedBy: auth.userId,
-      });
+      const [next] = await tx
+        .insert(explainTurns)
+        .values({
+          workspaceId: auth.workspaceId,
+          sessionId: session.id,
+          ordinal: current.ordinal + 1,
+          prompt: evaluation.nextQuestion!.trim(),
+          evidence: nextEvidence,
+          createdBy: auth.userId,
+          updatedBy: auth.userId,
+        })
+        .returning({ id: explainTurns.id });
+      const nextConcept = conceptName(evaluation.nextConcept);
+      if (nextConcept) await linkItemsToConcepts(auth, tx, [{ explainTurnId: next.id, concept: nextConcept }]);
+      else await carryTurnConcepts(auth, tx, { fromTurnId: current.id, toTurnId: next.id });
     }
     await tx
       .update(explainSessions)

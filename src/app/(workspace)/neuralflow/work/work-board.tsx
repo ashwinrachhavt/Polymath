@@ -8,6 +8,7 @@ import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { CardModal } from "./card-modal";
 import { ChevronDown, ChevronUp } from "lucide-react";
+import { randomId } from "@/lib/random-id";
 
 /*
  * The board: one column per status, cards moved between them by dragging.
@@ -77,7 +78,7 @@ export function WorkBoard({ cards, detailBase }: { cards: BoardCardData[]; detai
   function changeStatus(card: BoardCardData, status: BoardStatus) {
     if (card.status === status) return;
     setError(null);
-    const key = crypto.randomUUID();
+    const key = randomId();
     startTransition(async () => {
       move({ type: "move", id: card.id, status });
       const result = await updateTaskAction({
@@ -104,7 +105,7 @@ export function WorkBoard({ cards, detailBase }: { cards: BoardCardData[]; detai
     if (!target) return;
     const beyond = laneCards[index + direction * 2];
     setError(null);
-    const key = crypto.randomUUID();
+    const key = randomId();
     startTransition(async () => {
       const result = await moveTaskAction(
         direction === -1
@@ -139,7 +140,7 @@ export function WorkBoard({ cards, detailBase }: { cards: BoardCardData[]; detai
     const card = optimistic.find((c) => c.id === id);
     if (!card || card.status === status) return;
     setError(null);
-    intent.current ??= crypto.randomUUID();
+    intent.current ??= randomId();
     startTransition(async () => {
       move({ type: "move", id, status });
       try {

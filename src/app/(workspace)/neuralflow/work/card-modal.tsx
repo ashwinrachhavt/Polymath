@@ -7,6 +7,7 @@ import { Select } from "@/components/ui/select";
 import { updateTaskAction } from "./actions";
 import { STATUS_LABEL, STATUS_PILL as statusPill } from "./status-meta";
 import type { BoardCardData, BoardStatus } from "./work-board";
+import { randomId } from "@/lib/random-id";
 
 /*
  * A card opens here first: one small dialog with the task's own fields, no
@@ -36,7 +37,7 @@ export function CardModal({
   function changeStatus(status: BoardStatus) {
     if (!card || card.status === status) return;
     setError(null);
-    intent.current ??= crypto.randomUUID();
+    intent.current ??= randomId();
     startTransition(async () => {
       const result = await updateTaskAction({
         taskId: card.id,

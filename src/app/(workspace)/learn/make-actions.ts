@@ -4,7 +4,7 @@ import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
 import { ConflictError, StaleWriteError } from "@/domains/capture/commands";
 import { checkCaptureSource, documentForCapture } from "@/domains/capture/document-source";
-import { searchCaptures } from "@/domains/capture/queries";
+import { captureDisplayTitle, searchCaptures } from "@/domains/capture/queries";
 import { GenerationJobConflictError } from "@/domains/jobs/commands";
 import { kickGenerationJob } from "@/domains/jobs/kick";
 import type { GenerationJobView } from "@/domains/jobs/state";
@@ -69,7 +69,7 @@ export async function findLearningSourcesAction(
           type: "capture",
           id: row.id,
           version: row.version,
-          title: row.title?.trim() || row.preview?.trim().split("\n")[0] || row.url || "Untitled capture",
+          title: captureDisplayTitle(row) || row.preview?.trim().split("\n")[0] || row.url || "Untitled capture",
         })),
     };
   } catch (error) {

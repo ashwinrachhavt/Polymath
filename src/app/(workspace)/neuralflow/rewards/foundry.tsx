@@ -6,6 +6,7 @@ import { RecipeStoneArt } from "@/components/products/neuralflow/stone-art";
 import type { FoundryProposal } from "@/domains/gamification/queries";
 import { Button } from "@/components/ui/button";
 import { decideFoundryProposalAction } from "./actions";
+import { randomId } from "@/lib/random-id";
 
 /*
  * The Foundry's owner-facing half (spec §7): ML-designed stones awaiting a
@@ -18,7 +19,7 @@ import { decideFoundryProposalAction } from "./actions";
  */
 
 function ProposalCard({ proposal }: { proposal: FoundryProposal }) {
-  const keyRef = useRef<string>(crypto.randomUUID());
+  const keyRef = useRef<string>(randomId());
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [decided, setDecided] = useState(false);

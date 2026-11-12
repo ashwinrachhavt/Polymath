@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Panel } from "@/components/workspace/ui";
 import type { ShutdownPreview, ShutdownResult } from "@/domains/daybook/shutdown";
 import { applyShutdownAction } from "./actions";
+import { randomId } from "@/lib/random-id";
 
 type Choice = "unset" | "leave" | "finish" | "abandon";
 
@@ -50,7 +51,7 @@ function ClosedPanel({ today, logNoteId, onReopen }: { today: string; logNoteId:
 export function ShutdownForm({ preview }: { preview: ShutdownPreview }) {
   const [pending, startTransition] = useTransition();
   // One key per ritual attempt: a retry after a dropped response replays, never repeats.
-  const [idempotencyKey] = useState(() => crypto.randomUUID());
+  const [idempotencyKey] = useState(() => randomId());
   const [choice, setChoice] = useState<Choice>("unset");
   const [outcome, setOutcome] = useState("");
   const [nextStep, setNextStep] = useState("");

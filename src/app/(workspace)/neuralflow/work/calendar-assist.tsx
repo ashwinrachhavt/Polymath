@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { answer, SUGGESTED_PROMPTS, type AssistEvent } from "@/domains/calendar/assist";
 import { addBlockAction, approveProposalAction, rejectProposalAction } from "./calendar-actions";
+import { randomId } from "@/lib/random-id";
 
 export type PendingProposal = { id: string; version: number; revisionId: string; title: string; effect: string };
 
@@ -52,7 +53,7 @@ export function CalendarToolbar({ events, proposals }: { events: AssistEvent[]; 
         title: String(data.get("title") ?? ""),
         startsAt: start.toISOString(),
         endsAt: end.toISOString(),
-        idempotencyKey: crypto.randomUUID(),
+        idempotencyKey: randomId(),
       });
       if (result.ok) {
         form.reset();

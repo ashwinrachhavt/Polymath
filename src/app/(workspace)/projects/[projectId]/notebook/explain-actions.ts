@@ -2,7 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { answerExplainItTurn, ExplainItError, startExplainItSession } from "@/domains/learning/explain-it";
+import {
+  answerExplainItTurn,
+  ExplainItError,
+  MAX_EXPLAIN_SOURCES,
+  startExplainItSession,
+} from "@/domains/learning/explain-it";
 import { projectDocumentIds } from "@/domains/knowledge/projects";
 import { actionError } from "@/lib/action-error";
 import { getAuthContext } from "@/lib/auth";
@@ -16,7 +21,7 @@ const startSchema = z.object({
 
 export async function startNotebookExplainItAction(input: z.input<typeof startSchema>) {
   const parsed = startSchema.safeParse(input);
-  if (!parsed.success) return { ok: false as const, error: "Choose one to eight ready sources." };
+  if (!parsed.success) return { ok: false as const, error: `Choose one to ${MAX_EXPLAIN_SOURCES} ready sources.` };
   const auth = await getAuthContext();
   requireRole(auth, "member");
   try {

@@ -38,6 +38,8 @@ export type GeneratedQuestion = {
   quote: string;
   /** Zero-based index into the requested source manifest. */
   sourceIndex?: number;
+  /** The one idea the question tests, as a short name. A question without one is dropped. */
+  concept?: string;
 };
 
 type QuizGeneratorSource = { title: string; text: string };
@@ -48,6 +50,8 @@ type QuizGeneratorOptions = {
   avoidPrompts?: string[];
   /** Which window of a long source this call reads (sourceWindow); batch k reads window k. */
   part?: number;
+  /** Concept names this workspace already uses; the model reuses one when it fits. */
+  knownConcepts?: string[];
 };
 
 export interface QuizGenerator {
@@ -60,7 +64,7 @@ export interface QuizGenerator {
   ): Promise<{ questions: GeneratedQuestion[] }>;
 }
 
-export const QUIZ_PROMPT_VERSION = "learn-quiz@6";
+export const QUIZ_PROMPT_VERSION = "learn-quiz@7";
 
 const MAX_INPUT_CHARS = 12_000;
 
@@ -78,19 +82,23 @@ const questionSchema = z.object({
   explanation: z.string().min(1),
   quote: z.string().min(1),
   sourceIndex: z.number().int().nonnegative().optional(),
+  // Optional here for the same reason: a question that names no concept is
+  // dropped and counted by verifyQuiz, it does not fail the whole batch.
+  concept: z.string().optional(),
 });
 
 const response = z.object({
   questions: z.array(questionSchema).min(1).max(25),
 });
 
-const SYSTEM = `You write a quiz over a document so a reader can check what they learned. Return JSON with exactly this shape: {"questions":[{"prompt","choices":[{"value","label"}],"answerValue","explanation","quote"}]}.
+const SYSTEM = `You write a quiz over a document so a reader can check what they learned. Return JSON with exactly this shape: {"questions":[{"prompt","choices":[{"value","label"}],"answerValue","explanation","quote","concept"}]}.
 The user message is the document text, and it is your ONLY source. You may recognize the text from training - do not answer from memory anyway: every fact, every question, and every quote must come from the text you were given, exactly as printed there. If a question would need a part of the document that is not present in the text you received, drop it.
 "prompt": one question answerable ONLY from the document - never a question about the document itself.
 "choices": one correct option plus 2 to 4 wrong options. Each "label" is a bare claim - no justification inside an option; the reasoning belongs in "explanation". Write the correct claim first, then build each wrong option by mutating it from one specific, believable misconception, keeping the same sentence skeleton, length, and register, so the correct answer never leaks by format. Never "all of the above", never "none of the above". "value" is a short stable id for the option, unique within the question.
 "answerValue": the correct option's "value", exactly.
 "explanation": why the correct claim is true and the tempting wrong ones are not. Required.
 "quote": a contiguous span of the provided text, copied character-for-character as printed there (punctuation, capitalization, spelling - including odd spacing or fragments from the source). Never reconstruct it from memory, never tidy it, never splice non-adjacent sentences. Keep it to one sentence, at most about 30 words. If no passage in the provided text supports a question, drop the question.
+"concept": the one idea the question tests, named as a short noun phrase of one to five words in the document's own terms (for example "optimistic locking"), never a sentence and never the document's title. Questions that test the same idea use the same name.
 Never invent a fact, a quote, or a question to fill the shape; return fewer questions instead. ${untrustedDataClauseJsonSafe("article")}`;
 
 function contextInstruction(context?: { missedQuestions: string[]; notHelpfulExamples: string[] }): string {
@@ -105,6 +113,13 @@ function avoidInstruction(prompts: string[] = []): string {
   if (prompts.length === 0) return "";
   const bounded = prompts.map((prompt) => prompt.slice(0, 120));
   return ` This quiz already asks these questions, so write different ones that test other ideas: ${JSON.stringify(bounded)}.`;
+}
+
+/** Asks the model to reuse the names a workspace already has, so one idea keeps one name. */
+export function knownConceptsInstruction(names: string[] = []): string {
+  if (names.length === 0) return "";
+  const bounded = names.slice(0, 40).map((name) => name.slice(0, 80));
+  return ` These concept names are already in use; when an item tests one of them, use that exact name: ${JSON.stringify(bounded)}.`;
 }
 
 function fromGeneration(
@@ -129,7 +144,7 @@ function fromGeneration(
   return {
     name: provider.name,
     generate(text, options) {
-      const system = `${SYSTEM}${options?.questionCount ? ` Generate exactly ${options.questionCount} questions when the source supports them.` : ""}${contextInstruction(options?.learningContext)}${avoidInstruction(options?.avoidPrompts)}`;
+      const system = `${SYSTEM}${options?.questionCount ? ` Generate exactly ${options.questionCount} questions when the source supports them.` : ""}${contextInstruction(options?.learningContext)}${avoidInstruction(options?.avoidPrompts)}${knownConceptsInstruction(options?.knownConcepts)}`;
       return call(system, sourceWindow(text, MAX_INPUT_CHARS, options?.part));
     },
     generateFromSources(sources, options) {
@@ -139,7 +154,7 @@ function fromGeneration(
         title: source.title.slice(0, 120),
         text: sourceWindow(source.text, perSourceLimit, options?.part),
       }));
-      const system = `${SYSTEM} Each question must include the zero-based sourceIndex for the one source that supports its answer and quote. Return that sourceIndex with every question.${options?.questionCount ? ` Generate exactly ${options.questionCount} questions when the sources support them.` : ""}${contextInstruction(options?.learningContext)}${avoidInstruction(options?.avoidPrompts)}`;
+      const system = `${SYSTEM} Each question must include the zero-based sourceIndex for the one source that supports its answer and quote. Return that sourceIndex with every question.${options?.questionCount ? ` Generate exactly ${options.questionCount} questions when the sources support them.` : ""}${contextInstruction(options?.learningContext)}${avoidInstruction(options?.avoidPrompts)}${knownConceptsInstruction(options?.knownConcepts)}`;
       return call(system, JSON.stringify({ sources: bounded }));
     },
   };

@@ -5,6 +5,7 @@ import { releaseSpend, reserveSpend } from "@/domains/spending/commands";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { recordRoundEvent, redactText } from "./event-bridge";
+import { loadMemoryIndex } from "./memory";
 import { resolveRunModel } from "./models";
 import { captureProfileRevision } from "./runtime-persistence";
 import { agentProfiles, agentRuns } from "./schema";
@@ -122,6 +123,21 @@ async function scopeCheck(runId: string, auth: AuthContext) {
     throw new Error("run not found in workspace");
   }
   return run;
+}
+
+/*
+ * The memory index is a convenience, never a gate on starting a run: a memory
+ * read that fails must not make the assistant unavailable. A missing table in
+ * an unreplayed database, a dropped connection — the session starts with the
+ * brief it has, and the next run tries memory again.
+ */
+async function loadMemoryIndexSafe(auth: AuthContext): Promise<string | null> {
+  try {
+    return await loadMemoryIndex({ workspaceId: auth.workspaceId, userId: auth.userId });
+  } catch (cause) {
+    console.warn("[agents] memory index could not be read; starting without it", cause);
+    return null;
+  }
 }
 
 /** Closes a run that will never do work. The error text is redacted on write. */
@@ -289,12 +305,27 @@ export function createEngine(
         data: { role: "user", content: input.objective },
       });
 
+      /*
+       * Two layers reach the session, both through the same instructions
+       * channel the specialist brief already uses:
+       *   - the profile's learned brief, which is what the owner wrote;
+       *   - the memory index, a small capped list of notes from earlier
+       *     sessions with this person. It rides AFTER the brief so the brief's
+       *     emphasis survives, and it is data about the person, not a rule.
+       * A workspace with no notes injects nothing (loadMemoryIndex returns
+       * null), so the second layer costs nothing until it earns its place.
+       */
+      const memoryIndex = await loadMemoryIndexSafe(input.auth);
+      const brief = [profile.instructions ?? null, memoryIndex]
+        .filter((part): part is string => Boolean(part))
+        .join("\n\n");
+
       try {
         await driver.start({
           sessionId: run.id,
           auth: input.auth,
           policy,
-          instructions: profile.instructions ?? null,
+          instructions: brief || null,
           objective: input.objective,
         });
       } catch (cause) {

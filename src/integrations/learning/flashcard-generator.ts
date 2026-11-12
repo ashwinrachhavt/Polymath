@@ -9,6 +9,7 @@ import {
 } from "@/integrations/generation/provider";
 import { providerEntry } from "@/integrations/providers/registry";
 import { drizzleQuotaStore, withQuota, type QuotaStore } from "@/integrations/providers/quota";
+import { knownConceptsInstruction } from "./quiz-generator";
 import { sourceWindow } from "./source-window";
 
 type GeneratedFlashcard = {
@@ -16,6 +17,8 @@ type GeneratedFlashcard = {
   answer: string;
   quote: string;
   sourceIndex: number;
+  /** The one idea the card tests, as a short name. A card without one is dropped. */
+  concept?: string;
 };
 type FlashcardGeneratorSource = { title: string; text: string };
 export interface FlashcardGenerator {
@@ -29,10 +32,12 @@ export interface FlashcardGenerator {
       avoidPrompts?: string[];
       /** Which window of a long source this call reads (sourceWindow); batch k reads window k. */
       part?: number;
+      /** Concept names this workspace already uses; the model reuses one when it fits. */
+      knownConcepts?: string[];
     },
   ): Promise<{ cards: GeneratedFlashcard[] }>;
 }
-export const FLASHCARD_PROMPT_VERSION = "learning-flashcards@3";
+export const FLASHCARD_PROMPT_VERSION = "learning-flashcards@4";
 const MAX_INPUT_CHARS = 12000;
 
 const response = z.object({
@@ -43,6 +48,7 @@ const response = z.object({
         answer: z.string().min(1).max(1000),
         quote: z.string().min(1).max(500),
         sourceIndex: z.number().int().nonnegative(),
+        concept: z.string().optional(),
       }),
     )
     .min(1)
@@ -50,7 +56,7 @@ const response = z.object({
 });
 
 const SYSTEM =
-  "Create concise active-recall flashcards from only the supplied sources. Return JSON {cards:[{prompt,answer,quote,sourceIndex}]}. Each card tests one important concept; avoid trivial facts, duplicates, and facts requiring outside knowledge. The quote must be a contiguous verbatim excerpt from the indicated source. Never invent or repair evidence. Return fewer cards rather than unsupported ones. " +
+  "Create concise active-recall flashcards from only the supplied sources. Return JSON {cards:[{prompt,answer,quote,sourceIndex,concept}]}. Each card tests one important concept; concept names it as a short noun phrase of one to five words in the terms the source uses, never a sentence and never the source title, and cards on the same idea use the same name; avoid trivial facts, duplicates, and facts requiring outside knowledge. The quote must be a contiguous verbatim excerpt from the indicated source. Never invent or repair evidence. Return fewer cards rather than unsupported ones. " +
   untrustedDataClauseJsonSafe("source text");
 
 function contextInstruction(context?: { missedQuestions: string[]; notHelpfulExamples: string[] }): string {
@@ -86,7 +92,8 @@ function fromGeneration(
         options.cardCount +
         " cards when the sources support them. Include the zero-based sourceIndex on every card." +
         contextInstruction(options.learningContext) +
-        avoidInstruction(options.avoidPrompts);
+        avoidInstruction(options.avoidPrompts) +
+        knownConceptsInstruction(options.knownConcepts);
       try {
         const result = await run({ system, prompt: JSON.stringify({ sources: bounded }) });
         return response.parse(JSON.parse(result.text));
