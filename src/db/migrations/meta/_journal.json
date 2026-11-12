@@ -936,6 +936,20 @@
       "when": 1794457000000,
       "tag": "0308_missions",
       "breakpoints": true
+    },
+    {
+      "idx": 309,
+      "version": "7",
+      "when": 1794464256790,
+      "tag": "0309_agent_memory",
+      "breakpoints": true
+    },
+    {
+      "idx": 310,
+      "version": "7",
+      "when": 1794465173658,
+      "tag": "0310_drop_dead_memory",
+      "breakpoints": true
     }
   ]
 }

@@ -19,7 +19,9 @@ import { useWorkspace } from "@/components/workspace/workspace-provider";
 import { Check, Destination, DisabledAction, Select } from "./controls";
 import {
   loadAssistantProfileAction,
+  loadMemorySummaryAction,
   loadPreferencesAction,
+  runMemoryDreamNowAction,
   saveAssistantProfileAction,
   savePreferencesAction,
 } from "@/app/(workspace)/settings/actions";
@@ -55,6 +57,7 @@ const SECTION_GROUPS = [
     label: "Workspace",
     items: [
       { id: "assistant", label: "Your assistant" },
+      { id: "memory", label: "Memory" },
       { id: "execution-safety", label: "Execution safety" },
       { id: "model-policy", label: "Model and tools" },
       { id: "connectors", label: "Connectors" },
@@ -392,6 +395,71 @@ function AssistantPanel({ profile }: { profile: AssistantProfile }) {
   );
 }
 
+/*
+ * What the assistant remembers. A note is one short observation it drew from an
+ * earlier session; the nightly pass checks those notes against the transcripts
+ * and corrects or drops the ones that no longer hold. The small list at the top
+ * of every session is capped on purpose, so this panel shows the pass's report,
+ * not the prompt. "Think now" is the owner's manual trigger; the work runs as a
+ * background job, so the button never makes anyone wait in a dialog.
+ */
+function MemoryPanel() {
+  const { notify } = useWorkspace();
+  const [summary, setSummary] = useState<Awaited<ReturnType<typeof loadMemorySummaryAction>> | null>(null);
+  const [queued, setQueued] = useState(false);
+  useEffect(() => {
+    void loadMemorySummaryAction().then(setSummary);
+  }, []);
+  const dream = summary?.ok ? summary.dream : null;
+  return (
+    <Panel
+      title="Memory"
+      description="Short observations your assistant carried forward from earlier sessions. Notes are checked against the transcripts they came from, corrected when they are wrong, and only a small index of them is loaded into a session."
+      actions={<Status>{dream ? `Last pass: ${dream.transcripts} sessions` : "No pass yet"}</Status>}
+    >
+      {dream ? (
+        <ul className="grid gap-2 text-body-dense">
+          <li>Notes written: {dream.created}</li>
+          <li>Notes corrected: {dream.corrected}</li>
+          <li>Notes dropped as contradicted: {dream.dropped}</li>
+          <li>Duplicates folded together: {dream.merged}</li>
+          <li>
+            Notes held back from the session index because of its size cap: {dream.heldBack}. They stay in memory; a
+            correction or a question brings them forward.
+          </li>
+        </ul>
+      ) : (
+        <p className="text-body-dense text-muted-foreground">
+          Nothing has been consolidated yet. The pass runs once a day; use the button below to run it now.
+        </p>
+      )}
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <Button
+          type="button"
+          variant="outline"
+          disabled={queued}
+          onClick={() => {
+            setQueued(true);
+            void runMemoryDreamNowAction().then((result) => {
+              setQueued(false);
+              if (result.ok) {
+                notify(
+                  result.queued ? "Memory pass queued. It runs in the background." : "A memory pass is already queued.",
+                );
+              } else {
+                notify(result.error);
+              }
+            });
+          }}
+        >
+          {queued ? "Queuing…" : "Think now"}
+        </Button>
+        <p className="text-xs text-muted-foreground">Runs in the background and never blocks a conversation.</p>
+      </div>
+    </Panel>
+  );
+}
+
 export default function Settings({
   serverPreferences,
   capabilities,
@@ -608,6 +676,12 @@ export default function Settings({
           {serverAssistantProfile ? (
             <Section id="assistant">
               <AssistantPanel profile={serverAssistantProfile} />
+            </Section>
+          ) : null}
+
+          {serverAssistantProfile ? (
+            <Section id="memory">
+              <MemoryPanel />
             </Section>
           ) : null}
 

@@ -11,6 +11,7 @@ import { documents } from "@/domains/knowledge/schema";
 import { recordSource } from "@/domains/knowledge/sources";
 import { TIDY_PASS_TOPIC, tidyPassRequestedHandler } from "@/domains/knowledge/tidy";
 import { RUN_CRITIQUE_TOPIC, runCritiqueRequestedHandler } from "@/domains/agents/critique";
+import { MEMORY_DREAM_TOPIC, memoryDreamRequestedHandler } from "@/domains/agents/memory-dreaming";
 import { THREAD_CHANGED_TOPIC, threadChangedHandler } from "@/domains/knowledge/thread-graph";
 import { FOCUS_FOLLOW_UP_TOPIC, followUpRequestedHandler } from "@/domains/focus/follow-up";
 import { youtubeHandlers } from "@/domains/knowledge/youtube-handler";
@@ -300,6 +301,7 @@ export function outboxHandlers(): Record<string, OutboxHandler> {
     [EMBEDDING_RETRY_TOPIC]: embeddingRetryRequestedHandler(workspaceOwnerAuth),
     [FACT_SUGGESTION_TOPIC]: factSuggestionRequestedHandler,
     [TIDY_PASS_TOPIC]: tidyPassRequestedHandler(workspaceOwnerAuth),
+    [MEMORY_DREAM_TOPIC]: memoryDreamRequestedHandler(workspaceOwnerAuth),
     [GENERATION_JOB_TOPIC]: generationJobRequestedHandler,
   };
   return handlers;

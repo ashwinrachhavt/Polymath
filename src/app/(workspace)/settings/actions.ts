@@ -13,6 +13,8 @@ import {
 import { changeMembership, createInvitation, revokeInvitation } from "@/domains/identity/invitations";
 import { getDefaultProfile } from "@/domains/agents/queries";
 import { updateDefaultProfileBrief } from "@/domains/agents/commands";
+import { requestMemoryDreamNow } from "@/domains/agents/memory-schedule";
+import { lastDreamSummary } from "@/domains/agents/memory-dreaming";
 import { selfMembership } from "@/domains/identity/members";
 import { actionError } from "@/lib/action-error";
 import { invitationsTag, prefsTag, workspacesTag } from "@/lib/cache-tags";
@@ -113,6 +115,34 @@ export async function loadAssistantProfileAction(): Promise<
     return { ok: true, profile: await getDefaultProfile(auth) };
   } catch (error) {
     return { ok: false, error: actionError(error, "Could not load the assistant profile.") };
+  }
+}
+
+/*
+ * Memory: what the assistant remembers, and a way to make it think now rather
+ * than at tomorrow's pass. Owner scope only, the same grounding the brief has:
+ * notes are the owner's own transcripts distilled.
+ */
+export async function loadMemorySummaryAction(): Promise<
+  Result<{ dream: Awaited<ReturnType<typeof lastDreamSummary>> }>
+> {
+  try {
+    const auth = await getAuthContext();
+    requireRole(auth, "owner");
+    return { ok: true, dream: await lastDreamSummary(auth) };
+  } catch (error) {
+    return { ok: false, error: actionError(error, "Could not load what the assistant remembers.") };
+  }
+}
+
+export async function runMemoryDreamNowAction(): Promise<Result<{ queued: boolean }>> {
+  try {
+    const auth = await getAuthContext();
+    requireRole(auth, "owner");
+    const { enqueued } = await requestMemoryDreamNow(auth);
+    return { ok: true, queued: enqueued };
+  } catch (error) {
+    return { ok: false, error: actionError(error, "Could not start a memory pass.") };
   }
 }
 

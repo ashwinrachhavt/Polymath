@@ -14,7 +14,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import { mutable, primaryId, recorded, recordedBy, tenantId } from "../../db/columns";
+import { mutable, primaryId, recorded, tenantId } from "../../db/columns";
 import type { AgentSource, SessionSummary } from "../../lib/agent-artifacts/types";
 import { blobObjects } from "../audit/schema";
 import { memberships } from "../identity/schema";
@@ -44,7 +44,6 @@ export const runState = pgEnum("run_state", [
 ]);
 export const questionState = pgEnum("question_state", ["open", "answered", "dismissed"]);
 export const messageRole = pgEnum("message_role", ["user", "assistant", "system", "tool"]);
-export const memoryStatus = pgEnum("memory_status", ["proposed", "accepted", "rejected", "retired"]);
 /*
  * Context manifest item kinds keep conversation, canonical records, evidence
  * and reviewed memory distinct: a `message` is never evidence, and retrieved
@@ -328,7 +327,6 @@ export const messages = pgTable(
   (t) => [index("messages_thread_idx").on(t.threadId, t.createdAt)],
 );
 
-
 /*
  * Margin comments on a stored message (chat-actions PR B). A comment belongs
  * to the message as a whole - the same whole-message ceiling note_comments
@@ -414,7 +412,6 @@ export const agentRuns = pgTable(
     unique("agent_runs_workspace_id_id_key").on(t.workspaceId, t.id),
   ],
 );
-
 
 /** Append-only tool results: a step's output is never edited, only superseded by a new step. */
 export const toolCalls = pgTable(
@@ -549,81 +546,6 @@ export const runReviews = pgTable(
   ],
 );
 
-
-/*
- * A context manifest is the inspectable record of exactly what a run's
- * context contained: which record versions, artifact versions, source spans,
- * memory revisions and messages were selected, why, and under what budget.
- * Manifests and items are append-only; an intentional refresh builds a new
- * manifest rather than mutating an old one.
- */
-export const contextManifests = pgTable(
-  "context_manifests",
-  {
-    id: primaryId(),
-    workspaceId: tenantId(),
-    runId: uuid("run_id").references(() => agentRuns.id, { onDelete: "set null" }),
-    /**
-     * The profile revision the context was built against. A plain column, not
-     * a foreign key: this migration predates the runtime-bindings table in
-     * apply order, and the reference is validated by the domain instead.
-     */
-    profileRevisionId: uuid("profile_revision_id"),
-    purpose: text("purpose").notNull(),
-    /** The policy that chose the items: record types, scopes, ordering. */
-    selectionPolicy: jsonb("selection_policy").notNull().default({}),
-    /** The retrieval filters actually applied, so a reader can replay the query. */
-    retrievalScope: jsonb("retrieval_scope").notNull().default({}),
-    /** { maxTokens, usedTokens, truncated }: the budget and what it did. */
-    budget: jsonb("budget").notNull().default({}),
-    itemCount: integer("item_count").notNull().default(0),
-    /** Items excluded with a recorded reason (budget, staleness, revocation). */
-    gapCount: integer("gap_count").notNull().default(0),
-    ...recordedBy,
-  },
-  (t) => [
-    index("context_manifests_workspace_idx").on(t.workspaceId, t.createdAt),
-    index("context_manifests_run_idx").on(t.runId),
-    // Tenant-composite key for items: an item can never reference a manifest
-    // outside its own workspace.
-    uniqueIndex("context_manifests_workspace_id_key").on(t.workspaceId, t.id),
-  ],
-);
-
-export const contextManifestItems = pgTable(
-  "context_manifest_items",
-  {
-    id: primaryId(),
-    workspaceId: tenantId(),
-    manifestId: uuid("manifest_id")
-      .notNull()
-      .references(() => contextManifests.id, { onDelete: "cascade" }),
-    ordinal: integer("ordinal").notNull(),
-    kind: manifestItemKind("kind").notNull(),
-    /** The referenced row: artifact version, source, memory revision, or message id. */
-    refId: uuid("ref_id").notNull(),
-    /** The owning record when one exists (artifact id, claim id, thread id). */
-    refParentId: uuid("ref_parent_id"),
-    /** The version actually used (artifact version number, memory revision). */
-    refVersion: integer("ref_version"),
-    contentHash: text("content_hash"),
-    tokenEstimate: integer("token_estimate").notNull().default(0),
-    selectionReason: text("selection_reason"),
-    staleness: manifestItemStaleness("staleness").notNull().default("current"),
-    /** False when the budget or access rules excluded the item; the gap stays inspectable. */
-    included: boolean("included").notNull().default(true),
-    ...recorded,
-  },
-  (t) => [
-    uniqueIndex("context_manifest_items_ordinal_key").on(t.manifestId, t.ordinal),
-    index("context_manifest_items_ref_idx").on(t.workspaceId, t.kind, t.refId),
-    foreignKey({
-      columns: [t.workspaceId, t.manifestId],
-      foreignColumns: [contextManifests.workspaceId, contextManifests.id],
-    }),
-  ],
-);
-
 /** One entry of the test-results file provided at capture time. */
 export type CapturedTestResult = { name: string; ok: boolean; runAt: string };
 
@@ -699,44 +621,6 @@ export const importedAgentSessions = pgTable(
     check("imported_agent_sessions_decision_status_check", sql`decision_status in ('recorded', 'inferred')`),
   ],
 );
-
-/*
- * Memory is reviewed, never automatic. A model's output can propose a memory;
- * only the owner makes it durable, and every revision is kept.
- */
-export const memoryItems = pgTable(
-  "memory_items",
-  {
-    id: primaryId(),
-    workspaceId: tenantId(),
-    scope: text("scope").notNull().default("workspace"),
-    subjectType: text("subject_type"),
-    subjectId: uuid("subject_id"),
-    body: text("body").notNull(),
-    status: memoryStatus("status").notNull().default("proposed"),
-    /** The run that proposed it, when a model did. */
-    producedByRunId: uuid("produced_by_run_id"),
-    ...mutable,
-  },
-  (t) => [index("memory_items_status_idx").on(t.workspaceId, t.status, t.updatedAt)],
-);
-
-export const memoryRevisions = pgTable(
-  "memory_revisions",
-  {
-    id: primaryId(),
-    workspaceId: tenantId(),
-    memoryItemId: uuid("memory_item_id")
-      .notNull()
-      .references(() => memoryItems.id, { onDelete: "cascade" }),
-    body: text("body").notNull(),
-    changedBy: uuid("changed_by"),
-    reason: text("reason"),
-    ...recorded,
-  },
-  (t) => [index("memory_revisions_item_idx").on(t.memoryItemId, t.createdAt)],
-);
-
 
 /*
  * Onboarding: one interview that shapes the workspace's supervisor agent.
