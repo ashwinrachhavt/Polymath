@@ -2,9 +2,8 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { captureInWorkspace, linkCaptureDocument } from "@/domains/capture/children";
 import type { AuthContext } from "@/domains/identity/resolve";
-import { submitGenerationJob } from "@/domains/jobs/commands";
 import type { GenerationJobRunner } from "@/domains/jobs/runners";
-import { GenerationJobCancelled, GenerationJobFailure, type GenerationJobView } from "@/domains/jobs/state";
+import { GenerationJobCancelled, GenerationJobFailure } from "@/domains/jobs/state";
 import {
   cancelCrawl,
   FirecrawlNotConfiguredError,
@@ -14,7 +13,6 @@ import {
   type CrawlPage,
 } from "@/integrations/firecrawl/client";
 import { db } from "@/lib/db";
-import type { TxDrizzle } from "@/lib/db-transaction";
 import { MAX_UPLOAD_BYTES } from "@/lib/file-validation";
 import { sha256Hex } from "@/lib/hash";
 import { canonicalCaptureUrl } from "@/lib/safe-fetch";
@@ -121,30 +119,27 @@ const inputSchema = z.object({
 type CrawlInput = z.infer<typeof inputSchema>;
 
 /**
- * Accepts a site crawl. The key makes one crawl per capture, and for the
- * agents' tool one per site per day: asking twice joins the first job.
+ * The job that crawls a site, ready to submit (submitGenerationJob, or
+ * submitOrRetryGenerationJob where asking again means trying again). The key
+ * makes one crawl per capture, and for the agents' tool one per site per day:
+ * asking twice joins the first job.
  */
-export async function submitSiteCrawl(
-  auth: Pick<AuthContext, "workspaceId" | "userId">,
-  input: { url: URL; captureId?: string; limit?: number },
-  tx?: TxDrizzle,
-): Promise<{ job: GenerationJobView; created: boolean }> {
+export function siteCrawlJob(input: { url: URL; captureId?: string; limit?: number }) {
   const url = canonicalCaptureUrl(input.url);
-  const limit = input.limit ?? crawlPageLimit();
-  const value: CrawlInput = { url, limit, ...(input.captureId ? { captureId: input.captureId } : {}) };
-  return submitGenerationJob(
-    auth,
-    {
-      kind: SITE_CRAWL_KIND,
-      subject: input.captureId ? `capture:${input.captureId}` : undefined,
-      idempotencyKey: input.captureId
-        ? `crawl:capture:${input.captureId}`
-        : `crawl:${url}:${new Date().toISOString().slice(0, 10)}`,
-      title: `Reading ${siteOf(new URL(url))}`,
-      input: value,
-    },
-    tx,
-  );
+  const value: CrawlInput = {
+    url,
+    limit: input.limit ?? crawlPageLimit(),
+    ...(input.captureId ? { captureId: input.captureId } : {}),
+  };
+  return {
+    kind: SITE_CRAWL_KIND,
+    subject: input.captureId ? `capture:${input.captureId}` : undefined,
+    idempotencyKey: input.captureId
+      ? `crawl:capture:${input.captureId}`
+      : `crawl:${url}:${new Date().toISOString().slice(0, 10)}`,
+    title: `Reading ${siteOf(new URL(url))}`,
+    input: value,
+  };
 }
 
 export type CrawlClient = {

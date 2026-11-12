@@ -2,6 +2,7 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import { learningJobRunners } from "@/domains/learning/generation-jobs";
 import { missionJobRunners } from "@/domains/learning/mission-jobs";
 import { SITE_CRAWL_KIND, siteCrawlRunner } from "@/domains/knowledge/site-crawl";
+import { YOUTUBE_ABSORB_KIND, youtubeAbsorbRunner } from "@/domains/knowledge/youtube-absorb";
 import type { GenerationJobResult } from "./schema";
 
 /** What a runner is handed besides its input. */
@@ -34,5 +35,10 @@ export type GenerationJobRunner = (
 
 /** Every kind of generation job and the runner that does it. A new kind is one entry here. */
 export function generationJobRunners(): Record<string, GenerationJobRunner> {
-  return { ...learningJobRunners, ...missionJobRunners, [SITE_CRAWL_KIND]: siteCrawlRunner() };
+  return {
+    ...learningJobRunners,
+    ...missionJobRunners,
+    [SITE_CRAWL_KIND]: siteCrawlRunner(),
+    [YOUTUBE_ABSORB_KIND]: youtubeAbsorbRunner(),
+  };
 }

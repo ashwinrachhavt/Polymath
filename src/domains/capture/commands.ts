@@ -18,7 +18,7 @@ import {
 } from "./draft-templates";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { kickGenerationJob } from "@/domains/jobs/kick";
-import { startLinkCrawl, type LinkScope } from "./link-reading";
+import { absorbCapturedVideo, startLinkCrawl, type LinkScope } from "./link-reading";
 import { db } from "@/lib/db";
 import { titleFromText } from "@/lib/display-text";
 import { inferCaptureMode, contentHash, workingText, type CaptureMode } from "./mode";
@@ -207,6 +207,7 @@ export async function createCapture(
   if ("survivorId" in result) throw new ConflictError("That URL is already in the inbox.", result.survivorId);
   const { crawlJob, ...capture } = result;
   if (crawlJob) kickGenerationJob(crawlJob);
+  if (isUrlReference && url) await absorbCapturedVideo(auth, { captureId: capture.id, url });
   return capture;
 }
 

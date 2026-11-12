@@ -22,9 +22,7 @@ import { CAPTURE_KINDS, setCaptureKind, type CaptureKind } from "@/domains/captu
 import { unparkCapture } from "@/domains/capture/parking";
 import { crawlCaptureSite } from "@/domains/capture/link-reading";
 import { kickGenerationJob } from "@/domains/jobs/kick";
-import { listUnfinishedGenerationJobs } from "@/domains/jobs/queries";
 import type { GenerationJobView } from "@/domains/jobs/state";
-import { SITE_CRAWL_KIND } from "@/domains/knowledge/site-crawl";
 import { actionError } from "@/lib/action-error";
 import { getAuthContext } from "@/lib/auth";
 import { capturesTag, tasksTag } from "@/lib/cache-tags";
@@ -288,13 +286,8 @@ export async function crawlCaptureSiteAction(input: {
     const auth = await authorize();
     const accepted = await crawlCaptureSite(auth, parsed.data);
     if (!accepted) return { ok: false, error: "This capture has no web address to read." };
-    if (accepted.created) kickGenerationJob({ jobId: accepted.jobId, attempt: accepted.attempt });
-    const [job] = await listUnfinishedGenerationJobs(auth, {
-      kindPrefix: SITE_CRAWL_KIND,
-      subject: `capture:${parsed.data.captureId}`,
-      limit: 1,
-    });
-    return { ok: true, job: job ?? null };
+    if (accepted.started) kickGenerationJob(accepted.started);
+    return { ok: true, job: accepted.job };
   } catch (error) {
     return { ok: false, error: actionError(error, "Could not start reading the site.") };
   }

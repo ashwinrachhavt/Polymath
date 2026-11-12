@@ -140,6 +140,24 @@ export async function submitGenerationJob(
 }
 
 /**
+ * The same as submitGenerationJob, except that asking again for work whose
+ * job failed or was stopped tries that job again (a new attempt) instead of
+ * returning it settled. For work that has one job per thing, such as a
+ * capture's crawl or a video's absorption, where asking again means "again".
+ * `started` names the attempt to kick, or is null when nothing new was queued.
+ */
+export async function submitOrRetryGenerationJob(
+  auth: Pick<AuthContext, "workspaceId" | "userId">,
+  input: Parameters<typeof submitGenerationJob>[1],
+): Promise<{ job: GenerationJobView; started: { jobId: string; attempt: number } | null }> {
+  const { job, created } = await submitGenerationJob(auth, input);
+  if (created) return { job, started: { jobId: job.id, attempt: job.attempt } };
+  if (job.status !== "failed" && job.status !== "cancelled") return { job, started: null };
+  const retried = await retryGenerationJob(auth, job.id);
+  return retried ? { job: retried, started: { jobId: retried.id, attempt: retried.attempt } } : { job, started: null };
+}
+
+/**
  * Runs one attempt of a job, if it is still waiting for it. Resolves once the
  * job is settled (or was not this caller's to run); rejects only when the
  * database itself fails.

@@ -247,11 +247,11 @@ describe("site crawl jobs (real Postgres, Firecrawl fixture)", () => {
   });
 
   it("fails with a reason the person can read when nothing readable was found", async () => {
-    const { submitSiteCrawl } = await import("@/domains/knowledge/site-crawl");
-    const { runGenerationJob } = await import("@/domains/jobs/commands");
+    const { siteCrawlJob } = await import("@/domains/knowledge/site-crawl");
+    const { runGenerationJob, submitGenerationJob } = await import("@/domains/jobs/commands");
     const auth = await signIn("empty");
     crawl = { ...crawl, data: [SITE[4], SITE[5], SITE[6]] };
-    const { job } = await submitSiteCrawl(auth, { url: new URL("https://docs.example/") });
+    const { job } = await submitGenerationJob(auth, siteCrawlJob({ url: new URL("https://docs.example/") }));
     await runGenerationJob({ jobId: job.id, attempt: 1 }, { "knowledge.crawl": await crawlRunner() });
     const [settled] = await crawlJobs(auth.workspaceId);
     expect(settled).toMatchObject({ status: "failed", error: "No readable pages were found at that address." });

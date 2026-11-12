@@ -3,7 +3,8 @@ import { FirecrawlNotConfiguredError, scrapeToMarkdown, type FirecrawlScrapeResu
 import { fetchTranscript, isYouTubeUrl, type TranscriptResult } from "@/integrations/youtube/transcript";
 import { canonicalCaptureUrl } from "@/lib/safe-fetch";
 import { kickGenerationJob } from "@/domains/jobs/kick";
-import { CRAWL_DEPTH, crawlPageLimit, submitSiteCrawl } from "./site-crawl";
+import { submitGenerationJob } from "@/domains/jobs/commands";
+import { CRAWL_DEPTH, crawlPageLimit, siteCrawlJob } from "./site-crawl";
 
 /*
  * What the agents' `web.fetch` tool calls.
@@ -153,7 +154,7 @@ export async function crawlSiteForAgent(
   const limit = Math.min(Math.max(input.limit ?? crawlPageLimit(), 1), 30);
   let accepted;
   try {
-    accepted = await submitSiteCrawl(auth, { url, limit });
+    accepted = await submitGenerationJob(auth, siteCrawlJob({ url, limit }));
   } catch {
     return { ok: false, error: "crawl could not be queued, try again" };
   }

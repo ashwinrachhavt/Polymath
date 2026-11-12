@@ -9,7 +9,6 @@ import { RUN_CRITIQUE_TOPIC, runCritiqueRequestedHandler } from "@/domains/agent
 import { MEMORY_DREAM_TOPIC, memoryDreamRequestedHandler } from "@/domains/agents/memory-dreaming";
 import { THREAD_CHANGED_TOPIC, threadChangedHandler } from "@/domains/knowledge/thread-graph";
 import { FOCUS_FOLLOW_UP_TOPIC, followUpRequestedHandler } from "@/domains/focus/follow-up";
-import { youtubeHandlers } from "@/domains/knowledge/youtube-handler";
 import { urlContentRequestedHandler } from "@/domains/capture/url-content-handler";
 import { CAPTURE_ENRICHMENT_TOPIC, CAPTURE_URL_CONTENT_TOPIC } from "@/domains/capture/commands";
 import { captureEnrichmentRequestedHandler } from "@/domains/capture/enrichment-handler";
@@ -54,14 +53,9 @@ export const extractionRequestedHandler: OutboxHandler = async (event) => {
 };
 
 /*
- * Built on first use, not at module evaluation.
- *
- * `youtube-handler.ts` imports `workspaceOwnerAuth` from this file, so spreading
- * `youtubeHandlers` into an eagerly-evaluated object is a cycle: whichever module
- * loads second reads the other's binding while it is still uninitialised
- * ("Cannot access 'youtubeHandlers' before initialization"). Deferring the spread
- * to the first dispatch costs one call and removes the ordering dependency
- * entirely.
+ * Built on first use, not at module evaluation: handlers import
+ * workspaceOwnerAuth from this file, and an eagerly built map would read their
+ * bindings before they exist.
  */
 let handlers: Record<string, OutboxHandler> | null = null;
 
@@ -69,7 +63,6 @@ export function outboxHandlers(): Record<string, OutboxHandler> {
   if (handlers) return handlers;
   handlers = {
     "document.extraction_requested": extractionRequestedHandler,
-    ...youtubeHandlers,
     [THREAD_CHANGED_TOPIC]: threadChangedHandler(workspaceOwnerAuth),
     [FOCUS_FOLLOW_UP_TOPIC]: followUpRequestedHandler(workspaceOwnerAuth),
     [CAPTURE_URL_CONTENT_TOPIC]: urlContentRequestedHandler,

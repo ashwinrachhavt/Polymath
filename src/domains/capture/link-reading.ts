@@ -1,7 +1,9 @@
 import { and, eq } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
-import { retryGenerationJob } from "@/domains/jobs/commands";
-import { submitSiteCrawl } from "@/domains/knowledge/site-crawl";
+import type { GenerationJobView } from "@/domains/jobs/state";
+import { submitGenerationJob, submitOrRetryGenerationJob } from "@/domains/jobs/commands";
+import { siteCrawlJob } from "@/domains/knowledge/site-crawl";
+import { queueYouTubeCapture } from "@/domains/knowledge/youtube-capture";
 import { assertPublicUrl } from "@/domains/knowledge/web-fetch";
 import { parseVideoId } from "@/integrations/youtube/transcript";
 import { db } from "@/lib/db";
@@ -12,8 +14,8 @@ import { captures } from "./schema";
  * How much of the web a captured address brings in. "site" (the default)
  * reads the page and crawls the site around it into child documents, so a
  * captured docs page brings the docs; "page" reads the page alone. The choice
- * is the person's, per capture. A video address is never crawled: its
- * transcript is the content.
+ * is the person's, per capture. A video address is never crawled: it is
+ * absorbed instead (its transcript filed as the capture's child document).
  */
 
 export type LinkScope = "site" | "page";
@@ -34,7 +36,7 @@ export async function startLinkCrawl(
   if ((input.scope ?? DEFAULT_LINK_SCOPE) !== "site") return null;
   const url = assertPublicUrl(input.url);
   if (!url || parseVideoId(url.href)) return null;
-  const { job, created } = await submitSiteCrawl(auth, { url, captureId: input.captureId }, tx);
+  const { job, created } = await submitGenerationJob(auth, siteCrawlJob({ url, captureId: input.captureId }), tx);
   return created ? { jobId: job.id, attempt: job.attempt } : null;
 }
 
@@ -48,7 +50,7 @@ export async function startLinkCrawl(
 export async function crawlCaptureSite(
   auth: AuthContext,
   input: { captureId: string },
-): Promise<{ jobId: string; attempt: number; created: boolean } | null> {
+): Promise<{ job: GenerationJobView; started: { jobId: string; attempt: number } | null } | null> {
   const [capture] = await db
     .select({ url: captures.url, createdBy: captures.createdBy })
     .from(captures)
@@ -57,11 +59,21 @@ export async function crawlCaptureSite(
   if (!capture?.url || (capture.createdBy !== auth.userId && auth.role !== "owner")) return null;
   const url = assertPublicUrl(capture.url);
   if (!url || parseVideoId(url.href)) return null;
-  const { job, created } = await submitSiteCrawl(auth, { url, captureId: input.captureId });
-  // The capture's crawl was stopped or failed earlier: asking again is trying it again.
-  if (!created && (job.status === "cancelled" || job.status === "failed")) {
-    const retried = await retryGenerationJob(auth, job.id);
-    if (retried) return { jobId: retried.id, attempt: retried.attempt, created: true };
+  return submitOrRetryGenerationJob(auth, siteCrawlJob({ url, captureId: input.captureId }));
+}
+
+/**
+ * A captured video address: its absorption job files the transcript as a
+ * library document, linked to the capture as its child. Runs after the
+ * capture commits; a failure to queue leaves the capture as it is (its own
+ * page read still runs) and is logged, never thrown at the person.
+ */
+export async function absorbCapturedVideo(auth: AuthContext, input: { captureId: string; url: string }): Promise<void> {
+  if (!parseVideoId(input.url)) return;
+  try {
+    const queued = await queueYouTubeCapture(auth, { url: input.url, captureId: input.captureId });
+    if (!queued.ok) console.warn("[capture] video not queued", input.captureId, queued.error);
+  } catch (cause) {
+    console.error("[capture] video could not be queued", input.captureId, cause instanceof Error ? cause.name : cause);
   }
-  return { jobId: job.id, attempt: job.attempt, created };
 }
