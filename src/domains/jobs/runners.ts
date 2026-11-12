@@ -1,5 +1,6 @@
 import type { AuthContext } from "@/domains/identity/resolve";
 import { learningJobRunners } from "@/domains/learning/generation-jobs";
+import { missionJobRunners } from "@/domains/learning/mission-jobs";
 import type { GenerationJobResult } from "./schema";
 
 /**
@@ -18,5 +19,5 @@ export type GenerationJobRunner = (
 
 /** Every kind of generation job and the runner that does it. A new kind is one entry here. */
 export function generationJobRunners(): Record<string, GenerationJobRunner> {
-  return { ...learningJobRunners };
+  return { ...learningJobRunners, ...missionJobRunners };
 }

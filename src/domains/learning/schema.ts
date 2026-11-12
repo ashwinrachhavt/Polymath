@@ -527,9 +527,16 @@ export const missions = pgTable(
      * its retry are the shared outbox path, not a second queue.
      */
     conceptJobId: uuid("concept_job_id"),
+    /**
+     * The submitter's intent key: a double-click or a resend after a reload
+     * returns the Mission already made, never a second one. Unique per
+     * workspace, so the click is one row at most.
+     */
+    requestKey: text("request_key").notNull(),
     ...mutable,
   },
   (t) => [
+    uniqueIndex("missions_request_key").on(t.workspaceId, t.requestKey),
     index("missions_workspace_status_idx").on(t.workspaceId, t.status, t.createdAt),
     check("missions_goal_check", sql`length(btrim("goal")) between 1 and 500`),
     check("missions_role_check", sql`"role" is null or length("role") <= 2000`),
@@ -552,9 +559,10 @@ export const missionConcepts = pgTable(
     ordinal: integer("ordinal").notNull(),
     /** One line, in the model's words, saying why this concept matters for the goal. */
     reason: text("reason").notNull(),
-    /** The verbatim source passage the concept was drawn from. */
-    sourceQuote: text("source_quote").notNull(),
-    sourceDocumentId: uuid("source_document_id").notNull(),
+    /** The verbatim passage the concept was drawn from; null for one the owner added by hand. */
+    sourceQuote: text("source_quote"),
+    /** The library document the passage came from; null for a hand-added concept. */
+    sourceDocumentId: uuid("source_document_id"),
     ...recorded,
   },
   (t) => [

@@ -49,7 +49,13 @@ type CoverageRow = {
   explanations: number;
 };
 
-type AttemptsRow = { concept_id: string; attempt_count: number; unaided_correct: number; last_seen_at: Date | null };
+type AttemptsRow = {
+  concept_id: string;
+  attempt_count: number;
+  unaided_correct: number;
+  /** Raw SQL returns a timestamp column as an ISO string, not a Date. */
+  last_seen_at: string | Date | null;
+};
 
 type ItemRow = {
   concept_id: string;
@@ -61,8 +67,10 @@ type ItemRow = {
 
 /**
  * Concepts, coverage, evidence and one destination per item kind, for the
- * concept screen. Scoped to the workspace; a concept with no items is
- * omitted because it is not something the person has studied.
+ * concept screen. Scoped to the workspace. A concept is listed when an item
+ * covers it or a Mission plans it - the Mission's concepts are work the person
+ * is doing even before an item exists for them. Coverage still reports zero;
+ * status stays unassessed until something is answered.
  */
 export async function getConceptOverview(auth: AuthContext): Promise<ConceptOverview> {
   const coverageRows = await db.execute<CoverageRow>(sql`
@@ -73,6 +81,15 @@ export async function getConceptOverview(auth: AuthContext): Promise<ConceptOver
     from concept_links cl
     where cl.workspace_id = ${auth.workspaceId}
     group by cl.concept_id
+  `);
+
+  // Concepts a Mission plans, at zero coverage. `coalesce` below keeps an
+  // item-backed concept's real counts when it is also in a Mission.
+  const missionRows = await db.execute<{ concept_id: string }>(sql`
+    select distinct mc.concept_id
+    from mission_concepts mc
+    join missions m on m.id = mc.mission_id
+    where mc.workspace_id = ${auth.workspaceId}
   `);
 
   const attemptRows = await db.execute<AttemptsRow>(sql`
@@ -185,21 +202,27 @@ export async function getConceptOverview(auth: AuthContext): Promise<ConceptOver
     itemsByConcept.set(row.concept_id, list);
   }
 
-  const concepts = coverageRows
-    .map((row): ConceptOverviewRow => {
+  // A concept with no item yet but in a Mission is still shown, at zero
+  // coverage; the Mission's own concepts are things the person is working on.
+  const coverageById = new Map(coverageRows.map((row) => [row.concept_id, row]));
+  const conceptIds = new Set([...coverageById.keys(), ...missionRows.map((row) => row.concept_id)]);
+
+  const concepts = [...conceptIds]
+    .map((conceptId): ConceptOverviewRow => {
+      const row = coverageById.get(conceptId) ?? { concept_id: conceptId, questions: 0, cards: 0, explanations: 0 };
       const coverage = { questions: row.questions, cards: row.cards, explanations: row.explanations };
-      const evidence = attemptsByConcept.get(row.concept_id);
+      const evidence = attemptsByConcept.get(conceptId);
       const attemptCount = evidence?.attempt_count ?? 0;
       const unaidedCorrect = evidence?.unaided_correct ?? 0;
       return {
-        conceptId: row.concept_id,
-        term: termById.get(row.concept_id) ?? "Unnamed concept",
+        conceptId,
+        term: termById.get(conceptId) ?? "Unnamed concept",
         status: deriveConceptStatus({ unaidedCorrect, attemptCount }),
         coverage,
         unaidedCorrect,
         attemptCount,
-        lastSeenAt: evidence?.last_seen_at ?? null,
-        items: itemsByConcept.get(row.concept_id) ?? [],
+        lastSeenAt: evidence?.last_seen_at ? new Date(evidence.last_seen_at) : null,
+        items: itemsByConcept.get(conceptId) ?? [],
       };
     })
     .sort((a, b) => {

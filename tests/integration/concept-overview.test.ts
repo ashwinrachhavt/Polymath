@@ -1,9 +1,14 @@
+import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { concepts } from "@/domains/knowledge/schema";
 import {
   conceptLinks,
   explainSessions,
   explainTurns,
+  missionConcepts,
+  missionMockQuestions,
+  missionMockSessions,
+  missions,
   quizAttempts,
   quizQuestions,
   quizzes,
@@ -210,6 +215,70 @@ suite("getConceptOverview", () => {
     expect(overview.concepts.find((row) => row.term === "Linked concept")).toMatchObject({
       status: "unassessed",
     });
+  });
+
+  it("lists a Mission's concepts at zero coverage, and shows a proven mock answer as proven", async () => {
+    const auth = await seedWho("co-mission");
+    const conceptId = await seedConcept(auth, "Planned concept");
+    const [mission] = await holder
+      .db!.insert(missions)
+      .values({
+        workspaceId: auth.workspaceId,
+        goal: "A goal",
+        status: "active",
+        sourceManifest: [],
+        requestKey: crypto.randomUUID(),
+      })
+      .returning({ id: missions.id });
+    await holder.db!.insert(missionConcepts).values({
+      workspaceId: auth.workspaceId,
+      missionId: mission.id,
+      conceptId,
+      ordinal: 0,
+      reason: "Why.",
+      sourceQuote: null,
+      sourceDocumentId: null,
+    });
+
+    // Before any answer: listed, unassessed, zero coverage.
+    const before = await getConceptOverview(auth);
+    expect(before.concepts.find((row) => row.term === "Planned concept")).toMatchObject({
+      status: "unassessed",
+      coverage: { questions: 0, cards: 0, explanations: 0 },
+    });
+
+    // A correct mock answer proves it.
+    const [mc] = await holder
+      .db!.select({ id: missionConcepts.id })
+      .from(missionConcepts)
+      .where(eq(missionConcepts.missionId, mission.id));
+    const [session] = await holder
+      .db!.insert(missionMockSessions)
+      .values({
+        workspaceId: auth.workspaceId,
+        missionId: mission.id,
+        userId: auth.userId,
+        requestKey: crypto.randomUUID(),
+        status: "complete",
+      })
+      .returning({ id: missionMockSessions.id });
+    await holder.db!.insert(missionMockQuestions).values({
+      workspaceId: auth.workspaceId,
+      sessionId: session.id,
+      missionConceptId: mc.id,
+      ordinal: 0,
+      prompt: "Explain it.",
+      answer: "An answer.",
+      grade: "correct",
+      feedback: "Right.",
+      evidence: [],
+    });
+
+    const after = await getConceptOverview(auth);
+    const row = after.concepts.find((item) => item.term === "Planned concept");
+    expect(row).toMatchObject({ status: "proven", unaidedCorrect: 1 });
+    // lastSeenAt is a real Date even though the aggregate came from raw SQL.
+    expect(row!.lastSeenAt).toBeInstanceOf(Date);
   });
 
   it("keeps workspaces blind to each other's concepts and attempts", async () => {

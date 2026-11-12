@@ -1,6 +1,6 @@
 {
-  "id": "77fbdae5-c5ab-4f55-8360-1903803b542e",
-  "prevId": "325c39cc-bd2a-476f-8e64-dbfbadbd701b",
+  "id": "65a3aa76-3e68-4014-90b2-2b39f7d02e52",
+  "prevId": "77fbdae5-c5ab-4f55-8360-1903803b542e",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -21683,13 +21683,13 @@
           "name": "source_quote",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "source_document_id": {
           "name": "source_document_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "created_at": {
           "name": "created_at",
@@ -22278,6 +22278,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "request_key": {
+          "name": "request_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "created_by": {
           "name": "created_by",
           "type": "uuid",
@@ -22319,6 +22325,27 @@
         }
       },
       "indexes": {
+        "missions_request_key": {
+          "name": "missions_request_key",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "request_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "missions_workspace_status_idx": {
           "name": "missions_workspace_status_idx",
           "columns": [
