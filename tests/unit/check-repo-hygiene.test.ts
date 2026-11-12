@@ -6,6 +6,20 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SIZE_CEILING_BYTES, checkRepoHygiene, readTrackedBlobs } from "../../scripts/check-repo-hygiene";
 
 /*
+ * Git exports GIT_DIR and friends to hooks, so a `git init` inside a fixture
+ * would initialise THIS repository instead of the temp one — observed as the
+ * pre-commit run flipping core.bare to true across every worktree. Every git
+ * call against a fixture must run with those variables removed.
+ */
+function cleanGitEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  for (const key of Object.keys(env)) {
+    if (key.startsWith("GIT_")) delete env[key];
+  }
+  return env;
+}
+
+/*
  * The bloat guard: generated output and oversized blobs never re-enter the
  * repo (13.4 MB of migration snapshots rode in every checkout for months
  * before PR-1). These tests pin the two rules — the deny-by-default size
@@ -96,7 +110,7 @@ describe("readTrackedBlobs", () => {
 
   beforeEach(() => {
     fixtureRepo = mkdtempSync(join(tmpdir(), "repo-hygiene-"));
-    execFileSync("git", ["init", "-q"], { cwd: fixtureRepo });
+    execFileSync("git", ["init", "-q"], { cwd: fixtureRepo, env: cleanGitEnv() });
   });
 
   afterEach(() => {
@@ -108,7 +122,7 @@ describe("readTrackedBlobs", () => {
     mkdirSync(join(fixtureRepo, "sub"));
     writeFileSync(join(fixtureRepo, "sub", "moderate.json"), JSON.stringify({ padding: "x".repeat(1000) }));
     writeFileSync(join(fixtureRepo, "big.bin"), Buffer.alloc(over, 0));
-    execFileSync("git", ["add", "-A"], { cwd: fixtureRepo });
+    execFileSync("git", ["add", "-A"], { cwd: fixtureRepo, env: cleanGitEnv() });
 
     const files = readTrackedBlobs(fixtureRepo);
     expect(files.map((f) => f.path)).toEqual(["big.bin", "small.ts", "sub/moderate.json"]);
