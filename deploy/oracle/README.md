@@ -2,8 +2,8 @@
 
 The whole app as it runs on the laptop, minus Langfuse and dozzle, on the
 Oracle Cloud Always Free VM (4 Ampere cores, 24 GB, Ubuntu 24.04, arm64).
-It is private: nothing new listens on a public interface, and you reach it
-through an SSH tunnel at `http://localhost:3300`.
+It is on the public internet over HTTPS (see "Public access"), behind Clerk
+sign-in, and also reachable privately through an SSH tunnel.
 
 The server's database is its own copy. It started from the laptop backup of
 2026-11-12; from then on the laptop and the server diverge.
@@ -21,12 +21,16 @@ The server's database is its own copy. It started from the laptop backup of
 | searxng, redis-search                                                   | private metasearch                            | 0.75 GB    |
 | firecrawl, firecrawl-playwright, firecrawl-postgres, firecrawl-rabbitmq | crawling                                      | 7.75 GB    |
 
-Only `web` publishes a port, on `127.0.0.1:3000` of the VM. `migrate` runs once
-per deploy. The eve agents are not separate containers: under `next start`,
-`eve/next` serves each built agent on a loopback port inside `web`.
+Only `web` publishes a port, on `127.0.0.1:3000` of the VM; the public site
+reaches it through Caddy (below). `migrate` runs once per deploy. The eve agents
+are not separate containers: `start-web.sh` runs each built agent on a loopback
+port inside `web` (4274, 4275) beside `next start`. `eve/next` would start them
+itself from `rewrites()`, but `next start` serves rewrites from the build
+manifest and never calls it.
 
-The Transactwise docling stack in `/opt/docling` (Caddy on ports 80/443) is a
-different service and is left alone.
+The Transactwise docling stack in `/opt/docling` is a different service. Its
+Caddy (ports 80/443) also serves Polymath's public name; nothing else there
+changed.
 
 ## Setup on the laptop
 
@@ -36,12 +40,17 @@ The VM's address stays out of this public repo. Create
 ```sh
 ORACLE_HOST=ubuntu@<vm public ip>
 ORACLE_SSH_KEY=$HOME/.ssh/oci_docling
+ORACLE_PUBLIC_URL=https://polymath.<vm ip with dashes>.sslip.io
 ```
 
 SSH ingress is limited to one source IP in the OCI security list `docling-sl`.
 If your home IP changes, update that rule in the OCI console first.
 
 ## Open the app
+
+Open `$ORACLE_PUBLIC_URL` and sign in with Clerk.
+
+Privately, through SSH:
 
 ```sh
 make oracle-tunnel
@@ -50,6 +59,33 @@ make oracle-tunnel
 Then open http://localhost:3300. The tunnel is the same as
 `ssh -i ~/.ssh/oci_docling -N -L 3300:127.0.0.1:3000 $ORACLE_HOST`. Port 3300
 is used because the laptop's own Docker stack holds 3000.
+
+## Public access
+
+`polymath.<ip with dashes>.sslip.io` resolves to the VM through sslip.io, so no
+DNS setup is needed. The Caddy in `/opt/docling` holds a Let's Encrypt
+certificate for it and proxies to `polymath-web:3000` on the `polymath-edge`
+Docker network, which both compose projects share. The Polymath part of that
+setup on the VM:
+
+- `/opt/docling/Caddyfile` ends with a `polymath.<...>.sslip.io` site block
+  (`reverse_proxy polymath-web:3000`).
+- `/opt/docling/compose.yaml` puts the `caddy` service on the external
+  `polymath-edge` network.
+- The originals are kept as `*.bak-20261112` next to them.
+
+To go back to private-only, remove both, run
+`sudo docker compose up -d caddy` in `/opt/docling`, set `ORACLE_PUBLIC_URL`
+to `http://localhost:3300`, then run `make oracle-env` and `make oracle-deploy`.
+
+Clerk is the only gate. The Clerk development instance allows sign-ups, and
+any signed-up account can spend the model keys on the server. In the Clerk
+dashboard, turn sign-ups off or restrict them to your own email.
+
+What answers without a session: `/landing`, `/sign-in`, `/sign-up`, the eve
+health routes, and `/api/webhooks`. eve session routes need a signed bridge
+token (401 without one), `/api/v1` and `/api/mcp` answer 401, and the internal
+outbox and cron routes answer 404 (no secret is set).
 
 ## Deploy
 
@@ -84,16 +120,34 @@ To undo data changes as well, restore a backup (below).
 
 `/opt/polymath/.env` (mode 600, owner `ubuntu`) is the laptop's `.env` +
 `.env.local`, rewritten for production by `push-env.sh`. It sets `NODE_ENV=production`,
-uses in-network service URLs and `http://localhost:3300` as the app origin, keeps
-the server's own Postgres password, and drops Langfuse, the test database, and
-`POLYMATH_DEV_AUTH`. To push changed keys, run this, then deploy:
+uses in-network service URLs and `$ORACLE_PUBLIC_URL` as the app origin, and drops
+Langfuse, the test database and `POLYMATH_DEV_AUTH`. The Postgres password and
+both eve token secrets are the server's own: generated there on the first push,
+kept on later ones, never copied from the laptop. `env.example` lists every key
+by name. To push changed keys, run this, then deploy:
 
 ```sh
 make oracle-env
 ```
 
-The build reads only the `NEXT_PUBLIC_*` keys, as a BuildKit secret. No value is
-stored in an image layer.
+To check the env without printing it (set or missing per key, plus free live
+checks of Postgres, Clerk, the in-network services and each model provider's
+`/models`), run this on the VM:
+
+```sh
+cd /opt/polymath && R=$(cat current-release)
+sudo env POLYMATH_RELEASE=$R docker compose -p polymath --env-file .env -f releases/$R/deploy/oracle/compose.oracle.yaml exec -T web pnpm exec tsx deploy/oracle/check-env.ts
+```
+
+The build reads `NEXT_PUBLIC_*` and `CLERK_SECRET_KEY` from a BuildKit secret
+mount, never a layer. The Clerk key is needed only so `/sign-in` prerenders,
+and Next inlines only `NEXT_PUBLIC_*`. Verified on 2026-11-12: no file in the
+image's build output contains the Clerk secret, and `docker history` holds no
+key.
+
+Uploads need `BLOB_READ_WRITE_TOKEN` (Vercel Blob). Production never falls back
+to local disk, and the laptop's value is empty, so file uploads fail on the
+server until one is set. Text and URL captures work.
 
 ## Back up
 
@@ -127,11 +181,18 @@ c run --rm migrate
 c up -d --wait
 ```
 
-## Firewall
+## Firewall and cost
 
 - OCI security list `docling-sl` (the only one attached to the subnet): TCP 22
-  from one IP, and TCP 80/443 from anywhere for the Transactwise docling.
+  from one IP, and TCP 80/443 from anywhere (Caddy: Transactwise and Polymath).
 - VM iptables: INPUT accepts 22, 80, 443, ICMP and loopback, then rejects.
-- fail2ban watches `ssh.service`. SSH accepts keys only, and root login is
-  refused.
+  rpcbind listens on 111 but is rejected there and in the security list.
+- fail2ban watches `ssh.service`. `/etc/ssh/sshd_config.d/10-polymath-hardening.conf`
+  sets keys only, `PermitRootLogin no` and `MaxAuthTries 3`.
 - Polymath adds nothing to either list.
+- Every container has a memory and CPU cap and json-file log rotation
+  (3 x 10 MB).
+- Cost: everything here is inside Oracle's Always Free allowance (4 A1 cores,
+  24 GB, 50 GB of the 200 GB of free block storage). The tenancy is Pay As You
+  Go, so a budget `free-tier-guard` (1 USD a month) emails the account owner
+  at the first cent of actual spend and when the forecast passes 1 USD.

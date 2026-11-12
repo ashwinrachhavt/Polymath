@@ -5,6 +5,7 @@
 #
 #   ORACLE_HOST=ubuntu@<vm public ip>
 #   ORACLE_SSH_KEY=$HOME/.ssh/oci_docling
+#   ORACLE_PUBLIC_URL=https://polymath.<vm ip with dashes>.sslip.io
 
 ORACLE_CONFIG="${ORACLE_CONFIG:-$HOME/.config/polymath/oracle.env}"
 # shellcheck disable=SC1090
