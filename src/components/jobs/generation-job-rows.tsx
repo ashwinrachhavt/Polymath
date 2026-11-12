@@ -143,7 +143,7 @@ export function useSurfaceJobs(
 }
 
 /** One job: its mark, title, live step, progress and the verbs its state allows. */
-export function JobRow({ job, actions }: { job: GenerationJobView; actions: JobActions }) {
+function JobRow({ job, actions }: { job: GenerationJobView; actions: JobActions }) {
   const pathname = usePathname();
   const fraction = progressFraction(job.progress);
   return (

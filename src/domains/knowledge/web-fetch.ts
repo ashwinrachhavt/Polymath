@@ -24,7 +24,7 @@ import { CRAWL_DEPTH, crawlPageLimit, siteCrawlJob } from "./site-crawl";
  */
 
 export const WEB_FETCH_CAPABILITY = "web.fetch";
-export const WEB_FETCH_MAX_BYTES = 200_000;
+const WEB_FETCH_MAX_BYTES = 200_000;
 
 export type AgentWebFetchResult =
   | { ok: true; url: string; title: string | null; markdown: string; truncated: boolean }

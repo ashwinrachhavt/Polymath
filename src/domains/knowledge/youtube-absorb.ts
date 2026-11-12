@@ -57,7 +57,7 @@ export type YouTubeAbsorbInput = z.infer<typeof inputSchema>;
  * Where a video's audio comes from when it has no captions. Asked for the
  * video's length first, then for each clip of SPEECH_CLIP_SECONDS.
  */
-export type VideoAudioSource = {
+type VideoAudioSource = {
   durationSeconds(videoId: string, signal: AbortSignal): Promise<number>;
   clip(videoId: string, range: { from: number; to: number }, signal: AbortSignal): Promise<AudioClip>;
 };

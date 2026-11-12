@@ -38,7 +38,7 @@ export async function workspaceOwnerAuth(workspaceId: string): Promise<AuthConte
   return row ? { userId: row.userId, workspaceId, role: "owner" } : null;
 }
 
-export const extractionRequestedHandler: OutboxHandler = async (event) => {
+const extractionRequestedHandler: OutboxHandler = async (event) => {
   const payload = event.payload as { documentId?: unknown } | null;
   const documentId = typeof payload?.documentId === "string" ? payload.documentId : null;
   // A malformed or fileless intent can never succeed; completing it avoids

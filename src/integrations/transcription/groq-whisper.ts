@@ -9,7 +9,7 @@
  * transcription is not set up. The key is sent to Groq only.
  */
 
-export const GROQ_WHISPER_MODEL = "whisper-large-v3-turbo";
+const GROQ_WHISPER_MODEL = "whisper-large-v3-turbo";
 const GROQ_TRANSCRIPTIONS_URL = "https://api.groq.com/openai/v1/audio/transcriptions";
 
 /** Groq's list price for whisper-large-v3-turbo: $0.04 per hour, in millionths of a dollar. */
@@ -21,7 +21,7 @@ export type SpeechSegment = { start: number; end: number; text: string };
 
 export type AudioClip = { bytes: Uint8Array; mimeType: string; filename: string };
 
-export class SpeechTranscriptionError extends Error {
+class SpeechTranscriptionError extends Error {
   constructor(readonly status: number) {
     super(`Groq transcription failed (HTTP ${status})`);
     this.name = "SpeechTranscriptionError";

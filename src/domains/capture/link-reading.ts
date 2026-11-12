@@ -20,7 +20,7 @@ import { captures } from "./schema";
 
 export type LinkScope = "site" | "page";
 
-export const DEFAULT_LINK_SCOPE: LinkScope = "site";
+const DEFAULT_LINK_SCOPE: LinkScope = "site";
 
 /**
  * Accepts the crawl for a captured address in the capture's own transaction.
