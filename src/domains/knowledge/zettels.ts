@@ -977,19 +977,28 @@ export async function pageZettelCards(
         createdAt: artifacts.createdAt,
         updatedAt: artifacts.updatedAt,
         metadata: artifacts.metadata,
-        sourceDocumentId: artifactLinks.targetId,
-        sourceTitle: artifactLinks.label,
+        // One row per idea: a join on every source would multiply an idea by
+        // its sources, and the grid rendered the same id twice. The first
+        // source by creation order is chosen in a correlated subquery.
+        sourceDocumentId: sql<string | null>`(
+          select ${artifactLinks.targetId} from ${artifactLinks}
+          where ${artifactLinks.artifactId} = ${artifacts.id}
+            and ${artifactLinks.linkType} = 'source'
+            and ${artifactLinks.targetType} = 'document'
+          order by ${artifactLinks.createdAt}, ${artifactLinks.id}
+          limit 1
+        )`,
+        sourceTitle: sql<string | null>`(
+          select ${artifactLinks.label} from ${artifactLinks}
+          where ${artifactLinks.artifactId} = ${artifacts.id}
+            and ${artifactLinks.linkType} = 'source'
+            and ${artifactLinks.targetType} = 'document'
+          order by ${artifactLinks.createdAt}, ${artifactLinks.id}
+          limit 1
+        )`,
       })
       .from(artifacts)
       .leftJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
-      .leftJoin(
-        artifactLinks,
-        and(
-          eq(artifactLinks.artifactId, artifacts.id),
-          eq(artifactLinks.linkType, "source"),
-          eq(artifactLinks.targetType, "document"),
-        ),
-      )
       .where(where)
       .orderBy(
         ...(input.sort === "title"

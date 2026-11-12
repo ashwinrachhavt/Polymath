@@ -19,6 +19,13 @@ import {
   type ProposedEvidence,
 } from "@/integrations/learning/explain-it";
 
+/**
+ * The most sources one Explain It session reads. The learn picker allows
+ * more per request (MAX_LEARNING_SOURCES), but the generator's prompt budget
+ * is sized for this many passages at once, so the cap lives here too.
+ */
+export const MAX_EXPLAIN_SOURCES = 20;
+
 export class ExplainItError extends Error {
   constructor(
     public readonly code:
@@ -68,10 +75,10 @@ export async function startExplainItSession(
 ): Promise<{ sessionId: string }> {
   if (
     input.documentIds.length < 1 ||
-    input.documentIds.length > 8 ||
+    input.documentIds.length > MAX_EXPLAIN_SOURCES ||
     new Set(input.documentIds).size !== input.documentIds.length
   ) {
-    throw new ExplainItError("invalid_sources", "Choose one to eight distinct sources.");
+    throw new ExplainItError("invalid_sources", `Choose one to ${MAX_EXPLAIN_SOURCES} distinct sources.`);
   }
   let sources;
   try {
@@ -173,7 +180,7 @@ export async function loadPinnedExplainSources(
   auth: AuthContext,
   manifest: ExplainSourceSnapshot[],
 ): Promise<Array<ExplainSource & ExplainSourceSnapshot>> {
-  if (manifest.length === 0 || manifest.length > 8)
+  if (manifest.length === 0 || manifest.length > MAX_EXPLAIN_SOURCES)
     throw new ExplainItError("invalid_sources", "This session has an invalid source selection.");
   const ids = manifest.map((item) => item.extractionId);
   const rows = await db

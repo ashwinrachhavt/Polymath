@@ -80,7 +80,7 @@ export async function generateFlashcardDeck(
     input.documentIds.length > MAX_LEARNING_SOURCES ||
     new Set(input.documentIds).size !== input.documentIds.length
   ) {
-    throw new FlashcardError("invalid_sources", "Choose one to eight distinct sources.");
+    throw new FlashcardError("invalid_sources", `Choose one to ${MAX_LEARNING_SOURCES} distinct sources.`);
   }
   if (
     input.cardCount !== undefined &&

@@ -72,7 +72,7 @@ export class QuizGenerationError extends Error {
 export const GENERATION_COPY: Record<QuizGenerationError["code"], string> = {
   document_not_found: "That document is not in this workspace.",
   no_extraction: "This document is still being read. Try again once its text is ready.",
-  invalid_sources: "Choose one to eight distinct sources.",
+  invalid_sources: `Choose one to ${MAX_LEARNING_SOURCES} distinct sources.`,
   insufficient_evidence: "Not enough of this document could be verified against its text to build an honest quiz.",
   generation_failed: "The quiz generator did not answer. Try again in a moment.",
 };
