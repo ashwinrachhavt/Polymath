@@ -3,6 +3,7 @@ import { recordAudit } from "@/domains/audit/record";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
+import { conceptName, recentConceptNames } from "@/domains/knowledge/concepts";
 import { documentExtractions, documents } from "@/domains/knowledge/schema";
 import { locateQuoteNormalized } from "@/domains/learning/locate-quote";
 import { currentExtractionIdSubquery } from "@/domains/knowledge/versions";
@@ -13,6 +14,7 @@ import {
   type QuizGenerator,
 } from "@/integrations/learning/quiz-generator";
 import { quizzes, quizQuestions, type QuizEvidence, type QuizSourceSnapshot } from "./schema";
+import { linkItemsToConcepts } from "./concept-links";
 import { explanatoryText, isExplanatorySpan, isLinkIndex, textBlocks, type TextBlock } from "./explanatory-text";
 import { quizGenerationContext } from "./generation-context";
 import {
@@ -81,6 +83,8 @@ export type VerifiedQuestion = {
   answerValue: string;
   explanation: string;
   evidence: QuizEvidence;
+  /** The idea the question tests; stored as a concept link beside the question. */
+  concept: string;
 };
 
 export type VerifiedQuiz = {
@@ -95,7 +99,7 @@ export type QuizSourceText = QuizSourceSnapshot & { text: string };
  * Pure trust boundary between the model's proposal and a persistable quiz.
  * A question survives only when: the prompt is non-empty, choices number
  * 2-5 with unique non-empty values, answerValue names one of those values,
- * the explanation is non-empty, the quote re-locates in the text
+ * the explanation is non-empty, it names the concept it tests, the quote re-locates in the text
  * (normalized matching - formatting-tolerant, content-strict, see
  * locate-quote.ts), and the quote sits in text that explains something
  * rather than in a link index (explanatory-text.ts). Everything else is
@@ -112,8 +116,10 @@ export function verifyQuiz(text: string, raw: GeneratedQuestion[], limit = MAX_I
     const choices = Array.isArray(q.choices) ? q.choices : [];
     const values = new Set(choices.map((c) => c.value?.trim()));
     const answerValue = q.answerValue?.trim();
+    const concept = conceptName(q.concept);
     if (
       !prompt ||
+      !concept ||
       !explanation ||
       !quote ||
       !answerValue ||
@@ -152,6 +158,7 @@ export function verifyQuiz(text: string, raw: GeneratedQuestion[], limit = MAX_I
       })),
       answerValue,
       explanation: explanation.slice(0, MAX_EXPLANATION_CHARS),
+      concept,
       evidence: {
         quote: storedQuote,
         startOffset: span.start,
@@ -410,6 +417,7 @@ export async function generateQuiz(
   // creates a failed quiz row for an invalid or unready source selection.
   const engine = generator ?? defaultQuizGenerator(auth.workspaceId);
   const learningContext = await quizGenerationContext(auth, selectedIds);
+  const knownConcepts = await recentConceptNames(auth);
   if (read.length === 0) {
     const message =
       sources.length === 1
@@ -436,7 +444,7 @@ export async function generateQuiz(
   let proposedQuestions = 0;
   let droppedQuestions = 0;
   async function proposeVerifiedQuestions(count: number, avoidPrompts: string[], part: number) {
-    const options = { questionCount: count, learningContext, avoidPrompts, part };
+    const options = { questionCount: count, learningContext, avoidPrompts, part, knownConcepts };
     let raw: { questions: GeneratedQuestion[] };
     if (readable.length === 1) {
       raw = await engine.generate(readable[0].text, options);
@@ -506,17 +514,25 @@ export async function generateQuiz(
         updatedBy: auth.userId,
       })
       .returning({ id: quizzes.id });
-    await tx.insert(quizQuestions).values(
-      questions.map((q, i) => ({
-        workspaceId: auth.workspaceId,
-        quizId: row.id,
-        ordinal: i,
-        prompt: q.prompt,
-        choices: q.choices,
-        answerValue: q.answerValue,
-        explanation: q.explanation,
-        evidence: q.evidence,
-      })),
+    const stored = await tx
+      .insert(quizQuestions)
+      .values(
+        questions.map((q, i) => ({
+          workspaceId: auth.workspaceId,
+          quizId: row.id,
+          ordinal: i,
+          prompt: q.prompt,
+          choices: q.choices,
+          answerValue: q.answerValue,
+          explanation: q.explanation,
+          evidence: q.evidence,
+        })),
+      )
+      .returning({ id: quizQuestions.id, ordinal: quizQuestions.ordinal });
+    await linkItemsToConcepts(
+      auth,
+      tx,
+      stored.map((question) => ({ quizQuestionId: question.id, concept: questions[question.ordinal].concept })),
     );
     await recordAudit(
       auth,

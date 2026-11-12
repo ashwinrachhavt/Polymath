@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -13,7 +14,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { mutable, primaryId, recorded, tenantId } from "../../db/columns";
-import { artifacts, documentExtractions, documents, notebooks } from "../knowledge/schema";
+import { artifacts, concepts, documentExtractions, documents, notebooks } from "../knowledge/schema";
 import { users } from "../identity/schema";
 import type { GenerationOutcome } from "./item-count";
 
@@ -299,6 +300,42 @@ export const explainTurns = pgTable(
       "explain_turns_grade_check",
       sql.raw("grade is null or grade in ('correct', 'partial', 'incorrect', 'uncertain')"),
     ),
+  ],
+);
+
+/*
+ * What a question, card or explanation is about. One row links one concept
+ * (the knowledge dictionary entry an Idea also upserts) to exactly one item;
+ * an item about two concepts has two rows. Generation writes the rows with the
+ * item, in the same transaction. Items made before this table have none, and
+ * every reader treats a missing link as "unassessed", never as a wrong answer.
+ */
+export const conceptLinks = pgTable(
+  "concept_links",
+  {
+    id: primaryId(),
+    workspaceId: tenantId(),
+    conceptId: uuid("concept_id").notNull(),
+    quizQuestionId: uuid("quiz_question_id").references(() => quizQuestions.id, { onDelete: "cascade" }),
+    flashcardId: uuid("flashcard_id").references(() => flashcards.id, { onDelete: "cascade" }),
+    explainTurnId: uuid("explain_turn_id").references(() => explainTurns.id, { onDelete: "cascade" }),
+    ...recorded,
+  },
+  (t) => [
+    // Composite, so a link can never name another workspace's concept.
+    foreignKey({
+      name: "concept_links_concept_same_workspace_fk",
+      columns: [t.workspaceId, t.conceptId],
+      foreignColumns: [concepts.workspaceId, concepts.id],
+    }).onDelete("cascade"),
+    check(
+      "concept_links_one_subject_check",
+      sql`num_nonnulls("quiz_question_id", "flashcard_id", "explain_turn_id") = 1`,
+    ),
+    uniqueIndex("concept_links_quiz_question_key").on(t.quizQuestionId, t.conceptId),
+    uniqueIndex("concept_links_flashcard_key").on(t.flashcardId, t.conceptId),
+    uniqueIndex("concept_links_explain_turn_key").on(t.explainTurnId, t.conceptId),
+    index("concept_links_concept_idx").on(t.workspaceId, t.conceptId),
   ],
 );
 

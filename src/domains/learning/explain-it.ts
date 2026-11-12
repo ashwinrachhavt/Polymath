@@ -4,6 +4,8 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { documentExtractions, documents } from "@/domains/knowledge/schema";
+import { conceptName } from "@/domains/knowledge/concepts";
+import { carryTurnConcepts, linkItemsToConcepts } from "./concept-links";
 import { locateQuoteNormalized } from "./locate-quote";
 import { loadCurrentQuizSources, QuizGenerationError } from "./generate-quiz";
 import { explainSessions, explainTurns, type ExplainEvidence, type ExplainSourceSnapshot } from "./schema";
@@ -139,15 +141,19 @@ export async function startExplainItSession(
         updatedBy: auth.userId,
       })
       .returning({ id: explainSessions.id });
-    await tx.insert(explainTurns).values({
-      workspaceId: auth.workspaceId,
-      sessionId: session.id,
-      ordinal: 0,
-      prompt: question.prompt.trim(),
-      evidence,
-      createdBy: auth.userId,
-      updatedBy: auth.userId,
-    });
+    const [turn] = await tx
+      .insert(explainTurns)
+      .values({
+        workspaceId: auth.workspaceId,
+        sessionId: session.id,
+        ordinal: 0,
+        prompt: question.prompt.trim(),
+        evidence,
+        createdBy: auth.userId,
+        updatedBy: auth.userId,
+      })
+      .returning({ id: explainTurns.id });
+    await linkItemsToConcepts(auth, tx, [{ explainTurnId: turn.id, concept: question.concept }]);
     await recordAudit(
       auth,
       {
@@ -339,15 +345,21 @@ export async function answerExplainItTurn(
       .returning({ id: explainTurns.id });
     if (!updated) throw new ExplainItError("answer_already_submitted", "This answer has already been submitted.");
     if (mayContinue) {
-      await tx.insert(explainTurns).values({
-        workspaceId: auth.workspaceId,
-        sessionId: session.id,
-        ordinal: current.ordinal + 1,
-        prompt: evaluation.nextQuestion!.trim(),
-        evidence: nextEvidence,
-        createdBy: auth.userId,
-        updatedBy: auth.userId,
-      });
+      const [next] = await tx
+        .insert(explainTurns)
+        .values({
+          workspaceId: auth.workspaceId,
+          sessionId: session.id,
+          ordinal: current.ordinal + 1,
+          prompt: evaluation.nextQuestion!.trim(),
+          evidence: nextEvidence,
+          createdBy: auth.userId,
+          updatedBy: auth.userId,
+        })
+        .returning({ id: explainTurns.id });
+      const nextConcept = conceptName(evaluation.nextConcept);
+      if (nextConcept) await linkItemsToConcepts(auth, tx, [{ explainTurnId: next.id, concept: nextConcept }]);
+      else await carryTurnConcepts(auth, tx, { fromTurnId: current.id, toTurnId: next.id });
     }
     await tx
       .update(explainSessions)

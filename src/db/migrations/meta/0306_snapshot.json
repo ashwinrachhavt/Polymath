@@ -1,6 +1,6 @@
 {
-  "id": "12395be9-569a-43d2-bf53-057fd4f03050",
-  "prevId": "f1bcf43c-423c-41b3-9dbe-71167567ba53",
+  "id": "a38733e9-fda7-44ac-8237-1ae221d7b444",
+  "prevId": "12395be9-569a-43d2-bf53-057fd4f03050",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -14005,6 +14005,27 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "concepts_workspace_id_id_key": {
+          "name": "concepts_workspace_id_id_key",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -20087,6 +20108,221 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.concept_links": {
+      "name": "concept_links",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "concept_id": {
+          "name": "concept_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "quiz_question_id": {
+          "name": "quiz_question_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "flashcard_id": {
+          "name": "flashcard_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "explain_turn_id": {
+          "name": "explain_turn_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "concept_links_quiz_question_key": {
+          "name": "concept_links_quiz_question_key",
+          "columns": [
+            {
+              "expression": "quiz_question_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "concept_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "concept_links_flashcard_key": {
+          "name": "concept_links_flashcard_key",
+          "columns": [
+            {
+              "expression": "flashcard_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "concept_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "concept_links_explain_turn_key": {
+          "name": "concept_links_explain_turn_key",
+          "columns": [
+            {
+              "expression": "explain_turn_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "concept_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "concept_links_concept_idx": {
+          "name": "concept_links_concept_idx",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "concept_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "concept_links_workspace_id_workspaces_id_fk": {
+          "name": "concept_links_workspace_id_workspaces_id_fk",
+          "tableFrom": "concept_links",
+          "tableTo": "workspaces",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "concept_links_quiz_question_id_quiz_questions_id_fk": {
+          "name": "concept_links_quiz_question_id_quiz_questions_id_fk",
+          "tableFrom": "concept_links",
+          "tableTo": "quiz_questions",
+          "columnsFrom": [
+            "quiz_question_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "concept_links_flashcard_id_flashcards_id_fk": {
+          "name": "concept_links_flashcard_id_flashcards_id_fk",
+          "tableFrom": "concept_links",
+          "tableTo": "flashcards",
+          "columnsFrom": [
+            "flashcard_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "concept_links_explain_turn_id_explain_turns_id_fk": {
+          "name": "concept_links_explain_turn_id_explain_turns_id_fk",
+          "tableFrom": "concept_links",
+          "tableTo": "explain_turns",
+          "columnsFrom": [
+            "explain_turn_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "concept_links_concept_same_workspace_fk": {
+          "name": "concept_links_concept_same_workspace_fk",
+          "tableFrom": "concept_links",
+          "tableTo": "concepts",
+          "columnsFrom": [
+            "workspace_id",
+            "concept_id"
+          ],
+          "columnsTo": [
+            "workspace_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "concept_links_one_subject_check": {
+          "name": "concept_links_one_subject_check",
+          "value": "num_nonnulls(\"quiz_question_id\", \"flashcard_id\", \"explain_turn_id\") = 1"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.explain_sessions": {

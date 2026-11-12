@@ -836,7 +836,11 @@ export const concepts = pgTable(
     annotation: text("annotation"),
     ...mutable,
   },
-  (t) => [uniqueIndex("concepts_workspace_term_sense_key").on(t.workspaceId, t.term, t.sense)],
+  (t) => [
+    uniqueIndex("concepts_workspace_term_sense_key").on(t.workspaceId, t.term, t.sense),
+    // The target of same-workspace foreign keys (learning's concept links).
+    uniqueIndex("concepts_workspace_id_id_key").on(t.workspaceId, t.id),
+  ],
 );
 
 /*

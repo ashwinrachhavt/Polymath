@@ -35,3 +35,7 @@ original attempt; the ledger's unique index makes a double award impossible.
 ## Other learning modes
 
 Explain It sessions pin exact extraction versions, evaluate free responses against those sources, store cited evidence, and adapt the next question. A missing or conflicting quote yields an explicit uncertain result. Flashcard content is shared, but due dates and Again/Hard/Good/Easy ratings are private per user. The relationship-recall exercise grades only against saved non-machine graph links and stores attempts separately from the link records. React Flow synthesis reuses the existing Zettel command and source links.
+
+## What an item is about
+
+Every quiz question, flashcard and Explain It question names the one concept it tests. A concept is a row of the knowledge `concepts` table (sense `domain`), the same row an Idea upserts, so an Idea and the questions about it share one id; names match whatever their letter case (`knowledge/concepts.ts`). `concept_links` joins a concept to exactly one item and is written in the transaction that stores the item (`concept-links.ts`). A proposed question or card that names no concept is dropped like any other unproven proposal. Items made before the link existed have no row, and a reader treats that as unassessed, never as a wrong answer.

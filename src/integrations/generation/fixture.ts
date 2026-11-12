@@ -125,12 +125,18 @@ function flashcardAnswer(system: string, prompt: string): string {
   const avoidJson = /write different ones that test other concepts: (\[[\s\S]*?\])\./.exec(system)?.[1];
   const avoid = new Set<string>(avoidJson ? (JSON.parse(avoidJson) as string[]) : []);
   const { sources } = JSON.parse(prompt) as { sources: Array<{ sourceIndex: number; title: string; text: string }> };
-  const cards: Array<{ prompt: string; answer: string; quote: string; sourceIndex: number }> = [];
+  const cards: Array<{ prompt: string; answer: string; quote: string; sourceIndex: number; concept: string }> = [];
   for (const source of sources) {
     for (const sentence of source.text.split(/(?<=\.)\s+/).filter((part) => part.length > 0)) {
       const cardPrompt = `What does ${source.title} say here: "${sentence.split(" ").slice(0, 4).join(" ")}..."?`;
       if (avoid.has(cardPrompt.slice(0, 120))) continue;
-      cards.push({ prompt: cardPrompt, answer: sentence, quote: sentence, sourceIndex: source.sourceIndex });
+      cards.push({
+        prompt: cardPrompt,
+        answer: sentence,
+        quote: sentence,
+        sourceIndex: source.sourceIndex,
+        concept: sentence.split(" ").slice(0, 3).join(" "),
+      });
     }
   }
   return JSON.stringify({ cards: cards.slice(0, count) });

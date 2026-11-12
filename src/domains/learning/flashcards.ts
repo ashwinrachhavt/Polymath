@@ -3,6 +3,8 @@ import { recordAudit } from "@/domains/audit/record";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
+import { conceptName, recentConceptNames } from "@/domains/knowledge/concepts";
+import { linkItemsToConcepts } from "./concept-links";
 import { locateQuoteNormalized } from "./locate-quote";
 import { loadCurrentQuizSources, QuizGenerationError, sameSourceVersions } from "./generate-quiz";
 import {
@@ -31,7 +33,7 @@ import {
 /** The fewest verified cards that make a deck worth keeping. */
 const MIN_FLASHCARDS = 3;
 
-type VerifiedCard = { prompt: string; answer: string; evidence: FlashcardEvidence };
+type VerifiedCard = { prompt: string; answer: string; evidence: FlashcardEvidence; concept: string };
 
 export class FlashcardError extends Error {
   constructor(
@@ -135,6 +137,7 @@ export async function generateFlashcardDeck(
   const cardCount = input.cardCount ?? defaultItemCount(sources.reduce((sum, source) => sum + source.text.length, 0));
   const engine = generator ?? defaultFlashcardGenerator(auth.workspaceId);
   const learningContext = await flashcardGenerationContext(auth, input.documentIds);
+  const knownConcepts = await recentConceptNames(auth);
   const title =
     sources.length === 1 ? sources[0].title + " flashcards" : sources[0].title + " + " + (sources.length - 1) + " more";
 
@@ -143,7 +146,7 @@ export async function generateFlashcardDeck(
     try {
       proposed = await engine.generateFromSources(
         sources.map(({ title, text }) => ({ title, text })),
-        { cardCount: count, learningContext, avoidPrompts, part },
+        { cardCount: count, learningContext, avoidPrompts, part, knownConcepts },
       );
     } catch {
       throw new FlashcardError("generation_failed", "Flashcards could not be generated. Try again.");
@@ -152,9 +155,11 @@ export async function generateFlashcardDeck(
       const source = sources[card.sourceIndex];
       if (!source || !card.prompt.trim() || !card.answer.trim()) return [];
       const span = locateQuoteNormalized(source.text, card.quote);
-      if (!span) return [];
+      const concept = conceptName(card.concept);
+      if (!span || !concept) return [];
       return [
         {
+          concept,
           prompt: card.prompt.trim().slice(0, 400),
           answer: card.answer.trim().slice(0, 1000),
           evidence: {
@@ -184,17 +189,26 @@ export async function generateFlashcardDeck(
       } else {
         deckId = await insertDeck(tx);
       }
-      await tx.insert(flashcards).values(
-        made.slice(deck.stored).map((card, index) => ({
-          workspaceId: auth.workspaceId,
-          deckId,
-          ordinal: deck.stored + index,
-          prompt: card.prompt,
-          answer: card.answer,
-          evidence: card.evidence,
-          createdBy: auth.userId,
-          updatedBy: auth.userId,
-        })),
+      const fresh = made.slice(deck.stored);
+      const stored = await tx
+        .insert(flashcards)
+        .values(
+          fresh.map((card, index) => ({
+            workspaceId: auth.workspaceId,
+            deckId,
+            ordinal: deck.stored + index,
+            prompt: card.prompt,
+            answer: card.answer,
+            evidence: card.evidence,
+            createdBy: auth.userId,
+            updatedBy: auth.userId,
+          })),
+        )
+        .returning({ id: flashcards.id, ordinal: flashcards.ordinal });
+      await linkItemsToConcepts(
+        auth,
+        tx,
+        stored.map((card) => ({ flashcardId: card.id, concept: fresh[card.ordinal - deck.stored].concept })),
       );
       deck.id = deckId;
     });

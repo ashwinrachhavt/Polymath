@@ -98,6 +98,7 @@ function fixtureGenerator(options: {
           answer: `Fact ${n} holds.`,
           quote: `Fact ${n} holds.`,
           sourceIndex: 0,
+          concept: `Fact ${n % 4}`,
         };
       });
       if (options.supply === undefined && cards.length > 1) {

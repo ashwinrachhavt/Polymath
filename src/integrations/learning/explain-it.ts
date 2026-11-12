@@ -10,12 +10,13 @@ import {
 import { providerEntry } from "@/integrations/providers/registry";
 import { drizzleQuotaStore, withQuota, type QuotaStore } from "@/integrations/providers/quota";
 
-export const EXPLAIN_IT_PROMPT_VERSION = "learning-explain-it@1";
+export const EXPLAIN_IT_PROMPT_VERSION = "learning-explain-it@2";
 const MAX_INPUT_CHARS = 12000;
 
 export type ExplainSource = { title: string; text: string };
 export type ProposedEvidence = { quote: string; sourceIndex: number };
-export type ExplainQuestion = { prompt: string; evidence: ProposedEvidence[] };
+/** `concept` is the one idea the question asks about, as a short name. */
+export type ExplainQuestion = { prompt: string; evidence: ProposedEvidence[]; concept: string };
 type ExplainGrade = "correct" | "partial" | "incorrect" | "uncertain";
 export type ExplainEvaluation = {
   grade: ExplainGrade;
@@ -23,6 +24,8 @@ export type ExplainEvaluation = {
   evidence: ProposedEvidence[];
   nextQuestion: string | null;
   nextEvidence: ProposedEvidence[];
+  /** The idea the next question asks about; null keeps the current question's concept. */
+  nextConcept: string | null;
 };
 
 export interface ExplainItGenerator {
@@ -48,6 +51,7 @@ const evidenceSchema = z
 const startResponse = z.object({
   prompt: z.string().min(1).max(600),
   evidence: evidenceSchema.min(1),
+  concept: z.string().trim().min(1).max(80),
 });
 
 const evaluationResponse = z.object({
@@ -56,6 +60,7 @@ const evaluationResponse = z.object({
   evidence: evidenceSchema,
   nextQuestion: z.string().max(600).nullable(),
   nextEvidence: evidenceSchema,
+  nextConcept: z.string().max(80).nullish().transform((value) => value ?? null),
 });
 
 function boundedSources(sources: ExplainSource[]) {
@@ -88,13 +93,13 @@ function fromGeneration(
     name: provider.name,
     start(sources) {
       const system =
-        "Create one guided own-words question answerable from the provided selected sources only. Return JSON {prompt,evidence:[{quote,sourceIndex}]}. The evidence must be a contiguous verbatim quote from the indicated source. Ask for reasoning, not recall of a trivial phrase. Use no outside knowledge. " +
+        "Create one guided own-words question answerable from the provided selected sources only. Return JSON {prompt,evidence:[{quote,sourceIndex}],concept}. concept names the one idea the question asks about as a short noun phrase of one to five words in the source's own terms. The evidence must be a contiguous verbatim quote from the indicated source. Ask for reasoning, not recall of a trivial phrase. Use no outside knowledge. " +
         untrustedDataClauseJsonSafe("sources");
       return call(system, JSON.stringify({ sources: boundedSources(sources) }), startResponse);
     },
     evaluate(input) {
       const system =
-        "Assess the learner's answer only against the provided selected sources and the question. Return JSON {grade,feedback,evidence:[{quote,sourceIndex}],nextQuestion,nextEvidence:[{quote,sourceIndex}]}. grade is correct, partial, incorrect, or uncertain. Cite exact source passages for the assessment. Say when evidence is ambiguous or selected sources conflict; name each source and explain its claim. Never call an answer correct based on outside knowledge. Adapt the next question to the learner's demonstrated gap. If there is no grounded next question, return null and an empty nextEvidence. " +
+        "Assess the learner's answer only against the provided selected sources and the question. Return JSON {grade,feedback,evidence:[{quote,sourceIndex}],nextQuestion,nextEvidence:[{quote,sourceIndex}],nextConcept}. nextConcept names the idea the next question asks about as a short noun phrase, or is null when there is no next question. grade is correct, partial, incorrect, or uncertain. Cite exact source passages for the assessment. Say when evidence is ambiguous or selected sources conflict; name each source and explain its claim. Never call an answer correct based on outside knowledge. Adapt the next question to the learner's demonstrated gap. If there is no grounded next question, return null and an empty nextEvidence. " +
         untrustedDataClauseJsonSafe("sources and learner answer");
       return call(
         system,
