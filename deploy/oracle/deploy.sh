@@ -36,12 +36,16 @@ git -C "$here" fetch --quiet origin
 sha="$(git -C "$here" rev-parse --verify "${ref}^{commit}")"
 echo "deploying $ref ($sha) to $ORACLE_HOST"
 
-if oracle_ssh "test -d $ORACLE_HOME_DIR/releases/$sha"; then
+# From the repository root: run inside deploy/oracle, git archive would pack
+# only that folder.
+root="$(git -C "$here" rev-parse --show-toplevel)"
+rel="$ORACLE_HOME_DIR/releases/$sha"
+if oracle_ssh "test -f $rel/package.json"; then
   echo "release $sha already on the server"
 else
-  oracle_ssh "mkdir -p $ORACLE_HOME_DIR/releases/$sha.tmp"
-  git -C "$here" archive --format=tar "$sha" \
-    | oracle_ssh "tar -x -C $ORACLE_HOME_DIR/releases/$sha.tmp && mv $ORACLE_HOME_DIR/releases/$sha.tmp $ORACLE_HOME_DIR/releases/$sha"
+  oracle_ssh "rm -rf $rel $rel.tmp && mkdir -p $rel.tmp"
+  git -C "$root" archive --format=tar "$sha" \
+    | oracle_ssh "tar -x -C $rel.tmp && mv $rel.tmp $rel"
 fi
 
 release_sh "$sha" deploy "$sha"
