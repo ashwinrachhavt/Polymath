@@ -478,13 +478,14 @@ export default function Settings({
   // submits against the version it rendered (compare-and-set on the server).
   // The /settings route passes the row in; the legacy /apps dispatch is
   // client-rendered, so it loads the same row on mount instead.
-  const [saved, setSaved] = useState(
+  const [saved, setSaved] = useState<LoadedPreferences>(
     serverPreferences ?? {
       timezone: "UTC",
       weekStart: 1,
       appearance: "system",
       motion: "full",
-      interfaceMode: "auto" as const,
+      interfaceMode: "auto",
+      accent: "graphite",
       version: 0,
     },
   );
@@ -666,9 +667,21 @@ export default function Settings({
                     notify(result.error);
                   });
                 }}
+                onAccentChange={(accent) => {
+                  const before = saved;
+                  setSaved({ ...saved, accent });
+                  void savePreferencesAction({ expectedVersion: before.version, accent }).then((result) => {
+                    if (result.ok) {
+                      setSaved(result.preferences);
+                      return;
+                    }
+                    setSaved(before);
+                    notify(result.error);
+                  });
+                }}
               />
               <p className="mt-3 text-xs text-muted-foreground">
-                Mode saves to your account; page colour and accent are remembered in this browser.
+                Mode and accent follow your account to every device; page colour stays in this browser.
               </p>
             </Panel>
           </Section>

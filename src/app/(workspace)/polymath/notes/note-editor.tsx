@@ -35,7 +35,7 @@ import {
 } from "./actions";
 import { X, History, Ellipsis, Plus, MessageSquare } from "lucide-react";
 import { MarginNotes } from "@/components/products/polymath/margin-notes";
-import { Hint } from "@/components/ui/tooltip";
+import { Tooltip } from "@/components/ui/tooltip";
 import type { RichEditorHandle } from "@/components/products/polymath/rich-editor";
 import { historyChipClass } from "../history-menu";
 import { useNoteStack } from "./note-stack";
@@ -370,14 +370,14 @@ function MeaningIndexStatus({ noteId, notice }: { noteId: string; notice: IndexN
     <span className="inline-flex flex-wrap items-center gap-1.5">
       {/* The reason is for whoever fixes it; the page only says what it means. */}
       {notice.kind === "failed" ? (
-        <Hint label={notice.error}>
+        <Tooltip content={notice.error}>
           <span
             tabIndex={0}
             className="cursor-help rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             Not in meaning search
           </span>
-        </Hint>
+        </Tooltip>
       ) : (
         <span>Not in meaning search yet</span>
       )}
@@ -815,7 +815,7 @@ export function NoteEditor({
             />
             {/* Autocomplete, dictation and Ask AI: the editor renders them here. */}
             <div ref={setToolsSlot} className="contents" />
-            <Hint label={commentsOpen ? "Hide comments" : "Comments"}>
+            <Tooltip content={commentsOpen ? "Hide comments" : "Comments"}>
               <Button
                 type="button"
                 variant="ghost"
@@ -833,15 +833,15 @@ export function NoteEditor({
                   </span>
                 )}
               </Button>
-            </Hint>
+            </Tooltip>
             <Dialog>
-              <Hint label="Checkpoints and history">
+              <Tooltip content="Checkpoints and history">
                 <DialogTrigger asChild>
                   <Button type="button" variant="ghost" size="icon-sm" aria-label="History">
                     <History aria-hidden className="text-muted-foreground" />
                   </Button>
                 </DialogTrigger>
-              </Hint>
+              </Tooltip>
               <DialogContent>
                 <DialogTitle>Version history</DialogTitle>
                 <DialogDescription>
@@ -880,7 +880,7 @@ export function NoteEditor({
                 )}
               </DialogContent>
             </Dialog>
-            <Hint label="Details, links and editing mode">
+            <Tooltip content="Details, links and editing mode">
               <Button
                 type="button"
                 variant="ghost"
@@ -892,7 +892,7 @@ export function NoteEditor({
               >
                 <Ellipsis aria-hidden className="text-muted-foreground" />
               </Button>
-            </Hint>
+            </Tooltip>
           </div>
         </div>
       </header>

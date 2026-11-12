@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Check, Link2, Waypoints } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Hint } from "@/components/ui/tooltip";
+import { Tooltip } from "@/components/ui/tooltip";
 import { sanitizeLinkText } from "@/components/products/polymath/link-target-insertion";
 import { similarNotesAction, type SimilarNotes } from "./actions";
 
@@ -83,7 +83,7 @@ export function SimilarNotesButton({
     // Below sm the panel spans the bar (the nearest positioned ancestor), so
     // it never runs off the left edge of a phone.
     <div ref={container} className="sm:relative">
-      <Hint label="Find similar notes">
+      <Tooltip content="Find similar notes">
         <Button
           ref={trigger}
           type="button"
@@ -101,7 +101,7 @@ export function SimilarNotesButton({
         >
           <Waypoints aria-hidden className="text-muted-foreground" />
         </Button>
-      </Hint>
+      </Tooltip>
       {open ? (
         <div
           id={panelId}

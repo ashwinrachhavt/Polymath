@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Mic, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Hint } from "@/components/ui/tooltip";
+import { Tooltip } from "@/components/ui/tooltip";
 import { IDLE } from "./dictation-machine";
 import { DICTATED_EVENT } from "./dictation-target";
 
@@ -71,7 +71,7 @@ export function DictationButton({
 
   const label = mine ? "Stop dictating" : "Dictate";
   return (
-    <Hint label={mine ? label : "Dictate (or hold Right Option)"}>
+    <Tooltip content={mine ? label : "Dictate (or hold Right Option)"}>
       <Button
         type="button"
         variant={mine ? "secondary" : variant}
@@ -92,6 +92,6 @@ export function DictationButton({
       >
         {mine ? <Square aria-hidden className="size-3.5 text-destructive" /> : <Mic aria-hidden />}
       </Button>
-    </Hint>
+    </Tooltip>
   );
 }

@@ -36,18 +36,33 @@
   --grid-strong: oklch(27% 0.018 85);
 }
 
-/* Accents. Each keeps text on the button at AA contrast in its mode. */
-:root[data-accent="blue"] {
-  --signal: oklch(54% 0.17 255);
+/* Accents (the top-bar swatches). Each keeps text on the button at AA
+   contrast in its mode; graphite is the default in globals.css and needs no
+   rule here. Orange is the original Furrow tangerine, which carries ink. */
+:root[data-accent="red"] {
+  --signal: oklch(55% 0.2 22);
   --signal-ink: oklch(99% 0 0);
-  --signal-soft: oklch(94% 0.03 255);
-  --focus: oklch(56% 0.17 255);
+  --signal-soft: oklch(94% 0.03 22);
+  --focus: oklch(55% 0.2 22);
 }
-.dark:root[data-accent="blue"] {
-  --signal: oklch(72% 0.13 255);
-  --signal-ink: oklch(16% 0.02 255);
-  --signal-soft: oklch(28% 0.05 255);
-  --focus: oklch(72% 0.13 255);
+.dark:root[data-accent="red"] {
+  --signal: oklch(72% 0.15 22);
+  --signal-ink: oklch(16% 0.02 22);
+  --signal-soft: oklch(28% 0.05 22);
+  --focus: oklch(72% 0.15 22);
+}
+
+:root[data-accent="orange"] {
+  --signal: oklch(70% 0.19 40);
+  --signal-ink: oklch(18% 0.006 60);
+  --signal-soft: oklch(91% 0.05 50);
+  --focus: oklch(60% 0.19 40);
+}
+.dark:root[data-accent="orange"] {
+  --signal: oklch(75% 0.16 40);
+  --signal-ink: oklch(16% 0.02 40);
+  --signal-soft: oklch(28% 0.05 40);
+  --focus: oklch(75% 0.16 40);
 }
 
 :root[data-accent="green"] {
@@ -63,28 +78,28 @@
   --focus: oklch(74% 0.12 155);
 }
 
-:root[data-accent="violet"] {
+:root[data-accent="blue"] {
+  --signal: oklch(54% 0.17 255);
+  --signal-ink: oklch(99% 0 0);
+  --signal-soft: oklch(94% 0.03 255);
+  --focus: oklch(56% 0.17 255);
+}
+.dark:root[data-accent="blue"] {
+  --signal: oklch(72% 0.13 255);
+  --signal-ink: oklch(16% 0.02 255);
+  --signal-soft: oklch(28% 0.05 255);
+  --focus: oklch(72% 0.13 255);
+}
+
+:root[data-accent="purple"] {
   --signal: oklch(52% 0.17 295);
   --signal-ink: oklch(99% 0 0);
   --signal-soft: oklch(94% 0.03 295);
   --focus: oklch(54% 0.17 295);
 }
-.dark:root[data-accent="violet"] {
+.dark:root[data-accent="purple"] {
   --signal: oklch(74% 0.12 295);
   --signal-ink: oklch(16% 0.02 295);
   --signal-soft: oklch(28% 0.05 295);
   --focus: oklch(74% 0.12 295);
-}
-
-:root[data-accent="rose"] {
-  --signal: oklch(56% 0.17 10);
-  --signal-ink: oklch(99% 0 0);
-  --signal-soft: oklch(94% 0.03 10);
-  --focus: oklch(56% 0.17 10);
-}
-.dark:root[data-accent="rose"] {
-  --signal: oklch(74% 0.13 10);
-  --signal-ink: oklch(16% 0.02 10);
-  --signal-soft: oklch(28% 0.05 10);
-  --focus: oklch(74% 0.13 10);
 }

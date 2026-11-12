@@ -964,6 +964,13 @@
       "when": 1794475575615,
       "tag": "0312_zettelize_jobs_and_document_titles",
       "breakpoints": true
+    },
+    {
+      "idx": 320,
+      "version": "7",
+      "when": 1794477551891,
+      "tag": "0320_user_preferences_accent",
+      "breakpoints": true
     }
   ]
 }

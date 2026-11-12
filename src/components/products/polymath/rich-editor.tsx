@@ -16,7 +16,7 @@ import { setAutocompleteEnabled, useAutocomplete } from "./autocomplete-client";
 import { Bold, Italic, List, ListOrdered, Quote, Undo2, Redo2, TextCursorInput } from "lucide-react";
 import { filterBlockCommands, slashQuery, type BlockCommand } from "@/components/workspace/slash-commands";
 import { Button } from "@/components/ui/button";
-import { Hint } from "@/components/ui/tooltip";
+import { Tooltip } from "@/components/ui/tooltip";
 import { DictationButton } from "@/components/speech/dictation-button";
 import { useWorkspace } from "@/components/workspace/workspace-provider";
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
@@ -362,7 +362,7 @@ function AutocompleteToggle() {
           ? "Autocomplete is not responding. It keeps trying as you write."
           : "Autocomplete on: suggestions appear when you pause. Tab accepts, Cmd/Ctrl+→ takes a word, Esc dismisses.";
   return (
-    <Hint label={state}>
+    <Tooltip content={state}>
       <Button
         type="button"
         variant="ghost"
@@ -376,7 +376,7 @@ function AutocompleteToggle() {
       >
         <TextCursorInput aria-hidden />
       </Button>
-    </Hint>
+    </Tooltip>
   );
 }
 

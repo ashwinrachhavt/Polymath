@@ -326,6 +326,7 @@ function SelectBox({ doc, selection, className }: { doc: VaultDocument; selectio
 function RenameFolderButton({ folder, onRename }: { folder: VaultFolder; onRename: (folder: VaultFolder) => void }) {
   return (
     <IconButton
+      size="icon-sm"
       label={`Rename ${folder.name}`}
       icon={<Pencil aria-hidden />}
       onClick={() => onRename(folder)}
@@ -1018,6 +1019,7 @@ export function DocumentVault({
               )}
               {!crumb.href && currentFolder ? (
                 <IconButton
+                  size="icon-sm"
                   label={`Rename ${currentFolder.name}`}
                   icon={<Pencil aria-hidden />}
                   onClick={() => openRenameFolder(currentFolder)}
@@ -1534,6 +1536,7 @@ function Viewer({
             Review fields
           </Link>
           <IconButton
+            size="icon-sm"
             label="Zettelize into Ideas"
             icon={<Lightbulb aria-hidden />}
             disabled={zettelize.busy || !zettelize.ready}

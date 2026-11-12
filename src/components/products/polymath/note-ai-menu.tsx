@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Hint } from "@/components/ui/tooltip";
+import { Tooltip } from "@/components/ui/tooltip";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -57,13 +57,13 @@ export function NoteAIMenu({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       {icon ? (
-        <Hint label={pending ? "AI is working…" : "Ask AI (or press space on an empty line)"}>
+        <Tooltip content={pending ? "AI is working…" : "Ask AI (or press space on an empty line)"}>
           <DialogTrigger asChild>
             <Button type="button" variant="ghost" size="icon-sm" aria-label="Ask AI" disabled={pending}>
               <Sparkles aria-hidden className={pending ? "animate-pulse" : "text-muted-foreground"} />
             </Button>
           </DialogTrigger>
-        </Hint>
+        </Tooltip>
       ) : (
         <DialogTrigger asChild>
           <Button type="button" variant="outline" disabled={pending}>

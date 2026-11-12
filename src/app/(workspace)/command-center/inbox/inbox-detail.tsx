@@ -35,7 +35,8 @@ import {
 } from "./inbox-list";
 import { MakeLearningDialog } from "@/app/(workspace)/learn/make-learning-dialog";
 import { GenerationJobRows } from "@/components/jobs/generation-job-rows";
-import { ConfirmIconButton, IconButton, OverflowMenu, type MenuItem } from "@/components/ui/icon-button";
+import { ConfirmIconButton, OverflowMenu, type MenuItem } from "@/components/ui/icon-actions";
+import { IconButton } from "@/components/ui/icon-button";
 import { useZettelize, useZettelJobs } from "@/components/zettelize/zettel-jobs";
 import { zettelJobSubject } from "@/domains/capture/zettel-job-names";
 import type { GenerationJobView } from "@/domains/jobs/state";
@@ -522,6 +523,7 @@ export function InboxDetail({
           <>
             {capture.kind === "file" || voiceWithoutTranscript ? null : (
               <IconButton
+                size="icon-sm"
                 label="Save as note"
                 icon={<NotebookPen aria-hidden />}
                 disabled={busy}
@@ -530,6 +532,7 @@ export function InboxDetail({
             )}
             {zettelEligible ? (
               <IconButton
+                size="icon-sm"
                 label="Zettelize into Ideas"
                 icon={<Lightbulb aria-hidden />}
                 disabled={busy || zettelSurface.active || !zettelProviderReady}
@@ -545,6 +548,7 @@ export function InboxDetail({
             ) : null}
             {voiceWithoutTranscript ? null : (
               <IconButton
+                size="icon-sm"
                 label="Make a task"
                 icon={<ListTodo aria-hidden />}
                 disabled={busy}
@@ -558,6 +562,7 @@ export function InboxDetail({
         {learningSource ? (
           <>
             <IconButton
+              size="icon-sm"
               label="Make flashcards or a quiz"
               icon={<GraduationCap aria-hidden />}
               disabled={busy}
@@ -574,6 +579,7 @@ export function InboxDetail({
         {open ? <OverflowMenu label="Turn into" items={turnInto} disabled={busy} /> : null}
         {capture.parkedAt && state !== "discarded" && state !== "converted" ? (
           <IconButton
+            size="icon-sm"
             label="Unpark: put it back in the queue"
             icon={<Inbox aria-hidden />}
             disabled={busy}

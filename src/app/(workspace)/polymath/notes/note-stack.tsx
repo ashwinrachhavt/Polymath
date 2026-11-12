@@ -17,7 +17,7 @@ import {
 import { ArrowLeft, PenLine, X } from "lucide-react";
 import { MarkdownBlocks } from "@/components/markdown";
 import { inline } from "@/components/markdown-inline";
-import { Hint } from "@/components/ui/tooltip";
+import { Tooltip } from "@/components/ui/tooltip";
 
 /*
  * Writing and following links are one surface. The note being written is the
@@ -276,7 +276,7 @@ export function NoteStack({
                     <span className="truncate">{titles[pane - 1]}</span>
                   </Link>
                   <span className="ml-auto" />
-                  <Hint label="Write in this note">
+                  <Tooltip content="Write in this note">
                     <Link
                       href={`${BASE}?id=${note.id}`}
                       aria-label={`Write in ${note.title || "Untitled note"}`}
@@ -284,8 +284,8 @@ export function NoteStack({
                     >
                       <PenLine className="size-4" aria-hidden />
                     </Link>
-                  </Hint>
-                  <Hint label="Close">
+                  </Tooltip>
+                  <Tooltip content="Close">
                     <Link
                       href={trailHref(stackIds.slice(0, k))}
                       scroll={false}
@@ -294,7 +294,7 @@ export function NoteStack({
                     >
                       <X className="size-4" aria-hidden />
                     </Link>
-                  </Hint>
+                  </Tooltip>
                 </div>
                 <div className="px-6 pb-16 pt-6 md:px-10">
                   <h2
