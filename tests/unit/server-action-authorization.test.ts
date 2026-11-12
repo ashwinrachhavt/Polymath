@@ -21,7 +21,9 @@ const VIEWER_READS: Record<string, string> = {
   getNoteAIRunOutputAction: "read-only poll of a run's output",
   findLinkTargetsAction: "read-only search of the workspace cards for the [[ picker; no write",
   browseNotesAction:
-    "read-only page of the workspace's notes for the library rail's search; membership alone authorizes viewing",
+    "read-only page of the workspace's notes for the Notes popover's search; membership alone authorizes viewing",
+  similarNotesAction:
+    "read-only meaning search of the workspace's notes for Find similar notes; no write, membership alone authorizes viewing",
   loadWeeklyReviewAction: "read-only weekly summary of the caller's own tasks and focus sessions",
   loadKnowledgeDebtAction: "read-only knowledge-debt signals over the caller's own workspace rows",
   loadOutcomeNarrativeAction:

@@ -8,7 +8,7 @@
  * old and falls to "Older".
  */
 
-export const DAY_MS = 86_400_000;
+const DAY_MS = 86_400_000;
 
 type HistoryGroupKey = "today" | "this-week" | "older";
 
@@ -24,7 +24,7 @@ const ORDER: ReadonlyArray<{ key: HistoryGroupKey; label: string }> = [
   { key: "older", label: "Older" },
 ];
 
-export function startOfLocalDay(value: Date): number {
+function startOfLocalDay(value: Date): number {
   return new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
 }
 
