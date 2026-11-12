@@ -11,12 +11,9 @@
  * unguessable is minted on the server.
  */
 export function randomId(): string {
-  const bytes = new Uint8Array(16);
-  if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
-    crypto.getRandomValues(bytes);
-  } else {
-    for (let index = 0; index < bytes.length; index += 1) bytes[index] = Math.floor(Math.random() * 256);
-  }
+  // getRandomValues has no secure-context requirement and exists in every
+  // supported browser and Node, so there is no fallback to fall back to.
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
   // Version 4, variant 10xx.
   bytes[6] = (bytes[6]! & 0x0f) | 0x40;
   bytes[8] = (bytes[8]! & 0x3f) | 0x80;

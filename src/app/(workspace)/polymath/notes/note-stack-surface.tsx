@@ -12,7 +12,7 @@ import { noteContentToMarkdown } from "@/domains/knowledge/note-content";
 import { markdownToPlainText } from "@/lib/display-text";
 import { getAuthContext } from "@/lib/auth";
 import type { RawSearchParams } from "@/lib/list-params";
-import { NoteStack, type StackIndexEntry, type StackNote } from "./note-stack";
+import { NoteStack, type NoteRef, type StackIndexEntry, type StackNote } from "./note-stack";
 
 /*
  * The evergreen reading view, restored as an opt-in (?view=stack) beside the
@@ -95,13 +95,10 @@ export async function NoteStackSurface({ raw, startId }: { raw: RawSearchParams;
     .flatMap((note) => extractWikiLinkTitles(note.markdown))
     .map((title) => title.split("|")[0].trim())
     .filter((title) => title && !indexed.has(title.toLowerCase()));
-  const linked: StackIndexEntry[] = beyond.length
+  const linked: NoteRef[] = beyond.length
     ? (await getLinkPreviews(auth, beyond)).map((preview) => ({
         id: preview.id,
         title: preview.title,
-        kind: "note",
-        tags: [],
-        updatedAt: new Date().toISOString(),
         excerpt: preview.firstParagraph || null,
       }))
     : [];

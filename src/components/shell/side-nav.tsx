@@ -48,7 +48,7 @@ function holdsFocus(element: HTMLElement | null) {
   return element?.contains(document.activeElement) ?? false;
 }
 
-export function SideNav({ focusSurface = false }: { focusSurface?: boolean } = {}) {
+export function SideNav({ focusSurface }: { focusSurface: boolean }) {
   const pathname = usePathname();
   const hydrated = useSyncExternalStore(
     subscribeToHydration,
@@ -69,10 +69,10 @@ export function SideNav({ focusSurface = false }: { focusSurface?: boolean } = {
   // to the control that toggles back instead.
   const handOffFocus = useRef(false);
 
-  const state = focusSurface ? (peeking ? "peek" : "hidden") : pinned ? "pinned" : peeking ? "peek" : "hidden";
   // Focus surfaces keep the rail out of the layout and offer only the opener.
-  const pinnedForLayout = pinned && !focusSurface;
-  const overlay = state !== "pinned";
+  const pinnedOpen = pinned && !focusSurface;
+  const state = pinnedOpen ? "pinned" : peeking ? "peek" : "hidden";
+  const overlay = !pinnedOpen;
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -151,7 +151,7 @@ export function SideNav({ focusSurface = false }: { focusSurface?: boolean } = {
     <>
       {/* The edge zone sits under the rail, so a peeking rail covers it.
           Hover only exists for a fine pointer; touch never gets the zone. */}
-      {!pinnedForLayout ? (
+      {!pinnedOpen ? (
         <div
           data-peek-zone
           aria-hidden
@@ -163,7 +163,7 @@ export function SideNav({ focusSurface = false }: { focusSurface?: boolean } = {
           the top bar leaves room for it (top-bar.tsx). A
           peeking rail (z-40) covers it. Below md the bottom bar is the
           navigation and the rail never shows, so neither does this. */}
-      {!pinnedForLayout ? (
+      {!pinnedOpen ? (
         <button
           ref={openerRef}
           type="button"

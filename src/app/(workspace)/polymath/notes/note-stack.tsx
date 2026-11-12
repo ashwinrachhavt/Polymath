@@ -26,15 +26,13 @@ export type StackIndexEntry = {
   excerpt: string | null;
 };
 
-export type StackNote = {
-  id: string;
-  title: string;
-  kind: string;
-  tags: string[];
-  updatedAt: string;
+export type StackNote = Omit<StackIndexEntry, "excerpt"> & {
   markdown: string;
   backlinks: { id: string; title: string; snippet: string | null }[];
 };
+
+/** A note found past the capped index: only what a link and its card read. */
+export type NoteRef = { id: string; title: string; excerpt: string | null };
 
 const BASE = "/polymath/notes";
 const INDEX_WIDTH = 352;
@@ -50,7 +48,7 @@ const naturalLeft = (pane: number) => (pane === 0 ? 0 : INDEX_WIDTH + (pane - 1)
 const editedLabel = (iso: string) =>
   new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 
-type Preview = { entry: StackIndexEntry; x: number; y: number };
+type Preview = { entry: NoteRef; x: number; y: number };
 
 type GroupBy = "tag" | "recency" | "kind";
 const GROUPINGS: { value: GroupBy; label: string }[] = [
@@ -90,7 +88,7 @@ export function NoteStack({
   index: StackIndexEntry[];
   notes: StackNote[];
   /** Notes the open panes link to that fall outside the capped index. */
-  linked?: StackIndexEntry[];
+  linked?: NoteRef[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -104,15 +102,23 @@ export function NoteStack({
   const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const stackIds = useMemo(() => notes.map((n) => n.id), [notes]);
+  // One merged view: byId and byTitle are both read off it, so a note found
+  // past the index is the same object everywhere it appears.
+  const all = useMemo(() => {
+    const merged = new Map<string, StackIndexEntry | NoteRef>();
+    for (const entry of index) merged.set(entry.id, entry);
+    for (const entry of linked) if (!merged.has(entry.id)) merged.set(entry.id, entry);
+    return [...merged.values()];
+  }, [index, linked]);
   const byTitle = useMemo(() => {
-    const map = new Map<string, StackIndexEntry>();
-    for (const entry of [...index, ...linked]) {
+    const map = new Map<string, { id: string; title: string; excerpt: string | null }>();
+    for (const entry of all) {
       const key = entry.title.trim().toLowerCase();
       if (!map.has(key)) map.set(key, entry);
     }
     return map;
-  }, [index, linked]);
-  const byId = useMemo(() => new Map([...linked, ...index].map((e) => [e.id, e])), [index, linked]);
+  }, [all]);
+  const byId = useMemo(() => new Map(all.map((entry) => [entry.id, entry])), [all]);
 
   // Pane 0 is the index; note k in the stack is pane k + 1.
   const scrollToPane = useCallback((pane: number) => {
@@ -151,7 +157,7 @@ export function NoteStack({
     el.scrollTo({ left: el.scrollWidth, behavior: "smooth" });
   }, [lastId]);
 
-  const showPreview = (event: MouseEvent, entry: StackIndexEntry) => {
+  const showPreview = (event: MouseEvent, entry: NoteRef) => {
     const rect = event.currentTarget.getBoundingClientRect();
     if (previewTimer.current) clearTimeout(previewTimer.current);
     previewTimer.current = setTimeout(() => setPreview({ entry, x: rect.left, y: rect.bottom }), 250);
@@ -168,7 +174,7 @@ export function NoteStack({
   };
 
   /** A note link: a real anchor (new tab works), opened as a pane on a plain click. */
-  const noteLink = (fromPane: number, entry: StackIndexEntry, label: ReactNode, className: string, key?: number) => (
+  const noteLink = (fromPane: number, entry: NoteRef, label: ReactNode, className: string, key?: number) => (
     <a
       key={key}
       href={hrefFor(trailTo(fromPane, entry.id))}
