@@ -1,10 +1,12 @@
 import { and, desc, eq, ilike, inArray, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
+import { displayTitle } from "@/lib/display-text";
 import { escapeLike } from "@/lib/list-params";
 import { documentExtractions, documents } from "@/domains/knowledge/schema";
 import { currentExtractionSql } from "@/domains/knowledge/versions";
 import { buildQuizPassages, type QuizPassage } from "./quiz-passages";
+import { quizHeading, sourceLabels } from "./source-labels";
 import { quizAttempts, quizQuestions, quizzes, type QuizEvidence, type QuizSourceSnapshot } from "./schema";
 
 /*
@@ -35,8 +37,10 @@ export type QuizForSitting = {
   id: string;
   notebookId: string | null;
   documentId: string;
+  /** What the sitting is called: free of markdown, and rebuilt from the sources when the stored title only repeats theirs. */
   title: string;
-  sourceManifest: QuizSourceSnapshot[];
+  /** Every chosen source by display name, in manifest order; `skipped` ones were not asked about. */
+  sources: Array<{ documentId: string; label: string; skipped: boolean }>;
   questions: Array<{
     id: string;
     ordinal: number;
@@ -194,31 +198,68 @@ export async function getQuizForSitting(auth: AuthContext, quizId: string): Prom
     .where(and(eq(quizQuestions.quizId, quiz.id), eq(quizQuestions.workspaceId, auth.workspaceId)))
     .orderBy(quizQuestions.ordinal);
 
-  const titles = new Map(quiz.sourceManifest.map((source) => [source.extractionId, source.title]));
-  for (const { evidence } of questions) {
-    if (evidence.source && !titles.has(evidence.source.extractionId))
-      titles.set(evidence.source.extractionId, evidence.source.title);
-  }
-  const extractionIds = [...new Set(questions.map((q) => q.evidence.source?.extractionId ?? quiz.sourceExtractionId))];
-  const extractionRows =
-    extractionIds.length === 0
-      ? []
-      : await db
-          .select({ id: documentExtractions.id, text: documentExtractions.text, documentTitle: documents.title })
-          .from(documentExtractions)
-          .innerJoin(documents, eq(documents.id, documentExtractions.documentId))
-          .where(
-            and(
-              eq(documentExtractions.workspaceId, auth.workspaceId),
-              eq(documents.workspaceId, auth.workspaceId),
-              inArray(documentExtractions.id, extractionIds),
-            ),
-          );
+  // Rows written before quizzes read several sources carry no manifest.
+  const manifest: QuizSourceSnapshot[] =
+    quiz.sourceManifest.length > 0
+      ? quiz.sourceManifest
+      : [{ documentId: quiz.documentId, extractionId: quiz.sourceExtractionId, title: quiz.title }];
+  const extractionIds = [
+    ...new Set([
+      ...manifest.map((source) => source.extractionId),
+      ...questions.map((q) => q.evidence.source?.extractionId ?? quiz.sourceExtractionId),
+    ]),
+  ];
+  const extractionRows = await db
+    .select({
+      id: documentExtractions.id,
+      text: documentExtractions.text,
+      documentTitle: documents.title,
+      sourceUrl: documents.sourceUrl,
+      createdAt: documents.createdAt,
+    })
+    .from(documentExtractions)
+    .innerJoin(documents, eq(documents.id, documentExtractions.documentId))
+    .where(
+      and(
+        eq(documentExtractions.workspaceId, auth.workspaceId),
+        eq(documents.workspaceId, auth.workspaceId),
+        inArray(documentExtractions.id, extractionIds),
+      ),
+    );
+  const rowById = new Map(extractionRows.map((row) => [row.id, row]));
+
+  const labels = sourceLabels(manifest.map((source) => ({ ...rowById.get(source.extractionId), title: source.title })));
+  const labelByExtraction = new Map(manifest.map((source, i) => [source.extractionId, labels[i]]));
+  const labelOf = (extractionId: string, stored: string) =>
+    labelByExtraction.get(extractionId) ?? sourceLabels([{ ...rowById.get(extractionId), title: stored }])[0];
   const sources = new Map(
     extractionRows.flatMap((row) =>
-      row.text === null ? [] : [[row.id, { title: titles.get(row.id) ?? row.documentTitle, text: row.text }] as const],
+      row.text === null ? [] : [[row.id, { title: labelOf(row.id, row.documentTitle), text: row.text }] as const],
     ),
   );
-  const { sourceExtractionId, ...sitting } = quiz;
-  return { ...sitting, questions, passages: buildQuizPassages(questions, sources, sourceExtractionId) };
+  const asked = manifest.flatMap((source, i) => (source.skipped ? [] : [labels[i]]));
+  // Quizzes made before titles were cleaned are named "<first stored title> + N
+  // more", raw markdown and all; that name is rebuilt from the sources. Any
+  // other stored title was written on purpose and is only stripped of markup.
+  const [first] = manifest;
+  const storedTitleIsFromSources =
+    quiz.title === first.title || quiz.title === `${first.title} + ${manifest.length - 1} more`.slice(0, 200);
+  return {
+    id: quiz.id,
+    notebookId: quiz.notebookId,
+    documentId: quiz.documentId,
+    title: storedTitleIsFromSources ? quizHeading(asked.length > 0 ? asked : labels) : displayTitle(quiz.title),
+    sources: manifest.map((source, i) => ({
+      documentId: source.documentId,
+      label: labels[i],
+      skipped: source.skipped === true,
+    })),
+    questions: questions.map((question) => {
+      const { source } = question.evidence;
+      if (!source) return question;
+      const title = labelOf(source.extractionId, source.title);
+      return { ...question, evidence: { ...question.evidence, source: { ...source, title } } };
+    }),
+    passages: buildQuizPassages(questions, sources, quiz.sourceExtractionId),
+  };
 }

@@ -2,7 +2,9 @@ import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { captures } from "@/domains/capture/schema";
+import { generationJobs } from "@/domains/jobs/schema";
 import { documents } from "@/domains/knowledge/schema";
+import { quizzes } from "@/domains/learning/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
 /*
@@ -13,8 +15,9 @@ import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace"
  *
  * Value: protects=the inbox from half-filed requests that made nothing;
  * fails_when=a capture is filed before a later source is refused, a request
- * of more than eight distinct sources files anything, or a role rejection is
- * thrown to the client instead of returned; seam=the server action against
+ * of more than eight distinct sources files anything, a role rejection is
+ * thrown to the client instead of returned, the verb waits for generation
+ * instead of handing it over, or a repeated click starts the work twice; seam=the server action against
  * a real database with auth stubbed; no_claim=generation itself
  * (flashcards-batching, quiz suites).
  */
@@ -26,6 +29,8 @@ type Auth = { userId: string; workspaceId: string; role: "owner" | "member" | "v
 const authHolder: { ctx: Auth | undefined } = { ctx: undefined };
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn(), updateTag: vi.fn() }));
 vi.mock("@/lib/auth", () => ({ getAuthContext: vi.fn(async () => authHolder.ctx) }));
+const kick = vi.hoisted(() => ({ kickGenerationJob: vi.fn() }));
+vi.mock("@/domains/jobs/kick", () => kick);
 vi.mock("@/lib/db", () => ({
   get db() {
     return holder.db;
@@ -138,6 +143,37 @@ suite("makeFlashcardsOrQuizAction", () => {
     const found = await findLearningSourcesAction({ query: "" });
 
     expect(found.ok && found.captures.map((source) => source.id)).toEqual([good.id]);
+  });
+
+  it("hands the work over as one queued job and starts it once, however often the request repeats", async () => {
+    const auth = await signIn("accept");
+    const source = await textCapture(auth, "Spaced repetition beats cramming. Retrieval practice strengthens memory.");
+    const idempotencyKey = crypto.randomUUID();
+    kick.kickGenerationJob.mockClear();
+
+    const first = await makeFlashcardsOrQuizAction({ kind: "quiz", sources: [source], count: 5, idempotencyKey });
+    // The capture was filed by the first request; the dialog's replay still names it as it was picked.
+    const [document] = await holder
+      .db!.select({ id: documents.id })
+      .from(documents)
+      .where(eq(documents.workspaceId, auth.workspaceId));
+    const replay = await makeFlashcardsOrQuizAction({
+      kind: "quiz",
+      sources: [{ type: "document", id: document.id }],
+      count: 5,
+      idempotencyKey,
+    });
+
+    if (!first.ok || !replay.ok) throw new Error("expected both requests to be accepted");
+    expect(first.job).toMatchObject({ kind: "learning.quiz", status: "queued", href: null });
+    expect(first.job.title).toMatch(/^Quiz: /);
+    expect(replay.job.id).toBe(first.job.id);
+    expect(kick.kickGenerationJob).toHaveBeenCalledTimes(1);
+    expect(kick.kickGenerationJob).toHaveBeenCalledWith({ jobId: first.job.id, attempt: 1 });
+    const jobs = await holder.db!.select().from(generationJobs).where(eq(generationJobs.workspaceId, auth.workspaceId));
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0].input).toEqual({ documentIds: [document.id], count: 5 });
+    expect(await holder.db!.select().from(quizzes).where(eq(quizzes.workspaceId, auth.workspaceId))).toEqual([]);
   });
 
   it("returns a role rejection instead of throwing it", async () => {

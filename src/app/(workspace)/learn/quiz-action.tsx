@@ -1,56 +1,58 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { WorkStatus } from "@/components/work-status";
 import { useState, useTransition } from "react";
+import { GenerationJobRows, useSurfaceJobs } from "@/components/jobs/generation-job-rows";
+import { trackGenerationJob } from "@/components/jobs/generation-jobs";
 import { Button } from "@/components/ui/button";
+import { WorkStatus } from "@/components/work-status";
+import type { GenerationJobView } from "@/domains/jobs/state";
+import { LEARNING_JOB_KIND_PREFIX, learningJobSubject } from "@/domains/learning/job-names";
 import { generateQuizAction } from "./actions";
 
 /*
- * The one interactive control the library and the quiz shell share: start a
- * generation, then either open the runner (library) or re-read the shell
- * (regenerate, where latest ready wins). Pending and errors follow the
- * claim-button pattern: useTransition, disabled while pending, inline
- * role="alert" with the action's authored copy - no toasts, because the
- * repo has none.
+ * Generate or regenerate one document's quiz. The click only hands the work
+ * over: the quiz is made in the background, its row below says how that is
+ * going, and the page re-reads itself when it is ready (latest ready wins).
+ * `initialJobs` are this document's unfinished quiz jobs at render, so the
+ * button stays held, and a failure stays visible, across a reload.
  */
 export function GenerateQuizButton({
   documentId,
+  initialJobs,
   label = "Generate quiz",
-  afterGenerate = "push",
-  disabled = false,
 }: {
   documentId: string;
+  initialJobs: GenerationJobView[];
   label?: string;
-  afterGenerate?: "push" | "refresh";
-  disabled?: boolean;
 }) {
-  const router = useRouter();
+  const surface = useSurfaceJobs(initialJobs, {
+    kindPrefix: LEARNING_JOB_KIND_PREFIX,
+    subject: learningJobSubject.document(documentId),
+  });
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   return (
-    <span className="inline-flex flex-col items-start gap-1">
+    <span className="inline-flex flex-col items-start gap-2">
       <Button
         type="button"
         size="sm"
-        disabled={disabled || pending}
+        disabled={pending || surface.active}
         onClick={() => {
           setError(null);
           startTransition(async () => {
-            const result = await generateQuizAction(documentId);
-            if (!result.ok) {
-              setError(result.error);
-              return;
-            }
-            // generateQuizAction revalidates, so the current page re-renders in
-            // the same response; only the push needs the router.
-            if (afterGenerate === "push") router.push(`/learn/${documentId}`);
+            const result = await generateQuizAction({ documentId, idempotencyKey: crypto.randomUUID() }).catch(() => ({
+              ok: false as const,
+              error: "The request did not reach Polymath. Try again.",
+            }));
+            if (result.ok) trackGenerationJob(result.job);
+            else setError(result.error);
           });
         }}
       >
-        {pending ? "Generating…" : label}
+        {pending ? "Starting…" : label}
       </Button>
       {error ? <WorkStatus state={{ phase: "failed", label: error }} /> : null}
+      <GenerationJobRows surface={surface} />
     </span>
   );
 }

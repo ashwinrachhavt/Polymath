@@ -1,3 +1,4 @@
+import { explanatoryReach, isExplanatorySpan, textBlocks, type TextBlock } from "./explanatory-text";
 import type { QuizEvidence } from "./schema";
 
 /*
@@ -10,7 +11,14 @@ import type { QuizEvidence } from "./schema";
  * arrives as one 14,000-character line), so a passage widens from its quotes
  * to sentence ends, and treats a blank line as a break only where one
  * exists. It is cut, never rewritten: the body is the source's own text with
- * long runs of blank lines collapsed.
+ * long runs of blank lines collapsed, and a code fence the cut left open is
+ * closed so the body still reads as markdown.
+ *
+ * A link index, a table of contents or a site notice is never part of a
+ * passage (explanatory-text.ts): reading it teaches nothing. A passage grows
+ * only as far as the next such block, two questions on either side of one
+ * get a passage each, and a question whose own quote sits in one is asked
+ * without a passage.
  */
 
 export type QuizPassage = {
@@ -36,7 +44,8 @@ const WORD_REACH = 40;
 /**
  * The quiz's passages in reading order: sources in the order of their first
  * question, passages within a source by position. A question whose evidence
- * cannot be placed in its source text gets no passage.
+ * cannot be placed in its source text, or sits in text that explains
+ * nothing, gets no passage.
  */
 export function buildQuizPassages(
   questions: PassageQuestion[],
@@ -59,33 +68,52 @@ export function buildQuizPassages(
 
   return ordered.flatMap(([extractionId, placed]) => {
     const { title, text } = sources.get(extractionId)!;
-    const groups = groupNearby(text, placed);
+    const blocks = textBlocks(text);
+    const groups = groupNearby(
+      text,
+      blocks,
+      placed.filter((question) => isExplanatorySpan(blocks, question)),
+    );
     let floor = 0;
-    return groups.map((group, n) => {
-      const ceiling = groups[n + 1]?.span.start ?? text.length;
-      const span = widen(text, group.span, floor, ceiling);
+    return groups.flatMap((group, n) => {
+      const reach = explanatoryReach(blocks, group.span, text.length);
+      const ceiling = Math.min(groups[n + 1]?.span.start ?? text.length, reach.end);
+      const span = widen(text, group.span, Math.max(floor, reach.start), ceiling);
       floor = Math.max(floor, span.end);
+      if (!isExplanatorySpan(blocks, span)) return [];
       return {
         id: `${extractionId}:${span.start}`,
         sourceTitle: title,
-        body: text
-          .slice(span.start, span.end)
+        body: closeFences(text, span)
           .replace(/\n(?:[ \t]*\n){2,}/g, "\n\n")
-          .trim(),
+          .trim()
+          // A heading the cut ends on introduces text the passage does not hold.
+          .replace(/(?:\n+[ \t]*#{1,6}[ \t][^\n]*)+$/, ""),
         questionIds: [...group.questions].sort((a, b) => a.ordinal - b.ordinal).map((q) => q.id),
       };
     });
   });
 }
 
-/** Greedy by position: a question joins the open group while their sentences still fit the cap. */
-function groupNearby(text: string, placed: Array<PassageQuestion & Span>) {
+const FENCE_LINE = /^[ \t]*(?:```|~~~)/gm;
+
+/** The cut text, with a fence added where the cut began or ended inside a code block. */
+function closeFences(text: string, span: Span): string {
+  const body = text.slice(span.start, span.end);
+  const startsInside = (text.slice(0, span.start).match(FENCE_LINE)?.length ?? 0) % 2 === 1;
+  const opened = startsInside ? `\`\`\`\n${body}` : body;
+  return (opened.match(FENCE_LINE)?.length ?? 0) % 2 === 1 ? `${opened}\n\`\`\`` : opened;
+}
+
+/** Greedy by position: a question joins the open group while their sentences still fit the cap and no refused block lies between them. */
+function groupNearby(text: string, blocks: TextBlock[], placed: Array<PassageQuestion & Span>) {
   const byPosition = [...placed].sort((a, b) => a.start - b.start || a.end - b.end || a.ordinal - b.ordinal);
   const groups: Array<{ span: Span; questions: PassageQuestion[] }> = [];
   for (const question of byPosition) {
     const open = groups.at(-1);
     const joined = open && { start: open.span.start, end: Math.max(open.span.end, question.end) };
-    if (open && joined && snapToSentences(text, joined, MAX_CHARS)) {
+    const reachable = open && question.end <= explanatoryReach(blocks, open.span, text.length).end;
+    if (open && joined && reachable && snapToSentences(text, joined, MAX_CHARS)) {
       open.span = joined;
       open.questions.push(question);
     } else {
@@ -103,7 +131,10 @@ function groupNearby(text: string, placed: Array<PassageQuestion & Span>) {
 function widen(text: string, quotes: Span, floor: number, ceiling: number): Span {
   const quoteLength = quotes.end - quotes.start;
   const limit = quoteLength > MAX_CHARS ? quoteLength + MIN_CHARS : MAX_CHARS;
-  const span = snapToSentences(text, quotes, limit) ?? snapToWords(text, quotes);
+  const whole = snapToSentences(text, quotes, limit);
+  // A "sentence" that runs out of the room (a list has no full stops) is not one to show whole.
+  const span =
+    whole && whole.start >= floor && whole.end <= Math.max(ceiling, quotes.end) ? whole : snapToWords(text, quotes);
   while (span.end - span.start < MIN_CHARS) {
     const end =
       span.end < Math.min(ceiling, text.length) ? sentenceEndFrom(text, span.end + 1, span.start + MAX_CHARS) : null;

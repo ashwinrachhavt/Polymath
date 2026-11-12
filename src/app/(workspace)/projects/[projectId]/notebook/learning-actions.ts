@@ -1,53 +1,68 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { GENERATION_COPY, generateQuiz, QuizGenerationError } from "@/domains/learning/generate-quiz";
-import { describeGenerationOutcome } from "@/domains/learning/item-count";
 import { projectDocumentIds } from "@/domains/knowledge/projects";
+import { kickGenerationJob } from "@/domains/jobs/kick";
+import type { GenerationJobView } from "@/domains/jobs/state";
+import { GENERATION_COPY, QuizGenerationError } from "@/domains/learning/generate-quiz";
+import { acceptLearningJob } from "@/domains/learning/generation-jobs";
+import { learningJobSubject } from "@/domains/learning/job-names";
+import { MAX_ITEM_COUNT, MAX_LEARNING_SOURCES, MIN_ITEM_COUNT } from "@/domains/learning/item-count";
 import { actionError } from "@/lib/action-error";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 
 const inputSchema = z.object({
   projectId: z.uuid(),
-  documentIds: z.array(z.uuid()).min(1).max(8),
-  questionCount: z.number().int().min(5).max(100).optional(),
+  kind: z.enum(["quiz", "flashcards"]),
+  documentIds: z.array(z.uuid()).min(1).max(MAX_LEARNING_SOURCES),
+  count: z.number().int().min(MIN_ITEM_COUNT).max(MAX_ITEM_COUNT).optional(),
   idempotencyKey: z.uuid(),
 });
 
-export async function generateNotebookQuizAction(input: z.input<typeof inputSchema>) {
+/**
+ * Accepts a quiz or a flashcard deck for this Notebook to be made in the
+ * background. `job` is the wait, not the result: the result shows in the
+ * Notebook's Results once the job is ready.
+ */
+export async function makeNotebookLearningAction(
+  input: z.input<typeof inputSchema>,
+): Promise<{ ok: true; job: GenerationJobView } | { ok: false; error: string }> {
   const parsed = inputSchema.safeParse(input);
-  if (!parsed.success)
-    return { ok: false as const, error: "Choose one to eight ready sources and 5 to 100 questions." };
-
-  const auth = await getAuthContext();
-  requireRole(auth, "member");
-  try {
-    const notebookSources = await projectDocumentIds(auth, parsed.data.projectId);
-    if (!notebookSources || parsed.data.documentIds.some((id) => !notebookSources.includes(id))) {
-      return { ok: false as const, error: "Choose sources that belong to this notebook." };
-    }
-    const primaryDocumentId = parsed.data.documentIds[0];
-    const result = await generateQuiz(auth, {
-      notebookId: parsed.data.projectId,
-      documentId: primaryDocumentId,
-      documentIds: parsed.data.documentIds,
-      questionCount: parsed.data.questionCount,
-      idempotencyKey: parsed.data.idempotencyKey,
-    });
-    revalidatePath(`/projects/${parsed.data.projectId}/notebook`);
-    revalidatePath("/learn");
+  if (!parsed.success) {
     return {
-      ok: true as const,
-      quizId: result.quizId,
-      summary: describeGenerationOutcome(
-        { one: "question", many: "questions" },
-        { made: result.questionCount, requested: result.requested, stoppedBy: result.stoppedBy },
+      ok: false,
+      error: `Choose one to ${MAX_LEARNING_SOURCES} ready sources and ${MIN_ITEM_COUNT} to ${MAX_ITEM_COUNT} items.`,
+    };
+  }
+  const { projectId, kind, documentIds, count, idempotencyKey } = parsed.data;
+  try {
+    const auth = await getAuthContext();
+    requireRole(auth, "member");
+    const notebookSources = await projectDocumentIds(auth, projectId);
+    if (!notebookSources || documentIds.some((id) => !notebookSources.includes(id))) {
+      return { ok: false, error: "Choose sources that belong to this notebook." };
+    }
+    const { job, created } = await acceptLearningJob(auth, {
+      kind,
+      documentIds,
+      count,
+      notebookId: projectId,
+      subject: learningJobSubject.notebook(projectId),
+      idempotencyKey,
+    });
+    if (created) kickGenerationJob({ jobId: job.id, attempt: job.attempt });
+    return { ok: true, job };
+  } catch (error) {
+    if (error instanceof QuizGenerationError) return { ok: false, error: GENERATION_COPY[error.code] };
+    return {
+      ok: false,
+      error: actionError(
+        error,
+        kind === "quiz"
+          ? "Could not generate a quiz from these sources."
+          : "Could not generate flashcards from these sources.",
       ),
     };
-  } catch (error) {
-    if (error instanceof QuizGenerationError) return { ok: false as const, error: GENERATION_COPY[error.code] };
-    return { ok: false as const, error: actionError(error, "Could not generate a quiz from these sources.") };
   }
 }

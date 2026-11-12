@@ -20,6 +20,8 @@ const VIEWER_READS: Record<string, string> = {
     "read-only hybrid search over the workspace's artifact cards for the command palette's meaning leg; membership alone authorizes viewing",
   getNoteAIRunOutputAction: "read-only poll of a run's output",
   findLinkTargetsAction: "read-only search of the workspace cards for the [[ picker; no write",
+  browseNotesAction:
+    "read-only page of the workspace's notes for the library rail's search; membership alone authorizes viewing",
   loadWeeklyReviewAction: "read-only weekly summary of the caller's own tasks and focus sessions",
   loadKnowledgeDebtAction: "read-only knowledge-debt signals over the caller's own workspace rows",
   loadOutcomeNarrativeAction:

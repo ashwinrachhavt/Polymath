@@ -1,6 +1,7 @@
 import { and, count, desc, eq, gte, ilike, inArray, lt, or, sql, type SQL, isNull } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
+import { titleFromText } from "@/lib/display-text";
 import { escapeLike } from "@/lib/list-params";
 import { captures } from "./schema";
 import { auditEvents } from "../audit/schema";
@@ -116,12 +117,9 @@ export async function searchCaptures(
   return { items, total: totalRow?.total ?? 0 };
 }
 
-/** A capture's display label for link pickers: the first text line, else the URL host. */
+/** A capture's display label for link pickers: the title its text gives itself, else the URL host. */
 export function captureLinkLabel(row: { text: string | null; url: string | null }): string {
-  const line = row.text
-    ?.split("\n")
-    .map((l) => l.trim())
-    .find((l) => l.length > 0);
+  const line = row.text ? titleFromText(row.text, "") : "";
   if (line) return line.length > 60 ? `${line.slice(0, 57)}...` : line;
   if (row.url) {
     try {

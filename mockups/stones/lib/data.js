@@ -1,0 +1,60 @@
+/* Sample content shared by the boards. Every concept carries the two labels the
+   mapping needs (kind, subject) and the evidence the finish is read from. */
+(function (root) {
+  const S = root.Stones;
+  const c = (id, name, kind, subject, finish, extra) => Object.assign({ id, name, kind, subject, finish }, extra || {});
+  const SAMPLES = [
+    c("c-show", "Show, don't tell", "prism", "amber", "brilliant"),
+    c("c-bisect", "git bisect", "point", "hematite", "polished"),
+    c("c-loops", "Feedback loops", "delta", "malachite", "polished"),
+    c("c-tcp", "TCP handshake", "terrace", "obsidian", "cut"),
+    c("c-memory", "Working memory holds about four items", "pebble", "moonstone", "polished"),
+    c("c-cv", "Cross-validation", "baton", "azurite", "star"),
+  ];
+  const MISSIONS = [
+    {
+      id: "m-rust", name: "Ship a Rust command-line tool", date: "Due 12 Dec", done: false,
+      concepts: [
+        c("r1", "Ownership moves by default", "prism", "amethyst", "brilliant", { reviews: 4, next: "in 23 days" }),
+        c("r2", "Borrow checker", "terrace", "amethyst", "polished", { ready: true, reviews: 1, next: "today" }),
+        c("r3", "Exponential backoff", "delta", "obsidian", "polished", { reviews: 2, next: "in 6 days" }),
+        c("r4", "Big-O notation", "point", "fluorite", "star", { reviews: 9, next: "in 4 months" }),
+        c("r5", "git bisect", "point", "hematite", "cut", { reviews: 0, next: "in 2 days" }),
+        c("r6", "Exit codes: 0 means success", "pebble", "obsidian", "polished", { ready: true, reviews: 1, next: "today" }),
+        c("r7", "Test-driven development", "baton", "hematite", "cut", { reviews: 0, next: "tomorrow" }),
+        c("r8", "Builder pattern", "delta", "peridot", "cut", { shards: 2 }),
+        c("r9", "Closures capture their environment", "terrace", "amethyst", "cut", { shards: 1 }),
+      ],
+    },
+    {
+      id: "m-specs", name: "Write clearer product specs", date: "Due 30 Nov", done: false,
+      concepts: [
+        c("s1", "Show, don't tell", "prism", "amber", "brilliant", { reviews: 3, next: "in 19 days" }),
+        c("s2", "Inverted pyramid", "delta", "amber", "polished", { reviews: 1, next: "in 3 days" }),
+        c("s3", "Jobs to be done", "point", "copper", "polished", { ready: true, reviews: 2, next: "today" }),
+        c("s4", "Visual hierarchy", "prism", "coral", "cut", { reviews: 0, next: "tomorrow" }),
+        c("s5", "Working memory holds about four items", "pebble", "moonstone", "polished", { reviews: 1, next: "in 5 days" }),
+        c("s6", "Active voice", "point", "amber", "cut", { shards: 2 }),
+      ],
+    },
+    {
+      id: "m-ab", name: "Trust an A/B test result", date: "Finished 2 Nov", done: true, span: "14 Oct to 2 Nov",
+      concepts: [
+        c("a1", "p-value", "pebble", "azurite", "brilliant", { reviews: 3, next: "in 30 days" }),
+        c("a2", "Regression to the mean", "prism", "azurite", "polished", { reviews: 2, next: "in 9 days" }),
+        c("a3", "Simpson's paradox", "delta", "azurite", "polished", { reviews: 1, next: "in 4 days" }),
+        c("a4", "Cross-validation", "baton", "azurite", "star", { reviews: 8, next: "in 5 months" }),
+        c("a5", "Pigeonhole principle", "prism", "fluorite", "polished", { reviews: 1, next: "in 6 days" }),
+        c("a6", "Confirmation bias", "delta", "moonstone", "brilliant", { reviews: 3, next: "in 21 days" }),
+        c("a7", "Opportunity cost", "prism", "copper", "polished", { ready: true, reviews: 1, next: "today" }),
+      ],
+    },
+  ];
+  /* Optional milestone track. Few, fixed, rare: thresholds, not concepts. */
+  const MILESTONES = {
+    hours: { title: "Focused hours", unit: "hours", have: 63, tiers: [[10, "Ten-hour Spire"], [50, "Fifty-hour Spire"], [100, "Hundred-hour Spire"], [500, "Five-hundred-hour Spire"], [1000, "Thousand-hour Spire"]] },
+    invites: { title: "People you brought in", unit: "people", have: 1, tiers: [[1, "Ring of One"], [3, "Ring of Three"], [10, "Ring of Ten"]] },
+    editions: { title: "Limited editions", items: [{ name: "Launch Week Meteorite", when: "October 2026", earned: true, seed: 11 }, { name: "Winter Solstice Meteorite", when: "21 December 2026", earned: false, seed: 29 }] },
+  };
+  root.StoneData = { SAMPLES, MISSIONS, MILESTONES, SHARDS_PER_STONE: 3, spec: (x) => S.stoneForConcept(x) };
+})(window);

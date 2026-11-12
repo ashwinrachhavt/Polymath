@@ -41,7 +41,13 @@ export type QuizEvidence = {
   source?: { documentId: string; extractionId: string; title: string };
 };
 
-export type QuizSourceSnapshot = { documentId: string; extractionId: string; title: string };
+export type QuizSourceSnapshot = {
+  documentId: string;
+  extractionId: string;
+  title: string;
+  /** The source was chosen but no question was asked of it: it is an index of links, with nothing explained. */
+  skipped?: true;
+};
 
 /** One answered question. `dontKnow` is a distinct signal, never a wrong guess. */
 export type SubmittedAnswer = {

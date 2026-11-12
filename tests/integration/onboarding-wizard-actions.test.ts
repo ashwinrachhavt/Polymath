@@ -138,7 +138,7 @@ suite("onboarding wizard actions", () => {
     const seed = await seedWorkspace(holder.db!, `wizard-${crypto.randomUUID()}`);
     authHolder.ctx = { userId: seed.userId, workspaceId: seed.workspaceId, role: "owner" };
     generateObject.mockClear();
-    vi.stubEnv("GROQ_API_KEY", "");
+    vi.stubEnv("THEHIVEAI_API_KEY", "");
 
     const result = await refineOnboardingDraftAction(freeform);
     vi.unstubAllEnvs();
@@ -158,7 +158,7 @@ suite("onboarding wizard actions", () => {
     const seed = await seedWorkspace(holder.db!, `wizard-${crypto.randomUUID()}`);
     authHolder.ctx = { userId: seed.userId, workspaceId: seed.workspaceId, role: "owner" };
     generateObject.mockClear();
-    vi.stubEnv("GROQ_API_KEY", "test-key");
+    vi.stubEnv("THEHIVEAI_API_KEY", "test-key");
 
     const result = await refineOnboardingDraftAction(freeform);
     vi.unstubAllEnvs();
@@ -199,7 +199,7 @@ suite("onboarding wizard actions", () => {
     generateObject.mockImplementationOnce(async () => {
       throw new Error("provider 500");
     });
-    vi.stubEnv("GROQ_API_KEY", "test-key");
+    vi.stubEnv("THEHIVEAI_API_KEY", "test-key");
 
     const result = await refineOnboardingDraftAction(freeform);
     vi.unstubAllEnvs();

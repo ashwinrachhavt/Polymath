@@ -3,7 +3,6 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { geminiFetch } from "./lib/gemini-openai";
 import { providerErrorGuardFetch } from "./lib/provider-error-guard";
 import { withMaxOutputTokens } from "../../../src/domains/agents/model-output-limit";
-import { headroomEnabled, headroomFetch } from "../../../src/integrations/headroom/client";
 // Relative, not "@/...": eve bundles from its own package root (see hooks/bridge.ts).
 import { DEFAULT_MODEL_ID, modelById } from "../../../src/domains/agents/models";
 
@@ -75,23 +74,13 @@ function polymathModel(runModel?: string | null) {
     );
   }
 
-  // Fetch layers, outermost last:
-  //   Gemini repair -> Headroom -> provider error status -> network.
-  // The guard sits against the network so it sees the provider's raw SSE error
-  // before any wrapper rewrites the stream. Compression wraps it so every layer
-  // above sends the final bytes, and the Gemini repair wraps compression so
-  // signatures ride on the payload that actually leaves.
-  //
-  // Headroom is env-gated and fail-open (spec PR-3). With HEADROOM_BASE_URL
-  // unset `headroomFetch` returns the fetch it was given, so the non-gemini
-  // path is the guard alone and nothing else changes.
   const guarded = providerErrorGuardFetch();
-  const transport = headroomEnabled() ? headroomFetch(process.env, guarded) : guarded;
+
   const provider = createOpenAI({
     apiKey,
     baseURL: entry.baseUrl,
     name: entry.provider,
-    fetch: entry.provider === "gemini" ? geminiFetch(transport) : transport,
+    fetch: entry.provider === "gemini" ? geminiFetch(guarded) : guarded,
   });
   const model = provider.chat(entry.id);
   // OpenRouter's credit check reserves the full max_tokens amount. Its catalog

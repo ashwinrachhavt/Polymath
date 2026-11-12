@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stones: the earning moment</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@600&family=Red+Hat+Mono:wght@400;500&family=Red+Hat+Text:wght@400;500&display=swap">
+<link rel="stylesheet" href="lib/board.css">
+<style>
+  .proto { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(260px, 1fr); gap: 20px; align-items: start; }
+  .quiz { padding: 24px; display: flex; flex-direction: column; gap: 16px; }
+  .quiz .q { font-family: var(--font-display); font-weight: 600; font-size: 1.25rem; letter-spacing: -0.025em; line-height: 1.25; }
+  .opts { display: flex; flex-direction: column; gap: 8px; }
+  .opt { text-align: left; font: 400 0.9375rem/1.4 var(--font-body); padding: 12px 14px; border-radius: 8px; border: 1px solid var(--rule); background: var(--sheet); color: var(--ink); cursor: pointer; min-height: 44px; }
+  .opt:hover:not(:disabled) { border-color: var(--ink-muted); }
+  .opt.right { border-color: var(--green); box-shadow: inset 0 0 0 1px var(--green); }
+  .opt.wrong { border-color: var(--ink-muted); color: var(--ink-muted); text-decoration: line-through; }
+  .quiz footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 36px; }
+  .tray { padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+  .slot { display: grid; grid-template-columns: 132px minmax(0, 1fr); gap: 16px; align-items: center; }
+  .slot .well { width: 132px; height: 132px; padding: 10px; position: relative; }
+  .slot .well > * { width: 100%; height: 100%; }
+  .concept { font-weight: 500; line-height: 1.3; }
+  #stone-name { font-family: var(--font-display); font-weight: 600; font-size: 1.375rem; letter-spacing: -0.03em; line-height: 1.15; }
+  .pips { display: flex; gap: 5px; align-items: center; }
+  .pip { width: 9px; height: 9px; transform: rotate(45deg); border-radius: 2px; border: 1px solid var(--ink-muted); }
+  .pip.on { background: var(--signal); border-color: var(--signal); }
+  /* the forming stone */
+  svg.forming { overflow: visible; display: block; }
+  .forming .ghost { fill: none; stroke: var(--ink-muted); stroke-width: 1.4; stroke-dasharray: 3 5; opacity: 0.7; }
+  .forming .frag { opacity: 0; transform: translate(var(--dx), var(--dy)); transition: transform 220ms cubic-bezier(0.3, 0, 0.2, 1); }
+  .forming .frag.on { opacity: 1; }
+  .forming .rim { opacity: 0; transition: opacity 200ms; }
+  .forming.fused .frag { transform: none; } .forming.fused .rim { opacity: 1; } .forming.fused .ghost { opacity: 0; }
+  .shard { position: fixed; left: 0; top: 0; width: 44px; height: 44px; margin: -22px 0 0 -22px; pointer-events: none; z-index: 20; filter: drop-shadow(0 0 6px var(--glow, #fff8)); will-change: transform; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; padding: 12px 16px; border: 1px dashed var(--ink-muted); border-radius: 10px; font-size: 0.8125rem; }
+  .controls label { display: inline-flex; gap: 6px; align-items: center; }
+  .budget { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0 20px; }
+  .budget div { border-top: 1px solid var(--rule); padding: 8px 0 10px; font-size: 0.875rem; } .budget b { display: block; font-weight: 500; }
+  .frames { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+  .frames figure { margin: 0; display: flex; flex-direction: column; gap: 6px; } .frames .well { aspect-ratio: 1; padding: 12%; position: relative; } .frames figcaption { font-size: 0.75rem; line-height: 1.3; color: var(--ink-muted); } .frames figcaption b { color: var(--ink); font-weight: 500; display: block; }
+  @media (max-width: 820px) { .proto { grid-template-columns: minmax(0, 1fr); } .frames { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+</style>
+</head>
+<body>
+<main class="page">
+  <div class="stack">
+    <h1>A right answer chips off a shard</h1>
+    <p>Answer the three questions. Each right answer sends a shard to the idea it belongs to. The third one completes the stone, and its name appears. Nothing covers the quiz and nothing waits for you: click or press any key at any point and it finishes at once.</p>
+  </div>
+
+  <section aria-label="Prototype">
+    <div class="stack">
+      <div class="proto">
+        <div class="panel quiz" id="quiz"></div>
+        <aside class="panel tray" aria-live="polite">
+          <div class="small muted">This quiz is building</div>
+          <div class="slot">
+            <div class="well" id="art"></div>
+            <div class="stack tight">
+              <div class="concept">Show, don't tell</div>
+              <div id="stone-name" hidden></div>
+              <div class="small muted" id="stone-mean"></div>
+              <div class="pips" id="pips" aria-hidden="true"></div>
+            </div>
+          </div>
+        </aside>
+      </div>
+      <div class="controls" aria-label="Prototype controls">
+        <span class="muted">Prototype controls</span>
+        <button class="btn" type="button" id="restart">Start over</button>
+        <button class="btn" type="button" id="replay">Replay the last shard</button>
+        <label><input type="checkbox" id="reduce"> Reduce motion</label>
+        <label><input type="checkbox" id="sound"> Soft chime</label>
+        <span id="timing" class="readout" style="margin-left:auto">No run yet</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <header><h2>What happens, and how long it takes</h2>
+      <p>An ordinary shard is done in about three quarters of a second. The one that completes a stone takes about a second and a third. The limit in the brief is two.</p></header>
+    <div class="stack loose">
+      <div class="frames" id="frames"></div>
+      <div class="budget">
+        <div><b>Shard appears</b>140 ms, at the answer you chose</div>
+        <div><b>Flies to its idea</b>440 ms, along a shallow arc</div>
+        <div><b>Lands</b>160 ms, its piece of the stone fills in</div>
+        <div><b>Pieces close up</b>220 ms, last shard only</div>
+        <div><b>Stone catches the light</b>360 ms, last shard only</div>
+        <div><b>Name appears</b>260 ms, overlapping the light</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <header><h2>Why it should still feel good the fiftieth time</h2></header>
+    <div class="stack">
+      <p>It never takes the screen. The reward happens beside the quiz, in the place where the stone will stay, so there is nothing to dismiss. The Next button works the whole time.</p>
+      <p>It is short and it ends the same way every time. The pleasure is the shard landing and the piece filling in, which tells you something true: this idea is one step closer. The arc bends a different way for each idea so repeated runs are not identical.</p>
+      <p>The big moment is rare by design. Three shards make a stone, so the longer sequence plays once per idea, not once per answer.</p>
+      <p>With reduced motion on, nothing flies or scales. The piece fades in where it belongs and the name appears. Sound is off unless the learner turns it on.</p>
+      <p class="small muted">The stone forms at the Fresh-cut finish, which is matte. The gloss is saved for the first review, so polishing later has something to give.</p>
+    </div>
+  </section>
+</main>
+<script src="lib/stones.js"></script>
+<script src="lib/data.js"></script>
+<script src="lib/board.js"></script>
+<script>
+(function () {
+  const S = Stones, D = StoneData, $ = (id) => document.getElementById(id);
+  const NEED = D.SHARDS_PER_STONE, concept = D.SAMPLES[0], spec = Object.assign(D.spec(concept), { finish: "cut" });
+  const mat = S.MAT[spec.material];
+  const QUESTIONS = [
+    { q: "Which sentence shows rather than tells?", o: ["Maya was nervous about the demo.", "Maya retyped the first slide's title four times.", "The demo made Maya feel very anxious indeed."], a: 1 },
+    { q: "A spec says “the import is slow”. What is the showing version?", o: ["The import is extremely slow for users.", "A 2,000-row file takes 90 seconds to import.", "Users are unhappy with import speed."], a: 1 },
+    { q: "When is telling the better choice?", o: ["When a detail would not change what the reader does.", "Never. Always show.", "Only in headings."], a: 0 },
+  ];
+  const params = new URLSearchParams(location.search);
+  let have = 0, qi = 0, running = null, formed = false;
+  const reduceBox = $("reduce"), soundBox = $("sound");
+  reduceBox.checked = matchMedia("(prefers-reduced-motion: reduce)").matches || params.get("reduce") === "1";
+  const reduced = () => reduceBox.checked;
+
+  function renderArt() {
+    if (formed) { $("art").innerHTML = S.stoneImg(spec, 132); return; }
+    $("art").innerHTML = S.drawForming(spec, have, NEED, { id: "t" }).svg;
+  }
+  function renderText() {
+    $("pips").innerHTML = Array.from({ length: NEED }, (_, i) => `<span class="pip${i < have ? " on" : ""}"></span>`).join("");
+    const name = $("stone-name");
+    if (formed) { name.hidden = false; name.textContent = S.stoneName(spec); $("stone-mean").textContent = S.stoneMeaning(spec); }
+    else { name.hidden = true; $("stone-mean").textContent = have === 0 ? `${NEED} shards make its stone` : `${have} of ${NEED} shards`; }
+  }
+  function renderQuiz() {
+    const el = $("quiz");
+    if (qi >= QUESTIONS.length) {
+      el.innerHTML = `<div class="small muted">Quiz passed</div><div class="q">Three right. “Show, don't tell” has its stone.</div><p class="muted">It is on your wall now, and it will be ready to polish in two days.</p><footer><a class="btn" href="4-wall.html" style="display:inline-flex;align-items:center;text-decoration:none">Open the wall</a><button class="btn primary" type="button" id="again">Run it again</button></footer>`;
+      $("again").addEventListener("click", restart); return;
+    }
+    const Q = QUESTIONS[qi];
+    el.innerHTML = `<div class="small muted">Question ${qi + 1} of ${QUESTIONS.length}</div><div class="q">${Q.q}</div><div class="opts">${Q.o.map((t, i) => `<button class="opt" type="button" data-i="${i}">${t}</button>`).join("")}</div><footer><span class="small muted" id="fb"></span><button class="btn primary" type="button" id="next" hidden>${qi === QUESTIONS.length - 1 ? "Finish" : "Next question"}</button></footer>`;
+    el.querySelectorAll(".opt").forEach((b) => b.addEventListener("click", () => answer(b, Q)));
+    $("next").addEventListener("click", () => { qi++; renderQuiz(); });
+  }
+  function answer(btn, Q) {
+    const i = +btn.dataset.i;
+    if (i !== Q.a) { btn.classList.add("wrong"); btn.disabled = true; $("fb").textContent = "Not that one. Try another."; return; }
+    btn.classList.add("right"); document.querySelectorAll(".opt").forEach((b) => (b.disabled = true));
+    $("fb").textContent = "Right."; $("next").hidden = false;
+    earn(btn);
+  }
+
+  function chime(last) {
+    if (!soundBox.checked) return;
+    try {
+      const ac = chime.ac || (chime.ac = new (window.AudioContext || window.webkitAudioContext)());
+      (last ? [660, 880, 1320] : [880]).forEach((f, k) => {
+        const o = ac.createOscillator(), g = ac.createGain(), t = ac.currentTime + k * 0.09;
+        o.type = "sine"; o.frequency.value = f; g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.06, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+        o.connect(g).connect(ac.destination); o.start(t); o.stop(t + 0.55);
+      });
+    } catch (e) {}
+  }
+
+  /* The sequence. Everything it starts is tracked in `running`, so one call ends it cleanly. */
+  function earn(sourceEl) {
+    if (running) running.finish();
+    const index = have, last = have + 1 === NEED, t0 = performance.now();
+    have++;
+    const anims = [], timers = [];
+    let shardEl = null, done = false;
+    const settle = () => {
+      if (done) return; done = true;
+      anims.forEach((a) => { try { a.cancel(); } catch (e) {} }); timers.forEach(clearTimeout);
+      if (shardEl) shardEl.remove();
+      if (last) formed = true;
+      renderArt(); renderText(); running = null;
+      $("timing").textContent = `Last run: ${((performance.now() - t0) / 1000).toFixed(2)} s of a 2.00 s limit`;
+      window.removeEventListener("pointerdown", skip, true); window.removeEventListener("keydown", skip, true);
+    };
+    const skip = () => settle();
+    running = { finish: settle };
+    if (reduced()) {
+      // no flight, no scale: the piece fades in where it belongs
+      renderText();
+      const frag = document.querySelector(`#art .frag[data-i="${index}"]`);
+      if (frag) { frag.classList.add("on"); anims.push(frag.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 150 })); }
+      timers.push(setTimeout(settle, 160)); chime(last); return;
+    }
+    // skip on the next input, but let that input do its own job too
+    setTimeout(() => { if (!done) { window.addEventListener("pointerdown", skip, true); window.addEventListener("keydown", skip, true); } }, 0);
+
+    const svg = document.querySelector("#art svg"), box = svg.getBoundingClientRect(), src = sourceEl.getBoundingClientRect();
+    const from = [Math.min(src.right - 28, src.left + src.width * 0.9), src.top + src.height / 2], to = [box.left + box.width / 2, box.top + box.height / 2];
+    shardEl = document.createElement("div"); shardEl.className = "shard"; shardEl.style.setProperty("--glow", mat.pal[3] + "cc");
+    shardEl.innerHTML = S.drawShard(spec.material, spec.seed + index); document.body.appendChild(shardEl);
+    const bend = ((spec.seed + index) % 2 ? -1 : 1) * Math.min(90, Math.abs(to[0] - from[0]) * 0.25 + 30);
+    const mid = [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2 + bend];
+    const at = (p, s, r) => `translate(${p[0]}px, ${p[1]}px) scale(${s}) rotate(${r}deg)`;
+    anims.push(shardEl.animate([{ transform: at(from, 0, -40), offset: 0 }, { transform: at(from, 1.25, 0), offset: 0.2, easing: "cubic-bezier(.5,0,.6,1)" }, { transform: at(mid, 1, 120), offset: 0.62, easing: "cubic-bezier(.3,.2,.3,1)" }, { transform: at(to, 0.7, 200), offset: 1 }], { duration: 580, fill: "forwards" }));
+    timers.push(setTimeout(() => {
+      shardEl.remove(); shardEl = null; chime(last);
+      const frag = svg.querySelector(`.frag[data-i="${index}"]`);
+      frag.classList.add("on");
+      anims.push(frag.animate([{ opacity: 0, filter: "brightness(2.2)" }, { opacity: 1, filter: "brightness(1.5)", offset: 0.4 }, { opacity: 1, filter: "brightness(1)" }], { duration: 160 }));
+      anims.push($("art").animate([{ transform: "scale(1)" }, { transform: "scale(1.05)" }, { transform: "scale(1)" }], { duration: 160, easing: "ease-out" }));
+      renderText();
+      if (!last) { timers.push(setTimeout(settle, 170)); return; }
+      timers.push(setTimeout(() => {
+        svg.classList.add("fused");
+        timers.push(setTimeout(() => {
+          formed = true; renderArt(); renderText();
+          const img = document.querySelector("#art img"), name = $("stone-name"), mean = $("stone-mean");
+          anims.push(img.animate([{ transform: "scale(.97)", filter: "brightness(1.9) saturate(1.3)" }, { transform: "scale(1.07)", filter: "brightness(1.25) saturate(1.15)", offset: 0.45 }, { transform: "scale(1)", filter: "brightness(1) saturate(1)" }], { duration: 360, easing: "cubic-bezier(.2,.7,.2,1)" }));
+          anims.push(name.animate([{ opacity: 0, clipPath: "inset(0 100% 0 0)" }, { opacity: 1, clipPath: "inset(0 0 0 0)" }], { duration: 260, delay: 100, fill: "backwards", easing: "ease-out" }));
+          anims.push(mean.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, delay: 200, fill: "backwards" }));
+          timers.push(setTimeout(settle, 370));
+        }, 220));
+      }, 160));
+    }, 580));
+  }
+
+  function restart() { if (running) running.finish(); have = 0; qi = 0; formed = false; renderArt(); renderText(); renderQuiz(); }
+  $("restart").addEventListener("click", restart);
+  $("replay").addEventListener("click", () => {
+    if (running) running.finish(); have = NEED - 1; qi = QUESTIONS.length - 1; formed = false; renderArt(); renderText(); renderQuiz();
+    setTimeout(() => { const b = document.querySelector(`.opt[data-i="${QUESTIONS[qi].a}"]`); if (b) b.click(); }, 350);
+  });
+
+  // still frames of the sequence, for anyone reading the board without playing it
+  const frame = (svg, title, text) => `<figure><div class="well">${svg}</div><figcaption><b>${title}</b>${text}</figcaption></figure>`;
+  const fused = S.drawForming(spec, NEED, NEED, { id: "f4" }).svg.replace('class="forming"', 'class="forming fused"');
+  $("frames").innerHTML =
+    frame(S.drawForming(spec, 0, NEED, { id: "f0" }).svg, "Nothing yet", "The outline shows the kind of idea.") +
+    frame(S.drawForming(spec, 1, NEED, { id: "f1" }).svg, "First shard", "The material shows the subject.") +
+    frame(S.drawForming(spec, 2, NEED, { id: "f2" }).svg, "Second shard", "Pieces sit slightly apart.") +
+    frame(fused, "Last shard lands", "The pieces close up.") +
+    frame(S.stoneImg(spec, 150), S.stoneName(spec), "The stone forms and is named.");
+
+  // deep links for screenshots: ?have=2, ?formed=1
+  if (params.get("have")) { have = Math.min(NEED - 1, +params.get("have")); qi = have; }
+  if (params.get("formed")) { have = NEED; formed = true; qi = QUESTIONS.length; }
+  renderArt(); renderText(); renderQuiz();
+  window.__earn = { replay: () => $("replay").click() };
+})();
+</script>
+</body>
+</html>

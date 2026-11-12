@@ -45,7 +45,7 @@ const QUIZ: QuizForSitting = {
   notebookId: null,
   documentId: "doc-1",
   title: "Otters",
-  sourceManifest: [],
+  sources: [{ documentId: "doc-1", label: "Otters", skipped: false }],
   questions: [1, 2, 3, 4].map(makeQuestion),
   passages: [
     { id: "e:900", sourceTitle: "Field guide", body: "Otters hold hands while they sleep.", questionIds: ["q3"] },
@@ -83,6 +83,23 @@ function continuePast(body: string) {
 }
 
 describe("read-first quiz runner", () => {
+  it("renders a passage's markdown: a list, bold, a working link and code, with no raw markup", () => {
+    const body = [
+      "Servers expose **tools** to a model. See the [spec](https://example.test/spec) for `call` details.",
+      "",
+      "* First point",
+      "* Second point",
+    ].join("\n");
+    const quiz = { ...QUIZ, passages: [{ id: "e:1", sourceTitle: "Field guide", body, questionIds: ["q1"] }] };
+    const { container } = render(<QuizRunner quiz={quiz} rating={null} />);
+
+    expect(screen.getByRole("link", { name: "spec" }).getAttribute("href")).toBe("https://example.test/spec");
+    expect(container.querySelector("strong")?.textContent).toBe("tools");
+    expect(container.querySelector("code")?.textContent).toBe("call");
+    expect(screen.getAllByRole("listitem").map((item) => item.textContent)).toEqual(["First point", "Second point"]);
+    expect(container.querySelector(".prose-reading")?.textContent).not.toMatch(/\*\*|\]\(|`|^\* /m);
+  });
+
   it("shows each passage before its questions, and submits every question once", async () => {
     render(<QuizRunner quiz={QUIZ} rating={null} />);
 

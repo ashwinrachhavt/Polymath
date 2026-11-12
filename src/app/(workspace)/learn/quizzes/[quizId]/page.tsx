@@ -6,6 +6,7 @@ import { z } from "zod";
 import { Screen } from "@/components/workspace/ui";
 import { getArtifactFeedback } from "@/domains/knowledge/artifact-feedback";
 import { getQuizForSitting } from "@/domains/learning/queries";
+import { sourcesLine } from "@/domains/learning/source-labels";
 import { getAuthContext } from "@/lib/auth";
 import { QuizRunner } from "../../[documentId]/quiz-runner";
 
@@ -34,12 +35,19 @@ async function QuizSitting({ params }: { params: Promise<{ quizId: string }> }) 
   const quiz = await getQuizForSitting(auth, quizId);
   if (!quiz) notFound();
   const rating = await getArtifactFeedback(auth, { kind: "quiz", id: quiz.id });
+  const asked = quiz.sources.filter((source) => !source.skipped).map((source) => source.label);
+  const skipped = quiz.sources.filter((source) => source.skipped).map((source) => source.label);
   // A one-source quiz is titled after its source; naming it again says nothing.
-  const sources = quiz.sourceManifest.map((source) => source.title);
-  const description =
-    sources.length > 1 ? `From ${sources.length} sources: ${sources.join(", ")}` : "A graded quiz over what you saved.";
+  const description = asked.length > 1 ? sourcesLine(asked) : "A graded quiz over what you saved.";
   return (
     <Screen title={quiz.title} description={description}>
+      {skipped.length > 0 ? (
+        <p className="text-body-dense text-muted-foreground">
+          {skipped.length === 1 ? "One source was left out" : `${skipped.length} sources were left out`} because{" "}
+          {skipped.length === 1 ? "it is a list" : "they are lists"} of links, with nothing explained to ask about:{" "}
+          {skipped.join(", ")}.
+        </p>
+      ) : null}
       <QuizRunner quiz={quiz} rating={rating} />
       <Link href="/learn" className="text-body-dense font-medium underline-offset-4 hover:underline">
         Back to Learn

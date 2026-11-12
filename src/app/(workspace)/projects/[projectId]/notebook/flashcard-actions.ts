@@ -1,47 +1,13 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { describeGenerationOutcome } from "@/domains/learning/item-count";
-import { FlashcardError, generateFlashcardDeck, getFlashcardDeck, rateFlashcard } from "@/domains/learning/flashcards";
+import { FlashcardError, getFlashcardDeck, rateFlashcard } from "@/domains/learning/flashcards";
 import { projectDocumentIds } from "@/domains/knowledge/projects";
 import { actionError } from "@/lib/action-error";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 
 const projectIdSchema = z.uuid();
-const generateSchema = z.object({
-  projectId: z.uuid(),
-  documentIds: z.array(z.uuid()).min(1).max(8),
-  cardCount: z.number().int().min(5).max(100).optional(),
-  idempotencyKey: z.uuid(),
-});
-
-export async function generateNotebookFlashcardsAction(input: z.input<typeof generateSchema>) {
-  const parsed = generateSchema.safeParse(input);
-  if (!parsed.success) return { ok: false as const, error: "Choose one to eight ready sources and 5 to 100 cards." };
-  const auth = await getAuthContext();
-  requireRole(auth, "member");
-  try {
-    const notebookSources = await projectDocumentIds(auth, parsed.data.projectId);
-    if (!notebookSources || parsed.data.documentIds.some((id) => !notebookSources.includes(id))) {
-      return { ok: false as const, error: "Choose sources that belong to this notebook." };
-    }
-    const result = await generateFlashcardDeck(auth, { ...parsed.data, notebookId: parsed.data.projectId });
-    revalidatePath("/projects/" + parsed.data.projectId + "/notebook");
-    return {
-      ok: true as const,
-      deckId: result.deckId,
-      summary: describeGenerationOutcome(
-        { one: "flashcard", many: "flashcards" },
-        { made: result.cardCount, requested: result.requested, stoppedBy: result.stoppedBy },
-      ),
-    };
-  } catch (error) {
-    if (error instanceof FlashcardError) return { ok: false as const, error: error.message };
-    return { ok: false as const, error: actionError(error, "Could not generate flashcards from these sources.") };
-  }
-}
 
 export async function getNotebookFlashcardDeckAction(input: { projectId: string; deckId: string }) {
   const parsed = z.object({ projectId: projectIdSchema, deckId: z.uuid() }).safeParse(input);

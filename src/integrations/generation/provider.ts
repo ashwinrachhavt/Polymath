@@ -113,7 +113,6 @@ export function chatMessages(input: GenerateInput): { role: "system" | "user"; c
 import { cloudflareProvider } from "./cloudflare";
 import { fixtureProvider } from "./fixture";
 import { geminiProvider } from "./gemini";
-import { headroomFetch } from "../headroom/client";
 import { mercuryProvider } from "./mercury";
 import { openRouterProvider } from "./openrouter";
 import { providerFromCatalog } from "./openai-compatible-providers";
@@ -122,11 +121,6 @@ export function generationProvider(
   env: Record<string, string | undefined> = process.env,
   fetchImpl: typeof fetch = fetch,
 ): GenerationProvider {
-  // Headroom compression (spec PR-3) rides the one funnel every catalog
-  // provider shares. With HEADROOM_BASE_URL unset this is fetchImpl itself,
-  // so every branch below hands its adapter exactly the fetch it handed
-  // before — byte-identical when the gate is off, even for injected doubles.
-  const wiredFetch = headroomFetch(env, fetchImpl);
   const choice = env.GENERATION_PROVIDER?.toLowerCase();
   switch (choice) {
     // E2E journeys only: deterministic and free, explicit opt-in, never a
@@ -137,18 +131,18 @@ export function generationProvider(
       if (env.NODE_ENV === "production") throw new GenerationUnconfiguredError();
       return fixtureProvider();
     case "gemini":
-      return geminiProvider(env, wiredFetch);
+      return geminiProvider(env, fetchImpl);
     case "mercury":
-      return mercuryProvider(env, wiredFetch);
+      return mercuryProvider(env, fetchImpl);
     case "groq":
       // The catalog entry returns null with no key; an explicit selection must
       // fail closed naming the variable, like the other named cases.
-      return providerFromCatalog("groq", env, wiredFetch) ?? throwUnconfigured("GROQ_API_KEY");
+      return providerFromCatalog("groq", env, fetchImpl) ?? throwUnconfigured("GROQ_API_KEY");
     case "openrouter":
-      return openRouterProvider(env, wiredFetch);
+      return openRouterProvider(env, fetchImpl);
     // Opt-in only (plan §8): the free-first default chain above is untouched.
     case "cloudflare":
-      return cloudflareProvider(env, wiredFetch);
+      return cloudflareProvider(env, fetchImpl);
     case undefined:
     case "":
       // Free-first (ASH-187, owner decision 2026-10-27; Mercury added first on
@@ -160,10 +154,10 @@ export function generationProvider(
       // OpenRouter remains last so a workspace that has only that key still
       // generates. No route rescues another mid-run: an exhausted allowance is
       // an error the caller surfaces.
-      if (env.MERCURY_API_KEY || env.INCEPTION_API_KEY) return mercuryProvider(env, wiredFetch);
-      if (env.GROQ_API_KEY) return providerFromCatalog("groq", env, wiredFetch) ?? throwUnconfigured("GROQ_API_KEY");
-      if (env.GEMINI_API_KEY || env.GOOGLE_GENERATIVE_AI_API_KEY) return geminiProvider(env, wiredFetch);
-      if (env.OPENROUTER_API_KEY) return openRouterProvider(env, wiredFetch);
+      if (env.MERCURY_API_KEY || env.INCEPTION_API_KEY) return mercuryProvider(env, fetchImpl);
+      if (env.GROQ_API_KEY) return providerFromCatalog("groq", env, fetchImpl) ?? throwUnconfigured("GROQ_API_KEY");
+      if (env.GEMINI_API_KEY || env.GOOGLE_GENERATIVE_AI_API_KEY) return geminiProvider(env, fetchImpl);
+      if (env.OPENROUTER_API_KEY) return openRouterProvider(env, fetchImpl);
       throw new GenerationUnconfiguredError();
     default:
       throw new GenerationUnconfiguredError();

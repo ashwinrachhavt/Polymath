@@ -178,8 +178,9 @@ async function runFactSuggestionRequested(
       pollFacts.map((fact) => fact.text),
     ),
     // Sized for a reasoning model: the visible JSON is ~1k tokens, but
-    // gpt-oss-120b's chain-of-thought rides the same budget (a 1,200 cap
-    // returned finish=length with an empty reply in the 2026-11-05 probe).
+    // the default model's chain-of-thought rides the same budget (on
+    // gpt-oss-120b a 1,200 cap returned finish=length with an empty reply in
+    // the 2026-11-05 probe).
     maxOutputTokens: 4_000,
   });
 

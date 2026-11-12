@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Polymath stones: design board</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@600&family=Red+Hat+Mono:wght@400;500&family=Red+Hat+Text:wght@400;500&display=swap">
+<link rel="stylesheet" href="lib/board.css">
+<style>
+  .hero { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; max-width: 760px; }
+  .hero .well { aspect-ratio: 1; padding: 12%; }
+  .boards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 32px; }
+  .boards a { display: block; text-decoration: none; border-top: 1px solid var(--ink); padding: 14px 0 22px; }
+  .boards a:hover h2 { text-decoration: underline; text-underline-offset: 4px; }
+  .boards h2 { font-size: 1.25rem; margin-bottom: 6px; }
+  ol.choices { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: 10px; max-width: 72ch; }
+  @media (max-width: 720px) { .boards { grid-template-columns: minmax(0, 1fr); } .hero { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+</style>
+</head>
+<body>
+<main class="page">
+  <div class="stack">
+    <h1>Stones you can read</h1>
+    <p>A proposal for Polymath's reward layer. Every idea a learner proves becomes one stone. Its shape says what kind of idea it is, its material says the subject, and its finish says how well it has held. Four boards follow; this page says what I would choose and what needs your decision.</p>
+    <div class="hero" id="hero"></div>
+  </div>
+  <div class="boards">
+    <a href="1-rendering.html"><h2>1. Rendering directions</h2><p class="muted">The same six stones drawn three ways, with what each costs. Recommendation: vector art everywhere, live light for one stone at a time.</p></a>
+    <a href="2-inventory.html"><h2>2. The inventory</h2><p class="muted">Six shapes, twelve materials, four finishes, 288 named stones, a geode for a finished mission, and how an idea gets its stone.</p></a>
+    <a href="3-earning.html"><h2>3. The earning moment</h2><p class="muted">A quiz you can play. A shard flies to its idea; the third one forms the stone and names it. 0.76 s for a shard, 1.34 s for a stone.</p></a>
+    <a href="4-wall.html"><h2>4. The wall</h2><p class="muted">Stones grouped by mission, in four states, with an empty state and a share image for a finished mission.</p></a>
+  </div>
+  <section>
+    <header><h2>Decisions that are yours</h2></header>
+    <ol class="choices">
+      <li><b>How broad a subject is. Decided: rebalanced.</b> Still twelve materials, but code is now three subjects (languages and syntax, software design, tools and workflow), design is merged with the arts, and history with philosophy. Obsidian moved to systems and security. Still yours to check: whether these twelve match what your learners study, because a subject is hard to split once stones exist.</li>
+      <li><b>The six kinds of idea.</b> Fact, principle, mechanism, pattern, tool, method. These need to match what the concept extractor can label reliably. A seventh, such as an example or case, would need a seventh shape.</li>
+      <li><b>Shards per stone.</b> The boards use three. Fewer makes stones cheap; more makes the first one slow to arrive.</li>
+      <li><b>What earns each finish.</b> The boards use one review, three reviews and six months. These are placeholders for your review schedule.</li>
+      <li><b>Material names.</b> Real mineral names read well and are easy to say. Check that none clash with names you already use: today's seven stones include Topaz, Ruby and Sapphire, which this set does not reuse.</li>
+      <li><b>A milestone track.</b> Optional and not confirmed. Spires for focused hours, rings for people you brought in, dated meteorites for limited editions. It is on board 2 and can be switched on and off on the wall. Accept it or drop it.</li>
+      <li><b>Photographic stones.</b> I could not test image-model plates because the Gemini key has no image quota. If you want to see that direction properly, it needs a paid image tier.</li>
+    </ol>
+  </section>
+</main>
+<script src="lib/stones.js"></script>
+<script src="lib/data.js"></script>
+<script src="lib/board.js"></script>
+<script>
+document.getElementById("hero").innerHTML = StoneData.SAMPLES.map((c) => `<div class="well" title="${Stones.stoneName(StoneData.spec(c))}">${Stones.stoneImg(StoneData.spec(c), 160)}</div>`).join("");
+</script>
+</body>
+</html>

@@ -14,6 +14,7 @@ import { presentActivityEvents, type ActivityItem } from "@/domains/audit/presen
 import { cachedPreferences } from "@/lib/cached-shell-reads";
 import { getAuthContext } from "@/lib/auth";
 import { listHref, parseListParams } from "@/lib/list-params";
+import { UpNextSection } from "@/app/(workspace)/polymath/up-next-card";
 import { DeepLinkFocus } from "./deep-link-focus";
 import { ActivityEntry, ActivityFeed } from "./feed";
 import { groupActivityByDay } from "./day-groups";
@@ -171,6 +172,10 @@ async function ActivitySurface({ searchParams }: { searchParams: SearchParams })
             ]}
           />
           <TechnicalToggle />
+        </div>
+
+        <div className="mb-4">
+          <UpNextSection auth={auth} />
         </div>
 
         {requestedEventId && linkedUnavailable ? (

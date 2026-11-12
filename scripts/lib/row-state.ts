@@ -110,6 +110,17 @@ export const GUARDED_WITHOUT_VERSION: Record<string, TableDeclaration> = {
       },
     ],
   },
+  "jobs.generation_jobs": {
+    guards: [
+      {
+        kind: "app-cas",
+        detail:
+          "every status change is one conditional UPDATE whose WHERE names the status it leaves (and, for a run, the attempt it belongs to): the claim sets running WHERE status='queued' AND attempt=$n, settling sets ready or failed WHERE status='running' AND attempt=$n, and a retry sets queued and attempt+1 WHERE status='failed' or the run has stalled. Two writers racing for one transition match the row once, so the loser changes nothing; the unique (workspace_id, idempotency_key) makes a repeated submit an ON CONFLICT DO NOTHING",
+        evidence: "src/domains/jobs/commands.ts",
+        columns: ["status", "attempt"],
+      },
+    ],
+  },
   "superagent.superagent_policies": {
     guards: [
       {

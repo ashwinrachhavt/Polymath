@@ -17,7 +17,9 @@ const cells = (line: string) =>
     .replace(/^\||\|$/g, "")
     .split("|")
     .map((c) => c.trim());
-const fence = (line: string) => line.trim().match(/^(```|~~~)\s*([\w+-]*)\s*$/);
+// The info string may carry more than a language (docs sites write
+// "```bash theme={null}"); only the language is shown.
+const fence = (line: string) => line.trim().match(/^(```|~~~)\s*([\w+-]*)(?:\s[^`]*)?$/);
 
 /** How an inline span becomes nodes. Defaults to the plain markdown rules. */
 export type InlineRenderer = (text: string) => ReactNode;
@@ -113,7 +115,7 @@ function markdown(raw: string, renderInline: InlineRenderer): ReactNode[] {
     }
 
     // Bullet or numbered list.
-    const bullet = /^\s*[-*]\s+/;
+    const bullet = /^\s*[-*+]\s+/;
     const numbered = /^\s*\d+[.)]\s+/;
     if (bullet.test(lines[i]) || numbered.test(lines[i])) {
       const ordered = numbered.test(lines[i]);
@@ -157,7 +159,7 @@ function markdown(raw: string, renderInline: InlineRenderer): ReactNode[] {
     // Heading: keep the text, drop the #s. Real h2-h4 so the reading ladder in
     // .prose-reading governs weight and spacing; #1 maps to h2, the level the
     // editors' own block commands use.
-    const heading = lines[i].match(/^(#{1,4})\s+(.*)$/);
+    const heading = lines[i].match(/^(#{1,6})\s+(.*)$/);
     if (heading) {
       const level = Math.min(heading[1].length + 1, 4) as 2 | 3 | 4;
       const Tag = `h${level}` as "h2" | "h3" | "h4";
@@ -182,7 +184,7 @@ function markdown(raw: string, renderInline: InlineRenderer): ReactNode[] {
       !isTableLine(lines[i]) &&
       !bullet.test(lines[i]) &&
       !numbered.test(lines[i]) &&
-      !/^#{1,4}\s/.test(lines[i]) &&
+      !/^#{1,6}\s/.test(lines[i]) &&
       !lines[i].trimStart().startsWith(">") &&
       !/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(lines[i]) &&
       !fence(lines[i])

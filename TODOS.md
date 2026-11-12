@@ -40,6 +40,17 @@
 - [ ] Coverage: writing-surface firePaste/adopt/hydration suppression, idea-editor save flow, extension pairing flow, ambient-panel render states. _(from coverage audit, 2026-10-30)_
 - [ ] Two pre-existing main-branch e2e failures (axe pill-success contrast on work rail; design-brief-canva "Filter by status" timeout) — owned outside this branch. _(from /ship CI triage, 2026-10-30)_
 
+## Missions and Stones (deferred by the 2026-11-11 CEO review)
+
+**Priority:** P2
+
+- [ ] Ask box for work-time recall: one box that answers from the user's own concept cards first and says so. Deferred until cards exist in volume (after the week-3 pilot). Depends on the question-to-concept link. _(from /plan-ceo-review, 2026-11-11, decision C1; plan in docs/plans/2026-11-11-missions-and-stones.md)_
+- [ ] Unprompted daily message with today's 20-minute step. Home shows the step for now; the outbound message needs a sender, failure handling and an unsubscribe path. _(from /plan-ceo-review, 2026-11-11, decision C4)_
+
+**Priority:** P3
+
+- [ ] Referral stones, limited-edition stones, and a garden or temple built on the wall, once people are paying. _(from /plan-ceo-review, 2026-11-11, decision L1)_
+
 ## Completed
 
 - [x] Capture classification proposal layer removed end-to-end: capture_proposals table dropped (migration 0288), enrichment writes the Jev domain straight to the capture row, inbox suggestion cards, home-queue capture cards, and accept/reject commands deleted. **Completed:** in-flight (2026-11-05)

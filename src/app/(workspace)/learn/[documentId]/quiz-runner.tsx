@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
+import { Markdown } from "@/components/markdown";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Panel } from "@/components/workspace/ui";
@@ -10,6 +11,7 @@ import { ArtifactFeedback } from "@/app/(workspace)/artifacts/[artifactId]/artif
 import type { ArtifactRating } from "@/domains/knowledge/artifact-feedback";
 import type { QuizForSitting } from "@/domains/learning/queries";
 import type { QuizPassage } from "@/domains/learning/quiz-passages";
+import { displayTitle } from "@/lib/display-text";
 import { completeQuizAttemptAction, type StoneAnnouncement } from "../actions";
 
 /*
@@ -418,7 +420,7 @@ function Sitting({
             <p className="mt-2 text-body-dense leading-relaxed text-muted-foreground">{question.explanation}</p>
             {question.evidence.quote ? (
               <p className="mt-2 border-l-2 border-border pl-3 text-xs italic leading-relaxed text-muted-foreground">
-                From {question.evidence.source?.title ?? "the document"}: {question.evidence.quote}
+                From {question.evidence.source?.title ?? "the document"}: {displayTitle(question.evidence.quote)}
               </p>
             ) : null}
             <div className="mt-3">
@@ -462,18 +464,15 @@ function PassageScreen({
   }, []);
   return (
     <Panel title={quizTitle} description={`Passage ${number} of ${total}`}>
-      <h3
-        ref={heading}
-        tabIndex={-1}
-        className="text-xs font-medium tracking-wide text-muted-foreground uppercase outline-none"
-      >
+      <h3 ref={heading} tabIndex={-1} className="text-body-dense font-medium text-muted-foreground outline-none">
         Read this first
       </h3>
-      {showSource ? <p className="mt-1 text-xs text-muted-foreground">From {passage.sourceTitle}</p> : null}
-      <p className="mt-2 max-w-[var(--measure-prose)] font-[family-name:var(--font-reading)] text-ui leading-relaxed whitespace-pre-wrap">
-        {passage.body}
-      </p>
-      <div className="mt-4">
+      {showSource ? <p className="mt-1 text-body-dense text-muted-foreground">From {passage.sourceTitle}</p> : null}
+      {/* The source's own markdown, rendered: the shared reader sets the measure and the type. */}
+      <div className="mt-3 font-[family-name:var(--font-reading)]">
+        <Markdown text={passage.body} />
+      </div>
+      <div className="mt-5">
         <Button type="button" onClick={onContinue}>
           Continue
         </Button>

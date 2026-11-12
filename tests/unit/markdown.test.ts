@@ -17,6 +17,28 @@ describe("transcript markdown", () => {
     expect(html).toContain(">1</td>");
   });
 
+  it("renders a bold link as a link, with no markup left over", () => {
+    const html = renderToStaticMarkup(
+      h(Markdown, { text: "* **[Git](https://example.test/git)** - Tools to read Git repositories\n+ plus item" }),
+    );
+    expect(html).toMatch(/<strong><a href="https:\/\/example.test\/git"[^>]*>Git<\/a><\/strong>/);
+    expect(html.match(/<li/g)).toHaveLength(2);
+    expect(html).not.toMatch(/\*\*|\]\(|\[Git/);
+  });
+
+  it("renders a fence whose info string carries attributes as code", () => {
+    const html = renderToStaticMarkup(h(Markdown, { text: "```bash theme={null}\nnpx -y server\n```\nAfter." }));
+    expect(html).toContain("<code");
+    expect(html).toContain("npx -y server");
+    expect(html).not.toContain("```");
+    expect(html).toContain("<p>After.</p>");
+  });
+
+  it("renders a level-five heading as a heading", () => {
+    const html = renderToStaticMarkup(h(Markdown, { text: "##### Small print" }));
+    expect(html).toContain("<h4>Small print</h4>");
+  });
+
   it("renders bullet lists", () => {
     const html = renderToStaticMarkup(h(Markdown, { text: "- one\n- two" }));
     expect(html).toContain("<ul");

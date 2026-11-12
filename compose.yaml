@@ -24,7 +24,6 @@ x-app-env: &app-env # In-container service discovery (overrides localhost values
   # America/Los_Angeles); unset keeps UTC, as CI expects.
   TZ: ${LOCAL_TZ:-UTC}
   DOCLING_SERVE_URL: http://docling:5001
-  HEADROOM_BASE_URL: http://headroom:8787
   SEARXNG_URL: http://searxng:8080
   FIRECRAWL_API_URL: http://firecrawl:3002
   # Langfuse runs as the companion compose project (make up starts it). From
@@ -127,24 +126,6 @@ services:
     image: quay.io/docling-project/docling-serve
     ports:
       - "127.0.0.1:5001:5001"
-    restart: unless-stopped
-
-  # Headroom: compresses LLM context before it leaves this machine. The deployed
-  # Vercel app cannot reach this container. No host port is published: the
-  # dockerized app reaches it at http://headroom:8787 on the compose network,
-  # avoiding conflicts with any local process already using 8787.
-  headroom:
-    image: ghcr.io/headroomlabs-ai/headroom
-    container_name: axiom-headroom
-    command: ["--host", "0.0.0.0", "--port", "8787"]
-    environment:
-      HEADROOM_ALLOW_UNAUTHENTICATED_BIND: "1"
-    healthcheck:
-      test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:8787/readyz"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 30s
     restart: unless-stopped
 
   # Private metasearch for the agents' web.search tool and Firecrawl.

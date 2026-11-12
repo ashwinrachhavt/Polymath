@@ -27,6 +27,8 @@ import { eveBridgeUnavailableReason } from "@/domains/agents/eve-driver";
 import { timeAgo } from "@/lib/time";
 import { listLinkableRecords, resolveLinkTitles } from "@/app/(workspace)/projects-links";
 import { DraftWorkbench } from "../../draft-workbench";
+import { listUnfinishedGenerationJobs } from "@/domains/jobs/queries";
+import { LEARNING_JOB_KIND_PREFIX, learningJobSubject } from "@/domains/learning/job-names";
 import { getNotebookLearningResults } from "@/domains/learning/notebook-results";
 import { describeShortfall } from "@/domains/learning/item-count";
 import { getArtifactFeedback } from "@/domains/knowledge/artifact-feedback";
@@ -132,7 +134,7 @@ async function NotebookData({
         : { draftDetail: null, linkTitles: {}, linkable: null },
   );
 
-  const [sources, vault, chats, labels, chatView, generatedRows, runs, runDrafts, workbench, learning] =
+  const [sources, vault, chats, labels, chatView, generatedRows, runs, runDrafts, workbench, learning, learningJobs] =
     await Promise.all([
       sourcesPromise,
       listAttachableDocuments(auth),
@@ -144,6 +146,10 @@ async function NotebookData({
       runDraftsPromise,
       workbenchPromise,
       resultsPromise,
+      listUnfinishedGenerationJobs(auth, {
+        kindPrefix: LEARNING_JOB_KIND_PREFIX,
+        subject: learningJobSubject.notebook(projectId),
+      }),
     ]);
   const { activeChat, activeChatLive, activeThread, lastAnswer } = chatView;
   const { draftDetail, linkTitles, linkable } = workbench;
@@ -188,6 +194,7 @@ async function NotebookData({
         lastAnswer={lastAnswer}
         runs={runs.map((run) => ({ id: run.id, state: run.state, objective: run.objective }))}
         runDrafts={Object.fromEntries(runDrafts)}
+        learningJobs={learningJobs}
         results={
           <LearningResults
             projectId={project.id}

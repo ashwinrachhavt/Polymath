@@ -15,7 +15,6 @@ import { markOnboardingWelcomedAction } from "@/app/(workspace)/onboarding/actio
 import type { PickableSkill } from "./skills/slash-skill-menu";
 import { groupHistory, type HistoryRow } from "./history";
 import { HomeSurface } from "./home-surface";
-import { UpNextSection } from "./up-next-card";
 
 export const metadata = { title: "Polymath" };
 
@@ -92,9 +91,6 @@ export async function PolymathSurface() {
 
   return (
     <HomeSurface
-      // Up next streams behind its own boundary: the composer and the
-      // conversations never wait on, or fail with, the learning reads.
-      upNext={<UpNextSection auth={auth} />}
       history={groupHistory(rows)}
       skills={skills}
       models={models}
@@ -119,8 +115,8 @@ export async function PolymathSurface() {
  * A Suspense boundary is required, not decorative: `cacheComponents` refuses to
  * prerender a route that awaits `io()` outside one, and the workspace group's
  * loading.tsx shell does not count. The fallback takes the idle home's
- * geometry (HomeSurface: the same gap and top offset, the 80px Up next card,
- * the greeting line), so the page lands where its skeleton stood.
+ * geometry (the same gap and top offset, the greeting line), so the page
+ * lands where its skeleton stood.
  */
 export default function PolymathPage() {
   return (

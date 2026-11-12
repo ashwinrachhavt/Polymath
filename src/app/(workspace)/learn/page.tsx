@@ -3,11 +3,13 @@ import { Suspense } from "react";
 import { connection } from "next/server";
 import type { Metadata } from "next";
 import { getAuthContext } from "@/lib/auth";
+import { listUnfinishedGenerationJobs } from "@/domains/jobs/queries";
+import { LEARNING_JOB_KIND_PREFIX } from "@/domains/learning/job-names";
 import { getLearnLibrary } from "@/domains/learning/queries";
 import { getFlashcardDueQueue } from "@/domains/learning/flashcards";
 import { deckReviewHref } from "@/domains/learning/review-href";
-import { UpNextSection } from "@/app/(workspace)/polymath/up-next-card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { LearnJobs } from "./learn-jobs";
 import { MakeLearningButton } from "./make-learning-dialog";
 
 export const metadata: Metadata = { title: "Learn · Polymath" };
@@ -38,7 +40,11 @@ export default function LearnPage() {
 async function LearnSurface() {
   await connection();
   const auth = await getAuthContext();
-  const [library, dueCards] = await Promise.all([getLearnLibrary(auth), getFlashcardDueQueue(auth, 40)]);
+  const [library, dueCards, jobs] = await Promise.all([
+    getLearnLibrary(auth),
+    getFlashcardDueQueue(auth, 40),
+    listUnfinishedGenerationJobs(auth, { kindPrefix: LEARNING_JOB_KIND_PREFIX }),
+  ]);
   const quizzes = library.filter((item) => item.quizId);
 
   return (
@@ -52,11 +58,7 @@ async function LearnSurface() {
         </div>
         <MakeLearningButton />
       </header>
-      {/* Home's Up next card leads, so both pages agree on where Continue goes;
-          the lists below are everything behind it. */}
-      <div className="mb-4">
-        <UpNextSection auth={auth} />
-      </div>
+      <LearnJobs initialJobs={jobs} kindPrefix={LEARNING_JOB_KIND_PREFIX} />
       <section aria-labelledby="due-flashcards-title" className="panel rounded-xl p-4">
         <h2 id="due-flashcards-title" className="font-medium">
           Flashcards due

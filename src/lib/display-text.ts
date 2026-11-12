@@ -17,8 +17,34 @@ export function displayTitle(raw: string): string {
     .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/`([^`]*)`/g, "$1")
     .replace(EMPHASIS, "$1$3")
-    .replace(/^#{1,6}\s+/gm, "");
+    .replace(/^(?:\s*>)+\s?/gm, "")
+    .replace(/^\s*#{1,6}\s+/gm, "");
   return text.replace(/\s+/g, " ").trim();
+}
+
+const HEADING_1 = /^#\s+\S/;
+const QUOTED = /^>/;
+
+/**
+ * The title a piece of captured text gives itself. A page saved as markdown
+ * often opens with a quoted site notice above its real heading (docs sites
+ * prepend the same "Documentation Index" note to every page), so a level-one
+ * heading wins when only quoted lines come before it; otherwise the first
+ * line that still has words once its markdown is stripped. Returns
+ * `fallback` for text with no words.
+ */
+export function titleFromText(text: string, fallback: string): string {
+  const lines = text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const afterQuotes = lines.find((line) => !QUOTED.test(line));
+  const chosen = afterQuotes && HEADING_1.test(afterQuotes) ? [afterQuotes] : lines;
+  for (const line of chosen) {
+    const title = displayTitle(line);
+    if (title) return title;
+  }
+  return fallback;
 }
 
 /*
