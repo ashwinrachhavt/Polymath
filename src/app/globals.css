@@ -995,6 +995,27 @@ textarea {
   }
 }
 
+/* A running job whose step has no known total: a short bar travels the track. */
+@keyframes job-progress-indeterminate {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
+}
+
+.job-progress-indeterminate {
+  animation: job-progress-indeterminate 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .job-progress-indeterminate {
+    animation: none;
+    opacity: 0.5;
+  }
+}
+
 /* ASH-312: the two interface languages, scoped from the shell's
    data-interface-mode attribute. Both stay inside the one accent and the
    warm bone/charcoal register - what changes is tempo: how much air the

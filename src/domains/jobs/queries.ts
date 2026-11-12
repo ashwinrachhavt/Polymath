@@ -42,12 +42,37 @@ export async function listUnfinishedGenerationJobs(
   return rows.map(toJobView);
 }
 
+/**
+ * The person's background work, newest first: everything still running or
+ * queued, then what settled in the last RECENT_DAYS days. This is what the
+ * jobs panel and the Activity page render first; the stream moves it on.
+ */
+export async function listRecentGenerationJobs(auth: Owner, input: { limit?: number } = {}): Promise<GenerationJobView[]> {
+  const rows = await db
+    .select(jobViewColumns)
+    .from(generationJobs)
+    .where(
+      and(
+        mine(auth),
+        or(
+          inArray(generationJobs.status, ["queued", "running"]),
+          sql`${generationJobs.updatedAt} > now() - (${RECENT_DAYS} * interval '1 day')`,
+        ),
+      ),
+    )
+    .orderBy(desc(generationJobs.createdAt), desc(generationJobs.id))
+    .limit(input.limit ?? 30);
+  return rows.map(toJobView);
+}
+
+const RECENT_DAYS = 7;
+
 /** How far behind `since` a tail looks, so a change committed just after the last read is not missed. */
 const TAIL_OVERLAP_MS = 5_000;
 
 /**
  * What a stream needs for one pass: every job still being made, plus every
- * job whose status changed since `since` (null: since now). `now` is the
+ * job whose status or progress changed since `since` (null: since now). `now` is the
  * database's clock at the read; pass it back as the next `since`. Passes
  * overlap, so the caller skips what it already sent (jobSignature).
  */
@@ -65,6 +90,7 @@ export async function tailGenerationJobs(
         or(
           inArray(generationJobs.status, ["queued", "running"]),
           sql`${generationJobs.updatedAt} > ${from} - (${TAIL_OVERLAP_MS}::double precision * interval '1 millisecond')`,
+          sql`${generationJobs.progressAt} > ${from} - (${TAIL_OVERLAP_MS}::double precision * interval '1 millisecond')`,
         ),
       ),
     )

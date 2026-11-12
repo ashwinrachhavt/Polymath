@@ -575,6 +575,34 @@ export const youtubeTranscripts = pgTable(
   ],
 );
 
+/*
+ * A video's transcript, once per video id, whoever asked for it. YouTube
+ * captions and the speech of a public video are the same for every
+ * workspace, so this is a cache of public content, not workspace data: it
+ * carries no tenant, and nothing a person wrote ever lands here. Absorbing a
+ * video a second time, in any workspace, reads this row instead of paying for
+ * a transcription again. A document's own copy of the cues stays in
+ * youtube_transcripts.
+ */
+export const videoTranscripts = pgTable(
+  "video_transcripts",
+  {
+    videoId: text("video_id").primaryKey(),
+    /** "captions": YouTube's own track, free. "speech": transcribed from the audio, paid. */
+    source: text("source").notNull(),
+    title: text("title"),
+    language: text("language"),
+    /** True when the captions are YouTube's auto-generated ones. */
+    generated: boolean("generated").notNull().default(false),
+    /** [{ start, duration, text }], in seconds. */
+    cues: jsonb("cues").notNull(),
+    /** What making the transcript cost, in millionths of a US dollar; 0 for captions. */
+    costMicroUsd: integer("cost_micro_usd").notNull().default(0),
+    ...recorded,
+  },
+  () => [check("video_transcripts_source_check", sql`source in ('captions', 'speech')`)],
+);
+
 export const claims = pgTable(
   "claims",
   {
