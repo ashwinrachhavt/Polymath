@@ -7,6 +7,7 @@ import { ConflictError, StaleWriteError } from "@/domains/capture/commands";
 import { GenerationJobConflictError } from "@/domains/jobs/commands";
 import { kickGenerationJob } from "@/domains/jobs/kick";
 
+import { archiveMission, restoreMission, type LiveMissionStatus } from "@/domains/learning/mission-archive";
 import { acceptMissionJob } from "@/domains/learning/mission-jobs";
 import {
   MissionError,
@@ -156,6 +157,40 @@ export async function startMissionAction(
   } catch (error) {
     if (error instanceof MissionError) return { ok: false, error: error.message };
     return { ok: false, error: actionError(error, "Could not start this Mission.") };
+  }
+}
+
+/** Deletes (archives) a Mission; returns the status an undo should put back. */
+export async function archiveMissionAction(
+  missionId: string,
+): Promise<{ ok: true; priorStatus: LiveMissionStatus } | { ok: false; error: string }> {
+  if (!z.uuid().safeParse(missionId).success) return { ok: false, error: "That Mission is not available." };
+  try {
+    const auth = await authorize();
+    const { priorStatus } = await archiveMission(auth, { missionId });
+    revalidatePath("/learn");
+    return { ok: true, priorStatus };
+  } catch (error) {
+    if (error instanceof MissionError) return { ok: false, error: error.message };
+    return { ok: false, error: actionError(error, "Could not delete this Mission.") };
+  }
+}
+
+export async function restoreMissionAction(
+  missionId: string,
+  status: LiveMissionStatus,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!z.uuid().safeParse(missionId).success || (status !== "draft" && status !== "active")) {
+    return { ok: false, error: "That Mission is not available." };
+  }
+  try {
+    const auth = await authorize();
+    await restoreMission(auth, { missionId, status });
+    revalidatePath("/learn");
+    return { ok: true };
+  } catch (error) {
+    if (error instanceof MissionError) return { ok: false, error: error.message };
+    return { ok: false, error: actionError(error, "Could not restore this Mission.") };
   }
 }
 

@@ -16,10 +16,7 @@ export const metadata = { title: "Spending · Polymath" };
  */
 export default function SpendingPage() {
   return (
-    <Screen
-      title="Spending"
-      description="What the agents have spent, from recorded usage events. Unpriced work shows as unpriced, never as zero."
-    >
+    <Screen title="Spending" description="Recorded usage only; unpriced work shows as unpriced, never as zero.">
       <Suspense
         fallback={
           <p role="status" className="p-6 text-body-dense text-muted-foreground">

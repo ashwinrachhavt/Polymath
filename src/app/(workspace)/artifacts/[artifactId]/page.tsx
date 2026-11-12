@@ -1,7 +1,8 @@
 import { Suspense } from "react";
 import { connection } from "next/server";
 import Link from "next/link";
-import { ArrowLeft, Download, MoreHorizontal, Sparkles } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
+import { IconButton } from "@/components/ui/icon-button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getAuthContext } from "@/lib/auth";
 import { getArtifactFeedback } from "@/domains/knowledge/artifact-feedback";
@@ -10,6 +11,7 @@ import { getArtifactDetail } from "@/domains/knowledge/artifact-gallery";
 import { getWikiPageText } from "@/domains/knowledge/wiki";
 import { extractToc, type TocEntry } from "@/domains/knowledge/artifact-toc";
 import { ArtifactMarkdown } from "@/components/artifact-markdown";
+import { ArchiveArtifactButton } from "../archive-button";
 import { DebriefButton } from "../debrief-button";
 import { CopyArtifactButton } from "../copy-artifact-button";
 import { DesignBriefButton } from "../design-brief-button";
@@ -69,33 +71,22 @@ export async function ArtifactSurface({ artifactId }: { artifactId: string }) {
 
   return (
     <>
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border px-6 py-3">
-        <p className="flex items-center gap-3 text-body-dense">
-          <Link href="/artifacts" className="flex items-center gap-1 text-muted-foreground hover:text-foreground">
-            <ArrowLeft aria-hidden className="size-3.5" /> Back to artifacts
-          </Link>
-          <span className="flex items-center gap-1.5 text-muted-foreground">
-            <Sparkles aria-hidden className="size-3.5" /> Generated in Polymath
-          </span>
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border px-4 py-2 sm:px-6">
+        <IconButton label="Back to artifacts" href="/artifacts" icon={<ArrowLeft aria-hidden />} side="right" />
         <div
           role="toolbar"
           aria-label="Artifact actions"
-          className="flex flex-wrap items-center justify-end gap-2 text-body-dense text-muted-foreground"
+          className="flex flex-wrap items-center justify-end gap-1 text-body-dense text-muted-foreground"
         >
           {artifact.kind === "transcript" ? <DebriefButton artifactId={artifactId} /> : null}
           {(BRIEFABLE_KINDS as readonly string[]).includes(artifact.kind) ? (
             <DesignBriefButton artifactId={artifactId} />
           ) : null}
           {artifact.isDesignBrief ? <CanvaImportButton artifactId={artifactId} /> : null}
-          <MoreHorizontal aria-hidden className="size-4" />
           {artifact.markdown || artifact.plainText ? (
             <CopyArtifactButton text={artifact.markdown ?? artifact.plainText ?? ""} />
           ) : null}
-          <Download aria-hidden className="size-4" />
-          <Link href={`/projects`} className="rounded-md border border-border px-3 py-1.5 hover:bg-muted">
-            Share
-          </Link>
+          <ArchiveArtifactButton artifactId={artifactId} noun="artifact" leaveTo="/artifacts" />
         </div>
       </div>
       <div className="mx-auto flex w-full max-w-6xl gap-10 px-6 py-10">

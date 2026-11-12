@@ -61,11 +61,11 @@ export function PracticePanel({
       <h2 id="practice-title" className="text-body-dense font-medium">
         Practice
       </h2>
-      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-        {documentIds.length === 0
-          ? "A source must finish reading before you can practice on it."
-          : "Use what you read on a case you have not seen."}
-      </p>
+      {documentIds.length === 0 ? (
+        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+          A source must finish reading before you can practice on it.
+        </p>
+      ) : null}
       <div className="mt-3 flex flex-wrap gap-2">
         {FORMATS.map((format) => (
           <Button

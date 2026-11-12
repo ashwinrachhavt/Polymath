@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { io } from "next/cache";
 import { Suspense } from "react";
@@ -8,6 +7,7 @@ import { getArtifactFeedback } from "@/domains/knowledge/artifact-feedback";
 import { getQuizForSitting } from "@/domains/learning/queries";
 import { sourcesLine } from "@/domains/learning/source-labels";
 import { getAuthContext } from "@/lib/auth";
+import { BackToLearn } from "../../back-to-learn";
 import { QuizRunner } from "../../[documentId]/quiz-runner";
 
 export const metadata = { title: "Quiz · Polymath" };
@@ -38,9 +38,12 @@ async function QuizSitting({ params }: { params: Promise<{ quizId: string }> }) 
   const asked = quiz.sources.filter((source) => !source.skipped).map((source) => source.label);
   const skipped = quiz.sources.filter((source) => source.skipped).map((source) => source.label);
   // A one-source quiz is titled after its source; naming it again says nothing.
-  const description = asked.length > 1 ? sourcesLine(asked) : "A graded quiz over what you saved.";
   return (
-    <Screen title={quiz.title} description={description}>
+    <Screen
+      title={quiz.title}
+      description={asked.length > 1 ? sourcesLine(asked) : undefined}
+      leading={<BackToLearn />}
+    >
       {skipped.length > 0 ? (
         <p className="text-body-dense text-muted-foreground">
           {skipped.length === 1 ? "One source was left out" : `${skipped.length} sources were left out`} because{" "}
@@ -49,9 +52,6 @@ async function QuizSitting({ params }: { params: Promise<{ quizId: string }> }) 
         </p>
       ) : null}
       <QuizRunner quiz={quiz} rating={rating} />
-      <Link href="/learn" className="text-body-dense font-medium underline-offset-4 hover:underline">
-        Back to Learn
-      </Link>
     </Screen>
   );
 }

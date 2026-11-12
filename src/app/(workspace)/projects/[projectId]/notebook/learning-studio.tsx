@@ -138,9 +138,6 @@ export function LearningStudio({
           Up next
         </Link>
       </div>
-      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-        Study from this notebook&apos;s sources with a quiz, flashcards or Explain It.
-      </p>
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <Button
           onClick={() => {

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 /*
  * The idea card is a modal over the Ideas collection (the Alfred pattern).
@@ -17,8 +17,17 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/components/polymath/zettels/idea-editor", () => ({
   IdeaEditor: () => <div data-testid="idea-editor" />,
 }));
+const { archive, restore } = vi.hoisted(() => ({
+  archive: vi.fn().mockResolvedValue({ ok: true }),
+  restore: vi.fn().mockResolvedValue({ ok: true }),
+}));
+vi.mock("@/app/(workspace)/artifacts/archive-actions", () => ({
+  archiveArtifactAction: archive,
+  restoreArtifactAction: restore,
+}));
 
 const { IdeaModal } = await import("@/components/polymath/ideas/idea-modal");
+const { Toaster } = await import("@/components/ui/toast");
 
 const editor = { workspaceId: "w1", artifactId: "6f1c2b7a-5b3e-4c8d-9a10-2b3c4d5e6f70", version: 1 };
 
@@ -37,12 +46,27 @@ describe("IdeaModal", () => {
     expect(screen.getByText(/Long context bills in memory/)).toBeDefined();
   });
 
-  it("places the edit control top right, next to the dialog's close", () => {
+  it("places the edit and delete controls top right, next to the dialog's close", () => {
     renderModal();
     const edit = screen.getByRole("button", { name: "Edit idea" });
-    expect(edit.className).toContain("top-2");
-    expect(edit.className).toContain("right-10");
+    const toolbar = edit.parentElement as HTMLElement;
+    expect(toolbar.className).toContain("top-2");
+    expect(toolbar.className).toContain("right-10");
+    expect(toolbar.contains(screen.getByRole("button", { name: "Delete idea" }))).toBe(true);
     expect(edit.getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("delete takes two clicks, archives the idea, closes the card, and Undo restores it", async () => {
+    render(<Toaster />);
+    renderModal();
+    const remove = screen.getByRole("button", { name: "Delete idea" });
+    fireEvent.click(remove);
+    expect(archive).not.toHaveBeenCalled();
+    fireEvent.click(remove);
+    await waitFor(() => expect(archive).toHaveBeenCalledWith({ artifactId: editor.artifactId }));
+    expect(replace).toHaveBeenCalledWith("/polymath/ideas?q=mvcc");
+    fireEvent.click(await screen.findByRole("button", { name: "Undo" }));
+    await waitFor(() => expect(restore).toHaveBeenCalledWith({ artifactId: editor.artifactId }));
   });
 
   it("swaps the card for the editor in place, and back", () => {
@@ -68,5 +92,6 @@ describe("IdeaModal", () => {
     renderModal(null);
     expect(screen.getByText("The cache is the bill")).toBeDefined();
     expect(screen.queryByRole("button", { name: "Edit idea" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Delete idea" })).toBeNull();
   });
 });

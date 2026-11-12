@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { io } from "next/cache";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Panel, Screen } from "@/components/workspace/ui";
+import { Screen } from "@/components/workspace/ui";
 import { getNote, listNoteSources, listNoteTags, type NoteDetail } from "@/domains/knowledge/notes";
 import { linkedNotes, mergeIdeaLinks, relatedNotes, type RelatedNote } from "@/domains/knowledge/relations";
 import { pageZettelCards } from "@/domains/knowledge/zettels";
@@ -11,7 +11,6 @@ import { IdeaGrid, type IdeaView } from "@/components/polymath/ideas/idea-grid";
 import { IdeaModal } from "@/components/polymath/ideas/idea-modal";
 import { blocksOf } from "@/components/polymath/ideas/idea-blocks";
 import { getAuthContext } from "@/lib/auth";
-import { destinations } from "@/lib/navigation";
 import { redirectPastEnd } from "@/components/list/clamp";
 import { ListToolbar } from "@/components/list/list-toolbar";
 import { NoResults } from "@/components/list/no-results";
@@ -33,9 +32,6 @@ export const metadata = { title: "Ideas · Polymath" };
 
 const BASE = "/polymath/ideas";
 const VIEWS = ["cards", "table", "timeline", "dictionary"] as const;
-const FALLBACK_PURPOSE = "Your ideas, each with its evidence.";
-// The rail owns this copy; read it there so the page and the rail agree.
-const purpose = () => destinations.find((destination) => destination.href === BASE)?.purpose ?? FALLBACK_PURPOSE;
 
 const stamp = (d: Date) => d.toLocaleDateString("en", { month: "short", day: "numeric" });
 
@@ -212,8 +208,8 @@ export async function IdeasSurface({ searchParams }: { searchParams: Promise<Raw
   const ideaHref = (id: string) => listHref(BASE, raw, { idea: id });
 
   return (
-    <Screen title="Ideas" description={purpose()}>
-      <Panel>
+    <Screen title="Ideas" actions={<TidyNowButton />}>
+      <div className="flex flex-col">
         <TidySection
           findings={tidy.findings}
           total={tidy.total}
@@ -223,10 +219,7 @@ export async function IdeasSurface({ searchParams }: { searchParams: Promise<Raw
               card.kind === "zettel" ? ideaHref(card.id) : `/polymath/notes?id=${encodeURIComponent(card.id)}`,
           }}
         />
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <ViewTabs view={view} raw={raw} />
-          <TidyNowButton />
-        </div>
+        <ViewTabs view={view} raw={raw} />
         <div className="mb-3">
           <ListToolbar searchPlaceholder="Search ideas" />
         </div>
@@ -267,7 +260,7 @@ export async function IdeasSurface({ searchParams }: { searchParams: Promise<Raw
             )}
           </IdeaModal>
         ) : null}
-      </Panel>
+      </div>
     </Screen>
   );
 }

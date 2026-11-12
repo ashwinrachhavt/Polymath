@@ -43,7 +43,9 @@ export function ReviewTabs({ active }: { active: ReviewView }) {
           aria-current={tab.view === active ? "page" : undefined}
           className={cn(
             "rounded-md px-3 py-1.5 text-body-dense outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            tab.view === active ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:text-foreground",
+            tab.view === active
+              ? "bg-muted font-medium text-foreground"
+              : "text-muted-foreground hover:text-foreground",
           )}
         >
           {tab.label}
@@ -77,11 +79,7 @@ async function SettingsSurface() {
 
 export function AgentSection({ view, stage }: { view: Exclude<ReviewView, "proposals">; stage: StageKey | undefined }) {
   return (
-    <Screen
-      title="Reviews"
-      description="What the agent is doing, and what needs a person."
-      actions={<ReviewTabs active={view} />}
-    >
+    <Screen title="Reviews" actions={<ReviewTabs active={view} />}>
       <Suspense fallback={<p className="text-muted-foreground text-body-dense">Loading…</p>}>
         {view === "tickets" ? (
           <TicketsSurface stage={stage} />

@@ -86,9 +86,7 @@ export async function ArtifactsSurface({
 
   return (
     <>
-      <div className="flex items-center justify-between gap-4 border-b border-border px-6 py-4">
-        <h1 className="text-lg font-medium">Artifacts</h1>
-      </div>
+      <h1 className="px-6 pt-5 text-lg font-medium">Artifacts</h1>
       {/* GalleryToolbar reads useSearchParams, which forces a CSR bailout for
           the whole page unless it sits inside a Suspense boundary. */}
       <Suspense fallback={null}>
