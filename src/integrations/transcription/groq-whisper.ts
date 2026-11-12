@@ -3,7 +3,7 @@
  * the cheapest good transcriber available to us: $0.04 per hour of audio,
  * billed per second with a 10 second minimum per request. Used where a video
  * has no captions. One call transcribes one clip; the caller splits long
- * audio into clips (Groq refuses files over 25 MB on the free tier).
+ * audio into clips (Groq refuses larger uploads on the free tier).
  *
  * GROQ_API_KEY turns it on; without it the caller reports that speech
  * transcription is not set up. The key is sent to Groq only.

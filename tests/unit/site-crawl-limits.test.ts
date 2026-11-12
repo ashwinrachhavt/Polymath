@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { crawlPageLimit, isAssetUrl, pagesToFile } from "@/domains/knowledge/site-crawl";
+import { crawlPageLimit, isAssetUrl, pagesToFile, pageTitle } from "@/domains/knowledge/site-crawl";
 
 /*
  * Value: protects=the bounds on what a site crawl reads and files;
@@ -69,5 +69,15 @@ describe("which crawled pages are filed", () => {
       new Set(["https://docs.example/guide"]),
     );
     expect(kept.map((entry) => entry.key)).toEqual(["https://docs.example/next"]);
+  });
+});
+
+describe("crawled page names", () => {
+  const url = new URL("https://docs.example/docs/updates.md");
+  it("prefers the page's title, then its first heading, then its path", () => {
+    expect(pageTitle({ title: "Updates - Docs", markdown: "# Ignored" }, url)).toBe("Updates - Docs");
+    expect(pageTitle({ title: null, markdown: "Intro line\n\n## What changed ##\nText" }, url)).toBe("What changed");
+    expect(pageTitle({ title: "  ", markdown: "No headings here." }, url)).toBe("docs.example/docs/updates.md");
+    expect(pageTitle({ title: null, markdown: "" }, new URL("https://docs.example/"))).toBe("docs.example");
   });
 });

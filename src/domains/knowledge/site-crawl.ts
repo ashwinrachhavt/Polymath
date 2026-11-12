@@ -264,7 +264,7 @@ async function filePage(
   const bytes = new TextEncoder().encode(input.page.markdown.trim());
   if (bytes.byteLength > MAX_UPLOAD_BYTES) return null;
   const contentHash = await sha256Hex(bytes);
-  const title = (input.page.title?.trim() || input.url.hostname).slice(0, 200);
+  const title = pageTitle(input.page, input.url);
   const result = await intakeFile(auth, {
     bytes,
     filename: `${pageSlug(input.url)}.md`,
@@ -277,6 +277,18 @@ async function filePage(
       recordSource(auth, tx, { title, url: sourceUrl, contentHash, kind: "web", providerRequestId: input.providerJob }),
   });
   return result.documentId;
+}
+
+/**
+ * A page's name: its own title, else its first heading (a markdown or text
+ * page has no title), else its path, never just the site's host, which would
+ * name every untitled page the same.
+ */
+export function pageTitle(page: Pick<CrawlPage, "title" | "markdown">, url: URL): string {
+  const heading = /^#{1,3}\s+(.+?)\s*#*\s*$/m.exec(page.markdown)?.[1];
+  const path = decodeURIComponent(url.pathname).replace(/^\/+|\/+$/g, "");
+  const name = page.title?.trim() || heading?.trim() || (path ? `${url.hostname}/${path}` : url.hostname);
+  return name.slice(0, 200);
 }
 
 function pageSlug(url: URL): string {

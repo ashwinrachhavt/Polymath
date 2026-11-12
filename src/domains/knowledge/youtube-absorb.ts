@@ -14,7 +14,6 @@ import { canonicalVideoUrl, fetchTranscript, type TranscriptCue } from "@/integr
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { sha256Hex } from "@/lib/hash";
-import { extractDocument } from "./extraction";
 import { DocumentAlreadyHasFileError, intakeFile } from "./intake";
 import { documentExtractions, documents, sources, videoTranscripts, youtubeTranscripts } from "./schema";
 import { recordSource } from "./sources";
@@ -31,7 +30,13 @@ import { recordSource } from "./sources";
  *      same video again, anywhere, costs nothing;
  *   2. the text filed as the document's bytes, with its source identity;
  *   3. the cue table, so a citation can deep-link to ?t=<seconds>;
- *   4. the normal extraction pass over the text.
+ *
+ * The job is ready once the transcript is filed. Extraction (chunking,
+ * embeddings, zettel proposals) is the document pipeline's own work, queued by
+ * intakeFile as `document.extraction_requested` exactly as for an upload or a
+ * crawled page; it takes far longer than the transcript (tens of seconds for
+ * an hour of speech) and has its own state on the source row, so the job does
+ * not wait for it.
  *
  * Each step is idempotent: a retried job finds the file already attached and
  * the transcript cached. A video that cannot be transcribed fails the job
@@ -41,7 +46,7 @@ import { recordSource } from "./sources";
 
 export const YOUTUBE_ABSORB_KIND = "knowledge.youtube";
 
-/** Speech is transcribed in clips this long: well inside Groq's 25 MB upload limit at audio bitrates. */
+/** Speech is transcribed in clips this long: well inside Groq's upload limit at audio bitrates. */
 export const SPEECH_CLIP_SECONDS = 20 * 60;
 
 const inputSchema = z.object({
@@ -124,9 +129,6 @@ export const youtubeAbsorbRunner =
       }
       await run.progress("Filing the transcript");
       await fileTranscript(auth, { documentId: doc.id, videoId: input.videoId, fallbackTitle: doc.title, transcript });
-      await run.progress("Reading the transcript");
-      // The text is durable now; a failed extraction is retried from the source list like any document's.
-      await extractDocument(auth, { documentId: doc.id });
       notice = transcriptNotice(transcript);
     }
     if (input.captureId && (await captureInWorkspace(auth, input.captureId))) {

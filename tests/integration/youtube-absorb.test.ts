@@ -1,5 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { outboxEvents } from "@/domains/audit/schema";
 import { captureDocuments } from "@/domains/capture/schema";
 import { generationJobs } from "@/domains/jobs/schema";
 import { documentExtractions, documents, videoTranscripts, youtubeTranscripts } from "@/domains/knowledge/schema";
@@ -20,19 +21,12 @@ import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace"
 
 const handle = makeTestDb();
 vi.mock("@/domains/jobs/kick", () => ({ kickGenerationJob: vi.fn() }));
-// Extraction is its own path with its own suites; here it only has to be called.
-const extractDocument = vi.fn(async () => ({ ok: true }));
-vi.mock("@/domains/knowledge/extraction", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/domains/knowledge/extraction")>()),
-  extractDocument: (...args: unknown[]) => extractDocument(...(args as [])),
-}));
 
 afterAll(async () => {
   await handle.client.end();
 });
 
 beforeEach(() => {
-  extractDocument.mockClear();
   vi.stubEnv("GROQ_API_KEY", "test-key");
 });
 
@@ -108,7 +102,9 @@ describe("YouTube absorption (real Postgres, stubbed providers)", () => {
     expect(cues).toMatchObject({ videoId, language: "en", generated: false });
     const [cached] = await handle.db.select().from(videoTranscripts).where(eq(videoTranscripts.videoId, videoId));
     expect(cached).toMatchObject({ source: "captions", costMicroUsd: 0 });
-    expect(extractDocument).toHaveBeenCalledWith(auth, { documentId });
+    // Extraction is the document pipeline's own queued work, not the job's.
+    const queued = await handle.db.select().from(outboxEvents).where(eq(outboxEvents.workspaceId, auth.workspaceId));
+    expect(queued.filter((event) => event.topic === "document.extraction_requested")).toHaveLength(1);
   });
 
   it("absorbs a cached video in another workspace without fetching anything", async () => {
