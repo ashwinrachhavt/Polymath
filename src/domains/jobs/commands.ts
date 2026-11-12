@@ -3,7 +3,7 @@ import { enqueueOutbox, type OutboxHandler } from "@/domains/audit/outbox";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { memberships } from "@/domains/identity/schema";
 import { db } from "@/lib/db";
-import { withTransaction } from "@/lib/db-transaction";
+import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { generationJobRunners, type GenerationJobRun, type GenerationJobRunner } from "./runners";
 import { generationJobs, type GenerationJobResult } from "./schema";
 import {
@@ -87,12 +87,17 @@ function canonical(value: unknown): string {
  * Accepts work for later. `created` is false when the key was seen before:
  * the first job is returned whatever state it has reached. The same key with
  * a different kind, maker or input throws GenerationJobConflictError.
+ *
+ * Pass `tx` to accept the job in the caller's transaction, so the job exists
+ * exactly when the thing it works on does. Start it (kickGenerationJob) only
+ * after that transaction commits.
  */
 export async function submitGenerationJob(
   auth: Pick<AuthContext, "workspaceId" | "userId">,
   input: { kind: string; subject?: string; idempotencyKey: string; title: string; input: unknown },
+  outer?: TxDrizzle,
 ): Promise<{ job: GenerationJobView; created: boolean }> {
-  return withTransaction(async (tx) => {
+  const accept = async (tx: TxDrizzle) => {
     const [created] = await tx
       .insert(generationJobs)
       .values({
@@ -130,7 +135,8 @@ export async function submitGenerationJob(
       throw new GenerationJobConflictError();
     }
     return { job: toJobView(existing), created: false };
-  });
+  };
+  return outer ? accept(outer) : withTransaction(accept);
 }
 
 /**

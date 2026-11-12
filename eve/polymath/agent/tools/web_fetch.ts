@@ -33,8 +33,7 @@ export default defineTool({
   inputSchema: z.object({
     url: z.string().url().describe("Public http(s) URL to read"),
     crawl: z.boolean().optional().describe("Crawl the site instead of reading one page"),
-    limit: z.number().int().min(1).max(50).optional().describe("Crawl: max pages (default 10)"),
-    maxDepth: z.number().int().min(1).max(3).optional().describe("Crawl: link depth (default 1)"),
+    limit: z.number().int().min(1).max(30).optional().describe("Crawl: max pages (default 25, two links deep)"),
   }),
   async execute(input, ctx) {
     const current = ctx.session.auth.current;
@@ -86,10 +85,7 @@ export default defineTool({
     }
 
     if (input.crawl) {
-      return crawlSiteForAgent(
-        { workspaceId, userId },
-        { url: input.url, limit: input.limit, maxDepth: input.maxDepth },
-      );
+      return crawlSiteForAgent({ workspaceId, userId }, { url: input.url, limit: input.limit });
     }
     return fetchPageForAgent({ workspaceId }, { url: input.url });
   },

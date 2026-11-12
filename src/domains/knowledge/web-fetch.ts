@@ -1,9 +1,9 @@
 import type { AuthContext } from "@/domains/identity/resolve";
 import { FirecrawlNotConfiguredError, scrapeToMarkdown, type FirecrawlScrapeResult } from "@/integrations/firecrawl/client";
 import { fetchTranscript, isYouTubeUrl, type TranscriptResult } from "@/integrations/youtube/transcript";
-import { withTransaction } from "@/lib/db-transaction";
 import { canonicalCaptureUrl } from "@/lib/safe-fetch";
-import { enqueueOutbox } from "@/domains/audit/outbox";
+import { kickGenerationJob } from "@/domains/jobs/kick";
+import { CRAWL_DEPTH, crawlPageLimit, submitSiteCrawl } from "./site-crawl";
 
 /*
  * What the agents' `web.fetch` tool calls.
@@ -11,11 +11,12 @@ import { enqueueOutbox } from "@/domains/audit/outbox";
  * Reading one page is a read: nothing is stored beyond the run's tool_calls
  * row, which the event bridge writes.
  *
- * Crawling is different. A crawl outlives a request, so this does not fetch —
- * it enqueues `crawl.requested` in the same shape every other producer uses,
- * and the outbox worker submits, polls and lands the pages as documents. The
- * tool returns "queued" rather than a partial page set, because a truncated
- * crawl reported as success is the failure this replaced.
+ * Crawling is different. A crawl outlives a request, so this does not fetch:
+ * it submits a site crawl job (site-crawl.ts), the same job a link capture
+ * starts, which lands the pages as documents and shows its progress to the
+ * person whose agent asked. The tool returns "queued" rather than a partial
+ * page set, because a truncated crawl reported as success is the failure this
+ * replaced.
  *
  * The URL a model supplies is not trusted. `assertPublicUrl` is the same
  * address-family rule the app uses, applied before anything leaves.
@@ -145,32 +146,24 @@ export async function fetchPageForAgent(
 
 export async function crawlSiteForAgent(
   auth: Pick<AuthContext, "workspaceId" | "userId">,
-  input: { url: string; limit?: number; maxDepth?: number },
+  input: { url: string; limit?: number },
 ): Promise<AgentWebCrawlResult> {
   const url = assertPublicUrl(input.url.trim());
   if (!url) return { ok: false, error: "url must be a public http(s) address" };
-  const target = canonicalCaptureUrl(url);
-  const limit = Math.min(Math.max(input.limit ?? 10, 1), 50);
-  const maxDepth = Math.min(Math.max(input.maxDepth ?? 1, 1), 3);
+  const limit = Math.min(Math.max(input.limit ?? crawlPageLimit(), 1), 30);
+  let accepted;
   try {
-    await withTransaction((tx) =>
-      enqueueOutbox(tx, auth, {
-        topic: "crawl.requested",
-        payload: { url: target, limit, maxDepth },
-        // The canonical URL is the key, so asking twice while one is running
-        // joins the first job instead of starting a second crawl of the site.
-        dispatchKey: `crawl:${target}`,
-      }),
-    );
+    accepted = await submitSiteCrawl(auth, { url, limit });
   } catch {
     return { ok: false, error: "crawl could not be queued, try again" };
   }
+  kickGenerationJob({ jobId: accepted.job.id, attempt: accepted.job.attempt });
   return {
     ok: true,
     queued: true,
-    url: target,
+    url: canonicalCaptureUrl(url),
     limit,
-    maxDepth,
+    maxDepth: CRAWL_DEPTH,
     note: "Queued. Pages land in the Library as documents as they arrive; search them there once the crawl finishes.",
   };
 }
