@@ -5,7 +5,7 @@
 # loopback (127.0.0.1:3000). Reach it through an SSH tunnel. Everything else
 # talks over the compose networks.
 #
-# Memory and CPU limits are ceilings: memory sums to about 20 GB of the VM's
+# Memory and CPU limits are ceilings: memory sums to about 21 GB of the VM's
 # 24 GB, leaving room for the host and the separate Transactwise docling stack
 # in /opt/docling; CPU caps keep one runaway service from starving the rest.
 #
@@ -144,7 +144,7 @@ services:
       timeout: 10s
       retries: 5
       start_period: 120s
-    mem_limit: 5g
+    mem_limit: 4g
     cpus: 2
     logging: *logging
     restart: unless-stopped
@@ -206,7 +206,9 @@ services:
       SEARXNG_ENDPOINT: http://searxng:8080
       SEARXNG_ENGINES: duckduckgo,brave
       SEARXNG_CATEGORIES: general
-      NUM_WORKERS_PER_QUEUE: "4"
+      # The image starts an api plus ~10 worker processes; 2 per queue (not
+      # the laptop's 4) and a 4 GB cap keep its boot clear of the OOM killer.
+      NUM_WORKERS_PER_QUEUE: "2"
       CRAWL_CONCURRENT_REQUESTS: "5"
       MAX_CONCURRENT_JOBS: "3"
       BROWSER_POOL_SIZE: "3"
@@ -234,7 +236,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 60s
-    mem_limit: 2g
+    mem_limit: 4g
     cpus: 1
     logging: *logging
     restart: unless-stopped

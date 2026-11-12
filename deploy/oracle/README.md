@@ -17,9 +17,9 @@ The server's database is its own copy. It started from the laptop backup of
 | db                                                                      | Postgres 17 + pgvector                        | 3 GB       |
 | web                                                                     | `next start`, plus both eve agents (loopback) | 4 GB       |
 | worker                                                                  | outbox worker                                 | 2 GB       |
-| docling                                                                 | document extraction (CPU build)               | 5 GB       |
+| docling                                                                 | document extraction (CPU build)               | 4 GB       |
 | searxng, redis-search                                                   | private metasearch                            | 0.75 GB    |
-| firecrawl, firecrawl-playwright, firecrawl-postgres, firecrawl-rabbitmq | crawling                                      | 5.75 GB    |
+| firecrawl, firecrawl-playwright, firecrawl-postgres, firecrawl-rabbitmq | crawling                                      | 7.75 GB    |
 
 Only `web` publishes a port, on `127.0.0.1:3000` of the VM. `migrate` runs once
 per deploy. The eve agents are not separate containers: under `next start`,
