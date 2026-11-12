@@ -1,5 +1,7 @@
 "use client";
 
+import { CaptureSite, type CaptureSitePage } from "./capture-site";
+import type { GenerationJobView } from "@/domains/jobs/state";
 import { CaptureContextPanel } from "./capture-context-panel";
 import Link from "next/link";
 import { useEffect, useOptimistic, useRef, useState, useTransition } from "react";
@@ -126,6 +128,7 @@ export function InboxDetail({
   priorWriting,
   zettelProviderReady,
   zettelProviderReason,
+  site = null,
 }: {
   capture:
     | (Omit<InboxRow, "preview" | "hasText"> & {
@@ -151,6 +154,8 @@ export function InboxDetail({
   zettelProviderReady: boolean;
   /** Safe sentence naming what turns generation on; shown when it is off. */
   zettelProviderReason: string;
+  /** For a captured address: the pages its crawl filed and the crawl's job, if any. */
+  site?: { pages: CaptureSitePage[]; initialJobs: GenerationJobView[] } | null;
 }) {
   const [optimisticState, decide] = useOptimistic(
     capture?.processingState ?? null,
@@ -454,6 +459,8 @@ export function InboxDetail({
           </>
         )}
       </div>
+
+      {site ? <CaptureSite key={`site:${capture.id}`} captureId={capture.id} {...site} /> : null}
 
       {/* Opt-in: a link is fetched and summarized only when the person asks. */}
       {capture.url && isHttpUrl(capture.url) ? (
