@@ -13,8 +13,20 @@
  * per request, so a plain append log grows without limit during a day of
  * testing. It is rotated in place at EVE_DEV_LOG_MAX_BYTES (default 10 MiB),
  * keeping exactly one previous file.
+ *
+ * The spawned process passes `--resume` so runs retained from a previous
+ * invocation are recovered instead of left dormant.
  */
-import { closeSync, existsSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 
@@ -92,7 +104,7 @@ async function up(): Promise<void> {
   }
   truncateLog();
   const fd = openSync(LOG_FILE, "a");
-  const child = spawn("eve", ["dev", "--no-ui"], {
+  const child = spawn("eve", ["dev", "--no-ui", "--resume"], {
     cwd: AGENT_ROOT,
     stdio: ["ignore", fd, fd],
     detached: true,
@@ -133,14 +145,15 @@ async function down(): Promise<void> {
   // eve dev leaves the port it published behind; the app probes before use,
   // so only state files that still claim *this* pid are worth removing.
   const state = stateFile();
-  const stale = [join(STATE_DIR, "next-dev-server.json"), join(STATE_DIR, "dev-server-state.v1.json")]
-    .filter((file) => {
+  const stale = [join(STATE_DIR, "next-dev-server.json"), join(STATE_DIR, "dev-server-state.v1.json")].filter(
+    (file) => {
       try {
         return JSON.parse(readFileSync(file, "utf8")).pid === pid;
       } catch {
         return false;
       }
-    });
+    },
+  );
   for (const file of stale) unlinkSync(file);
   unlinkSync(PID_FILE);
   console.log(`eve dev stopped (pid ${pid})${state.pid === pid ? `; cleared its published state file` : ""}`);
