@@ -26,6 +26,7 @@ import {
 import { ContextChips } from "./context-chips";
 import { eventFile, uploadCaptureFile } from "@/lib/capture-upload";
 import { citedIndices } from "@/domains/knowledge/inline-citations";
+import { randomId } from "@/lib/random-id";
 
 /*
  * ChatSurface — the one chat interface.
@@ -338,7 +339,7 @@ export function ChatSurface({
     // Optimistic: the message shows and the composer empties now. A failure
     // below takes it back out and returns the words to the composer, so a
     // failed send never loses what was typed.
-    const entry = makePending(crypto.randomUUID(), message, userTexts);
+    const entry = makePending(randomId(), message, userTexts);
     setPending((current) => [...current, entry]);
     setDraft("");
     forceScrollRef.current = true;

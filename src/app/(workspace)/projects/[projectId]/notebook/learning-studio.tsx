@@ -12,6 +12,7 @@ import type { GenerationJobView } from "@/domains/jobs/state";
 import { LEARNING_JOB_KIND_PREFIX, learningJobSubject } from "@/domains/learning/job-names";
 import { makeNotebookLearningAction } from "./learning-actions";
 import { startNotebookExplainItAction } from "./explain-actions";
+import { randomId } from "@/lib/random-id";
 
 /*
  * The Notebook's one learning action. Learn this opens a sheet with three
@@ -102,7 +103,7 @@ export function LearningStudio({
     const documentIds = sources.map((s) => s.documentId).filter((id) => selectedIds.includes(id));
     const itemCount = choice.noun ? count : undefined;
     const signature = JSON.stringify([kind, documentIds, itemCount]);
-    if (attempt.current?.signature !== signature) attempt.current = { signature, key: crypto.randomUUID() };
+    if (attempt.current?.signature !== signature) attempt.current = { signature, key: randomId() };
     const idempotencyKey = attempt.current.key;
     startTransition(async () => {
       if (kind === "explain") {

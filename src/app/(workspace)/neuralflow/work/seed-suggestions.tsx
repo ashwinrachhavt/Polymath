@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { commitSeedAction, dismissSeedAction } from "./actions";
+import { randomId } from "@/lib/random-id";
 
 /*
  * Tomorrow's suggestions, as the end-of-day shutdown recorded them. The owner
@@ -39,7 +40,7 @@ export function SeedSuggestions({
         seedId: seed.seedId,
         taskId: seed.taskId,
         expectedVersion: seed.taskVersion,
-        idempotencyKey: crypto.randomUUID(),
+        idempotencyKey: randomId(),
       });
       if (!result.ok) {
         setError({ id: seed.seedId, message: result.error });

@@ -8,11 +8,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { CaptureKind } from "@/domains/capture/kind-label";
 import type { LearningSourceOption } from "@/app/(workspace)/learn/make-actions";
+import { captureDisplayTitle } from "@/lib/display-text";
 import { MakeLearningButton } from "@/app/(workspace)/learn/make-learning-dialog";
 import { listHref } from "@/lib/list-params";
 import { setCaptureStateAction } from "./actions";
 import { generateZettelsAction } from "./zettel-actions";
 import { ZettelQueueWatch } from "./zettel-queue-watch";
+import { randomId } from "@/lib/random-id";
 
 /*
  * The list pane: one clamped line of primary text, a muted metadata line, and
@@ -125,8 +127,10 @@ export function captureTitle(capture: {
   url?: string | null;
   rawPayload?: unknown;
 }): string {
-  const named = capture.title?.trim();
-  if (named) return named;
+  // A stored title may still hold raw markdown from before 2026-11-12; clean it
+  // for display rather than rewriting rows.
+  const clean = captureDisplayTitle(capture);
+  if (clean) return clean;
   const body = capture.preview ?? capture.text ?? "";
   const first = body.trim().split("\n")[0]?.trim();
   // A file capture's only label is its filename.
@@ -149,8 +153,8 @@ export function captureDetailHeading(capture: {
   kind?: string | null;
   rawPayload?: unknown;
 }): string | null {
-  const named = capture.title?.trim();
-  if (named) return named;
+  const clean = captureDisplayTitle(capture);
+  if (clean) return clean;
   // A url-only capture's URL is its identity, not its body.
   if (capture.kind === "url" && capture.url && !capture.text?.trim()) return capture.url;
   const filename = ((capture.rawPayload ?? {}) as { filename?: string }).filename?.trim();
@@ -299,7 +303,7 @@ export function InboxList({
     startTransition(async () => {
       const result = await generateZettelsAction({
         captureIds: [...selected],
-        idempotencyKey: crypto.randomUUID(),
+        idempotencyKey: randomId(),
       });
       if (!result.ok) {
         setBulkErrors([{ id: "zettelize", title: "Zettelize", message: result.message }]);

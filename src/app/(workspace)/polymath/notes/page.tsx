@@ -23,6 +23,7 @@ import { NewNoteButton, NoteEditor } from "./note-editor";
 import { noteLayout } from "./note-layout";
 import { FindNoteButton, NotebookWorkspace } from "./notebook-workspace";
 import { NotesLibrary } from "./notes-library";
+import { NoteStackSurface, wantsStackView } from "./note-stack-surface";
 
 export const metadata = { title: "Notes · Polymath" };
 
@@ -88,6 +89,9 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
   await io();
   const auth = await getAuthContext();
   const raw = await searchParams;
+  // The stacked reading view (?view=stack) replaces the editor for the whole
+  // page; the editor stays the default.
+  if (wantsStackView(raw)) return <NoteStackSurface raw={raw} startId={requestedNoteId(raw)} />;
   let id = requestedNoteId(raw);
   if (!id) {
     const recent = await listNotes(auth, 25, ["note"]);

@@ -8,6 +8,7 @@ import { WorkStatus } from "@/components/work-status";
 import type { GenerationJobView } from "@/domains/jobs/state";
 import { LEARNING_JOB_KIND_PREFIX, learningJobSubject } from "@/domains/learning/job-names";
 import { generateQuizAction } from "./actions";
+import { randomId } from "@/lib/random-id";
 
 /*
  * Generate or regenerate one document's quiz. The click only hands the work
@@ -40,7 +41,7 @@ export function GenerateQuizButton({
         onClick={() => {
           setError(null);
           startTransition(async () => {
-            const result = await generateQuizAction({ documentId, idempotencyKey: crypto.randomUUID() }).catch(() => ({
+            const result = await generateQuizAction({ documentId, idempotencyKey: randomId() }).catch(() => ({
               ok: false as const,
               error: "The request did not reach Polymath. Try again.",
             }));

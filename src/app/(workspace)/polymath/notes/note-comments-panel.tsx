@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { timeAgo } from "@/lib/time";
 import { addNoteCommentAction, resolveNoteCommentAction } from "./actions";
+import { randomId } from "@/lib/random-id";
 
 /*
  * The margin panel for a note's comments (Notion-feel, owner direction
@@ -33,7 +34,7 @@ function CommentRow({ comment }: { comment: PanelComment }) {
     const result = await resolveNoteCommentAction({
       commentId: comment.id,
       resolved: next,
-      idempotencyKey: crypto.randomUUID(),
+      idempotencyKey: randomId(),
     });
     setBusy(false);
     if (!result.ok) return;
@@ -81,7 +82,7 @@ export function NoteCommentsPanel({ noteId, initialComments }: { noteId: string;
     if (!body || pending) return;
     setPending(true);
     setError("");
-    const result = await addNoteCommentAction({ noteId, body, idempotencyKey: crypto.randomUUID() });
+    const result = await addNoteCommentAction({ noteId, body, idempotencyKey: randomId() });
     setPending(false);
     if (!result.ok) return setError(result.error);
     // Only clear what was submitted: text typed while the request was in

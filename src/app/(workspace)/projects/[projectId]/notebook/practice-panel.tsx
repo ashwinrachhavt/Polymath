@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import type { ChallengeFormat } from "@/domains/learning/challenge-content";
 import { startPracticeAction } from "./practice-actions";
 import { PRACTICE_NAMES, useRefreshWhile } from "./practice-session";
+import { randomId } from "@/lib/random-id";
 
 /*
  * Practice in the Notebook: two buttons that each start one exercise, and the
@@ -43,7 +44,7 @@ export function PracticePanel({
 
   function start(format: ChallengeFormat) {
     setError(null);
-    if (request.current?.format !== format) request.current = { format, key: crypto.randomUUID() };
+    if (request.current?.format !== format) request.current = { format, key: randomId() };
     const idempotencyKey = request.current.key;
     startTransition(async () => {
       const result = await startPracticeAction({ projectId, documentIds, format, idempotencyKey });

@@ -21,6 +21,7 @@ import { createContext, useCallback, useContext, useMemo, useState } from "react
 import { Button } from "@/components/ui/button";
 import type { GraphEdge, GraphNode } from "@/domains/knowledge/relations";
 import { combineCardsAction, linkCardsAction } from "./actions";
+import { randomId } from "@/lib/random-id";
 
 type CardData = { title: string; kind: string; excerpt: string | null; [key: string]: unknown };
 type CardNode = Node<CardData, "card">;
@@ -229,7 +230,7 @@ export function GraphCanvas({ nodes: initialNodes, edges: initialEdges }: { node
     const result = await combineCardsAction({
       sourceIds: crucible.ids,
       title: crucible.title || undefined,
-      idempotencyKey: crypto.randomUUID(),
+      idempotencyKey: randomId(),
     });
     if (!result.ok) {
       setBusy(false);

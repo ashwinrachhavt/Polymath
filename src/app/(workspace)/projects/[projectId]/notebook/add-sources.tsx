@@ -5,6 +5,7 @@ import { Loader2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { addUrlToNotebookAction, attachToNotebookAction } from "./add-source-actions";
+import { randomId } from "@/lib/random-id";
 
 /*
  * The Sources pane's capture affordance (NotebookLM pattern, IA plan 3a/8).
@@ -61,7 +62,7 @@ export function AddSources({ projectId, vault }: { projectId: string; vault: Vau
         body.append("title", file.name.replace(/\.[^.]+$/, "") || file.name);
         const response = await fetch("/api/v1/files", {
           method: "POST",
-          headers: { "Idempotency-Key": crypto.randomUUID() },
+          headers: { "Idempotency-Key": randomId() },
           body,
         });
         const payload = (await response.json().catch(() => null)) as {

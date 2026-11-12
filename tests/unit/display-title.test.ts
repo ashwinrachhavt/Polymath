@@ -101,3 +101,15 @@ describe("titleFromText", () => {
     expect(titleFromText("***", "Captured text")).toBe("***");
   });
 });
+
+describe("titleFromText with a notice, a fence and a real heading", () => {
+  it("takes the page heading when a bare fence sits between the notice and it", () => {
+    const text = "> ## Documentation Index\n>\n# Everything server\n\nTools for testing agents.";
+    expect(titleFromText(text, "Captured text")).toBe("Everything server");
+  });
+
+  it("falls back to the notice's own words when the page has no heading", () => {
+    const text = "> ## Documentation Index\n> Fetch the complete documentation index at: https://x.test/llms.txt";
+    expect(titleFromText(text, "Captured text")).toBe("Documentation Index");
+  });
+});

@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { requestJson } from "@/lib/client-request";
+import { randomId } from "@/lib/random-id";
 
 /*
  * The generated-draft control under a run. A draft offers Keep (reviewed) and
@@ -18,7 +19,7 @@ export function DraftControls({ draft }: { draft: { artifactId: string; status: 
   async function call(path: string, body?: unknown) {
     setPending(true);
     setError(null);
-    const result = await requestJson(path, { method: "POST", body, idempotencyKey: crypto.randomUUID() });
+    const result = await requestJson(path, { method: "POST", body, idempotencyKey: randomId() });
     setPending(false);
     if (!result.ok) {
       setError(result.failure.title);

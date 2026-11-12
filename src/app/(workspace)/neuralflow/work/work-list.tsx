@@ -10,6 +10,7 @@ import { StoneCeremony } from "@/components/products/neuralflow/stone-ceremony";
 import { commitTaskAction, completeTaskAction, completeTasksAction, createTaskAction } from "./actions";
 import { pruneSelection, toggleSelection } from "./selection";
 import { STATUS_LABEL as statusLabel, STATUS_PILL as statusPill } from "./status-meta";
+import { randomId } from "@/lib/random-id";
 
 /*
  * The Work list: rows, not cards. Adding from a list that means "today" writes
@@ -91,7 +92,7 @@ export function WorkList({
     setSelection((prev) => pruneSelection(prev, new Set(items.map((item) => item.row.id))));
   }
   const intent = useRef<string | null>(null);
-  const key = () => (intent.current ??= crypto.randomUUID());
+  const key = () => (intent.current ??= randomId());
 
   function run(
     id: string,
@@ -545,7 +546,7 @@ export function CommitList({
                   const result = await commitTaskAction({
                     taskId: row.id,
                     expectedVersion: row.version,
-                    idempotencyKey: crypto.randomUUID(),
+                    idempotencyKey: randomId(),
                   });
                   if (!result.ok) {
                     setError({ id: row.id, message: result.error });

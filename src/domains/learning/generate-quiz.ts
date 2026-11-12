@@ -228,7 +228,10 @@ export async function loadCurrentQuizSources(
     documentIds.length > MAX_LEARNING_SOURCES ||
     new Set(documentIds).size !== documentIds.length
   ) {
-    throw new QuizGenerationError("invalid_sources", "Choose between one and eight distinct sources.");
+    throw new QuizGenerationError(
+      "invalid_sources",
+      `Choose between one and ${MAX_LEARNING_SOURCES} distinct sources.`,
+    );
   }
   const docs = await db
     .select({

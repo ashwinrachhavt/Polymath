@@ -9,6 +9,7 @@ import {
   resolveMessageCommentAction,
   type PanelComment,
 } from "@/app/(workspace)/polymath/[runId]/comment-actions";
+import { randomId } from "@/lib/random-id";
 
 /*
  * The inline panel for one message's comments (plan Task 9). Comments belong
@@ -31,7 +32,7 @@ function CommentRow({ comment }: { comment: PanelComment }) {
     const result = await resolveMessageCommentAction({
       commentId: comment.id,
       resolved: next,
-      idempotencyKey: crypto.randomUUID(),
+      idempotencyKey: randomId(),
     });
     setBusy(false);
     if (!result.ok) return;
@@ -87,7 +88,7 @@ export function MessageComments({
     if (!body || pending) return;
     setPending(true);
     setError("");
-    const result = await addMessageCommentAction({ messageId, body, idempotencyKey: crypto.randomUUID() });
+    const result = await addMessageCommentAction({ messageId, body, idempotencyKey: randomId() });
     setPending(false);
     if (!result.ok) return setError(result.error);
     // Only clear what was submitted: text typed while the request was in

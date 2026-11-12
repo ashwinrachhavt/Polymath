@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { createNoteAction, findLinkTargetsAction } from "@/app/(workspace)/polymath/notes/actions";
+import { randomId } from "@/lib/random-id";
 
 type Hit = { id: string; title: string; kind: string };
 type Row = { kind: "open"; hit: Hit } | { kind: "create"; title: string };
@@ -56,7 +57,7 @@ export function NoteSwitcher({ open, onOpenChange }: { open: boolean; onOpenChan
       return;
     }
     startTransition(async () => {
-      const result = await createNoteAction({ title: row.title, idempotencyKey: crypto.randomUUID() });
+      const result = await createNoteAction({ title: row.title, idempotencyKey: randomId() });
       if (!result.ok) {
         setError(result.error);
         return;

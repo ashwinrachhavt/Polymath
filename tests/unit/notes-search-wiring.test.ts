@@ -90,7 +90,7 @@ describe("notes page", () => {
     expect(listNotes).not.toHaveBeenCalled();
   });
 
-  it("a retired ?stack= opens its last note", async () => {
+  it("a retired ?stack= opens its last note in the editor", async () => {
     vi.mocked(getNote).mockResolvedValue(noteRow as never);
     const html = renderToStaticMarkup(await NotesSurface({ searchParams: params({ stack: "a,b" }) }));
     expect(getNote).toHaveBeenCalledWith(auth, "b");

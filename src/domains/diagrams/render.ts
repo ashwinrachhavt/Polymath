@@ -1,5 +1,7 @@
 "use client";
 
+import { randomId } from "@/lib/random-id";
+
 /*
  * Diagram render pipeline — spec art_Yi8Fwsqn §5, locked decisions 4/5/7.
  *
@@ -78,7 +80,7 @@ export async function renderDiagram(
 
   // SVG preview — the payload of both render modes. mermaid.render needs a
   // DOM (it builds an offscreen element); this module is client-side only.
-  const renderId = `diagram-${crypto.randomUUID()}`;
+  const renderId = `diagram-${randomId()}`;
   const { svg } = await mermaid.render(renderId, mermaidSrc);
 
   // Rung 2 — editability honesty. Only flowcharts and sequences convert to

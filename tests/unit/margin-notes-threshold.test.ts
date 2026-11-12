@@ -11,9 +11,9 @@ import { MARGIN_MODE_PROPERTY } from "@/components/products/polymath/margin-note
  */
 describe("margin notes threshold", () => {
   const css = readFileSync("src/app/globals.css", "utf8");
-  const rule = /@container \(min-width: calc\((\d+)px \+ 17\.5rem\)\) \{([\s\S]*?)\n\}/.exec(css);
+  const rule = /@container \(min-width: calc\((\d+)px \+ 22\.5rem\)\) \{([\s\S]*?)\n\}/.exec(css);
 
-  it("is the reading measure plus the 16rem column and its gap", () => {
+  it("is the reading measure plus the 21rem column and its gap", () => {
     const measure = Number(/--measure-prose:\s*(\d+)px/.exec(css)?.[1]);
     expect(Number(rule?.[1])).toBe(measure);
   });

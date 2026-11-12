@@ -21,6 +21,7 @@ import type {
   TaskStatus,
   WorkspaceState,
 } from "./types";
+import { randomId } from "@/lib/random-id";
 
 const task = z.object({
   id: z.string(),
@@ -303,10 +304,7 @@ export function createPreviewWorkspace(scope = "anonymous", storage?: Pick<Stora
     }
     snapshot = {
       ...next,
-      activity: [{ id: crypto.randomUUID(), title, detail, at: new Date().toISOString() }, ...next.activity].slice(
-        0,
-        200,
-      ),
+      activity: [{ id: randomId(), title, detail, at: new Date().toISOString() }, ...next.activity].slice(0, 200),
     };
     const store = resolveStorage(storage);
     let persisted = true;
@@ -340,7 +338,7 @@ export function createPreviewWorkspace(scope = "anonymous", storage?: Pick<Stora
   function addTask(title: string, extras: Partial<Omit<Task, "id" | "title" | "version" | "rank">> = {}) {
     const status = extras.status || "INBOX";
     const record: Task = {
-      id: crypto.randomUUID(),
+      id: randomId(),
       title: title.trim(),
       priority: "Medium",
       estimate: 25,
@@ -417,7 +415,7 @@ export function createPreviewWorkspace(scope = "anonymous", storage?: Pick<Stora
   function addAttachment(id: string, attachment: Omit<TaskAttachment, "id" | "addedAt">) {
     const task = getSnapshot().tasks.find((record) => record.id === id);
     if (!task) return { ok: false, persisted: false };
-    const record: TaskAttachment = { ...attachment, id: crypto.randomUUID(), addedAt: new Date().toISOString() };
+    const record: TaskAttachment = { ...attachment, id: randomId(), addedAt: new Date().toISOString() };
     const existing = task.attachments || [];
     // Same URL or file name twice in one task is a duplicate, not a second copy.
     // persisted is true: nothing was written and nothing needed writing, so this
@@ -435,7 +433,7 @@ export function createPreviewWorkspace(scope = "anonymous", storage?: Pick<Stora
   }
   function addArtifact(title: string, kind: ArtifactKind, body = "") {
     const record: Artifact = {
-      id: crypto.randomUUID(),
+      id: randomId(),
       title: title.trim(),
       kind,
       body,
@@ -452,7 +450,7 @@ export function createPreviewWorkspace(scope = "anonymous", storage?: Pick<Stora
         artifactVersions: [
           ...snapshot.artifactVersions,
           {
-            id: crypto.randomUUID(),
+            id: randomId(),
             artifactId: record.id,
             version: 1,
             title: record.title,
@@ -486,7 +484,7 @@ export function createPreviewWorkspace(scope = "anonymous", storage?: Pick<Stora
       ? []
       : [
           {
-            id: crypto.randomUUID(),
+            id: randomId(),
             artifactId: id,
             version: current.version,
             title: current.title,
@@ -497,7 +495,7 @@ export function createPreviewWorkspace(scope = "anonymous", storage?: Pick<Stora
           },
         ];
     const version = {
-      id: crypto.randomUUID(),
+      id: randomId(),
       artifactId: id,
       version: record.version,
       title: record.title,
@@ -518,7 +516,7 @@ export function createPreviewWorkspace(scope = "anonymous", storage?: Pick<Stora
   }
   function addCapture(text: string, kind: Capture["kind"] = "text", attachment?: Capture["attachment"]) {
     const record: Capture = {
-      id: crypto.randomUUID(),
+      id: randomId(),
       text: text.trim(),
       kind,
       status: "UNPROCESSED",
@@ -541,7 +539,7 @@ export function createPreviewWorkspace(scope = "anonymous", storage?: Pick<Stora
     const current = getSnapshot();
     const capture = current.captures.find((record) => record.id === id);
     if (!capture || capture.status !== "UNPROCESSED") return undefined;
-    const derivedId = crypto.randomUUID();
+    const derivedId = randomId();
     const at = new Date().toISOString();
     const title = capture.text.split("\n")[0].slice(0, kind === "task" ? 300 : 200);
     const captures = current.captures.map((record) =>
@@ -561,9 +559,7 @@ export function createPreviewWorkspace(scope = "anonymous", storage?: Pick<Stora
         tags: ["Inbox"],
         version: 1,
         rank: nextRank(current.tasks, "INBOX"),
-        attachments: capture.attachment
-          ? [{ id: crypto.randomUUID(), kind: "file", ...capture.attachment, addedAt: at }]
-          : [],
+        attachments: capture.attachment ? [{ id: randomId(), kind: "file", ...capture.attachment, addedAt: at }] : [],
       };
       next.tasks = [task, ...current.tasks];
     } else {
@@ -581,7 +577,7 @@ export function createPreviewWorkspace(scope = "anonymous", storage?: Pick<Stora
       next.artifactVersions = [
         ...current.artifactVersions,
         {
-          id: crypto.randomUUID(),
+          id: randomId(),
           artifactId: derivedId,
           version: 1,
           title,
@@ -603,7 +599,7 @@ export function createPreviewWorkspace(scope = "anonymous", storage?: Pick<Stora
     );
   }
   function addContact(contact: Omit<Contact, "id">) {
-    const record = { ...contact, id: crypto.randomUUID() };
+    const record = { ...contact, id: randomId() };
     return commit({ ...getSnapshot(), contacts: [record, ...snapshot.contacts] }, "Contact created", record.name).ok
       ? record
       : undefined;
@@ -615,13 +611,13 @@ export function createPreviewWorkspace(scope = "anonymous", storage?: Pick<Stora
     );
   }
   function addCompany(company: Omit<Company, "id">) {
-    const record = { ...company, id: crypto.randomUUID() };
+    const record = { ...company, id: randomId() };
     return commit({ ...getSnapshot(), companies: [record, ...snapshot.companies] }, "Company created", record.name).ok
       ? record
       : undefined;
   }
   function addOpportunity(opportunity: Omit<Opportunity, "id">) {
-    const record = { ...opportunity, id: crypto.randomUUID() };
+    const record = { ...opportunity, id: randomId() };
     return commit(
       { ...getSnapshot(), opportunities: [record, ...snapshot.opportunities] },
       "Opportunity created",
@@ -655,7 +651,7 @@ export function createPreviewWorkspace(scope = "anonymous", storage?: Pick<Stora
     );
   }
   function addReview(review: Omit<Review, "id" | "status" | "revision">) {
-    const record: Review = { ...review, id: crypto.randomUUID(), status: "Pending", revision: 1 };
+    const record: Review = { ...review, id: randomId(), status: "Pending", revision: 1 };
     return commit(
       { ...getSnapshot(), reviews: [record, ...snapshot.reviews] },
       "Local proposal created",
@@ -704,7 +700,7 @@ export function createPreviewWorkspace(scope = "anonymous", storage?: Pick<Stora
     );
   }
   function addEvent(event: Omit<CalendarEvent, "id">) {
-    const record = { ...event, id: crypto.randomUUID() };
+    const record = { ...event, id: randomId() };
     return commit({ ...getSnapshot(), events: [...snapshot.events, record] }, "Local work block created").ok
       ? record
       : undefined;
@@ -748,7 +744,7 @@ export function createPreviewWorkspace(scope = "anonymous", storage?: Pick<Stora
     );
   }
   function addProject(project: Omit<Project, "id">) {
-    const record = { ...project, id: crypto.randomUUID() };
+    const record = { ...project, id: randomId() };
     return commit({ ...getSnapshot(), projects: [...snapshot.projects, record] }, "Project created", record.title).ok
       ? record
       : undefined;
@@ -756,7 +752,7 @@ export function createPreviewWorkspace(scope = "anonymous", storage?: Pick<Stora
   function awardReward(reward: Omit<WorkspaceState["rewards"][number], "id">) {
     if (getSnapshot().rewards.some((r) => r.sessionId === reward.sessionId)) return { ok: false, persisted: false };
     return commit(
-      { ...snapshot, rewards: [...snapshot.rewards, { ...reward, id: crypto.randomUUID() }] },
+      { ...snapshot, rewards: [...snapshot.rewards, { ...reward, id: randomId() }] },
       "Preview reward earned",
     );
   }

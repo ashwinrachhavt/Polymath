@@ -622,22 +622,24 @@
 }
 /* The note container decides margin mode by its own width (sidebar and the
    comments aside both take room): --measure-prose (720px; a query cannot read
-   var()) plus the 16rem column and its 1.5rem gap. This rule is the one source
+   var()) plus the 21rem column and its 1.5rem gap. This rule is the one source
    of truth: margin-notes.tsx reads --margin-notes rather than recomputing it,
    and tests/unit/margin-notes-threshold.test.ts keeps the 720px in step with
    the token. In margin mode the column slides left only as far as the margin
-   needs. */
+   needs. Widened from 17.5rem on 2026-11-12: at a 1600px window the old
+   threshold put the column within a few pixels of margin mode, so linked
+   notes almost never showed beside the text. */
 [data-note-container] {
   container-type: inline-size;
 }
-@container (min-width: calc(720px + 17.5rem)) {
+@container (min-width: calc(720px + 22.5rem)) {
   .note-margin-inline {
     display: none;
   }
   .note-column {
     --margin-notes: on;
     margin-right: 0;
-    margin-left: max(1rem, min((100% - var(--measure-prose)) / 2, 100% - var(--measure-prose) - 17rem));
+    margin-left: max(1rem, min((100% - var(--measure-prose)) / 2, 100% - var(--measure-prose) - 21rem));
   }
 }
 /* [[Title]] links: the editor decorates them (wiki-links.ts) as one quiet

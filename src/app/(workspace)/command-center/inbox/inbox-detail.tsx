@@ -36,6 +36,7 @@ import {
 import { MakeLearningButton } from "@/app/(workspace)/learn/make-learning-dialog";
 import { generateZettelsAction } from "./zettel-actions";
 import { ZettelQueueWatch } from "./zettel-queue-watch";
+import { randomId } from "@/lib/random-id";
 
 /*
  * The detail pane: a view of the selected capture row (D12/D14). URL captures
@@ -273,7 +274,7 @@ export function InboxDetail({
     startTransition(async () => {
       const result = await generateZettelsAction({
         captureIds: [capture!.id],
-        idempotencyKey: crypto.randomUUID(),
+        idempotencyKey: randomId(),
       });
       if (!result.ok) {
         setError(result.message);

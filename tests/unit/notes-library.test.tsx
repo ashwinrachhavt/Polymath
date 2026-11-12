@@ -64,8 +64,10 @@ describe("notes library", () => {
     const selected = screen.getByRole("link", { name: /Quarterly plan/ });
     expect(selected.getAttribute("aria-current")).toBe("page");
     expect(selected.getAttribute("href")).toBe("/polymath/notes?id=b");
-    expect(screen.getByText("Revenue and hiring")).toBeTruthy();
-    expect(screen.getAllByText(/^Edited /)).toHaveLength(2);
+    // The list is shaped like the chat list: title and a day stamp per row,
+    // no excerpt, and rows grouped by day.
+    expect(screen.queryByText("Revenue and hiring")).toBeNull();
+    expect(screen.getAllByRole("link", { name: /Quarterly plan|Building the harness/ })).toHaveLength(2);
     expect(screen.getByRole("link", { name: /Building the harness/ }).getAttribute("aria-current")).toBeNull();
     expect(screen.getByText("draft")).toBeTruthy();
   });
@@ -85,7 +87,7 @@ describe("notes library", () => {
     fireEvent.change(screen.getByRole("searchbox", { name: "Search notes" }), { target: { value: "plan" } });
     // The rows answer the query they were fetched for; until then, say so.
     expect(screen.getByText("Searching…")).toBeTruthy();
-    await screen.findByText("Revenue and hiring");
+    await screen.findByRole("link", { name: /Quarterly plan/ });
     expect(search).toHaveBeenCalledWith({ query: "plan" });
     expect(screen.queryByText("Permissions and sandboxing")).toBeNull();
     // The matched note is still the open one.

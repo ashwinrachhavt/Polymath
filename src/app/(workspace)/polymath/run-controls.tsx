@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { requestJson } from "@/lib/client-request";
+import { randomId } from "@/lib/random-id";
 
 /*
  * The control under a finished run's thread. A live run's next message goes
@@ -23,7 +24,7 @@ export function RunControls({ runId }: { runId: string }) {
     setError(null);
     const result = await requestJson(`/api/v1/runs/${runId}/retry`, {
       method: "POST",
-      idempotencyKey: crypto.randomUUID(),
+      idempotencyKey: randomId(),
     });
     setPending(false);
     if (!result.ok) {

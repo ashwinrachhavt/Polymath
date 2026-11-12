@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import type { ChallengeAttemptView, ChallengeView } from "@/domains/learning/challenges";
 import { showPracticeHintAction, submitPracticeAnswerAction } from "./practice-actions";
+import { randomId } from "@/lib/random-id";
 
 /*
  * One practice exercise: one prompt, one answer box, one button. Nothing about
@@ -90,7 +91,7 @@ export function PracticeSession({ projectId, challenge }: { projectId: string; c
     if (!dontKnow && !answer.trim()) return;
     setError(null);
     const signature = JSON.stringify([dontKnow, answer]);
-    if (submit.current?.signature !== signature) submit.current = { signature, key: crypto.randomUUID() };
+    if (submit.current?.signature !== signature) submit.current = { signature, key: randomId() };
     const submitKey = submit.current.key;
     startTransition(async () => {
       const result = await submitPracticeAnswerAction({

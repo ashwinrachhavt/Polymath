@@ -8,7 +8,7 @@ import { SideNav } from "@/components/shell/side-nav";
 import { MobileNav } from "@/components/shell/mobile-nav";
 import { TopBar } from "@/components/shell/top-bar";
 import type { TriageFeed } from "@/domains/notifications/triage";
-import { isConversationSurface, isBrowserPreviewPath } from "@/lib/navigation";
+import { isBrowserPreviewPath, isConversationSurface, isFocusSurface } from "@/lib/navigation";
 import { FocusDock } from "@/components/shell/focus-dock";
 import { DictationMount } from "@/components/speech/dictation-mount";
 import { GenerationJobsMount } from "@/components/jobs/generation-jobs";
@@ -58,6 +58,8 @@ export function AppShell({
   // snapshot first flashed stale rows before the stored workspace replaced them.
   const waitingForStorage = !hydrated && isBrowserPreviewPath(pathname);
   const headerless = isConversationSurface(pathname);
+  // Notes is a focus surface: no rail, no hover zone, only the opener.
+  const focusSurface = isFocusSurface(pathname);
 
   return (
     <WorkspaceProvider key={storageScope} storageScope={storageScope}>
@@ -71,10 +73,10 @@ export function AppShell({
           .shell-conversation in globals.css), and everything below it is a
           min-h-0 flex chain the transcript's own overflow container fills. */}
       <div
-        className={cn("flex flex-1", headerless ? "shell-conversation" : "min-h-dvh")}
+        className={cn("flex flex-1", headerless || focusSurface ? "shell-conversation" : "min-h-dvh")}
         data-interface-mode={interfaceMode}
       >
-        <SideNav />
+        <SideNav focusSurface={focusSurface} />
         <div className={cn("flex min-w-0 flex-1 flex-col", headerless && "min-h-0")}>
           {!headerless ? (
             <TopBar

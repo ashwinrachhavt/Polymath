@@ -24,6 +24,7 @@ import { startNotebookRun } from "./chat-run-actions";
 import { retryNotebookSourceAction } from "./add-source-actions";
 import { AddSources } from "./add-sources";
 import { LearningStudio } from "./learning-studio";
+import { randomId } from "@/lib/random-id";
 
 /*
  * The notebook surface, laid out the way NotebookLM reads: sources on the left,
@@ -175,7 +176,7 @@ export default function NotebookSurface({
           title: `${notebook.title}: saved answer`,
           answer: lastAnswer.answer,
           citations: lastAnswer.citations,
-          idempotencyKey: crypto.randomUUID(),
+          idempotencyKey: randomId(),
         });
         setMessage("Saved to your notes.");
         setDiscarded(true);
@@ -193,7 +194,7 @@ export default function NotebookSurface({
       const response = await fetch(`/api/v1/projects/${notebook.projectId}/generate`, {
         method: "POST",
         // A paid run starts here; the key makes a double click apply once.
-        headers: { "content-type": "application/json", "Idempotency-Key": crypto.randomUUID() },
+        headers: { "content-type": "application/json", "Idempotency-Key": randomId() },
         body: JSON.stringify({ brief, kind: selected }),
       });
       if (!response.ok) {
@@ -218,7 +219,7 @@ export default function NotebookSurface({
       const result = await researchDossierCompanyAction({
         projectId: notebook.projectId,
         companyName,
-        idempotencyKey: crypto.randomUUID(),
+        idempotencyKey: randomId(),
       });
       if (!result.ok) throw new Error(result.error);
       setCompanyName("");

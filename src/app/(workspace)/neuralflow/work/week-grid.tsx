@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { blockTimeAction, cancelEventAction } from "./calendar-actions";
+import { randomId } from "@/lib/random-id";
 
 /*
  * Weekly time grid. Receives ISO instants and renders them in the browser's
@@ -64,7 +65,7 @@ export function WeekGrid({
         taskId: task.id,
         minutes: task.estimateMinutes ?? undefined,
         utcOffsetMinutes: -new Date().getTimezoneOffset(),
-        idempotencyKey: crypto.randomUUID(),
+        idempotencyKey: randomId(),
       });
       setMessage(result.ok ? `Blocked time for "${task.title}".` : result.error);
     });
@@ -76,7 +77,7 @@ export function WeekGrid({
       const result = await cancelEventAction({
         eventId: event.id,
         expectedVersion: event.version,
-        idempotencyKey: crypto.randomUUID(),
+        idempotencyKey: randomId(),
       });
       if (!result.ok) setMessage(result.error);
     });

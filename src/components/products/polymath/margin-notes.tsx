@@ -9,7 +9,7 @@ import { layoutMarginNotes } from "./margin-layout";
  * Margin notes (after numinous.productions/ttft): a [[linked]] note's title
  * and first lines sit in the right margin beside the line that cites it. The
  * margin shows only when the note's own container is wide enough for the
- * reading measure plus the 16rem column (not by viewport: the sidebar and the
+ * reading measure plus the 21rem column (not by viewport: the sidebar and the
  * comments aside both take width). Otherwise the editor itself folds the same
  * previews in under the citing paragraph (wiki-links.ts). A link typed after
  * the page loaded has no preview until the next load, so it gets no card.

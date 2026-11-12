@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { editStudioDraftAction, linkDraftToRecordAction, unlinkDraftFromRecordAction } from "./actions";
+import { randomId } from "@/lib/random-id";
 
 type LinkRow = { id: string; targetType: string; targetId: string; label: string | null };
 type Pick = { id: string; title: string };
@@ -68,7 +69,7 @@ export function DraftWorkbench({
         artifactId: artifact.id,
         expectedVersion: version,
         text: draftText,
-        idempotencyKey: crypto.randomUUID(),
+        idempotencyKey: randomId(),
       });
       setVersion(result.version);
       setNotice("Edits saved as a new version.");
@@ -89,7 +90,7 @@ export function DraftWorkbench({
         artifactId: artifact.id,
         targetType,
         targetId,
-        idempotencyKey: crypto.randomUUID(),
+        idempotencyKey: randomId(),
       });
       setTargetId("");
       setNotice("Attached.");
@@ -105,7 +106,7 @@ export function DraftWorkbench({
     setError(null);
     setNotice(null);
     try {
-      await unlinkDraftFromRecordAction({ artifactId: artifact.id, linkId, idempotencyKey: crypto.randomUUID() });
+      await unlinkDraftFromRecordAction({ artifactId: artifact.id, linkId, idempotencyKey: randomId() });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Detaching failed.");
     } finally {

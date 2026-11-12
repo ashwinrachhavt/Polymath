@@ -10,6 +10,7 @@ import { Markdown } from "@tiptap/markdown";
 import { Button } from "@/components/ui/button";
 import { uploadCaptureFile } from "@/lib/capture-upload";
 import { updateCaptureTextAction } from "./actions";
+import { randomId } from "@/lib/random-id";
 
 /*
  * The captured body, rendered as Markdown through the same Tiptap stack the
@@ -138,7 +139,7 @@ export function CaptureBody({
 
   function save() {
     if (!editable || status === "saving" || !dirty) return;
-    const key = (intent.current ??= crypto.randomUUID());
+    const key = (intent.current ??= randomId());
     setStatus("saving");
     setError(null);
     void updateCaptureTextAction({ captureId, expectedVersion: base.version, text: draft, idempotencyKey: key })

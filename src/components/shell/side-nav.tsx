@@ -48,7 +48,7 @@ function holdsFocus(element: HTMLElement | null) {
   return element?.contains(document.activeElement) ?? false;
 }
 
-export function SideNav() {
+export function SideNav({ focusSurface = false }: { focusSurface?: boolean } = {}) {
   const pathname = usePathname();
   const hydrated = useSyncExternalStore(
     subscribeToHydration,
@@ -69,7 +69,9 @@ export function SideNav() {
   // to the control that toggles back instead.
   const handOffFocus = useRef(false);
 
-  const state = pinned ? "pinned" : peeking ? "peek" : "hidden";
+  const state = focusSurface ? (peeking ? "peek" : "hidden") : pinned ? "pinned" : peeking ? "peek" : "hidden";
+  // Focus surfaces keep the rail out of the layout and offer only the opener.
+  const pinnedForLayout = pinned && !focusSurface;
   const overlay = state !== "pinned";
 
   useEffect(() => {
@@ -149,7 +151,7 @@ export function SideNav() {
     <>
       {/* The edge zone sits under the rail, so a peeking rail covers it.
           Hover only exists for a fine pointer; touch never gets the zone. */}
-      {!pinned ? (
+      {!pinnedForLayout ? (
         <div
           data-peek-zone
           aria-hidden
@@ -161,7 +163,7 @@ export function SideNav() {
           the top bar leaves room for it (top-bar.tsx). A
           peeking rail (z-40) covers it. Below md the bottom bar is the
           navigation and the rail never shows, so neither does this. */}
-      {!pinned ? (
+      {!pinnedForLayout ? (
         <button
           ref={openerRef}
           type="button"
@@ -202,7 +204,10 @@ export function SideNav() {
           // Server markup is always "hidden" (it cannot read the pin). For a
           // pinned person <html data-sidebar-pinned> lays it out as the pinned
           // rail until hydration swaps in the real state: no shift.
+          // A focus surface stays out of the layout even for a pinned person;
+          // the opener and `[` still reach the rail.
           state === "hidden" &&
+            !focusSurface &&
             "sidebar-pinned:sticky sidebar-pinned:bottom-auto sidebar-pinned:z-auto sidebar-pinned:translate-x-0 sidebar-pinned:shadow-none",
         )}
       >

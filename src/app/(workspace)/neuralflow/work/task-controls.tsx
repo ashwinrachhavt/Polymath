@@ -14,6 +14,7 @@ import {
   reopenTaskAction,
   updateTaskAction,
 } from "./actions";
+import { randomId } from "@/lib/random-id";
 
 /* Tasks and notes stay separate records; what they share is the editor. The
  * task body is Markdown edited through the same RichEditor island the Notes
@@ -45,7 +46,7 @@ function TaskNotesEditor({ initial }: { initial: string }) {
 function useIntent() {
   const ref = useRef<string | null>(null);
   return {
-    key: () => (ref.current ??= crypto.randomUUID()),
+    key: () => (ref.current ??= randomId()),
     reset: () => {
       ref.current = null;
     },

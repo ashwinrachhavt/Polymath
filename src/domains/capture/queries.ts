@@ -1,7 +1,7 @@
 import { and, count, desc, eq, gte, ilike, inArray, lt, or, sql, type SQL, isNull } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
-import { titleFromText } from "@/lib/display-text";
+import { captureDisplayTitle, titleFromText } from "@/lib/display-text";
 import { escapeLike } from "@/lib/list-params";
 import { captures } from "./schema";
 import { auditEvents } from "../audit/schema";
@@ -118,6 +118,9 @@ export async function searchCaptures(
 }
 
 /** A capture's display label for link pickers: the title its text gives itself, else the URL host. */
+/** Re-exported for capture readers; the helper is pure and lives with the formatter. */
+export { captureDisplayTitle };
+
 export function captureLinkLabel(row: { text: string | null; url: string | null }): string {
   const line = row.text ? titleFromText(row.text, "") : "";
   if (line) return line.length > 60 ? `${line.slice(0, 57)}...` : line;
@@ -190,7 +193,7 @@ function captureChatContext(row: {
 }): CaptureChatContext {
   return {
     id: row.id,
-    title: row.title?.trim() || row.filename?.trim() || captureLinkLabel({ text: row.text, url: row.url }),
+    title: captureDisplayTitle(row) || row.filename?.trim() || captureLinkLabel({ text: row.text, url: row.url }),
     kind: row.kind,
     text: row.cleanText || row.text || row.fetchedText || "",
     url: row.url,

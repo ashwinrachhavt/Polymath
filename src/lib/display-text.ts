@@ -24,6 +24,9 @@ export function displayTitle(raw: string): string {
 
 const HEADING_1 = /^#\s+\S/;
 const QUOTED = /^>/;
+/* A line that is only markup around a heading, e.g. "> ## Documentation
+   Index": save it as a title and the page shows the source syntax. */
+const MARKUP_ONLY = /^[\s>#*_~`\-]+$/;
 
 /**
  * The title a piece of captured text gives itself. A page saved as markdown
@@ -38,11 +41,26 @@ export function titleFromText(text: string, fallback: string): string {
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean);
-  const afterQuotes = lines.find((line) => !QUOTED.test(line));
+  /*
+   * A heading under a quoted notice beats the notice itself. `afterQuotes` is
+   * the first line that is not quoted AND not a bare fence/rule, so a page
+   * that opens "> ## Documentation Index" then ">" then "# Real Title" is
+   * titled by its own page heading rather than by the site's notice.
+   */
+  const afterQuotes = lines.find((line) => !QUOTED.test(line) && !MARKUP_ONLY.test(displayTitle(line)));
   const chosen = afterQuotes && HEADING_1.test(afterQuotes) ? [afterQuotes] : lines;
   for (const line of chosen) {
     const title = displayTitle(line);
     if (title) return title;
+  }
+  /*
+   * Every line was markup: a page whose first words are a quoted heading
+   * after a quoted notice, or a bare fence. The first readable words anywhere
+   * in the text beat a title made of syntax.
+   */
+  for (const line of lines) {
+    const title = displayTitle(line);
+    if (title && !MARKUP_ONLY.test(title)) return title;
   }
   return fallback;
 }
@@ -61,4 +79,16 @@ export function markdownToPlainText(markdown: string): string {
     .replace(EMPHASIS, "$1$3")
     .replace(/^#{1,6}\s+/gm, "")
     .replace(/^\s*([-*+]|\d+\.)\s+/gm, "");
+}
+
+/**
+ * A capture's stored title, cleaned for display. Titles written before
+ * 2026-11-12 could hold raw markdown ("> ## Documentation Index"); the row is
+ * not rewritten, so every reader cleans what it prints instead.
+ */
+export function captureDisplayTitle(row: { title?: string | null }): string | null {
+  const raw = row.title?.trim();
+  if (!raw) return null;
+  const cleaned = displayTitle(raw);
+  return cleaned || null;
 }
