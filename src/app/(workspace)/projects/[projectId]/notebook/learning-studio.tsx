@@ -6,16 +6,21 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { WorkStatus } from "@/components/work-status";
 import { MAX_ITEM_COUNT, MIN_ITEM_COUNT } from "@/domains/learning/item-count";
-import { generateNotebookQuizAction } from "./learning-actions";
-import { generateNotebookFlashcardsAction } from "./flashcard-actions";
+import { GenerationJobRows, useSurfaceJobs } from "@/components/jobs/generation-job-rows";
+import { trackGenerationJob } from "@/components/jobs/generation-jobs";
+import type { GenerationJobView } from "@/domains/jobs/state";
+import { LEARNING_JOB_KIND_PREFIX, learningJobSubject } from "@/domains/learning/job-names";
+import { makeNotebookLearningAction } from "./learning-actions";
 import { startNotebookExplainItAction } from "./explain-actions";
 
 /*
  * The Notebook's one learning action. Learn this opens a sheet with three
  * choices; the default sends every ready source and no count, so the server
  * sizes the set from the sources. Adjust holds the source checkboxes and an
- * exact count. What is made appears in Results on this page: the action's
- * revalidation re-renders the Notebook, so nothing navigates.
+ * exact count. A quiz or a deck is made in the background: the sheet closes
+ * as soon as the request is accepted, a row here says how the work is going,
+ * and the result appears in Results on this page when it is ready. Explain It
+ * starts with one short call, so it is still awaited.
  */
 
 type LearningSource = { documentId: string; title: string };
@@ -35,7 +40,20 @@ function sourcesLine(chosen: number, ready: number): string {
   return `Uses ${chosen} of ${ready} ready sources.`;
 }
 
-export function LearningStudio({ projectId, sources }: { projectId: string; sources: LearningSource[] }) {
+export function LearningStudio({
+  projectId,
+  sources,
+  initialJobs,
+}: {
+  projectId: string;
+  sources: LearningSource[];
+  /** This Notebook's unfinished quiz and deck jobs when the page rendered. */
+  initialJobs: GenerationJobView[];
+}) {
+  const surface = useSurfaceJobs(initialJobs, {
+    kindPrefix: LEARNING_JOB_KIND_PREFIX,
+    subject: learningJobSubject.notebook(projectId),
+  });
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<Kind>("quiz");
   // Only the user's changes are held; everything else follows the ready sources,
@@ -87,18 +105,24 @@ export function LearningStudio({ projectId, sources }: { projectId: string; sour
     if (attempt.current?.signature !== signature) attempt.current = { signature, key: crypto.randomUUID() };
     const idempotencyKey = attempt.current.key;
     startTransition(async () => {
-      const result =
-        kind === "quiz"
-          ? await generateNotebookQuizAction({ projectId, documentIds, questionCount: itemCount, idempotencyKey })
-          : kind === "flashcards"
-            ? await generateNotebookFlashcardsAction({ projectId, documentIds, cardCount: itemCount, idempotencyKey })
-            : await startNotebookExplainItAction({ projectId, documentIds, idempotencyKey });
-      attempt.current = null;
-      if (!result.ok) {
-        setError(result.error);
-        return;
+      if (kind === "explain") {
+        const result = await startNotebookExplainItAction({ projectId, documentIds, idempotencyKey });
+        attempt.current = null;
+        if (!result.ok) return setError(result.error);
+        setSummary(result.summary);
+      } else {
+        const result = await makeNotebookLearningAction({
+          projectId,
+          kind,
+          documentIds,
+          count: itemCount,
+          idempotencyKey,
+        });
+        attempt.current = null;
+        if (!result.ok) return setError(result.error);
+        trackGenerationJob(result.job);
+        setSummary(null);
       }
-      setSummary(result.summary);
       setOpen(false);
     });
   }
@@ -137,6 +161,7 @@ export function LearningStudio({ projectId, sources }: { projectId: string; sour
           {summary}
         </p>
       ) : null}
+      <GenerationJobRows surface={surface} className="mt-3 text-body-dense" />
 
       <Sheet open={open} onOpenChange={(next) => (pending ? undefined : setOpen(next))}>
         <SheetContent side="right" className="overflow-y-auto p-4">
@@ -209,7 +234,7 @@ export function LearningStudio({ projectId, sources }: { projectId: string; sour
           {problem ? <p className="text-xs text-muted-foreground">{problem}</p> : null}
           {error ? <WorkStatus state={{ phase: "failed", label: error }} /> : null}
           <Button disabled={pending || problem !== null} onClick={create}>
-            {pending ? "Creating…" : "Create"}
+            {pending ? "Starting…" : "Create"}
           </Button>
         </SheetContent>
       </Sheet>

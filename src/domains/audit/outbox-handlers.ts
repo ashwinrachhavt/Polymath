@@ -5,6 +5,7 @@ import { sha256Hex } from "@/lib/hash";
 import { runExtractionPass } from "@/domains/knowledge/extraction";
 import { EMBEDDING_RETRY_TOPIC, embeddingRetryRequestedHandler } from "@/domains/knowledge/embedding-retry";
 import { FACT_SUGGESTION_TOPIC, factSuggestionRequestedHandler } from "@/domains/facts/generate";
+import { GENERATION_JOB_TOPIC, generationJobRequestedHandler } from "@/domains/jobs/commands";
 import { intakeFile } from "@/domains/knowledge/intake";
 import { documents } from "@/domains/knowledge/schema";
 import { recordSource } from "@/domains/knowledge/sources";
@@ -299,6 +300,7 @@ export function outboxHandlers(): Record<string, OutboxHandler> {
     [EMBEDDING_RETRY_TOPIC]: embeddingRetryRequestedHandler(workspaceOwnerAuth),
     [FACT_SUGGESTION_TOPIC]: factSuggestionRequestedHandler,
     [TIDY_PASS_TOPIC]: tidyPassRequestedHandler(workspaceOwnerAuth),
+    [GENERATION_JOB_TOPIC]: generationJobRequestedHandler,
   };
   return handlers;
 }

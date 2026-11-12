@@ -11,6 +11,7 @@ import type { TriageFeed } from "@/domains/notifications/triage";
 import { isConversationSurface, isBrowserPreviewPath } from "@/lib/navigation";
 import { FocusDock } from "@/components/shell/focus-dock";
 import { DictationMount } from "@/components/speech/dictation-mount";
+import { GenerationJobsMount } from "@/components/jobs/generation-jobs";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { WorkspaceSwitcherData } from "@/components/shell/workspace-switcher";
 import type { ShellPreferenceSnapshot } from "@/components/shell/shell-preferences";
@@ -105,6 +106,8 @@ export function AppShell({
           {/* Here rather than in TopBar: the conversation routes render no top
               bar, and the chat composer is where dictation matters most. */}
           <DictationMount />
+          {/* One connection per tab for background generation; it announces a finished job on any page. */}
+          <GenerationJobsMount />
           <MobileNav />
         </div>
       </div>

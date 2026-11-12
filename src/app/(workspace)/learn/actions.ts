@@ -4,7 +4,11 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { completeQuizAttempt, QuizAttemptError, type CompleteQuizAttemptResult } from "@/domains/learning/commands";
 import { FlashcardError, getFlashcardDeck, rateFlashcard } from "@/domains/learning/flashcards";
-import { generateQuiz, GENERATION_COPY, QuizGenerationError } from "@/domains/learning/generate-quiz";
+import { kickGenerationJob } from "@/domains/jobs/kick";
+import type { GenerationJobView } from "@/domains/jobs/state";
+import { GENERATION_COPY, QuizGenerationError } from "@/domains/learning/generate-quiz";
+import { acceptLearningJob } from "@/domains/learning/generation-jobs";
+import { learningJobSubject } from "@/domains/learning/job-names";
 import type { SubmittedAnswer } from "@/domains/learning/schema";
 import { getRewardsOverview, pickRewardAnnouncement } from "@/domains/gamification/queries";
 import { actionError } from "@/lib/action-error";
@@ -37,16 +41,26 @@ export type StoneAnnouncement = {
   milestone: boolean;
 };
 
+const generateSchema = z.object({ documentId: z.uuid(), idempotencyKey: z.uuid() });
+
+/** Accepts a quiz for one document to be made in the background; `job` is the wait, not the quiz. */
 export async function generateQuizAction(
-  documentId: string,
-): Promise<{ ok: true; quizId: string } | { ok: false; error: string }> {
-  const auth = await getAuthContext();
-  requireRole(auth, "member");
+  input: z.input<typeof generateSchema>,
+): Promise<{ ok: true; job: GenerationJobView } | { ok: false; error: string }> {
+  const parsed = generateSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: GENERATION_COPY.document_not_found };
+  const { documentId, idempotencyKey } = parsed.data;
   try {
-    const result = await generateQuiz(auth, { documentId });
-    revalidatePath("/learn");
-    revalidatePath(`/learn/${documentId}`);
-    return { ok: true, quizId: result.quizId };
+    const auth = await getAuthContext();
+    requireRole(auth, "member");
+    const { job, created } = await acceptLearningJob(auth, {
+      kind: "quiz",
+      documentIds: [documentId],
+      subject: learningJobSubject.document(documentId),
+      idempotencyKey,
+    });
+    if (created) kickGenerationJob({ jobId: job.id, attempt: job.attempt });
+    return { ok: true, job };
   } catch (error) {
     if (error instanceof QuizGenerationError) return { ok: false, error: GENERATION_COPY[error.code] };
     return { ok: false, error: actionError(error, "Could not generate a quiz for this document.") };

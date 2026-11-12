@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { io } from "next/cache";
 import { Suspense } from "react";
 import { Panel, Screen } from "@/components/workspace/ui";
+import { listUnfinishedGenerationJobs } from "@/domains/jobs/queries";
+import { LEARNING_JOB_KIND_PREFIX, learningJobSubject } from "@/domains/learning/job-names";
 import { getLearnLibrary, getQuizForSitting } from "@/domains/learning/queries";
 import { getArtifactFeedback } from "@/domains/knowledge/artifact-feedback";
 import { getAuthContext } from "@/lib/auth";
@@ -44,7 +46,13 @@ async function QuizShell({ documentId }: { documentId: string }) {
     );
   }
 
-  const quiz = row.quizId ? await getQuizForSitting(auth, row.quizId) : null;
+  const [quiz, quizJobs] = await Promise.all([
+    row.quizId ? getQuizForSitting(auth, row.quizId) : null,
+    listUnfinishedGenerationJobs(auth, {
+      kindPrefix: LEARNING_JOB_KIND_PREFIX,
+      subject: learningJobSubject.document(documentId),
+    }),
+  ]);
   if (!quiz) {
     return (
       <Screen title={row.title} description="No quiz yet.">
@@ -52,7 +60,7 @@ async function QuizShell({ documentId }: { documentId: string }) {
           title="No quiz yet"
           description="Generate a short graded quiz from this document's text. Finishing one earns stones."
         >
-          <GenerateQuizButton documentId={row.documentId} afterGenerate="refresh" />
+          <GenerateQuizButton documentId={row.documentId} initialJobs={quizJobs} />
           <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
             Generation is verified, never padded: every question must quote the document verbatim, and if too few prove
             out, generation says so instead of shipping a weak quiz.
@@ -74,7 +82,7 @@ async function QuizShell({ documentId }: { documentId: string }) {
           ? `Best score ${row.bestCorrect}/${row.questionCount ?? quiz.questions.length} on the latest quiz.`
           : "A short graded quiz over what you saved."
       }
-      actions={<GenerateQuizButton documentId={row.documentId} label="Regenerate" afterGenerate="refresh" />}
+      actions={<GenerateQuizButton documentId={row.documentId} initialJobs={quizJobs} label="Regenerate" />}
     >
       <QuizRunner quiz={quiz} rating={rating} />
       <Link href="/learn" className="text-body-dense font-medium underline-offset-4 hover:underline">

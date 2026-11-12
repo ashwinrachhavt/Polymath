@@ -5,30 +5,46 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * The Make flashcards or a quiz dialog, opened from Learn or with inbox
  * captures in hand.
  *
- * Value: protects=a retry after a failure actually retrying, the learner
- * hearing about sources left out of the request and about a deck or quiz
- * that came out short; fails_when=a retry replays the failed request's key,
- * extra picks are dropped without a word, or a short result navigates in
- * silence; seam=the client component under jsdom with the server actions,
- * the router and the workspace notice mocked; no_claim=what the server does
- * with a key (tests/integration/make-learning-action.test.ts).
+ * Value: protects=the dialog handing work over instead of holding the
+ * learner, a retry after a failure actually retrying, and the learner hearing
+ * about sources left out of the request; fails_when=the dialog stays open or
+ * navigates once the work is accepted, the accepted job is not put on the
+ * page, a retry replays the failed request's key, or extra picks are dropped
+ * without a word; seam=the client component under jsdom with the server
+ * actions and the workspace notice mocked; no_claim=what the server does
+ * with a key (tests/integration/make-learning-action.test.ts) or how a
+ * finished job is announced (generation-jobs-client.test.tsx).
  */
 
 const mocks = vi.hoisted(() => ({
   make: vi.fn(),
   find: vi.fn(),
-  push: vi.fn(),
   notify: vi.fn(),
+  track: vi.fn(),
 }));
 
 vi.mock("@/app/(workspace)/learn/make-actions", () => ({
   makeFlashcardsOrQuizAction: mocks.make,
   findLearningSourcesAction: mocks.find,
 }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: mocks.push }) }));
+vi.mock("@/components/jobs/generation-jobs", () => ({ trackGenerationJob: mocks.track }));
 vi.mock("@/components/workspace/workspace-provider", () => ({ useWorkspace: () => ({ notify: mocks.notify }) }));
 
 const { MakeLearningButton } = await import("@/app/(workspace)/learn/make-learning-dialog");
+
+const accepted = {
+  id: "job-1",
+  kind: "learning.flashcards",
+  subject: null,
+  status: "queued" as const,
+  title: "Flashcards: Capture 1",
+  attempt: 1,
+  href: null,
+  notice: null,
+  error: null,
+  createdAt: "2026-11-11T10:00:00.000Z",
+  updatedAt: "2026-11-11T10:00:00.000Z",
+};
 
 function capture(n: number) {
   return {
@@ -54,13 +70,13 @@ describe("MakeLearningButton", () => {
   it("sends a fresh key when the learner tries again after a failure", async () => {
     mocks.make
       .mockResolvedValueOnce({ ok: false, error: "The quiz generator did not answer. Try again in a moment." })
-      .mockResolvedValueOnce({ ok: true, href: "/learn/quizzes/q", notice: null });
+      .mockResolvedValueOnce({ ok: true, job: accepted });
     const dialog = open([capture(1)]);
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Make flashcards" }));
     await within(dialog).findByText("The quiz generator did not answer. Try again in a moment.");
     fireEvent.click(await within(dialog).findByRole("button", { name: "Make flashcards" }));
-    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/learn/quizzes/q"));
+    await waitFor(() => expect(mocks.track).toHaveBeenCalledWith(accepted));
 
     const [first, second] = mocks.make.mock.calls.map(([input]) => input.idempotencyKey);
     expect(second).not.toBe(first);
@@ -73,29 +89,16 @@ describe("MakeLearningButton", () => {
     expect(within(dialog).getByText(/4 more selected were left out/)).toBeTruthy();
   });
 
-  it("tells the learner when a result came out short, and still opens it", async () => {
-    mocks.make.mockResolvedValue({
-      ok: true,
-      href: "/learn/decks/d",
-      notice: "Made 8 of 30 flashcards before a batch failed. Make them again for more.",
-    });
+  it("closes as soon as the work is accepted and puts the job on the page, without waiting or navigating", async () => {
+    mocks.make.mockResolvedValueOnce({ ok: true, job: accepted });
     const dialog = open([capture(1)]);
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Make flashcards" }));
 
-    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/learn/decks/d"));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(mocks.track).toHaveBeenCalledWith(accepted);
     expect(mocks.notify).toHaveBeenCalledWith(
-      "Made 8 of 30 flashcards before a batch failed. Make them again for more.",
+      "Flashcards: Capture 1 is being made. It will show on Learn when it is ready.",
     );
-  });
-
-  it("closes once the deck or quiz is made, so going back does not show a stale dialog", async () => {
-    mocks.make.mockResolvedValueOnce({ ok: true, href: "/learn/decks/d", notice: null });
-    const dialog = open([capture(1)]);
-
-    fireEvent.click(within(dialog).getByRole("button", { name: "Make flashcards" }));
-
-    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/learn/decks/d"));
-    expect(screen.queryByRole("dialog")).toBeNull();
   });
 });

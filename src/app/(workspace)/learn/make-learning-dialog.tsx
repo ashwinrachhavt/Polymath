@@ -1,7 +1,6 @@
 "use client";
 
 import { FileText, Inbox, Search, X } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition, type ComponentProps } from "react";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
@@ -14,6 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { trackGenerationJob } from "@/components/jobs/generation-jobs";
 import { WorkStatus } from "@/components/work-status";
 import { useWorkspace } from "@/components/workspace/workspace-provider";
 import { MAX_ITEM_COUNT, MAX_LEARNING_SOURCES, MIN_ITEM_COUNT } from "@/domains/learning/item-count";
@@ -27,8 +27,9 @@ import {
 /*
  * Make flashcards or a quiz from any sources: library documents and inbox
  * captures, picked together, no Notebook first. Learn opens it empty; the
- * inbox opens it with the captures in hand. On success it navigates to the
- * deck or the quiz, so the next thing on screen is the first card.
+ * inbox opens it with the captures in hand. Making takes a minute or more,
+ * so the dialog only hands the request over: it closes as soon as the work is
+ * accepted, and Learn shows the item being made and then ready.
  */
 
 type Kind = "flashcards" | "quiz";
@@ -100,7 +101,6 @@ function MakeLearningForm({
   onPendingChange: (pending: boolean) => void;
   onCancel: () => void;
 }) {
-  const router = useRouter();
   const { notify } = useWorkspace();
   const [kind, setKind] = useState<Kind>("flashcards");
   const [selected, setSelected] = useState<LearningSourceOption[]>(initialSources);
@@ -188,11 +188,9 @@ function MakeLearningForm({
         setError({ message: result.error, sourceId: result.failedSourceId });
         return;
       }
-      if (result.notice) notify(result.notice);
-      // Close before leaving: the router keeps this page's state alive, so an
-      // open dialog would still be open, with these picks, on the way back.
+      trackGenerationJob(result.job);
+      notify(`${result.job.title} is being made. It will show on Learn when it is ready.`);
       onCancel();
-      router.push(result.href);
     });
   }
 
@@ -341,12 +339,6 @@ function MakeLearningForm({
         </label>
 
         {error ? <WorkStatus state={{ phase: "failed", label: error.message }} /> : null}
-        {pending ? (
-          <p role="status" className="text-xs text-muted-foreground">
-            Reading the sources and checking every {kind === "quiz" ? "question" : "card"} against them. This can take a
-            minute.
-          </p>
-        ) : null}
       </div>
 
       <DialogFooter className="items-center">
@@ -355,7 +347,7 @@ function MakeLearningForm({
           Cancel
         </Button>
         <Button disabled={pending || problem !== null} onClick={create}>
-          {pending ? `Making ${choice.label.toLowerCase()}…` : kind === "quiz" ? "Make quiz" : "Make flashcards"}
+          {pending ? "Starting…" : kind === "quiz" ? "Make quiz" : "Make flashcards"}
         </Button>
       </DialogFooter>
     </>

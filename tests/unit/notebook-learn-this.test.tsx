@@ -8,27 +8,32 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * Adjust holds the source checkboxes and an exact 5-100 count. Results show
  * the latest of each as a card that opens in place.
  *
- * Value: protects=the default path needing no choices, and results opening
- * where they were made; fails_when=Create sends a hard-coded count or a
- * single source, an out-of-range count reaches the server, or a deck card
- * navigates away instead of opening in place; seam=the client components
+ * Value: protects=the default path needing no choices, the sheet handing a
+ * quiz or deck over instead of holding the learner, and results opening where
+ * they were made; fails_when=Create sends a hard-coded count or a single
+ * source, an out-of-range count reaches the server, the sheet stays open or
+ * shows no row once the work is accepted, or a deck card navigates away
+ * instead of opening in place; seam=the client components
  * under jsdom with the server actions mocked; no_claim=generation itself
  * (tests/integration/flashcards-batching.test.ts) and the revalidated server
  * render (tests/e2e/learn-loop.spec.ts).
  */
 
 const actions = vi.hoisted(() => ({
-  quiz: vi.fn(),
-  flashcards: vi.fn(),
+  make: vi.fn(),
   explain: vi.fn(),
   rate: vi.fn(),
 }));
 
 vi.mock("@/app/(workspace)/projects/[projectId]/notebook/learning-actions", () => ({
-  generateNotebookQuizAction: actions.quiz,
+  makeNotebookLearningAction: actions.make,
 }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn() }),
+  usePathname: () => "/projects/p/notebook",
+}));
+vi.mock("@/domains/jobs/actions", () => ({ retryGenerationJobAction: vi.fn(), dismissGenerationJobAction: vi.fn() }));
 vi.mock("@/app/(workspace)/projects/[projectId]/notebook/flashcard-actions", () => ({
-  generateNotebookFlashcardsAction: actions.flashcards,
   rateNotebookFlashcardAction: actions.rate,
 }));
 vi.mock("@/app/(workspace)/projects/[projectId]/notebook/explain-actions", () => ({
@@ -49,6 +54,20 @@ const SOURCES = [
   { documentId: "33333333-3333-4333-8333-333333333333", title: "Chapter two" },
 ];
 
+const accepted = {
+  id: "job-1",
+  kind: "learning.flashcards",
+  subject: `notebook:${PROJECT}`,
+  status: "queued" as const,
+  title: "Flashcards: Chapter one + 1 more",
+  attempt: 1,
+  href: null,
+  notice: null,
+  error: null,
+  createdAt: "2026-11-11T10:00:00.000Z",
+  updatedAt: "2026-11-11T10:00:00.000Z",
+};
+
 beforeEach(() => {
   for (const action of Object.values(actions)) action.mockReset();
 });
@@ -60,12 +79,8 @@ function openSheet() {
 
 describe("Learn this", () => {
   it("offers Quiz, Flashcards and Explain It, and the default uses every ready source with no count", async () => {
-    actions.flashcards.mockResolvedValue({
-      ok: true,
-      deckId: "d",
-      summary: "Made 12 flashcards. Open them in Results.",
-    });
-    render(<LearningStudio projectId={PROJECT} sources={SOURCES} />);
+    actions.make.mockResolvedValue({ ok: true, job: accepted });
+    render(<LearningStudio projectId={PROJECT} sources={SOURCES} initialJobs={[]} />);
 
     const sheet = openSheet();
     expect(within(sheet).getByText("Uses all 2 ready sources.")).toBeTruthy();
@@ -75,19 +90,22 @@ describe("Learn this", () => {
     fireEvent.click(within(sheet).getByRole("radio", { name: /Flashcards/ }));
     fireEvent.click(within(sheet).getByRole("button", { name: "Create" }));
 
-    await waitFor(() => expect(actions.flashcards).toHaveBeenCalledTimes(1));
-    const sent = actions.flashcards.mock.calls[0][0];
+    await waitFor(() => expect(actions.make).toHaveBeenCalledTimes(1));
+    const sent = actions.make.mock.calls[0][0];
     expect(sent.projectId).toBe(PROJECT);
+    expect(sent.kind).toBe("flashcards");
     expect(sent.documentIds).toEqual(SOURCES.map((source) => source.documentId));
-    expect(sent.cardCount).toBeUndefined();
+    expect(sent.count).toBeUndefined();
     expect(sent.idempotencyKey).toMatch(/^[0-9a-f-]{36}$/);
-    // The server's sentence says what happened and where to look.
-    expect(await screen.findByText("Made 12 flashcards. Open them in Results.")).toBeTruthy();
+    // The sheet hands the work over: it closes, and a row says the deck is on its way.
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Learn this" })).toBeNull());
+    expect(screen.getByText("Flashcards: Chapter one + 1 more")).toBeTruthy();
+    expect(screen.getByText("Waiting to start. You can leave this page.")).toBeTruthy();
   });
 
   it("Adjust sends exactly the chosen sources and count", async () => {
-    actions.quiz.mockResolvedValue({ ok: true, quizId: "q", summary: "Made 30 questions. Open them in Results." });
-    render(<LearningStudio projectId={PROJECT} sources={SOURCES} />);
+    actions.make.mockResolvedValue({ ok: true, job: accepted });
+    render(<LearningStudio projectId={PROJECT} sources={SOURCES} initialJobs={[]} />);
 
     const sheet = openSheet();
     fireEvent.click(within(sheet).getByText("Adjust"));
@@ -98,12 +116,16 @@ describe("Learn this", () => {
     expect(within(sheet).getByText("Uses 1 of 2 ready sources.")).toBeTruthy();
     fireEvent.click(within(sheet).getByRole("button", { name: "Create" }));
 
-    await waitFor(() => expect(actions.quiz).toHaveBeenCalledTimes(1));
-    expect(actions.quiz.mock.calls[0][0]).toMatchObject({ documentIds: [SOURCES[1].documentId], questionCount: 30 });
+    await waitFor(() => expect(actions.make).toHaveBeenCalledTimes(1));
+    expect(actions.make.mock.calls[0][0]).toMatchObject({
+      kind: "quiz",
+      documentIds: [SOURCES[1].documentId],
+      count: 30,
+    });
   });
 
   it("holds Create back, with the reason, for a count outside 5 to 100 or no source", () => {
-    render(<LearningStudio projectId={PROJECT} sources={SOURCES} />);
+    render(<LearningStudio projectId={PROJECT} sources={SOURCES} initialJobs={[]} />);
     const sheet = openSheet();
     fireEvent.click(within(sheet).getByText("Adjust"));
     fireEvent.change(within(sheet).getByRole("spinbutton", { name: /How many questions/ }), {
@@ -116,11 +138,11 @@ describe("Learn this", () => {
     for (const source of SOURCES) fireEvent.click(within(sheet).getByRole("checkbox", { name: source.title }));
     expect(within(sheet).getByText("Choose at least one source.")).toBeTruthy();
     expect((within(sheet).getByRole("button", { name: "Create" }) as HTMLButtonElement).disabled).toBe(true);
-    expect(actions.quiz).not.toHaveBeenCalled();
+    expect(actions.make).not.toHaveBeenCalled();
   });
 
   it("says why nothing can be made before a source is ready", () => {
-    render(<LearningStudio projectId={PROJECT} sources={[]} />);
+    render(<LearningStudio projectId={PROJECT} sources={[]} initialJobs={[]} />);
     const sheet = openSheet();
     expect(within(sheet).getByText("A source must finish reading before it can be studied.")).toBeTruthy();
     expect((within(sheet).getByRole("button", { name: "Create" }) as HTMLButtonElement).disabled).toBe(true);
@@ -128,7 +150,7 @@ describe("Learn this", () => {
 
   it("shows the server's reason when making fails", async () => {
     actions.explain.mockResolvedValue({ ok: false, error: "Choose sources that belong to this notebook." });
-    render(<LearningStudio projectId={PROJECT} sources={SOURCES} />);
+    render(<LearningStudio projectId={PROJECT} sources={SOURCES} initialJobs={[]} />);
     const sheet = openSheet();
     fireEvent.click(within(sheet).getByRole("radio", { name: /Explain It/ }));
     // Explain It sets its own length: no count to adjust.

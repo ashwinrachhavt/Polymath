@@ -15,6 +15,7 @@ import { ChatSurface } from "@/components/chat/chat-surface";
 import { DeckView, InfographicView, type CitationSource } from "@/components/products/polymath/artifact-views";
 import type { DocumentCitation } from "@/domains/knowledge/agent-search";
 import type { DeckContent, InfographicContent } from "@/domains/knowledge/artifact-content";
+import type { GenerationJobView } from "@/domains/jobs/state";
 import type { SourceRow } from "@/domains/knowledge/source-readiness";
 import { DraftControls } from "../../../polymath/draft-controls";
 import { saveAnswerAction } from "../../../polymath/save-answer-actions";
@@ -94,6 +95,7 @@ export default function NotebookSurface({
   runDrafts = {},
   lastAnswer,
   results = null,
+  learningJobs = [],
 }: {
   notebook: { projectId: string; title: string };
   sources: SourceRow[];
@@ -112,6 +114,8 @@ export default function NotebookSurface({
   lastAnswer?: { runId: string; answer: string; citations: DocumentCitation[] } | null;
   /** The Results panel (latest quiz, deck, Explain It), rendered by the page. */
   results?: React.ReactNode;
+  /** This Notebook's unfinished quiz and deck jobs when the page rendered. */
+  learningJobs?: GenerationJobView[];
 }) {
   const router = useRouter();
   const [selected, setSelected] = useState<StudioOutput>("report");
@@ -282,6 +286,7 @@ export default function NotebookSurface({
 
       <LearningStudio
         projectId={notebook.projectId}
+        initialJobs={learningJobs}
         sources={sources
           .filter((source) => source.readiness === "ready")
           .map(({ documentId, title }) => ({ documentId, title }))}

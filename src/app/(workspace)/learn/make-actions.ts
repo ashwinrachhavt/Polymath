@@ -5,19 +5,12 @@ import { z } from "zod";
 import { ConflictError, StaleWriteError } from "@/domains/capture/commands";
 import { checkCaptureSource, documentForCapture } from "@/domains/capture/document-source";
 import { searchCaptures } from "@/domains/capture/queries";
-import { FlashcardError, generateFlashcardDeck } from "@/domains/learning/flashcards";
-import {
-  GENERATION_COPY,
-  generateQuiz,
-  loadCurrentQuizSources,
-  QuizGenerationError,
-} from "@/domains/learning/generate-quiz";
-import {
-  type GenerationOutcome,
-  MAX_ITEM_COUNT,
-  MAX_LEARNING_SOURCES,
-  MIN_ITEM_COUNT,
-} from "@/domains/learning/item-count";
+import { GenerationJobConflictError } from "@/domains/jobs/commands";
+import { kickGenerationJob } from "@/domains/jobs/kick";
+import type { GenerationJobView } from "@/domains/jobs/state";
+import { GENERATION_COPY, loadCurrentQuizSources, QuizGenerationError } from "@/domains/learning/generate-quiz";
+import { acceptLearningJob } from "@/domains/learning/generation-jobs";
+import { MAX_ITEM_COUNT, MAX_LEARNING_SOURCES, MIN_ITEM_COUNT } from "@/domains/learning/item-count";
 import { searchLearningDocuments } from "@/domains/learning/queries";
 import { actionError } from "@/lib/action-error";
 import { getAuthContext, type AuthContext } from "@/lib/auth";
@@ -28,8 +21,9 @@ import { capturesTag } from "@/lib/cache-tags";
  * Flashcards or a quiz from any sources, with no Notebook in between. A
  * source is a library document or an inbox capture; a capture is filed to
  * the library first (documentForCapture), because learning reads documents.
- * Both verbs return typed unions with authored copy: nothing thrown reaches
- * the client.
+ * Making is a generation job: the verb checks the sources, accepts the work
+ * and returns, and the model runs afterwards. Both verbs return typed unions
+ * with authored copy: nothing thrown reaches the client.
  */
 
 /** A source the learner picked. A capture carries the version they saw, since picking it may file it. */
@@ -40,8 +34,9 @@ export type LearningSourceOption =
   | { type: "document"; id: string; title: string; ready: boolean }
   | { type: "capture"; id: string; version: number; title: string };
 
+/** `job` is the accepted work, not the finished thing: it is being made when this returns. */
 export type MakeLearningResult =
-  { ok: true; href: string; notice: string | null } | { ok: false; error: string; failedSourceId?: string };
+  { ok: true; job: GenerationJobView } | { ok: false; error: string; failedSourceId?: string };
 
 type Resolved = { ok: true; documentIds: string[] } | { ok: false; error: string; failedSourceId?: string };
 
@@ -109,57 +104,20 @@ export async function makeFlashcardsOrQuizAction(input: z.input<typeof makeSchem
     const resolved = await resolveDocumentIds(auth, sources);
     if (!resolved.ok) return resolved;
     const documentIds = resolved.documentIds;
-
-    if (kind === "flashcards") {
-      const deck = await generateFlashcardDeck(auth, { documentIds, cardCount: count, idempotencyKey });
-      revalidatePath("/learn");
-      return {
-        ok: true,
-        href: `/learn/decks/${deck.deckId}`,
-        notice: shortfallNotice("flashcards", {
-          made: deck.cardCount,
-          requested: deck.requested,
-          stoppedBy: deck.stoppedBy,
-        }),
-      };
-    }
-    const quiz = await generateQuiz(auth, {
-      documentId: documentIds[0],
-      documentIds,
-      questionCount: count,
-      idempotencyKey,
-    });
+    const { job, created } = await acceptLearningJob(auth, { kind, documentIds, count, idempotencyKey });
+    if (created) kickGenerationJob({ jobId: job.id, attempt: job.attempt });
     revalidatePath("/learn");
-    return {
-      ok: true,
-      href: `/learn/quizzes/${quiz.quizId}`,
-      notice: shortfallNotice("questions", {
-        made: quiz.questionCount,
-        requested: quiz.requested,
-        stoppedBy: quiz.stoppedBy,
-      }),
-    };
+    return { ok: true, job };
   } catch (error) {
-    if (error instanceof FlashcardError) return { ok: false, error: error.message };
     if (error instanceof QuizGenerationError) return { ok: false, error: GENERATION_COPY[error.code] };
+    if (error instanceof GenerationJobConflictError) {
+      return { ok: false, error: "That request changed while it was being sent. Try again." };
+    }
     return {
       ok: false,
       error: actionError(error, kind === "quiz" ? "Could not make a quiz." : "Could not make flashcards."),
     };
   }
-}
-
-/** What to tell the learner about a deck or quiz that came out short of its request; null when it did not. */
-function shortfallNotice(
-  noun: string,
-  run: { made: number; requested: number; stoppedBy: GenerationOutcome | "in_progress" },
-): string | null {
-  if (run.stoppedBy === "in_progress") return `Still making ${noun}: ${run.made} so far.`;
-  if (run.made >= run.requested) return null;
-  if (run.stoppedBy === "batch_failed") {
-    return `Made ${run.made} of ${run.requested} ${noun} before a batch failed. Make them again for more.`;
-  }
-  return `Made ${run.made} of ${run.requested} ${noun}; the sources support no more.`;
 }
 
 /**
