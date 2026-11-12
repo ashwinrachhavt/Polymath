@@ -68,14 +68,17 @@ describe("getVaultDocuments", () => {
     await getVaultDocuments(auth, null);
     expect(listDocuments).toHaveBeenCalledWith(
       auth,
-      expect.objectContaining({ filters: { folder: "root" }, sort: "recent", limit: 100 }),
+      expect.objectContaining({ filters: { folder: "root", uploadsOnly: true }, sort: "recent", limit: 100 }),
     );
   });
 
   it("reads one folder by id", async () => {
     const folderId = "11111111-1111-4111-8111-111111111111";
     await getVaultDocuments(auth, folderId);
-    expect(listDocuments).toHaveBeenCalledWith(auth, expect.objectContaining({ filters: { folder: folderId } }));
+    expect(listDocuments).toHaveBeenCalledWith(
+      auth,
+      expect.objectContaining({ filters: { folder: folderId, uploadsOnly: true } }),
+    );
   });
 
   it("carries the review key and count from the library row", async () => {

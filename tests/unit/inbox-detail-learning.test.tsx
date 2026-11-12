@@ -13,7 +13,10 @@ import { InboxDetail } from "@/app/(workspace)/command-center/inbox/inbox-detail
  * server sends; no_claim=filing or generation (integration suites).
  */
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }),
+  usePathname: () => "/command-center/inbox",
+}));
 vi.mock("@/app/(workspace)/command-center/inbox/actions", () => ({
   acceptProposalAction: vi.fn(),
   makeDraftAction: vi.fn(),
@@ -26,7 +29,12 @@ vi.mock("@/app/(workspace)/command-center/inbox/actions", () => ({
   unparkCaptureAction: vi.fn(),
   updateCaptureTextAction: vi.fn(),
 }));
-vi.mock("@/app/(workspace)/command-center/inbox/zettel-actions", () => ({ generateZettelsAction: vi.fn() }));
+vi.mock("@/domains/capture/zettel-actions", () => ({ zettelizeAction: vi.fn() }));
+vi.mock("@/domains/jobs/actions", () => ({
+  dismissGenerationJobAction: vi.fn(),
+  retryGenerationJobAction: vi.fn(),
+  startWaitingGenerationJobAction: vi.fn(),
+}));
 vi.mock("@/app/(workspace)/learn/make-actions", () => ({
   makeFlashcardsOrQuizAction: vi.fn(),
   findLearningSourcesAction: vi.fn(async () => ({ ok: true, documents: [], captures: [] })),
@@ -49,7 +57,9 @@ const OPEN: CaptureProps = {
 };
 
 function detail(capture: CaptureProps) {
-  return <InboxDetail capture={capture} priorWriting={null} zettelProviderReady zettelProviderReason="" />;
+  return (
+    <InboxDetail capture={capture} priorWriting={null} zettelProviderReady zettelProviderReason="" zettelJobs={[]} />
+  );
 }
 
 describe("InboxDetail Make flashcards or a quiz", () => {

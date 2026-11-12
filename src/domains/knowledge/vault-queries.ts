@@ -1,10 +1,13 @@
 import type { AuthContext } from "@/domains/identity/resolve";
+import { displayTitle } from "@/lib/display-text";
 import { listDocuments, type LibraryFilters, type LibraryStateFilter } from "./library";
 import { toBrowserRows } from "./file-rows";
 
 /*
- * The vault's server read: documents in one folder (or the top level of the
- * library), shaped for the file browser. The folder tiles come from
+ * The vault's server read: uploaded documents in one folder (or the top
+ * level), shaped for the file browser. The vault is the person's own files:
+ * a capture filed by Zettelize or Learn, a fetched web page or an import is a
+ * library source, read and cited elsewhere, never a vault row. The folder tiles come from
  * listFolders; this owns the document rows only, reusing the library read and
  * the explorer's enrichment (source address, kind) rather than a second query
  * path.
@@ -35,11 +38,13 @@ export type VaultDocument = {
   sizeBytes: number | null;
   pageCount: number | null;
   docType: string | null;
+  /** For a version-checked move between folders. */
+  version: number;
   href: string;
 };
 
 export async function getVaultDocuments(auth: AuthContext, folderId: string | null): Promise<VaultDocument[]> {
-  const filters: LibraryFilters = { folder: folderId ?? "root" };
+  const filters: LibraryFilters = { folder: folderId ?? "root", uploadsOnly: true };
   const page = await listDocuments(auth, { filters, sort: "recent", limit: 100 });
   const rows = await toBrowserRows(auth, page.rows);
   const byId = new Map(page.rows.map((row) => [row.id, row]));
@@ -47,7 +52,8 @@ export async function getVaultDocuments(auth: AuthContext, folderId: string | nu
     const source = byId.get(row.id)!;
     return {
       id: row.id,
-      title: row.title,
+      // A name is never markup: a title stored as "> ## Heading" reads as "Heading".
+      title: displayTitle(row.title) || row.filename || "Untitled document",
       filename: row.filename,
       mimeType: row.mimeType,
       kind: row.kind,
@@ -58,9 +64,8 @@ export async function getVaultDocuments(auth: AuthContext, folderId: string | nu
       sizeBytes: source.sizeBytes,
       pageCount: source.pageCount,
       docType: source.docType,
-      href: folderId
-        ? `/polymath/knowledge?folder=${folderId}&doc=${row.id}`
-        : `/polymath/knowledge?doc=${row.id}`,
+      version: source.version,
+      href: folderId ? `/polymath/knowledge?folder=${folderId}&doc=${row.id}` : `/polymath/knowledge?doc=${row.id}`,
     };
   });
 }

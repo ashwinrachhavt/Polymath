@@ -380,7 +380,7 @@ export async function findLinkTargetsAction(
   const auth = await getAuthContext();
   const query = parsed.data.query.trim();
   if (!query)
-    return (await listNotes(auth, 9))
+    return (await listNotes(auth, 9, LINKABLE_KINDS))
       .filter((r) => r.id !== parsed.data.excludeId)
       .slice(0, 8)
       .map((r) => ({ id: r.id, title: r.title, kind: r.kind }));

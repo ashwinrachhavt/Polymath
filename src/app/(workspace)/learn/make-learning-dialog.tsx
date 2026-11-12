@@ -65,7 +65,7 @@ export function MakeLearningButton({
   );
 }
 
-function MakeLearningDialog({
+export function MakeLearningDialog({
   open,
   onOpenChange,
   initialSources,

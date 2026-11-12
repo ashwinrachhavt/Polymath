@@ -176,10 +176,13 @@ export function CaptureBody({
           <p className="max-w-[68ch] text-xs text-muted-foreground">
             The original capture is kept; this edits the working text.
           </p>
-          <div className="flex items-center gap-3">
-            <Button type="button" size="sm" disabled={!dirty || status === "saving"} onClick={save}>
-              Save changes
-            </Button>
+          {/* The save verb appears only when there is an edit to keep. */}
+          <div className="flex min-h-7 items-center gap-3">
+            {dirty || status === "saving" ? (
+              <Button type="button" size="sm" disabled={status === "saving"} onClick={save}>
+                Save changes
+              </Button>
+            ) : null}
             <span role="status" className="text-xs text-muted-foreground">
               {status === "saving" ? "Saving" : status === "saved" ? "Saved" : ""}
             </span>

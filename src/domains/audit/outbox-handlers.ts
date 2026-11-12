@@ -19,7 +19,6 @@ import { urlContentRequestedHandler } from "@/domains/capture/url-content-handle
 import { CAPTURE_ENRICHMENT_TOPIC, CAPTURE_URL_CONTENT_TOPIC } from "@/domains/capture/commands";
 import { captureEnrichmentRequestedHandler } from "@/domains/capture/enrichment-handler";
 import { CAPTURE_ENRICH_TOPIC, captureEnrichRequestedHandler } from "@/domains/capture/enrich";
-import { ZETTEL_GENERATION_TOPIC, runZettelGenerationRequested } from "@/domains/capture/zettel-generation";
 import { isTerminalCrawlStatus, pollCrawl, submitCrawl } from "@/integrations/firecrawl/client";
 import { memberships } from "@/domains/identity/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
@@ -294,9 +293,6 @@ export function outboxHandlers(): Record<string, OutboxHandler> {
     [CAPTURE_URL_CONTENT_TOPIC]: urlContentRequestedHandler,
     [CAPTURE_ENRICHMENT_TOPIC]: captureEnrichmentRequestedHandler,
     [CAPTURE_ENRICH_TOPIC]: captureEnrichRequestedHandler(workspaceOwnerAuth),
-    [ZETTEL_GENERATION_TOPIC]: async (event) => {
-      await runZettelGenerationRequested(event, { auth: workspaceOwnerAuth });
-    },
     [RUN_CRITIQUE_TOPIC]: runCritiqueRequestedHandler(workspaceOwnerAuth),
     [EMBEDDING_RETRY_TOPIC]: embeddingRetryRequestedHandler(workspaceOwnerAuth),
     [FACT_SUGGESTION_TOPIC]: factSuggestionRequestedHandler,

@@ -165,6 +165,22 @@ suite("convertCaptureToDocument", () => {
     expect(inputTitled.title).toBe("Conversion title");
   });
 
+  it("names the document by its own heading when the stored capture title is raw markup", async () => {
+    const { userId, workspaceId } = await seedWorkspace(holder.db!, `c2d-markup-${Date.now()}`);
+    const auth = ownerAuth(userId, workspaceId);
+    const page = "> ## Documentation Index\n>\n> Fetch the full index first.\n\n# Vector index selection\n\nBody.";
+    const capture = await addTextCapture(holder.db!, workspaceId, userId, page, "> ## Documentation Index");
+
+    const { documentId } = await convertCaptureToDocument(auth, {
+      captureId: capture.id,
+      expectedVersion: capture.version,
+    });
+    const [doc] = await holder.db!.select().from(documents).where(eq(documents.id, documentId!));
+    expect(doc.title).toBe("Vector index selection");
+    const [file] = await holder.db!.select().from(files).where(eq(files.id, doc.fileId!));
+    expect(file.filename).toBe("Vector index selection.md");
+  });
+
   it("feeds the existing pipeline: extraction succeeds from the bytes, zettelize quotes it verbatim", async () => {
     const { userId, workspaceId } = await seedWorkspace(holder.db!, `c2d-pipe-${Date.now()}`);
     const auth = ownerAuth(userId, workspaceId);

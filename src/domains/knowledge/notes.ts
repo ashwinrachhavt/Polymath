@@ -67,6 +67,13 @@ const WIKI_LINK = /\[\[([^\]\n]+)\]\]/g;
 /** The artifact kinds a wiki link may resolve to (one graph over both). */
 export const LINKABLE_KINDS = ["note", "zettel"] as const;
 
+/*
+ * The kinds the Notes library lists: what the person wrote. Zettels share the
+ * graph with notes (a link resolves to either), but they live in Ideas, so a
+ * Notes list includes one only when its caller asks for LINKABLE_KINDS.
+ */
+export const NOTE_LIST_KINDS = ["note"] as const;
+
 /** Kinds a note command may create: the two linkable kinds, and a transcript (a conversation projected into the graph). */
 /*
  * The projections (thread-graph, document-graph) create their mirrors through
@@ -580,7 +587,7 @@ const noteExcerptSql = sql<string | null>`coalesce(
 export async function listNotes(
   auth: AuthContext,
   limit = 50,
-  kinds: readonly ("note" | "zettel")[] = LINKABLE_KINDS,
+  kinds: readonly ("note" | "zettel")[] = NOTE_LIST_KINDS,
 ): Promise<NoteListItem[]> {
   return withTransaction(async (tx) => {
     const rows = await tx
@@ -629,7 +636,7 @@ export async function pageNotes(
   return withTransaction(async (tx) => {
     const filters = [
       eq(artifacts.workspaceId, auth.workspaceId),
-      inArray(artifacts.kind, [...(input.kinds ?? LINKABLE_KINDS)]),
+      inArray(artifacts.kind, [...(input.kinds ?? NOTE_LIST_KINDS)]),
       isNull(artifacts.archivedAt),
     ];
     if (input.draftsOnly) filters.push(isNotNull(workingDrafts.artifactId));
