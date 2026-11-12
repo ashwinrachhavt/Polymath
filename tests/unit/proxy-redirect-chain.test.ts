@@ -85,6 +85,23 @@ describe("unmatched paths get the real 404 (QA F8)", () => {
   });
 });
 
+describe("eve agent routes pass through to eve's own auth", () => {
+  // Under `next start` the app reaches its agents same-origin from the server,
+  // with a bridge token and no Clerk session; eve refuses anything without a
+  // valid token. On Vercel these routes never reach this proxy at all.
+  it.each(["/eve/polymath/v1/session", "/eve/specialist/v1/health", "/eve/polymath/v1/session/abc/stream"])(
+    "lets a session-less request to %s through untouched",
+    async (path) => {
+      expect(await runAs(path, false)).toBeUndefined();
+    },
+  );
+
+  it.each(["/eve", "/evening", "/eve-polymath/v1/session"])("still 404s the look-alike %s", async (path) => {
+    const response = await runAs(path, false);
+    expect(response?.headers.get("x-middleware-rewrite")?.endsWith("/404")).toBe(true);
+  });
+});
+
 describe("real routes still gate exactly as before", () => {
   it.each([
     "/onboarding",

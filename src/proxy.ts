@@ -45,6 +45,12 @@ const publicPatterns = [
   // agent, not a Clerk session. Clerk here would 307 the agent's own tool call
   // to the sign-in page, which is what "fetch failed" looked like from eve.
   "/api/mcp",
+  // The eve agents (withEve rewrites /eve/<agent>/v1/* to them). Under
+  // `next start` the app calls them same-origin from the server with a signed
+  // bridge token and no Clerk session; eve's channel refuses any request
+  // without a valid token (eve/*/agent/channels/eve.ts). On Vercel these
+  // routes are served before this proxy runs, so this matches production.
+  "/eve/(.*)",
 ];
 
 // The proxy enforces whenever Clerk is configured, regardless of
@@ -133,7 +139,9 @@ export default proxyArmed
             }
             const destination = pathname + url.search;
             const returnTo =
-              pathname.startsWith("/") && !pathname.startsWith("//") ? `?returnTo=${encodeURIComponent(destination)}` : "";
+              pathname.startsWith("/") && !pathname.startsWith("//")
+                ? `?returnTo=${encodeURIComponent(destination)}`
+                : "";
             return NextResponse.redirect(new URL(`/landing${returnTo}`, request.url));
           }
         }
