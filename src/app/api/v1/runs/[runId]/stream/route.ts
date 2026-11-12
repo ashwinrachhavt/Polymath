@@ -287,6 +287,13 @@ export const GET = authedHandler<Ctx>(async (auth, request, ctx) => {
         // The run's durable stage facts first: every connection opens with
         // what the rows know, before Eve's replay begins.
         push(encodeFrame(runFrame(startIndex)));
+        // A recovery session starts at event 0 while the client still holds the
+        // cursor from the run's previous session, so replaying it from that
+        // cursor would skip the whole replacement turn. The head of a
+        // replacement replay is `session.started`, which the client has already
+        // applied once for the original session; seeing it again means the
+        // event space reset and the cursor has to start over.
+        let sawSessionStart = false;
         for await (const chunk of upstream.body as unknown as AsyncIterable<Uint8Array>) {
           buffer += decoder.decode(chunk, { stream: true });
           const { lines, rest } = splitLines(buffer);
@@ -297,6 +304,27 @@ export const GET = authedHandler<Ctx>(async (auth, request, ctx) => {
             // advance the cursor: the cursor is Eve's absolute event count, and
             // counting a non-event would make every reconnect replay.
             if (!event) continue;
+            if (!sawSessionStart && event.type === "session.started") {
+              sawSessionStart = true;
+              if (startIndex > 0) {
+                // A live surface is holding a cursor from the run's previous
+                // session, which no longer addresses this one. Hand it the
+                // stored thread at cursor 0 before the replacement's frames so
+                // the next reconnect replays from the start instead of skipping
+                // the whole turn. Emitted here, not at close: the follow branch
+                // holds the stream open, so a close-time frame never arrives.
+                cursor = 0;
+                const stored = await durableReplay(runId, 0, suppressObjectiveText);
+                push(
+                  encodeFrame({
+                    type: "snapshot",
+                    runId,
+                    blocks: stored.frames.flatMap((frame) => (frame.type === "snapshot" ? frame.blocks : [])),
+                    cursor: 0,
+                  }),
+                );
+              }
+            }
             for (const frame of frameOf(runId, event, cursor, { suppressObjectiveText })) push(encodeFrame(frame));
             cursor += 1;
             if (event.type === "session.completed" || event.type === "session.failed") {
