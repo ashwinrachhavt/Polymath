@@ -33,6 +33,13 @@
   svg.forming { overflow: visible; display: block; }
   .forming .ghost { fill: none; stroke: var(--ink-muted); stroke-width: 1.6; stroke-dasharray: 3 5; opacity: 0.7; }
   .forming .frag { opacity: 0; transform: translate(var(--dx), var(--dy)); } .forming .frag.on { opacity: 1; } .forming .rim { opacity: 0; }
+  /* milestone shelf: objects stand on a ledge, not in wells, so the row reads as a different thing */
+  .shelves { display: grid; grid-template-columns: 5fr 3fr 2fr; gap: 0 22px; }
+  .ledge { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .ledge .items { display: flex; align-items: flex-end; gap: 4px; border-bottom: 2px solid var(--ink); padding: 0 4px; min-height: 84px; }
+  .ledge .items img { width: 100%; max-width: 76px; min-width: 0; flex: 1 1 0; height: auto; margin-bottom: -4px; }
+  .ledge .cap { font-size: 0.8125rem; font-weight: 500; line-height: 1.25; } .ledge .sub { font-size: 0.75rem; color: var(--ink-muted); line-height: 1.3; }
+  .bar { height: 4px; border-radius: 2px; background: var(--paper-3); overflow: hidden; } .bar i { display: block; height: 100%; background: var(--signal); border-radius: 2px; }
   /* detail */
   .detail { position: sticky; top: 16px; padding: 18px; display: flex; flex-direction: column; gap: 14px; }
   .detail .well { aspect-ratio: 1; position: relative; padding: 14%; }
@@ -57,7 +64,7 @@
   #share .facts { font-size: 20px; color: var(--ink-2); }
   #share .rowstones { display: flex; gap: 10px; margin-top: 30px; } #share .rowstones div { width: 76px; text-align: center; font-size: 12px; line-height: 1.2; color: var(--ink-muted); } #share .rowstones img { width: 76px; height: 76px; }
   #share .brand { position: absolute; right: 56px; bottom: 40px; font-family: var(--font-display); font-weight: 600; font-size: 22px; letter-spacing: -0.03em; }
-  @media (max-width: 900px) { .layout { grid-template-columns: minmax(0, 1fr); } .detail { position: static; } .empty .drawer { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  @media (max-width: 900px) { .layout { grid-template-columns: minmax(0, 1fr); } .shelves { grid-template-columns: minmax(0, 1fr); gap: 22px; } .detail { position: static; } .empty .drawer { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 </style>
 </head>
 <body>
@@ -67,6 +74,7 @@
     <button class="btn" type="button" data-view="wall">The wall</button>
     <button class="btn" type="button" data-view="empty">A new learner</button>
     <button class="btn" type="button" data-view="share">The share image</button>
+    <label style="display:inline-flex;gap:6px;align-items:center"><input type="checkbox" id="ms-toggle" checked> Milestone shelf (optional, not confirmed)</label>
     <span class="muted" style="margin-left:auto">Click a stone to read it. Try “Polish now” on one that is ready.</span>
   </div>
 
@@ -76,6 +84,7 @@
         <div class="wallhead"><h1>Stones</h1><span class="muted" id="summary"></span></div>
         <div class="key6" id="key6" aria-label="What the shapes mean"></div>
       </div>
+      <section id="shelf" class="mission" aria-label="Milestones"><header><h2>Milestones</h2><span class="small muted">Rare. For totals, not ideas.</span></header><div class="shelves" id="shelves"></div></section>
       <div id="missions" class="stack" style="gap:36px"></div>
     </div>
     <aside class="panel detail" id="detail" aria-live="polite"></aside>
@@ -180,6 +189,20 @@
   // empty state: the six shapes as outlines, so the first screen already teaches the legend
   $("ghosts").innerHTML = S.CUTS.map((c) => `<div><div class="well"><svg viewBox="0 0 200 200"><path class="ghost" d="${S.drawStone({ cut: c.key, material: "amber", finish: "cut", seed: 3 }).outlineD}"/></svg></div><div class="cap">${c.plural}</div></div>`).join("");
   $("key6").innerHTML = "<span>Shape is the kind of idea:</span>" + S.CUTS.map((c) => `<span>${S.stoneImg({ cut: c.key, material: "hematite", finish: "cut", seed: 3 }, 22, "")}${c.kind}</span>`).join("") + '<span>Material is the subject. Finish is how well it has held.</span>';
+
+  // optional milestone shelf
+  (function () {
+    const M = D.MILESTONES, im = (svg, alt) => `<img src="${S.dataUrl(svg)}" alt="${alt}" title="${alt}">`;
+    const ledge = (t, draw) => {
+      const next = t.tiers.find(([n]) => n > t.have), last = [...t.tiers].reverse().find(([n]) => n <= t.have);
+      const items = t.tiers.map(([n, name], i) => im(draw(i, n, n > t.have), n > t.have ? name + ", not yet earned" : name)).join("");
+      return `<div class="ledge"><div class="items">${items}</div><div class="cap">${t.title}</div><div class="sub">${last ? last[1] + " earned. " : ""}${next ? `<span class="readout">${t.have} of ${next[0]}</span> ${t.unit} to the ${next[1]}.` : "All earned."}</div>${next ? `<div class="bar" role="img" aria-label="${t.have} of ${next[0]} ${t.unit}"><i style="width:${Math.round((t.have / next[0]) * 100)}%"></i></div>` : ""}</div>`;
+    };
+    $("shelves").innerHTML = ledge(M.hours, (i, n, locked) => S.drawSpire(i + 1, { id: "ws" + i, locked })) + ledge(M.invites, (i, n, locked) => S.drawRings(n, { locked })) +
+      `<div class="ledge"><div class="items">${M.editions.items.map((e, i) => im(S.drawMeteorite(e.seed, { id: "wm" + i, locked: !e.earned }), e.earned ? e.name : e.name + ", not yet earned")).join("")}</div><div class="cap">${M.editions.title}</div><div class="sub">${M.editions.items[0].name}, ${M.editions.items[0].when}. Next: ${M.editions.items[1].when}.</div></div>`;
+    const t = $("ms-toggle"); t.checked = params.get("milestones") !== "0";
+    const sync = () => { $("shelf").hidden = !t.checked; }; t.addEventListener("change", sync); sync();
+  })();
 
   // share image
   function renderShare() {

@@ -420,10 +420,64 @@
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><defs>${defs}</defs><ellipse cx="104" cy="176" rx="66" ry="7" fill="#000" opacity=".2"/>${s}</svg>`;
   }
 
+  /* ---------- milestone track (optional): not cut stones, on purpose ---------- */
+  const LOCK = "#8c867b";
+  const SPIRE_COLS = [[0, 128, 36, -2], [30, 88, 28, 15], [-32, 80, 26, -18], [54, 56, 20, 30], [-56, 50, 18, -32], [12, 58, 18, 6]];
+  /** Focused hours: a crystal cluster that gains spires. tier 1..5. */
+  function drawSpire(tier, opts) {
+    opts = opts || {};
+    const id = opts.id || "sp", locked = !!opts.locked, pal = ["#4d6072", "#8ea6ba", "#cfdeea", "#f1f7fb", "#ffffff"];
+    const cols = SPIRE_COLS.slice(0, [1, 2, 3, 4, 6][tier - 1]).sort((a, b) => b[1] - a[1]);
+    let s = "";
+    for (const [x, h, w, tilt] of cols) {
+      const a = (tilt * Math.PI) / 180, o = [100 + x, 166], T = (q) => rot([o[0] + q[0], o[1] + q[1]], a, o), top = -(h - w * 0.55);
+      const xs = [-w / 2, -w / 7, w / 5, w / 2], out = [[-w / 2, 0], [w / 2, 0], [w / 2, top], [0, -h], [-w / 2, top]].map(T);
+      if (locked) { s += `<polygon points="${pts(out)}" fill="${LOCK}" opacity=".26" stroke="${LOCK}" stroke-width="1.2" stroke-dasharray="3 4"/>`; continue; }
+      for (let i = 0; i < 3; i++) {
+        s += `<polygon points="${pts([[xs[i], 0], [xs[i + 1], 0], [xs[i + 1], top], [xs[i], top]].map(T))}" fill="${[pal[3], pal[2], pal[1]][i]}"/>`;
+        s += `<polygon points="${pts([[xs[i], top], [xs[i + 1], top], [0, -h]].map(T))}" fill="${[pal[4], pal[3], pal[2]][i]}"/>`;
+      }
+      s += `<polygon points="${pts(out)}" fill="url(#${id}o)" opacity="${f1(0.45 + tier * 0.1)}"/><polygon points="${pts(out)}" fill="none" stroke="${pal[0]}" stroke-width="1.1" stroke-linejoin="round" opacity=".6"/>`;
+    }
+    const rx = 50 + tier * 5;
+    const base = `M${100 - rx},170Q${100 - rx * 0.7},154 ${100 - rx * 0.2},158Q${100 + rx * 0.3},150 ${100 + rx * 0.75},160Q${100 + rx},166 ${100 + rx * 0.9},178Q100,190 ${100 - rx * 0.9},180Z`;
+    s += locked ? `<path d="${base}" fill="${LOCK}" opacity=".3"/>` : `<path d="${base}" fill="url(#${id}b)"/>` + sparkle(100 + cols[0][0] - 4, 166 - cols[0][1] + 6, 6 + tier * 2, 0.95) + (tier >= 4 ? sparkle(142, 96, 7, 0.8) + sparkle(56, 108, 5, 0.7) : "");
+    const defs = `<linearGradient id="${id}o" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#ff9a3d" stop-opacity=".9"/><stop offset=".6" stop-color="#ffd27a" stop-opacity="0"/></linearGradient><linearGradient id="${id}b" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8a7d70"/><stop offset="1" stop-color="#3b332d"/></linearGradient>`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><defs>${defs}</defs>${locked ? "" : '<ellipse cx="102" cy="186" rx="64" ry="6" fill="#000" opacity=".18"/>'}${s}</svg>`;
+  }
+  /** People invited: rings carved from one piece, linked. count 1, 3 or 10. */
+  function drawRings(count, opts) {
+    opts = opts || {};
+    const locked = !!opts.locked, pal = ["#3a0614", "#7a0f2b", "#b81f45", "#e8627f", "#ffd0d9"];
+    const one = (cx, cy, r, sq, deg, w) => {
+      const e = `cx="${f1(cx)}" cy="${f1(cy)}" rx="${f1(r)}" ry="${f1(r * sq)}" fill="none"`, t = `transform="rotate(${f1(deg)} ${f1(cx)} ${f1(cy)})"`;
+      if (locked) return `<ellipse ${e} ${t} stroke="${LOCK}" stroke-width="${f1(w)}" opacity=".3"/>`;
+      return `<g ${t}><ellipse ${e} stroke="${pal[0]}" stroke-width="${f1(w + 2)}" opacity=".7"/><ellipse ${e} stroke="${pal[1]}" stroke-width="${f1(w)}"/><ellipse ${e} stroke="${pal[2]}" stroke-width="${f1(w * 0.6)}"/><ellipse ${e} stroke="${pal[3]}" stroke-width="${f1(w * 0.22)}"/><ellipse ${e} stroke="${pal[4]}" stroke-width="${f1(w * 0.16)}" stroke-linecap="round" stroke-dasharray="${f1(r * 1.1)} 999" stroke-dashoffset="${f1(-r * 3.4)}"/></g>`;
+    };
+    let s = "";
+    if (count <= 1) s = one(100, 100, 62, 0.82, -14, 24);
+    else if (count <= 3) for (let i = 0; i < 3; i++) { const a = -TAU / 4 + (i * TAU) / 3; s += one(100 + 30 * Math.cos(a), 104 + 30 * Math.sin(a), 40, 0.86, (a * 180) / Math.PI, 14); }
+    else for (let i = 0; i < 10; i++) { const a = (i * TAU) / 10; s += one(100 + 58 * Math.cos(a), 100 + 58 * Math.sin(a), 24, i % 2 ? 0.5 : 0.95, (a * 180) / Math.PI + 90, 8); }
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">${locked ? "" : '<ellipse cx="102" cy="186" rx="60" ry="6" fill="#000" opacity=".16"/>'}${s}${locked ? "" : sparkle(60, 56, 8, 0.9)}</svg>`;
+  }
+  /** Limited editions: a dated meteorite. Iron, etched, with a gold fusion edge. */
+  function drawMeteorite(seed, opts) {
+    opts = opts || {};
+    const id = opts.id || "mt", locked = !!opts.locked, r = rng(seed || 5), p = [r() * TAU, r() * TAU, r() * TAU];
+    const P = Array.from({ length: 40 }, (_, i) => { const th = (i / 40) * TAU, w = 1 + 0.1 * Math.sin(2 * th + p[0]) + 0.08 * Math.sin(3 * th + p[1]) + 0.05 * Math.sin(6 * th + p[2]); return [100 + 70 * w * Math.cos(th), 100 + 58 * w * Math.sin(th)]; });
+    const d = "M" + P.map(pt).join("L") + "Z";
+    if (locked) return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><path d="${d}" fill="${LOCK}" opacity=".26" stroke="${LOCK}" stroke-width="1.2" stroke-dasharray="3 4"/></svg>`;
+    let lines = "";
+    for (let i = -8; i <= 8; i++) lines += `M${i * 16 - 40},0l200,200M${i * 16 + 240},0l-140,200`;
+    let pits = "";
+    for (let i = 0; i < 7; i++) pits += `<ellipse cx="${f1(50 + r() * 100)}" cy="${f1(60 + r() * 80)}" rx="${f1(4 + r() * 8)}" ry="${f1(3 + r() * 5)}" fill="#0b0807" opacity=".5"/>`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><defs><radialGradient id="${id}g" cx=".36" cy=".3" r=".85"><stop offset="0" stop-color="#7d6c60"/><stop offset=".55" stop-color="#3b302a"/><stop offset="1" stop-color="#120e0c"/></radialGradient><clipPath id="${id}c"><path d="${d}"/></clipPath></defs><ellipse cx="102" cy="176" rx="60" ry="6" fill="#000" opacity=".18"/><path d="${d}" fill="url(#${id}g)"/><g clip-path="url(#${id}c)"><path d="${lines}" stroke="#e7d7b4" stroke-width=".8" opacity=".22" fill="none"/>${pits}</g><path d="${d}" fill="none" stroke="#f3b23c" stroke-width="2.2" stroke-linejoin="round" stroke-dasharray="150 600" stroke-dashoffset="330" opacity=".9"/><path d="${d}" fill="none" stroke="#0b0807" stroke-width="1.2" opacity=".5"/>${sparkle(58, 60, 9, 0.95)}${sparkle(132, 78, 5, 0.75)}</svg>`;
+  }
+
   root.Stones = {
     CUTS, MATERIALS, FINISHES, CUT, MAT, FIN,
     fnv, rng, ramp, mix, rotateHue, hexToRgb,
     stoneName, stoneMeaning, stoneForConcept,
-    buildCut, drawStone, drawForming, drawShard, drawGeode, dataUrl, stoneImg,
+    buildCut, drawStone, drawForming, drawShard, drawGeode, drawSpire, drawRings, drawMeteorite, dataUrl, stoneImg,
   };
 })(typeof window !== "undefined" ? window : globalThis);

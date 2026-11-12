@@ -50,5 +50,11 @@
       ],
     },
   ];
-  root.StoneData = { SAMPLES, MISSIONS, SHARDS_PER_STONE: 3, spec: (x) => S.stoneForConcept(x) };
+  /* Optional milestone track. Few, fixed, rare: thresholds, not concepts. */
+  const MILESTONES = {
+    hours: { title: "Focused hours", unit: "hours", have: 63, tiers: [[10, "Ten-hour Spire"], [50, "Fifty-hour Spire"], [100, "Hundred-hour Spire"], [500, "Five-hundred-hour Spire"], [1000, "Thousand-hour Spire"]] },
+    invites: { title: "People you brought in", unit: "people", have: 1, tiers: [[1, "Ring of One"], [3, "Ring of Three"], [10, "Ring of Ten"]] },
+    editions: { title: "Limited editions", items: [{ name: "Launch Week Meteorite", when: "October 2026", earned: true, seed: 11 }, { name: "Winter Solstice Meteorite", when: "21 December 2026", earned: false, seed: 29 }] },
+  };
+  root.StoneData = { SAMPLES, MISSIONS, MILESTONES, SHARDS_PER_STONE: 3, spec: (x) => S.stoneForConcept(x) };
 })(window);
