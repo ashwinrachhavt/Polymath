@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Hint } from "@/components/ui/tooltip";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -27,12 +28,15 @@ export function NoteAIMenu({
   onAction,
   open: controlledOpen,
   onOpenChange,
+  icon = false,
 }: {
   selection: string;
   pending: boolean;
   onAction: (request: NoteAIRequest) => void;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /** A quiet icon with a hover label (the note page's top bar), not a labelled button. */
+  icon?: boolean;
 }) {
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
   const open = controlledOpen ?? uncontrolledOpen;
@@ -52,16 +56,27 @@ export function NoteAIMenu({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button type="button" variant="outline" disabled={pending}>
-          <Sparkles aria-hidden />
-          {pending ? "AI is working…" : "Ask AI"}
-        </Button>
-      </DialogTrigger>
+      {icon ? (
+        <Hint label={pending ? "AI is working…" : "Ask AI (or press space on an empty line)"}>
+          <DialogTrigger asChild>
+            <Button type="button" variant="ghost" size="icon-sm" aria-label="Ask AI" disabled={pending}>
+              <Sparkles aria-hidden className={pending ? "animate-pulse" : "text-muted-foreground"} />
+            </Button>
+          </DialogTrigger>
+        </Hint>
+      ) : (
+        <DialogTrigger asChild>
+          <Button type="button" variant="outline" disabled={pending}>
+            <Sparkles aria-hidden />
+            {pending ? "AI is working…" : "Ask AI"}
+          </Button>
+        </DialogTrigger>
+      )}
       <DialogContent>
         <DialogTitle>Notebook AI</DialogTitle>
         <DialogDescription>
-          Acts on {scope}. The result arrives as a draft you can accept or discard; nothing is written into the note until you accept it.
+          Acts on {scope}. The result arrives as a draft you can accept or discard; nothing is written into the note
+          until you accept it.
         </DialogDescription>
         <div className="grid grid-cols-3 gap-2">
           <Button type="button" variant="outline" disabled={pending} onClick={() => fire({ action: "improve" })}>
@@ -81,7 +96,12 @@ export function NoteAIMenu({
             if (language.trim()) fire({ action: "translate", language: language.trim() });
           }}
         >
-          <Input aria-label="Translate into" placeholder="Translate into…" value={language} onChange={(event) => setLanguage(event.target.value)} />
+          <Input
+            aria-label="Translate into"
+            placeholder="Translate into…"
+            value={language}
+            onChange={(event) => setLanguage(event.target.value)}
+          />
           <Button type="submit" variant="outline" disabled={pending || !language.trim()}>
             Translate
           </Button>

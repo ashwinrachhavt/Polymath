@@ -26,7 +26,7 @@ import { RunControls } from "../run-controls";
 import { RunReview } from "./run-review";
 import { DraftControls } from "../draft-controls";
 import { groupHistory, type HistoryRow } from "../history";
-import { HistoryMenu } from "../history-menu";
+import { HistoryMenu, historyChipClass } from "../history-menu";
 import type { InterruptCard } from "@/components/chat/confirmation";
 import { answerRunQuestion } from "./question-actions";
 
@@ -173,10 +173,7 @@ async function ConversationSurface({ runId }: { runId: string }) {
       <header className="bg-background/95 sticky top-0 z-10 backdrop-blur">
         <div className="mx-auto flex h-12 w-full max-w-[var(--measure-prose)] items-center gap-1 px-4 md:px-0">
           <HistoryMenu groups={historyGroups} label="Chats" />
-          <Link
-            href="/polymath"
-            className="text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-ring inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-label whitespace-nowrap outline-none transition-colors focus-visible:ring-2"
-          >
+          <Link href="/polymath" className={historyChipClass}>
             <Plus aria-hidden className="size-3.5 shrink-0" />
             <span>New chat</span>
           </Link>

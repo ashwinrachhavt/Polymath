@@ -1,6 +1,6 @@
 import { permanentRedirect } from "next/navigation";
 
-// The stacked reader is gone; keep old links working.
+// Linked notes now open as panes beside the note being written, on /polymath/notes; keep old links working.
 export default function EvergreenNotesPage() {
   permanentRedirect("/polymath/notes");
 }
