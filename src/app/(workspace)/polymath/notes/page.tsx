@@ -9,6 +9,7 @@ import {
   listNoteOutlinks,
   listNotes,
   listNoteVersions,
+  pageNotes,
   type NoteContent,
 } from "@/domains/knowledge/notes";
 import { noteContentToMarkdown } from "@/domains/knowledge/note-content";
@@ -17,9 +18,11 @@ import { listNoteComments } from "@/domains/knowledge/note-comments";
 import { relatedNotes } from "@/domains/knowledge/relations";
 import { getAuthContext } from "@/lib/auth";
 import type { RawSearchParams } from "@/lib/list-params";
+import { LIBRARY_PAGE_SIZE, libraryNote, plainExcerpt } from "./library-notes";
 import { NewNoteButton, NoteEditor } from "./note-editor";
 import { noteLayout } from "./note-layout";
 import { FindNoteButton, NotebookWorkspace } from "./notebook-workspace";
+import { NotesLibrary } from "./notes-library";
 
 export const metadata = { title: "Notes · Polymath" };
 
@@ -29,11 +32,14 @@ export const metadata = { title: "Notes · Polymath" };
  * tables generated work uses. The /polymath/notebook URL and the retired
  * /apps/polymath/notebook preview address redirect here.
  *
- * The page is one note, always editable, in one centered column. Bare
- * /polymath/notes renders the most recent note in place (a redirect from
- * inside the stream would render twice) and the client writes its id into the
- * URL. A retired ?stack=a,b opens its last note; the other old view params
- * (board, mode, layout, q ...) are accepted and ignored.
+ * The page is a library rail beside one note, always editable, in one centered
+ * column. The rail lists every note the workspace holds, newest first, one
+ * page at a time (`?page=2`), with the open note marked: finishing a note must
+ * never be the reason it disappears. Bare /polymath/notes renders the most
+ * recent note in place (a redirect from inside the stream would render twice)
+ * and the client writes its id into the URL. A retired ?stack=a,b opens its
+ * last note; the other old view params (board, mode, layout, q ...) are
+ * accepted and ignored.
  */
 
 export function noteMarkdown(content: NoteContent | null): string {
@@ -45,10 +51,26 @@ function requestedNoteId(raw: RawSearchParams): string | undefined {
   if (typeof raw.stack === "string") return raw.stack.split(",").filter(Boolean).at(-1);
 }
 
-function NotesMessage({ title, body, children }: { title: string; body: string; children: ReactNode }) {
+/** The rail's page; a malformed or absurd value reads as the first page. */
+function requestedPage(raw: RawSearchParams): number {
+  const value = typeof raw.page === "string" ? Number(raw.page) : 1;
+  return Number.isInteger(value) && value > 1 ? Math.min(value, 500) : 1;
+}
+
+function NotesMessage({
+  title,
+  body,
+  library,
+  children,
+}: {
+  title: string;
+  body: string;
+  library?: ReactNode;
+  children: ReactNode;
+}) {
   return (
     <div className={noteLayout.screen}>
-      <NotebookWorkspace>
+      <NotebookWorkspace library={library}>
         <div className="mx-auto w-full max-w-[var(--measure-prose)] px-6 pb-16 pt-12">
           <h1 className="text-lg" style={{ fontFamily: "var(--font-display)" }}>
             {title}
@@ -72,8 +94,42 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
     id = (recent.find((note) => note.excerpt?.trim()) ?? recent[0])?.id;
   }
 
-  if (!id) {
-    return (
+  // The rail's page and the open note are independent reads.
+  const page = requestedPage(raw);
+  const [found, selected] = await Promise.all([
+    pageNotes(auth, { limit: LIBRARY_PAGE_SIZE, offset: (page - 1) * LIBRARY_PAGE_SIZE }),
+    id ? getNote(auth, id) : Promise.resolve(null),
+  ]);
+
+  const rows = found.items.map(libraryNote);
+  // A note opened from a bookmark can be older than the rail's page; it still
+  // belongs in the list, marked, instead of vanishing from the library.
+  if (selected && !rows.some((row) => row.id === selected.id)) {
+    rows.unshift({
+      id: selected.id,
+      title: selected.title,
+      kind: selected.kind,
+      excerpt: plainExcerpt(noteMarkdown(selected.draft?.content ?? selected.content)),
+      updatedAt: selected.updatedAt.toISOString(),
+      hasDraft: selected.draft !== null,
+    });
+  }
+  const library =
+    found.total > 0 ? (
+      <NotesLibrary notes={rows} selectedId={selected?.id ?? null} total={found.total} page={page} />
+    ) : undefined;
+
+  if (!selected) {
+    return id ? (
+      <NotesMessage
+        title="That note is not here"
+        body="It may have been archived. Find another note, or start a new one."
+        library={library}
+      >
+        <FindNoteButton />
+        <NewNoteButton />
+      </NotesMessage>
+    ) : (
       <NotesMessage
         title="Write your first page."
         body="It autosaves as you type, and every checkpoint becomes an immutable version."
@@ -83,18 +139,6 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
     );
   }
 
-  const selected = await getNote(auth, id);
-  if (!selected) {
-    return (
-      <NotesMessage
-        title="That note is not here"
-        body="It may have been archived. Find another note, or start a new one."
-      >
-        <FindNoteButton />
-        <NewNoteButton />
-      </NotesMessage>
-    );
-  }
   // The inspector's versions, links, related notes and margin comments all
   // key off the same note and do not depend on each other.
   // Titles come from the markdown the editor opens with; an alias after "|" is display text.
@@ -119,7 +163,10 @@ export async function NotesSurface({ searchParams }: { searchParams: Promise<Raw
 
   return (
     <div className={noteLayout.screen}>
-      <NotebookWorkspace replaceUrl={raw.id === selected.id ? undefined : `/polymath/notes?id=${selected.id}`}>
+      <NotebookWorkspace
+        library={library}
+        replaceUrl={raw.id === selected.id ? undefined : `/polymath/notes?id=${selected.id}`}
+      >
         <NoteEditor
           key={selected.id}
           noteId={selected.id}
@@ -167,10 +214,24 @@ export default function NotesPage(props: { searchParams: Promise<RawSearchParams
 
 function NotesSkeleton() {
   // Built from the loaded note's layout classes (note-layout.ts), wrapper for
-  // wrapper, so the title and the first line hold still when the note arrives.
+  // wrapper, so the rail, the title and the first line hold still when the
+  // note arrives.
   return (
     <div role="status" aria-label="Loading Notes" className={noteLayout.screen}>
       <div className={noteLayout.row}>
+        {/* The library rail's width is the note column's neighbour. */}
+        <div aria-hidden className="sticky top-0 hidden shrink-0 lg:block">
+          <div className="flex w-64 flex-col gap-3 px-3 py-4">
+            <Skeleton className="h-4 w-16" />
+            <Skeleton className="h-8 w-full" />
+            {Array.from({ length: 6 }, (_, i) => (
+              <div key={i} className="flex flex-col gap-1.5 px-2.5 py-1.5">
+                <Skeleton className="h-3.5 w-3/4" />
+                <Skeleton className="h-3 w-full" />
+              </div>
+            ))}
+          </div>
+        </div>
         <div className={noteLayout.cell}>
           <div className={noteLayout.row}>
             {/* The container query that places the column in margin mode keys off this. */}

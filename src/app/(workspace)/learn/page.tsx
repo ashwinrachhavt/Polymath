@@ -6,7 +6,6 @@ import { getAuthContext } from "@/lib/auth";
 import { getLearnLibrary } from "@/domains/learning/queries";
 import { getFlashcardDueQueue } from "@/domains/learning/flashcards";
 import { deckReviewHref } from "@/domains/learning/review-href";
-import { UpNextSection } from "@/app/(workspace)/polymath/up-next-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MakeLearningButton } from "./make-learning-dialog";
 
@@ -52,11 +51,6 @@ async function LearnSurface() {
         </div>
         <MakeLearningButton />
       </header>
-      {/* Home's Up next card leads, so both pages agree on where Continue goes;
-          the lists below are everything behind it. */}
-      <div className="mb-4">
-        <UpNextSection auth={auth} />
-      </div>
       <section aria-labelledby="due-flashcards-title" className="panel rounded-xl p-4">
         <h2 id="due-flashcards-title" className="font-medium">
           Flashcards due

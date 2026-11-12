@@ -1,7 +1,6 @@
 import { defineAgent, defineDynamic } from "eve";
 import { createOpenAI } from "@ai-sdk/openai";
 import { geminiFetch } from "../../polymath/agent/lib/gemini-openai";
-import { headroomEnabled, headroomFetch } from "../../../src/integrations/headroom/client";
 import { modelById } from "../../../src/domains/agents/models";
 
 /*
@@ -43,16 +42,11 @@ function modelFromCatalog(runModel: string) {
       `${entry.keyEnv} is not set, so ${entry.label} cannot run. Set ${entry.keyEnv} and restart the agent process (a dev server only sees .env as it was at boot), or choose another model.`,
     );
   }
-  // Gemini's OpenAI-compatible surface needs the streaming repair; the other
-  // providers are OpenAI-shaped already. Headroom rides the same fetch seam,
-  // env-gated and fail-open: unset HEADROOM_BASE_URL makes headroomFetch()
-  // the global fetch and adds no fetch option at all.
-  const headroom = headroomFetch();
   const provider = createOpenAI({
     apiKey,
     baseURL: entry.baseUrl,
     name: entry.provider,
-    ...(entry.provider === "gemini" ? { fetch: geminiFetch(headroom) } : headroomEnabled() ? { fetch: headroom } : {}),
+    ...(entry.provider === "gemini" ? { fetch: geminiFetch(fetch) } : {}),
   });
   return provider.chat(entry.id);
 }
@@ -67,11 +61,7 @@ function specialistModel(runModel?: string | null) {
     apiKey,
     baseURL: GEMINI_OPENAI_BASE,
     name: "gemini",
-    // Same seam as polymath (spec PR-3): the shim repairs first, then
-    // Headroom (env-gated, fail-open) compresses what finally goes on the
-    // wire. Unset HEADROOM_BASE_URL makes headroomFetch() the global fetch —
-    // the exact pre-Headroom construction.
-    fetch: geminiFetch(headroomFetch()),
+    fetch: geminiFetch(fetch),
   });
   return provider.chat(process.env.GEMINI_AGENT_MODEL || GEMINI_DEFAULT_MODEL);
 }

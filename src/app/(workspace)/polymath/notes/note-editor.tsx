@@ -35,7 +35,7 @@ import {
 } from "./actions";
 import { X, History, Info, Link2, Plus, MessageSquare } from "lucide-react";
 import { MarginNotes } from "@/components/products/polymath/margin-notes";
-import { FindNoteButton } from "./notebook-workspace";
+import { FindNoteButton, LibraryToggle } from "./notebook-workspace";
 import type { LinkPreview } from "@/domains/knowledge/notes";
 import type { NoteAICoverage } from "@/domains/knowledge/note-ai";
 import { NotionAppendAction } from "./notion-append";
@@ -776,6 +776,7 @@ export function NoteEditor({
               keyboard focus and coarse pointers. */}
           <div className={`header-zone ${noteLayout.header} ${scrolled ? "is-scrolled" : ""}`}>
             <div className="header-actions flex items-center gap-1">
+              <LibraryToggle />
               <FindNoteButton icon />
               <NewNoteButton icon />
               <Dialog>
@@ -902,7 +903,7 @@ export function NoteEditor({
             </div>
             {/* Metadata is small and muted; the actions it used to carry are
                 the header zone's problem now. */}
-            <div className={`${noteLayout.meta} text-muted-foreground/80`}>
+            <div className={`${noteLayout.meta} text-muted-foreground`}>
               {saveState === "saving" && <span role="status">Saving…</span>}
               {saveState === "dirty" && <span role="status">Unsaved changes</span>}
               {saveState === "saved" && <span role="status">Saved</span>}
@@ -1071,7 +1072,7 @@ export function NoteEditor({
               Backlinks <span className="tabular-nums">{backlinks.length}</span>
             </h2>
             {backlinks.length === 0 ? (
-              <p className="mt-3 text-body-dense text-muted-foreground/80">
+              <p className="mt-3 text-body-dense text-muted-foreground">
                 No notes link here yet. Another note links to this one when it writes [[{title.trim() || "this title"}
                 ]].
               </p>

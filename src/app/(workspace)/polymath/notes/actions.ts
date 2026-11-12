@@ -12,6 +12,7 @@ import {
   createNote,
   listNotes,
   listNoteVersions,
+  pageNotes,
   renameNote,
   retryNoteEmbedding,
   setNoteTags,
@@ -39,6 +40,7 @@ import { composioNotionClient } from "@/integrations/notion/client";
 import { noteNotionDedupeKey, proposeNotionPageUpdate } from "@/domains/knowledge/notion-proposals";
 import { requireRole } from "@/lib/auth/guards";
 import { bindGuarded, type Result } from "@/lib/result";
+import { LIBRARY_PAGE_SIZE, libraryNote, type LibraryNote } from "./library-notes";
 
 /*
  * Notes mutations on the canonical artifact rows (ASH-141 / B04). A note
@@ -398,6 +400,31 @@ export async function findLinkTargetsAction(
     ...taskRows,
   ];
   return rows.filter((r) => r.id !== parsed.data.excludeId).slice(0, 8);
+}
+
+const browseInput = z.object({
+  query: z.string().trim().max(200).optional(),
+});
+
+/**
+ * One page of the Notes library rail, newest first, narrowed by a keyword.
+ * The same paged query the page renders its first page with, so the rail's
+ * search and `/polymath/notes?page=2` can never disagree about which notes
+ * exist or in what order they come. A read: membership is enough, and nothing
+ * is revalidated - filtering the rail must not re-render the note being read.
+ */
+export async function browseNotesAction(
+  input: z.input<typeof browseInput>,
+): Promise<{ items: LibraryNote[]; total: number }> {
+  const parsed = browseInput.safeParse(input);
+  if (!parsed.success) return { items: [], total: 0 };
+  const auth = await getAuthContext();
+  const { items, total } = await pageNotes(auth, {
+    query: parsed.data.query,
+    limit: LIBRARY_PAGE_SIZE,
+    offset: 0,
+  });
+  return { items: items.map(libraryNote), total };
 }
 
 /*

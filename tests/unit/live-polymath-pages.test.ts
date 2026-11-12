@@ -257,12 +257,8 @@ describe("live Alfred route functionality", () => {
     // so the limit is the menu's, not the glance's. Onboarding runs are
     // machinery, not conversations, and the home list never shows them.
     expect(listRecentRuns).toHaveBeenCalledWith("workspace", 50, { excludeOnboarding: true });
-    // Up next streams behind its own boundary, above the greeting, so the
-    // composer never waits on the learning reads. The card has no heading:
-    // the greeting stays the screen's one h1.
-    const slot = html.indexOf('aria-label="Loading Up next"');
-    expect(slot).toBeGreaterThan(-1);
-    expect(slot).toBeLessThan(html.indexOf("<h1"));
+    // Up next now lives on the Activity page; the home keeps its greeting as
+    // the screen's one h1.
     expect(html.match(/<h1/g)).toHaveLength(1);
   });
 
