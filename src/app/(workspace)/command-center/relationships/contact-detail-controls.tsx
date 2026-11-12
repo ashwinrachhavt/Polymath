@@ -2,12 +2,21 @@
 
 import { Select } from "@/components/ui/select";
 
+import { Check, X } from "lucide-react";
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
+import { DeleteButton } from "@/components/ui/delete-button";
+import { IconButton } from "@/components/ui/icon-button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Field } from "@/components/workspace/ui";
-import { addObservationAction, archiveContactAction, createFollowUpAction, resolveFollowUpAction } from "./actions";
+import {
+  addObservationAction,
+  archiveContactAction,
+  createFollowUpAction,
+  resolveFollowUpAction,
+  restoreContactAction,
+} from "./actions";
 
 /*
  * The small mutation islands on the contact detail panel. Each posts one
@@ -21,38 +30,21 @@ function useActionError() {
   return { error, setError, pending, startTransition };
 }
 
-export function ArchiveContactButton({
-  contactId,
-  version,
-  name,
-}: {
-  contactId: string;
-  version: number;
-  name: string;
-}) {
-  const { error, setError, pending, startTransition } = useActionError();
+export function ArchiveContactButton({ contactId, version }: { contactId: string; version: number }) {
   return (
-    <div>
-      <Button
-        variant="outline"
-        disabled={pending}
-        onClick={() => {
-          if (!window.confirm(`Archive ${name}? Linked history is kept; the record leaves the list.`)) return;
-          setError(null);
-          startTransition(async () => {
-            const result = await archiveContactAction({ contactId, expectedVersion: version });
-            if (!result.ok) setError(result.error);
-          });
-        }}
-      >
-        {pending ? "Archiving…" : "Archive contact"}
-      </Button>
-      {error ? (
-        <p className="text-destructive mt-1 text-body-dense" role="alert">
-          {error}
-        </p>
-      ) : null}
-    </div>
+    <DeleteButton
+      label="Archive contact"
+      deletedMessage="Contact archived"
+      confirmHint="Click again to archive. Linked history is kept."
+      onDelete={async () => {
+        const result = await archiveContactAction({ contactId, expectedVersion: version });
+        if (!result.ok) throw new Error(result.error);
+      }}
+      undo={async () => {
+        const result = await restoreContactAction({ contactId });
+        if (!result.ok) throw new Error(result.error);
+      }}
+    />
   );
 }
 
@@ -165,9 +157,10 @@ export function ResolveFollowUpButton({
   const { error, setError, pending, startTransition } = useActionError();
   return (
     <span className="inline-flex items-center gap-2">
-      <Button
-        size="sm"
-        variant="ghost"
+      <IconButton
+        label={resolution === "done" ? "Mark done" : "Cancel follow-up"}
+        icon={resolution === "done" ? <Check aria-hidden /> : <X aria-hidden />}
+        size="icon-sm"
         disabled={pending}
         onClick={() => {
           setError(null);
@@ -176,9 +169,7 @@ export function ResolveFollowUpButton({
             if (!result.ok) setError(result.error);
           });
         }}
-      >
-        {resolution === "done" ? "Mark done" : "Cancel"}
-      </Button>
+      />
       {error ? (
         <span className="text-destructive text-body-dense" role="alert">
           {error}

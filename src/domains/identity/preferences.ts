@@ -1,6 +1,7 @@
 import { and, eq, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
 import type { AuthContext } from "@/domains/identity/resolve";
+import { ACCENTS, DEFAULT_ACCENT, isAccent, type Accent } from "@/lib/appearance";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { userPreferences } from "./schema";
@@ -14,13 +15,14 @@ import { userPreferences } from "./schema";
  *
  * `notificationPolicy`, `modelDefaults` and `budgetDefaults` columns exist on
  * the table for the runtime/policy work that owns them; this module writes
- * only the four owner-facing values it validates.
+ * only the owner-facing values it validates.
  */
 
 export type AppearanceValue = "light" | "dark" | "system";
 export type MotionValue = "full" | "reduced";
 /** ASH-312: the two interface languages, or "auto" to resolve by time of day. */
 export type InterfaceModeValue = "library" | "action" | "auto";
+export type AccentValue = Accent;
 
 export type Preferences = {
   timezone: string;
@@ -29,6 +31,8 @@ export type Preferences = {
   appearance: AppearanceValue;
   motion: MotionValue;
   interfaceMode: InterfaceModeValue;
+  /** The accent swatch from the top bar; every surface reads it through --signal. */
+  accent: AccentValue;
 };
 
 export const DEFAULT_PREFERENCES: Preferences = {
@@ -37,6 +41,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   appearance: "system",
   motion: "full",
   interfaceMode: "auto",
+  accent: DEFAULT_ACCENT,
 };
 
 /*
@@ -47,7 +52,11 @@ export const DEFAULT_PREFERENCES: Preferences = {
  * hour is read in the saved timezone; an unrecognised timezone falls back to
  * UTC rather than guessing a zone.
  */
-export function resolveInterfaceMode(mode: InterfaceModeValue, timezone: string, now: Date = new Date()): "library" | "action" {
+export function resolveInterfaceMode(
+  mode: InterfaceModeValue,
+  timezone: string,
+  now: Date = new Date(),
+): "library" | "action" {
   if (mode !== "auto") return mode;
   const zone = isValidTimezone(timezone) ? timezone : "UTC";
   const hour = Number(new Intl.DateTimeFormat("en-US", { timeZone: zone, hour: "numeric", hour12: false }).format(now));
@@ -106,7 +115,26 @@ export function validatePreferencePatch(patch: Partial<Preferences>): Partial<Pr
   if (patch.interfaceMode !== undefined && !["library", "action", "auto"].includes(patch.interfaceMode)) {
     throw new InvalidPreferenceError("Interface mode must be library, action or auto.");
   }
+  if (patch.accent !== undefined && !isAccent(patch.accent)) {
+    throw new InvalidPreferenceError(`Accent must be one of ${ACCENTS.map((a) => a.value).join(", ")}.`);
+  }
   return patch;
+}
+
+type PreferenceRow = typeof userPreferences.$inferSelect;
+
+function toLoaded(row: PreferenceRow): LoadedPreferences {
+  return {
+    timezone: row.timezone,
+    weekStart: row.weekStart,
+    appearance: row.appearance,
+    motion: row.motion,
+    interfaceMode: row.interfaceMode,
+    // The column is text so the palette can change without an enum migration;
+    // a retired swatch reads as the default rather than an unknown value.
+    accent: isAccent(row.accent) ? row.accent : DEFAULT_ACCENT,
+    version: row.version,
+  };
 }
 
 export async function getPreferences(auth: AuthContext): Promise<LoadedPreferences> {
@@ -116,14 +144,7 @@ export async function getPreferences(auth: AuthContext): Promise<LoadedPreferenc
     .where(and(eq(userPreferences.workspaceId, auth.workspaceId), eq(userPreferences.userId, auth.userId)))
     .limit(1);
   if (!row) return { ...DEFAULT_PREFERENCES, version: 0 };
-  return {
-    timezone: row.timezone,
-    weekStart: row.weekStart,
-    appearance: row.appearance,
-    motion: row.motion,
-    interfaceMode: row.interfaceMode,
-    version: row.version,
-  };
+  return toLoaded(row);
 }
 
 export async function updatePreferences(
@@ -136,6 +157,7 @@ export async function updatePreferences(
     ...(input.appearance !== undefined ? { appearance: input.appearance } : {}),
     ...(input.motion !== undefined ? { motion: input.motion } : {}),
     ...(input.interfaceMode !== undefined ? { interfaceMode: input.interfaceMode } : {}),
+    ...(input.accent !== undefined ? { accent: input.accent } : {}),
   });
   return withTransaction(async (tx) => {
     const [current] = await tx
@@ -159,24 +181,22 @@ export async function updatePreferences(
           appearance: values.appearance,
           motion: values.motion,
           interfaceMode: values.interfaceMode,
+          accent: values.accent,
           createdBy: auth.userId,
           updatedBy: auth.userId,
         })
         .returning();
-      await recordAudit(auth, {
-        action: "preferences.saved",
-        subjectType: "user_preferences",
-        subjectId: inserted.id,
-        summary: `Preferences saved (first write): timezone ${inserted.timezone}, week starts ISO day ${inserted.weekStart}, ${inserted.appearance} appearance, ${inserted.motion} motion`,
-      }, tx);
-      return {
-        timezone: inserted.timezone,
-        weekStart: inserted.weekStart,
-        appearance: inserted.appearance,
-        motion: inserted.motion,
-        interfaceMode: inserted.interfaceMode,
-        version: inserted.version,
-      };
+      await recordAudit(
+        auth,
+        {
+          action: "preferences.saved",
+          subjectType: "user_preferences",
+          subjectId: inserted.id,
+          summary: `Preferences saved (first write): timezone ${inserted.timezone}, week starts ISO day ${inserted.weekStart}, ${inserted.appearance} appearance, ${inserted.motion} motion, ${inserted.accent} accent`,
+        },
+        tx,
+      );
+      return toLoaded(inserted);
     }
 
     // Patch semantics: a write that does not name interfaceMode leaves the
@@ -187,6 +207,7 @@ export async function updatePreferences(
       appearance: patch.appearance ?? current.appearance,
       motion: patch.motion ?? current.motion,
       interfaceMode: patch.interfaceMode ?? current.interfaceMode,
+      accent: patch.accent ?? current.accent,
     };
     const [updated] = await tx
       .update(userPreferences)
@@ -205,19 +226,16 @@ export async function updatePreferences(
       )
       .returning();
     if (!updated) throw new PreferenceConflictError();
-    await recordAudit(auth, {
-      action: "preferences.saved",
-      subjectType: "user_preferences",
-      subjectId: updated.id,
-      summary: `Preferences saved: timezone ${updated.timezone}, week starts ISO day ${updated.weekStart}, ${updated.appearance} appearance, ${updated.motion} motion`,
-    }, tx);
-    return {
-      timezone: updated.timezone,
-      weekStart: updated.weekStart,
-      appearance: updated.appearance,
-      motion: updated.motion,
-      interfaceMode: updated.interfaceMode,
-      version: updated.version,
-    };
+    await recordAudit(
+      auth,
+      {
+        action: "preferences.saved",
+        subjectType: "user_preferences",
+        subjectId: updated.id,
+        summary: `Preferences saved: timezone ${updated.timezone}, week starts ISO day ${updated.weekStart}, ${updated.appearance} appearance, ${updated.motion} motion, ${updated.accent} accent`,
+      },
+      tx,
+    );
+    return toLoaded(updated);
   });
 }

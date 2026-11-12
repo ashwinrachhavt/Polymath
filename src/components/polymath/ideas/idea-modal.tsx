@@ -4,8 +4,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { PencilIcon } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { ArchiveArtifactButton } from "@/app/(workspace)/artifacts/archive-button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { IconButton } from "@/components/ui/icon-button";
 import { IdeaEditor } from "@/components/polymath/zettels/idea-editor";
 
 /*
@@ -15,7 +16,9 @@ import { IdeaEditor } from "@/components/polymath/zettels/idea-editor";
  * (X, Escape, overlay) replaces the parameter out of the URL so the list
  * keeps its filters. The edit button sits top right, beside the dialog's
  * close button, and swaps the card for the editor in place — the editor
- * keeps its own autosave and version-conflict machinery.
+ * keeps its own autosave and version-conflict machinery. Delete sits beside
+ * it: two clicks archive the idea and close the card, and the toast's Undo
+ * puts it back in the list.
  */
 
 export type IdeaModalEditor = {
@@ -48,20 +51,29 @@ export function IdeaModal({
         if (!next) router.replace(closeHref);
       }}
     >
-      <DialogContent aria-describedby={undefined} className="max-h-[85dvh] gap-4 overflow-y-auto sm:max-w-xl">
+      <DialogContent
+        aria-describedby={undefined}
+        className="max-h-[85dvh] gap-4 overflow-y-auto sm:max-w-xl"
+        // Open on the card, not on its first control: landing on Delete would
+        // put one Enter between opening an idea and arming its removal.
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          (event.currentTarget as HTMLElement).focus();
+        }}
+      >
         {editor ? (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="absolute top-2 right-10"
-            aria-label={editing ? "Done editing" : "Edit idea"}
-            aria-pressed={editing}
-            onClick={() => setEditing((value) => !value)}
-          >
-            <PencilIcon />
-          </Button>
+          <div className="absolute top-2 right-10 flex items-center gap-0.5">
+            <ArchiveArtifactButton artifactId={editor.artifactId} noun="idea" leaveTo={closeHref} />
+            <IconButton
+              label={editing ? "Done editing" : "Edit idea"}
+              icon={<PencilIcon aria-hidden />}
+              size="icon-sm"
+              aria-pressed={editing}
+              onClick={() => setEditing((value) => !value)}
+            />
+          </div>
         ) : null}
-        <DialogTitle className="pr-16 text-lg leading-snug font-medium">{title}</DialogTitle>
+        <DialogTitle className="pr-24 text-lg leading-snug font-medium">{title}</DialogTitle>
         {editor && editing ? (
           <IdeaEditor
             workspaceId={editor.workspaceId}

@@ -144,7 +144,7 @@ async function Reviews({ searchParams }: { searchParams: Promise<RawSearchParams
     <Screen
       title="Reviews"
       actions={<ReviewTabs active="proposals" />}
-      description={`${statusCounts.pending} ${statusCounts.pending === 1 ? "proposal needs" : "proposals need"} your judgment. Approving binds the exact payload you inspected; the card says what happens next.`}
+      description={`${statusCounts.pending} ${statusCounts.pending === 1 ? "proposal needs" : "proposals need"} you.`}
     >
       {/* The mockup's segmented tabs with counts: status is the page's primary
           scope, so it reads as tabs; risk stays a filter in the toolbar. */}

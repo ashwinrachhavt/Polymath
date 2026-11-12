@@ -3,30 +3,38 @@ import { act, createElement } from "react";
 import { cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MAX_LEARNING_SOURCES } from "@/domains/learning/item-count";
+import type { GenerationJobView } from "@/domains/jobs/state";
 
 /*
- * The bulk Zettelize verb (spec §4.2): the selection toolbar's control queues
- * exactly the selected ids, surfaces the action's skipped rows honestly (no
- * readable text, already filed, or not open - the list sees previews, not
- * bodies, so the action is the eligibility authority), and answers with a
- * status line + the Ideas link, never a spinner.
+ * The bulk Zettelize verb: the selection toolbar's control asks for one job
+ * per selected capture, shows each accepted job as a row above the list (the
+ * jobs stream moves it to ready or failed from there), says honestly how many
+ * selected captures were left out, and clears the selection once the jobs are
+ * accepted.
  *
- * Value: protects=the queued/skipped honesty contract on the bulk path;
- * fails_when=the summary guesses eligibility from previews or drops the skip
- * count; why_new=the domain integration suite pins the action's arithmetic,
- * not what the toolbar renders from it; seam=the server action mocked at the
- * module boundary; no_claim=the outbox worker's own behaviour.
+ * Value: protects=one-job-per-source on the bulk path and the left-out
+ * honesty; fails_when=the toolbar sends something other than the selection,
+ * drops the skip count, or waits on the work; seam=the server action mocked at
+ * the module boundary; no_claim=the runner's own behaviour (integration suite).
  */
 
-const generateZettelsAction = vi.fn();
+const zettelizeAction = vi.fn();
 vi.mock("@/app/(workspace)/command-center/inbox/actions", () => ({
   setCaptureStateAction: vi.fn(),
 }));
-vi.mock("@/app/(workspace)/command-center/inbox/zettel-actions", () => ({
-  generateZettelsAction: (...args: unknown[]) => generateZettelsAction(...args),
+vi.mock("@/domains/capture/zettel-actions", () => ({
+  zettelizeAction: (...args: unknown[]) => zettelizeAction(...args),
+}));
+vi.mock("@/domains/jobs/actions", () => ({
+  dismissGenerationJobAction: vi.fn(),
+  retryGenerationJobAction: vi.fn(),
+  startWaitingGenerationJobAction: vi.fn(),
 }));
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+  usePathname: () => "/command-center/inbox",
+}));
 vi.mock("@/app/(workspace)/learn/make-actions", () => ({
   makeFlashcardsOrQuizAction: vi.fn(),
   findLearningSourcesAction: vi.fn(async () => ({ ok: true, documents: [], captures: [] })),
@@ -60,7 +68,23 @@ const FILED = row("33333333-3333-4333-8333-333333333333", "Already a note", {
   convertedId: "44444444-4444-4444-8444-444444444444",
 });
 
-const PROVIDER = { zettelProviderReady: true, zettelProviderReason: "" };
+const PROVIDER = { zettelProviderReady: true, zettelProviderReason: "", zettelJobs: [] };
+
+function job(id: string, title: string): GenerationJobView {
+  return {
+    id,
+    kind: "zettels.source",
+    subject: `capture:${id}`,
+    status: "queued",
+    title,
+    attempt: 1,
+    href: null,
+    notice: null,
+    error: null,
+    createdAt: "2026-11-12T10:00:00.000Z",
+    updatedAt: "2026-11-12T10:00:00.000Z",
+  };
+}
 
 function renderList(rows: InboxRow[], provider = PROVIDER) {
   return render(
@@ -76,16 +100,15 @@ function renderList(rows: InboxRow[], provider = PROVIDER) {
 
 afterEach(() => {
   cleanup();
-  generateZettelsAction.mockReset();
+  zettelizeAction.mockReset();
 });
 
 describe("InboxList bulk zettelize", () => {
-  it("queues exactly the selection and surfaces the action's skipped rows with the Ideas link", async () => {
-    generateZettelsAction.mockResolvedValueOnce({
+  it("asks for one job per selected capture, shows the jobs, and says what was left out", async () => {
+    zettelizeAction.mockResolvedValueOnce({
       ok: true,
-      queued: 1,
+      jobs: [job("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "Ideas: First capture")],
       skipped: 1,
-      captureIds: [FIRST.id],
     });
     const screen = renderList([FIRST, SECOND, FILED]);
 
@@ -95,47 +118,26 @@ describe("InboxList bulk zettelize", () => {
     await act(async () => {
       screen.getByLabelText("Select capture: Second capture").click();
     });
-    expect(screen.getByRole("button", { name: "Zettelize" })).toBeTruthy();
-
     await act(async () => {
       screen.getByRole("button", { name: "Zettelize" }).click();
     });
-    await waitFor(() => screen.getByRole("status"));
+    await waitFor(() => screen.getByText("Ideas: First capture"));
 
-    expect(generateZettelsAction).toHaveBeenCalledWith(expect.objectContaining({ captureIds: [FIRST.id, SECOND.id] }));
-    const status = screen.getByRole("status");
-    expect(status.textContent).toContain("Creating zettels for 1 capture…");
-    expect(status.textContent).toContain("Skipped 1 not eligible");
-    expect(screen.getByRole("link", { name: "See in Ideas" }).getAttribute("href")).toBe("/polymath/ideas");
+    expect(zettelizeAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sources: [
+          { kind: "capture", id: FIRST.id },
+          { kind: "capture", id: SECOND.id },
+        ],
+      }),
+    );
+    expect(screen.getByText(/Left out 1 with no readable text/)).toBeTruthy();
+    // The jobs are accepted, so the selection (and its toolbar) is done.
+    expect(screen.queryByRole("toolbar", { name: "Bulk actions" })).toBeNull();
   });
 
-  it("answers nothing queued when every selected row is skipped", async () => {
-    generateZettelsAction.mockResolvedValueOnce({
-      ok: true,
-      queued: 0,
-      skipped: 2,
-      captureIds: [],
-    });
-    const screen = renderList([FIRST, SECOND]);
-    await act(async () => {
-      screen.getByLabelText("Select capture: First capture").click();
-    });
-    await act(async () => {
-      screen.getByLabelText("Select capture: Second capture").click();
-    });
-
-    await act(async () => {
-      screen.getByRole("button", { name: "Zettelize" }).click();
-    });
-    await waitFor(() => screen.getByRole("status"));
-
-    const status = screen.getByRole("status");
-    expect(status.textContent).toContain("Nothing queued.");
-    expect(status.textContent).toContain("Skipped 2 not eligible");
-  });
-
-  it("renders the action's refusal in the toolbar's error list", async () => {
-    generateZettelsAction.mockResolvedValueOnce({ ok: false, message: "Too many captures named at once." });
+  it("renders the action's refusal in the toolbar and keeps the selection", async () => {
+    zettelizeAction.mockResolvedValueOnce({ ok: false, message: "Zettelize up to 20 at a time." });
     const screen = renderList([FIRST, SECOND]);
     await act(async () => {
       screen.getByLabelText("Select capture: First capture").click();
@@ -146,15 +148,17 @@ describe("InboxList bulk zettelize", () => {
     });
     await waitFor(() => screen.getByRole("alert"));
 
-    expect(screen.getByRole("alert").textContent).toBe("Zettelize: Too many captures named at once.");
+    expect(screen.getByRole("alert").textContent).toBe("Zettelize: Zettelize up to 20 at a time.");
+    expect(screen.getByRole("toolbar", { name: "Bulk actions" })).toBeTruthy();
   });
 
-  it("disables Zettelize with the provider reason when no model is configured", () => {
+  it("disables Zettelize with the provider reason when no model is configured", async () => {
     const screen = renderList([FIRST], {
       zettelProviderReady: false,
       zettelProviderReason: "Zettelize needs a model. Set OPENROUTER_API_KEY or GEMINI_API_KEY.",
+      zettelJobs: [],
     });
-    await_select(screen);
+    await await_select(screen);
 
     const button = screen.getByRole("button", { name: "Zettelize" }) as HTMLButtonElement;
     expect(button.disabled).toBe(true);

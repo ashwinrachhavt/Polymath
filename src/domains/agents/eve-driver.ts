@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { bridgeSecret, signBridgeToken } from "./bridge-token";
+import { isEveSessionStranded, startReplacementSession } from "./eve-recovery";
 import { agentRuns } from "./schema";
 import type { SessionDriver } from "./engine";
 
@@ -142,7 +143,7 @@ async function eveTarget(agentName: string): Promise<EveTarget | null> {
   return null;
 }
 
-async function eveMount(agentName: string): Promise<string> {
+export async function eveMount(agentName: string): Promise<string> {
   const target = await eveTarget(agentName);
   if (!target) {
     throw new Error(
@@ -197,7 +198,7 @@ export function eveBridgeUnavailableReason(): string | null {
 const EVE_CONTROL_TIMEOUT_MS = 30_000;
 
 /** The Authorization header for one Eve call, minted from the caller's verified context. */
-function bridgeHeaders(
+export function bridgeHeaders(
   auth: AuthContext,
   claims: { runId?: string; skillId?: string; model?: string } = {},
 ): Record<string, string> {
@@ -323,12 +324,26 @@ export function createEveDriver(agentName = "polymath"): SessionDriver {
         // A dead session (eve restarted, lease expired) answers 409
         // session_not_active. Naming it lets the engine close the orphaned run
         // instead of leaving it "waiting_input" forever with a UI that says
-        // Working; any other status is a transport failure to throw as before.
+        // Working.
         if (response.status === 409) {
           const body = (await response.json().catch(() => null)) as { code?: string } | null;
           if (body?.code === "session_not_active") {
             throw new SessionNotActiveError(ref);
           }
+        }
+        // A restarted world that still holds the run answers with its opaque
+        // 500 instead. Only probing the session tells that apart from a real
+        // failure, so a stranded run gets a replacement carrying its history.
+        if (response.status >= 500 && (await isEveSessionStranded({ agentName, sessionRef: ref, auth }))) {
+          const recovered = await startReplacementSession({
+            runId: sessionId,
+            auth,
+            agentName,
+            message: signal,
+            ...(skillId ? { skillId } : {}),
+            ...(model ? { model } : {}),
+          });
+          if (recovered.ok) return;
         }
         throw new Error(`eve follow-up failed: ${response.status}`);
       }

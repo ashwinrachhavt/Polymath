@@ -59,10 +59,7 @@ suite("skills registry", () => {
     const second = await commands.installSkill(auth, input);
     expect(second).toEqual({ skillId: first.skillId, created: false });
 
-    const rows = await db
-      .select()
-      .from(skillsTable)
-      .where(eq(skillsTable.workspaceId, auth.workspaceId));
+    const rows = await db.select().from(skillsTable).where(eq(skillsTable.workspaceId, auth.workspaceId));
     expect(rows).toHaveLength(1);
 
     // The install is audited once; the losing double submit does not add a row.
@@ -99,10 +96,7 @@ suite("skills registry", () => {
     expect(b.created).toBe(true);
     expect(a.skillId).not.toBe(b.skillId);
 
-    const rows = await db
-      .select()
-      .from(skillsTable)
-      .where(eq(skillsTable.workspaceId, auth.workspaceId));
+    const rows = await db.select().from(skillsTable).where(eq(skillsTable.workspaceId, auth.workspaceId));
     expect(rows).toHaveLength(2);
   });
 
@@ -192,6 +186,60 @@ suite("skills registry", () => {
     expect(third).toEqual({ skillId: second.skillId, created: false });
   });
 
+  it("restore brings a removed skill back as the same row and records skill.restored", async () => {
+    const seeded = await seedWorkspace(db, `skills-restore-${Date.now()}`);
+    const auth = ownerAuth(seeded.userId, seeded.workspaceId);
+    const input = {
+      ...inspected("Undoable", "packages/undoable"),
+      sourceKind: "local" as const,
+      sourceRef: "/tmp/skills",
+      sourcePath: "packages/undoable",
+    };
+    const installed = await commands.installSkill(auth, input);
+    await commands.removeSkill(auth, { id: installed.skillId });
+    expect(await queries.listSkills({ workspaceId: auth.workspaceId })).toHaveLength(0);
+
+    expect(await commands.restoreSkill(auth, { id: installed.skillId })).toEqual({ restored: true });
+    const listed = await queries.listSkills({ workspaceId: auth.workspaceId });
+    expect(listed.map((skill) => skill.id)).toEqual([installed.skillId]);
+    const audits = await db
+      .select()
+      .from(auditEvents)
+      .where(and(eq(auditEvents.workspaceId, auth.workspaceId), eq(auditEvents.action, "skill.restored")));
+    expect(audits).toHaveLength(1);
+    // Restoring a live row is a no-op refusal, not a second audit.
+    expect(await commands.restoreSkill(auth, { id: installed.skillId })).toEqual({
+      restored: false,
+      reason: "not_found",
+    });
+  });
+
+  it("restore refuses when the same source was re-installed meanwhile, and never crosses workspaces", async () => {
+    const a = await seedWorkspace(db, `skills-restore-a-${Date.now()}`);
+    const b = await seedWorkspace(db, `skills-restore-b-${Date.now()}`);
+    const auth = ownerAuth(a.userId, a.workspaceId);
+    const input = {
+      ...inspected("Twice", "packages/twice"),
+      sourceKind: "local" as const,
+      sourceRef: "/tmp/skills",
+      sourcePath: "packages/twice",
+    };
+    const first = await commands.installSkill(auth, input);
+    await commands.removeSkill(auth, { id: first.skillId });
+
+    expect(await commands.restoreSkill(ownerAuth(b.userId, b.workspaceId), { id: first.skillId })).toEqual({
+      restored: false,
+      reason: "not_found",
+    });
+
+    await commands.installSkill(auth, input);
+    expect(await commands.restoreSkill(auth, { id: first.skillId })).toEqual({
+      restored: false,
+      reason: "reinstalled",
+    });
+    expect(await queries.listSkills({ workspaceId: auth.workspaceId })).toHaveLength(1);
+  });
+
   it("refuses a re-install when the source moved to a new revision", async () => {
     const seeded = await seedWorkspace(db, `skills5-${Date.now()}`);
     const auth = ownerAuth(seeded.userId, seeded.workspaceId);
@@ -277,18 +325,13 @@ suite("skills registry", () => {
       );
     expect(keepDisables).toHaveLength(1);
 
-    expect(
-      await commands.setSkillEnabled(auth, { id: crypto.randomUUID(), enabled: false }),
-    ).toEqual({ updated: false });
+    expect(await commands.setSkillEnabled(auth, { id: crypto.randomUUID(), enabled: false })).toEqual({
+      updated: false,
+    });
     const allAudits = await db
       .select()
       .from(auditEvents)
-      .where(
-        and(
-          eq(auditEvents.workspaceId, auth.workspaceId),
-          eq(auditEvents.action, "skill.disabled"),
-        ),
-      );
+      .where(and(eq(auditEvents.workspaceId, auth.workspaceId), eq(auditEvents.action, "skill.disabled")));
     expect(allAudits).toHaveLength(2);
   });
 

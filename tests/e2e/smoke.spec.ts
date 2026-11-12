@@ -89,7 +89,7 @@ test("the rail leads with the conversation, then Inbox", async ({ page }) => {
  */
 for (const [path, heading] of [
   ["/neuralflow/work", "Work"],
-  ["/polymath/knowledge", "Knowledge"],
+  ["/polymath/knowledge", "Document Vault"],
   ["/more", "More"],
 ] as const) {
   test(`canonical route ${path} renders`, async ({ page }) => {

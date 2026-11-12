@@ -1,9 +1,10 @@
 /*
  * Appearance choices beyond light/dark: the page colour (paper) and the accent
  * that marks the primary action and selection. They are applied as
- * <html data-paper data-accent> (see app/appearance.css) and remembered in
- * this browser. Light/dark/system stays with next-themes and the account
- * preference row.
+ * <html data-paper data-accent> (see app/appearance.css). Paper lives in this
+ * browser; the accent is saved on the account preference row (the record) and
+ * mirrored here only so the boot script can paint it before first frame.
+ * Light/dark/system stays with next-themes and the same account row.
  */
 
 export const PAPERS = [
@@ -13,21 +14,23 @@ export const PAPERS = [
 
 export const ACCENTS = [
   { value: "graphite", label: "Graphite", swatch: "oklch(26% 0.008 260)" },
-  { value: "blue", label: "Blue", swatch: "oklch(54% 0.17 255)" },
+  { value: "red", label: "Red", swatch: "oklch(55% 0.2 22)" },
+  { value: "orange", label: "Orange", swatch: "oklch(70% 0.19 40)" },
   { value: "green", label: "Green", swatch: "oklch(50% 0.12 155)" },
-  { value: "violet", label: "Violet", swatch: "oklch(52% 0.17 295)" },
-  { value: "rose", label: "Rose", swatch: "oklch(56% 0.17 10)" },
+  { value: "blue", label: "Blue", swatch: "oklch(54% 0.17 255)" },
+  { value: "purple", label: "Purple", swatch: "oklch(52% 0.17 295)" },
 ] as const;
 
 type Paper = (typeof PAPERS)[number]["value"];
-type Accent = (typeof ACCENTS)[number]["value"];
+export type Accent = (typeof ACCENTS)[number]["value"];
 export type AppearanceChoice = { paper: Paper; accent: Accent };
 
 const APPEARANCE_STORAGE_KEY = "polymath.appearance";
-const DEFAULT_APPEARANCE: AppearanceChoice = { paper: "white", accent: "graphite" };
+export const DEFAULT_ACCENT: Accent = "graphite";
+const DEFAULT_APPEARANCE: AppearanceChoice = { paper: "white", accent: DEFAULT_ACCENT };
 
 const isPaper = (value: unknown): value is Paper => PAPERS.some((p) => p.value === value);
-const isAccent = (value: unknown): value is Accent => ACCENTS.some((a) => a.value === value);
+export const isAccent = (value: unknown): value is Accent => ACCENTS.some((a) => a.value === value);
 
 export function readAppearance(): AppearanceChoice {
   try {
@@ -53,6 +56,11 @@ export function saveAppearance(choice: AppearanceChoice): void {
   } catch {
     // Private mode or blocked storage: the choice still applies to this page.
   }
+}
+
+/** Paint an accent now and mirror it for the next boot; the account row stays the record. */
+export function applyAccent(accent: Accent): void {
+  saveAppearance({ ...readAppearance(), accent });
 }
 
 /*

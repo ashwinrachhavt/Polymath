@@ -4,16 +4,19 @@ import { describe, expect, it, vi } from "vitest";
 import { InboxDetail } from "@/app/(workspace)/command-center/inbox/inbox-detail";
 
 /*
- * The detail pane's per-capture Zettelize verb. The state-exactness rules it
- * inherits from the verb row (D15): an open text capture offers it, a capture
- * with no readable words does not, a converted capture shows its "Open ..."
- * link instead, and an unconfigured model disables the control with the reason
- * in its title rather than failing on the click. The queue itself is the
- * domain's job (zettel-generation integration suite); this suite pins what the
- * pane promises on render.
+ * The detail pane's per-capture Zettelize verb, an icon in the action row.
+ * The state-exactness rules it inherits from the verb row (D15): an open text
+ * capture offers it, a capture with no readable words does not, a converted
+ * capture shows its "Open ..." link instead, and an unconfigured model marks
+ * the control unavailable with the reason as its description rather than
+ * failing on the click. The jobs themselves are the domain's (zettel-jobs
+ * integration suite); this suite pins what the pane promises on render.
  */
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn() }),
+  usePathname: () => "/command-center/inbox",
+}));
 vi.mock("@/app/(workspace)/command-center/inbox/actions", () => ({
   acceptProposalAction: vi.fn(),
   makeDraftAction: vi.fn(),
@@ -26,13 +29,16 @@ vi.mock("@/app/(workspace)/command-center/inbox/actions", () => ({
   unparkCaptureAction: vi.fn(),
   updateCaptureTextAction: vi.fn(),
 }));
-vi.mock("@/app/(workspace)/command-center/inbox/zettel-actions", () => ({
-  generateZettelsAction: vi.fn(),
+vi.mock("@/domains/capture/zettel-actions", () => ({ zettelizeAction: vi.fn() }));
+vi.mock("@/domains/jobs/actions", () => ({
+  dismissGenerationJobAction: vi.fn(),
+  retryGenerationJobAction: vi.fn(),
+  startWaitingGenerationJobAction: vi.fn(),
 }));
 
 type CaptureProps = Parameters<typeof InboxDetail>[0]["capture"];
 
-const PROVIDER = { zettelProviderReady: true, zettelProviderReason: "" };
+const PROVIDER = { zettelProviderReady: true, zettelProviderReason: "", zettelJobs: [] };
 
 function textCapture(overrides: Partial<NonNullable<CaptureProps>> = {}): NonNullable<CaptureProps> {
   return {
@@ -56,20 +62,25 @@ function renderDetail(capture: CaptureProps, provider = PROVIDER) {
 }
 
 describe("InboxDetail zettelize verb", () => {
-  it("offers Zettelize beside Save to library on an open text capture, disclosing the conversion", () => {
+  it("offers Zettelize as an icon verb beside the other verbs on an open text capture", () => {
     const html = renderDetail(textCapture());
-    expect(html).toContain("Zettelize");
-    expect(html).toContain("Save to library");
-    expect(html).toContain("Files this capture to your library, then proposes ideas for review.");
+    expect(html).toContain('aria-label="Zettelize into Ideas"');
+    expect(html).toContain('aria-label="Save as note"');
+    expect(html).toContain('aria-label="Make a task"');
+    expect(html).toContain('aria-label="Turn into"');
+    expect(html).toContain('aria-label="Archive (restore it any time)"');
+    // The crowded text row is gone: no text buttons for these verbs.
+    expect(html).not.toContain(">Save to library<");
+    expect(html).not.toContain(">Make task<");
   });
 
-  it("disables Zettelize with the provider reason when no model is configured", () => {
+  it("marks Zettelize unavailable with the provider reason when no model is configured", () => {
     const html = renderDetail(textCapture(), {
       zettelProviderReady: false,
       zettelProviderReason: "Zettelize needs a model. Set OPENROUTER_API_KEY or GEMINI_API_KEY.",
+      zettelJobs: [],
     });
-    expect(html).toContain("Zettelize");
-    expect(html).toContain("disabled");
+    expect(html).toMatch(/aria-label="Zettelize into Ideas"[^>]*aria-disabled="true"/);
     expect(html).toContain("Set OPENROUTER_API_KEY or GEMINI_API_KEY.");
   });
 

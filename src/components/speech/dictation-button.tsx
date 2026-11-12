@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Mic, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Tooltip } from "@/components/ui/tooltip";
 import { IDLE } from "./dictation-machine";
 import { DICTATED_EVENT } from "./dictation-target";
 
@@ -70,26 +71,27 @@ export function DictationButton({
 
   const label = mine ? "Stop dictating" : "Dictate";
   return (
-    <Button
-      type="button"
-      variant={mine ? "secondary" : variant}
-      size={size}
-      className={className}
-      aria-label={label}
-      aria-pressed={mine}
-      title={mine ? label : "Dictate (or hold Right Option)"}
-      disabled={busy || disabled}
-      // Pressing a button moves focus to it; the field must keep its caret.
-      onMouseDown={(event) => event.preventDefault()}
-      onClick={() => {
-        const target = field();
-        void (controller ? Promise.resolve(controller) : loadController()).then((loaded) => {
-          if (loaded.getDictationState().kind === "listening") loaded.stopDictation();
-          else if (target) loaded.startDictation(target);
-        });
-      }}
-    >
-      {mine ? <Square aria-hidden className="size-3.5 text-destructive" /> : <Mic aria-hidden />}
-    </Button>
+    <Tooltip content={mine ? label : "Dictate (or hold Right Option)"}>
+      <Button
+        type="button"
+        variant={mine ? "secondary" : variant}
+        size={size}
+        className={className}
+        aria-label={label}
+        aria-pressed={mine}
+        disabled={busy || disabled}
+        // Pressing a button moves focus to it; the field must keep its caret.
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={() => {
+          const target = field();
+          void (controller ? Promise.resolve(controller) : loadController()).then((loaded) => {
+            if (loaded.getDictationState().kind === "listening") loaded.stopDictation();
+            else if (target) loaded.startDictation(target);
+          });
+        }}
+      >
+        {mine ? <Square aria-hidden className="size-3.5 text-destructive" /> : <Mic aria-hidden />}
+      </Button>
+    </Tooltip>
   );
 }

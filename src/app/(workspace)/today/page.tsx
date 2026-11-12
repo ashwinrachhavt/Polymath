@@ -2,7 +2,8 @@ import { io } from "next/cache";
 import Link from "next/link";
 import { unstable_rethrow } from "next/navigation";
 import { Suspense } from "react";
-import { Button } from "@/components/ui/button";
+import { NotebookText } from "lucide-react";
+import { IconButton } from "@/components/ui/icon-button";
 import { Screen } from "@/components/workspace/ui";
 import { getDayPage, todayIn } from "@/domains/daybook/queries";
 import { getAuthContext } from "@/lib/auth";
@@ -78,18 +79,19 @@ export default function TodayPage({ searchParams }: { searchParams: TodayQuery }
   return (
     <Screen
       title="Today"
-      description="Plan the day, work through it, then shut it down."
       actions={
-        <Button asChild variant="outline" size="sm">
-          <Link href="/command-center/day">Today&apos;s record</Link>
-        </Button>
+        <IconButton
+          href="/command-center/day"
+          label="Today's record"
+          icon={<NotebookText aria-hidden className="size-4" />}
+        />
       }
     >
       <Suspense fallback={<Loading label="Loading your tasks…" />}>
         <TodayTasks searchParams={searchParams} />
       </Suspense>
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <div className="flex min-w-0 flex-col gap-6">
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <div className="min-w-0">
           <Suspense fallback={<Loading label="Loading focus…" />}>
             <FocusTimer />
           </Suspense>

@@ -15,6 +15,7 @@ import {
   createFollowUp,
   NotFoundError,
   resolveFollowUp,
+  restoreContact,
   StaleWriteError,
   updateContact,
 } from "@/domains/crm/commands";
@@ -139,6 +140,22 @@ export async function archiveContactAction(input: unknown): Promise<Result> {
   const auth = await authorize();
   try {
     await archiveContact(auth, parsed.data);
+  } catch (error) {
+    return fail(error);
+  }
+  revalidate();
+  return { ok: true };
+}
+
+const restoreContactInput = z.object({ contactId: uuid });
+
+/* The undo for archive: it brings the contact back into the list. */
+export async function restoreContactAction(input: unknown): Promise<Result> {
+  const parsed = restoreContactInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "That contact could not be restored." };
+  const auth = await authorize();
+  try {
+    await restoreContact(auth, parsed.data);
   } catch (error) {
     return fail(error);
   }

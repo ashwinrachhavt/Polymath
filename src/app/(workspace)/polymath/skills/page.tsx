@@ -46,10 +46,6 @@ function readinessValue(enabled: boolean): (typeof READINESS_FILTERS)[number] {
   return enabled ? "ready" : "disabled";
 }
 
-function shortRevision(revision: string): string {
-  return revision.length > 8 ? revision.slice(0, 8) : revision;
-}
-
 const installedDate = new Intl.DateTimeFormat("en", { year: "numeric", month: "short", day: "numeric" });
 
 function sourceLine(skill: { sourceKind: string; sourceRef: string }): string {
@@ -67,7 +63,7 @@ export async function SkillsSurface({
   if (!process.env.DATABASE_URL?.trim()) {
     return (
       <>
-        <PageHeader title="Skills" purpose="Give the assistant a procedure to follow." />
+        <PageHeader title="Skills" />
         <div className="page-content">
           <EmptyState
             title="Skill storage is not configured"
@@ -103,7 +99,7 @@ export async function SkillsSurface({
     <nav aria-label="Skills views" className="flex gap-1">
       {(
         [
-          { id: "installed", label: `My skills · ${installed.length}` },
+          { id: "installed", label: `My skills (${installed.length})` },
           { id: "discover", label: "Discover" },
         ] as const
       ).map(({ id, label }) => (
@@ -127,7 +123,6 @@ export async function SkillsSurface({
     <>
       <PageHeader
         title="Skills"
-        purpose="Give the assistant a procedure to follow."
         actions={
           <Readout className="text-muted-foreground text-xs">
             {enabledCount} ready of {installed.length}
@@ -188,10 +183,6 @@ export async function SkillsSurface({
                           {readiness}
                         </Badge>
                       </div>
-                      <p className="text-muted-foreground readout text-xs">
-                        {sourceLine(skill)} · {shortRevision(skill.revision)} · installed{" "}
-                        {installedDate.format(skill.createdAt)}
-                      </p>
                       {skill.warnings.length > 0 ? (
                         <ul className="flex flex-col gap-0.5">
                           {skill.warnings.map((warning) => (
@@ -201,10 +192,17 @@ export async function SkillsSurface({
                           ))}
                         </ul>
                       ) : null}
-                      <div className="mt-auto flex flex-wrap items-center gap-2 pt-1">
+                      <div className="mt-auto pt-1">
                         <UseSkill id={skill.id} name={skill.name} disabled={!skill.enabled} />
-                        <SkillToggle id={skill.id} name={skill.name} enabled={skill.enabled} />
-                        <RemoveSkillButton id={skill.id} name={skill.name} />
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-muted-foreground min-w-0 truncate text-xs">
+                          {sourceLine(skill)}, {installedDate.format(skill.createdAt)}
+                        </p>
+                        <div className="flex shrink-0 items-center gap-0.5">
+                          <SkillToggle id={skill.id} name={skill.name} enabled={skill.enabled} />
+                          <RemoveSkillButton id={skill.id} name={skill.name} />
+                        </div>
                       </div>
                     </li>
                   );
@@ -224,10 +222,7 @@ export async function SkillsSurface({
           </>
         ) : (
           <>
-            <p className="text-muted-foreground text-xs">
-              Procedures that ship with Polymath. Installing one copies it into your library; it is no different from a
-              skill you wrote after that.
-            </p>
+            <p className="text-muted-foreground text-xs">Installing copies a procedure into your library.</p>
             <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {BUNDLED_SKILLS.map((skill) => (
                 <li key={skill.slug} className="flex flex-col gap-2 rounded-xl border border-border bg-card p-4">

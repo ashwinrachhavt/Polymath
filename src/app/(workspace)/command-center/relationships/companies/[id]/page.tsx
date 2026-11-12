@@ -60,10 +60,7 @@ async function CompanyProfileSurface({ params }: { params: Promise<{ id: string 
     >
       <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <div className="space-y-6">
-          <Panel
-            title="Research"
-            description="A bounded web pass: homepage, about page and recent news become a grounded card set."
-          >
+          <Panel title="Research">
             <div className="space-y-4">
               <CompanyResearchControls companyId={company.id} researched={cardSet !== null} />
               {cardSet ? (

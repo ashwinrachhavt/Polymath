@@ -33,10 +33,24 @@ import {
   captureTitle,
   type InboxRow,
 } from "./inbox-list";
-import { MakeLearningButton } from "@/app/(workspace)/learn/make-learning-dialog";
-import { generateZettelsAction } from "./zettel-actions";
-import { ZettelQueueWatch } from "./zettel-queue-watch";
-import { randomId } from "@/lib/random-id";
+import { MakeLearningDialog } from "@/app/(workspace)/learn/make-learning-dialog";
+import { GenerationJobRows } from "@/components/jobs/generation-job-rows";
+import { ConfirmIconButton, OverflowMenu, type MenuItem } from "@/components/ui/icon-actions";
+import { IconButton } from "@/components/ui/icon-button";
+import { useZettelize, useZettelJobs } from "@/components/zettelize/zettel-jobs";
+import { zettelJobSubject } from "@/domains/capture/zettel-job-names";
+import type { GenerationJobView } from "@/domains/jobs/state";
+import {
+  Archive,
+  FileText,
+  GraduationCap,
+  Inbox,
+  Library,
+  Lightbulb,
+  ListTodo,
+  NotebookPen,
+  RotateCcw,
+} from "lucide-react";
 
 /*
  * The detail pane: a view of the selected capture row (D12/D14). URL captures
@@ -126,6 +140,7 @@ export function InboxDetail({
   priorWriting,
   zettelProviderReady,
   zettelProviderReason,
+  zettelJobs,
 }: {
   capture:
     | (Omit<InboxRow, "preview" | "hasText"> & {
@@ -151,6 +166,8 @@ export function InboxDetail({
   zettelProviderReady: boolean;
   /** Safe sentence naming what turns generation on; shown when it is off. */
   zettelProviderReason: string;
+  /** Zettelize jobs still waiting or failed when the page rendered; the stream moves them from here. */
+  zettelJobs: GenerationJobView[];
 }) {
   const [optimisticState, decide] = useOptimistic(
     capture?.processingState ?? null,
@@ -163,16 +180,11 @@ export function InboxDetail({
   );
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  // The per-capture zettelize verb: a queued pass is one per capture until the
-  // outbox worker files it, so the verb disables itself once queued and the
-  // watch below carries the outcome. Each click mounts a fresh watch (the key
-  // re-arms the poller); selecting another capture resets it.
-  const [zettelPass, setZettelPass] = useState(0);
-  const [selectedCaptureFor, setSelectedCaptureFor] = useState<string | null>(capture?.id ?? null);
-  if ((capture?.id ?? null) !== selectedCaptureFor) {
-    setSelectedCaptureFor(capture?.id ?? null);
-    setZettelPass(0);
-  }
+  // The zettelize verb starts a job for this capture; its row below follows the
+  // jobs stream, and the verb stays off while that job is still being made.
+  const zettel = useZettelize();
+  const zettelSurface = useZettelJobs(zettelJobs, capture ? zettelJobSubject({ kind: "capture", id: capture.id }) : "");
+  const [learningOpen, setLearningOpen] = useState(false);
   const headingRef = useRef<HTMLHeadingElement>(null);
   // Seeded with the capture rendered on arrival: a page load with ?id= is not
   // a selection, so it must not steal focus, and the global :focus-visible
@@ -263,26 +275,28 @@ export function InboxDetail({
     });
   }
 
-  /*
-   * The per-capture zettelize verb: queue one proposal pass for this capture.
-   * The capture is filed to the library as a side effect (the worker converts
-   * it before extracting), so the title says so up front; the answer is
-   * "queued", never "created" - proposals appear in Ideas for review.
-   */
-  function zettelize() {
-    setError(null);
-    startTransition(async () => {
-      const result = await generateZettelsAction({
-        captureIds: [capture!.id],
-        idempotencyKey: randomId(),
-      });
-      if (!result.ok) {
-        setError(result.message);
-        return;
-      }
-      setZettelPass((n) => n + 1);
-    });
-  }
+  const open =
+    state === "open" ||
+    state === "unprocessed" ||
+    state === "classifying" ||
+    state === "enriched" ||
+    state === "failed";
+  const busy = pending || zettel.pending;
+  const hasWords = !voiceWithoutTranscript && Boolean((capture.cleanText ?? capture.text)?.trim());
+  // The secondary verbs: file the text as a library document, or draft from it.
+  const turnInto: MenuItem[] = [
+    ...(hasWords
+      ? [{ label: "Library document", icon: <Library aria-hidden />, onSelect: saveAsDocument, disabled: busy }]
+      : []),
+    ...(capture.kind === "file" || voiceWithoutTranscript
+      ? []
+      : DRAFT_TEMPLATES.map((template) => ({
+          label: DRAFT_TEMPLATE_LABEL[template],
+          icon: <FileText aria-hidden />,
+          onSelect: () => saveAsDraft(template),
+          disabled: busy,
+        }))),
+  ];
 
   function changeKind(kind: CaptureKind) {
     setError(null);
@@ -491,116 +505,84 @@ export function InboxDetail({
         </section>
       ) : null}
 
-      {error ? <WorkStatus state={{ phase: "failed", label: error }} className="mt-3" /> : null}
-
-      {zettelPass > 0 ? (
-        <div className="mt-3 flex flex-col items-start gap-1">
-          <p className="text-muted-foreground text-body-dense" role="status">
-            Creating zettels…{" "}
-            <Link href="/polymath/ideas" className="text-foreground font-medium underline underline-offset-4">
-              See in Ideas
-            </Link>
-          </p>
-          <ZettelQueueWatch key={zettelPass} />
-        </div>
+      {error || zettel.error ? (
+        <WorkStatus state={{ phase: "failed", label: (error ?? zettel.error)! }} className="mt-3" />
       ) : null}
 
-      <div className="mt-8 flex flex-wrap items-center gap-2 border-border border-t pt-4">
-        {state === "open" ||
-        state === "unprocessed" ||
-        state === "classifying" ||
-        state === "enriched" ||
-        state === "failed" ? (
+      <GenerationJobRows surface={zettelSurface} className="mt-4 text-body-dense" />
+
+      {/* One quiet row of verbs: icons that name themselves on hover, the
+          drafts behind More, and the one destructive verb set apart at the
+          end, asking twice. */}
+      <div
+        role="toolbar"
+        aria-label="Capture actions"
+        className="mt-8 flex flex-wrap items-center gap-0.5 border-border border-t pt-3"
+      >
+        {open ? (
           <>
             {capture.kind === "file" || voiceWithoutTranscript ? null : (
-              <Button size="sm" disabled={pending} onClick={saveAsNote}>
-                Save as note
-              </Button>
-            )}
-            {voiceWithoutTranscript || !(capture.cleanText ?? capture.text)?.trim() ? null : (
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={pending}
-                onClick={saveAsDocument}
-                title="File the text as a library document; zettel proposals follow"
-              >
-                Save to library
-              </Button>
+              <IconButton
+                size="icon-sm"
+                label="Save as note"
+                icon={<NotebookPen aria-hidden />}
+                disabled={busy}
+                onClick={saveAsNote}
+              />
             )}
             {zettelEligible ? (
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={pending || zettelPass > 0 || !zettelProviderReady}
-                onClick={zettelize}
-                title={
+              <IconButton
+                size="icon-sm"
+                label="Zettelize into Ideas"
+                icon={<Lightbulb aria-hidden />}
+                disabled={busy || zettelSurface.active || !zettelProviderReady}
+                disabledReason={
                   !zettelProviderReady
                     ? zettelProviderReason
-                    : zettelPass > 0
-                      ? "Queued - the proposals land in Ideas for review."
-                      : "Files this capture to your library, then proposes ideas for review."
+                    : zettelSurface.active
+                      ? "Already making ideas from this capture."
+                      : undefined
                 }
-              >
-                Zettelize
-              </Button>
+                onClick={() => zettel.zettelize([{ kind: "capture", id: captureId }])}
+              />
             ) : null}
             {voiceWithoutTranscript ? null : (
-              <Button size="sm" variant="outline" disabled={pending} onClick={() => act("converted")}>
-                Make task
-              </Button>
+              <IconButton
+                size="icon-sm"
+                label="Make a task"
+                icon={<ListTodo aria-hidden />}
+                disabled={busy}
+                onClick={() => act("converted")}
+              />
             )}
-            {capture.kind === "file" ? (
-              <span className="flex items-center text-xs text-muted-foreground">
-                {capture.text?.trim()
-                  ? "File the reading in the library, or make a task from its words - the file itself stays here."
-                  : "A file stays a file - notes and drafts start from text. Make a task from its filename, or open the file itself."}
-              </span>
-            ) : voiceWithoutTranscript ? (
-              <span className="flex items-center text-xs text-muted-foreground">
-                {capture.failureReason ??
-                  "The transcript lands here once transcription runs; then it works like any text capture."}
-              </span>
-            ) : (
-              <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                Turn into
-                {DRAFT_TEMPLATES.map((template) => (
-                  <Button
-                    key={template}
-                    size="sm"
-                    variant="ghost"
-                    disabled={pending}
-                    onClick={() => saveAsDraft(template)}
-                  >
-                    {DRAFT_TEMPLATE_LABEL[template]}
-                  </Button>
-                ))}
-              </span>
-            )}
-            <Button size="sm" variant="ghost" disabled={pending} onClick={() => act("discarded")}>
-              Archive
-            </Button>
           </>
         ) : null}
         {/* One instance across states: making from an open capture files it, and the
             re-render as converted must keep the open dialog and its error. */}
         {learningSource ? (
-          <MakeLearningButton
-            key={capture.id}
-            size="sm"
-            variant="outline"
-            disabled={pending}
-            initialSources={[learningSource]}
-          >
-            Make flashcards or a quiz
-          </MakeLearningButton>
+          <>
+            <IconButton
+              size="icon-sm"
+              label="Make flashcards or a quiz"
+              icon={<GraduationCap aria-hidden />}
+              disabled={busy}
+              onClick={() => setLearningOpen(true)}
+            />
+            <MakeLearningDialog
+              key={capture.id}
+              open={learningOpen}
+              onOpenChange={setLearningOpen}
+              initialSources={[learningSource]}
+            />
+          </>
         ) : null}
+        {open ? <OverflowMenu label="Turn into" items={turnInto} disabled={busy} /> : null}
         {capture.parkedAt && state !== "discarded" && state !== "converted" ? (
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={pending}
-            title="Set aside at the end of the day; unparking puts it back in the queue"
+          <IconButton
+            size="icon-sm"
+            label="Unpark: put it back in the queue"
+            icon={<Inbox aria-hidden />}
+            disabled={busy}
             onClick={() => {
               setError(null);
               startTransition(async () => {
@@ -608,13 +590,11 @@ export function InboxDetail({
                 if (!result.ok) setError(result.error);
               });
             }}
-          >
-            Unpark
-          </Button>
+          />
         ) : null}
         {state === "discarded" ? (
-          <Button size="sm" variant="outline" disabled={pending} onClick={() => act("unprocessed")}>
-            Restore capture
+          <Button size="sm" variant="ghost" disabled={busy} onClick={() => act("unprocessed")}>
+            <RotateCcw aria-hidden /> Restore to inbox
           </Button>
         ) : null}
         {state === "converted" &&
@@ -628,9 +608,7 @@ export function InboxDetail({
         ) : null}
         {state === "converted" && capture.convertedType === "document" && capture.convertedId ? (
           <Button asChild size="sm" variant="outline">
-            <Link href={`/polymath/knowledge?doc=${encodeURIComponent(capture.convertedId)}`}>
-              Open in Document Vault
-            </Link>
+            <Link href={`/polymath/knowledge?doc=${encodeURIComponent(capture.convertedId)}`}>Open document</Link>
           </Button>
         ) : null}
         {state === "converted" && capture.convertedType === "task" && capture.convertedId ? (
@@ -638,7 +616,30 @@ export function InboxDetail({
             <Link href={`/neuralflow/work?task=${encodeURIComponent(capture.convertedId)}`}>Open task in Work</Link>
           </Button>
         ) : null}
+        {open ? (
+          <div className="ml-auto">
+            <ConfirmIconButton
+              label="Archive (restore it any time)"
+              confirmLabel="Archive?"
+              icon={<Archive aria-hidden />}
+              disabled={busy}
+              onConfirm={() => act("discarded")}
+            />
+          </div>
+        ) : null}
       </div>
+      {open && capture.kind === "file" ? (
+        <p className="mt-2 text-xs text-muted-foreground">
+          {capture.text?.trim()
+            ? "File the reading in the library, or make a task from its words. The file itself stays here."
+            : "A file stays a file: notes and drafts start from text. Make a task from its filename, or open the file itself."}
+        </p>
+      ) : open && voiceWithoutTranscript ? (
+        <p className="mt-2 text-xs text-muted-foreground">
+          {capture.failureReason ??
+            "The transcript lands here once transcription runs; then it works like any text capture."}
+        </p>
+      ) : null}
     </article>
   );
 }

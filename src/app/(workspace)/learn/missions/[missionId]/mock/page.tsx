@@ -52,7 +52,8 @@ async function MockSurface({
   const auth = await getAuthContext();
   requireRole(auth, "member");
   const mission = await getMission(auth, missionId);
-  if (!mission) notFound();
+  // A deleted (archived) Mission is gone from Learn; its old links are too.
+  if (!mission || mission.status === "archived") notFound();
 
   // Resume the sitting in progress, or open the one already taken; only an
   // explicit Retake asks for a new one. A reload never asks the same person

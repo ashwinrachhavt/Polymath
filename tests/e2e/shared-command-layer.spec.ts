@@ -26,7 +26,7 @@ test("global capture feeds the inbox, and search opens the exact task it became"
     .getByRole("link", { name: new RegExp(shared) })
     .first()
     .click();
-  await page.getByRole("article").getByRole("button", { name: "Make task", exact: true }).click();
+  await page.getByRole("article").getByRole("button", { name: "Make a task", exact: true }).click();
 
   await page.keyboard.press("Control+k");
   await page.getByRole("combobox", { name: "Search workspace" }).fill(shared);
@@ -51,7 +51,7 @@ test("global capture feeds the inbox, and search opens the exact task it became"
   const detail = page.getByRole("article");
   await expect(detail).toContainText(`Inbox original ${tag}`);
   await expect(detail).toContainText("Keep this original context");
-  await detail.getByRole("button", { name: "Make task", exact: true }).click();
+  await detail.getByRole("button", { name: "Make a task", exact: true }).click();
   await page
     .getByRole("navigation", { name: "Inbox filters" })
     .getByRole("link", { name: "Converted", exact: true })

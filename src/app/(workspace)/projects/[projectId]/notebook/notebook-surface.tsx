@@ -7,6 +7,7 @@ import { BookmarkPlus, FileText, Image, Loader2, NotebookPen, Plus, Presentation
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip } from "@/components/ui/tooltip";
 import { Markdown } from "@/components/markdown";
 import { displayTitle } from "@/lib/display-text";
 import { stripMentionContext } from "@/components/chat/mention-context";
@@ -432,12 +433,14 @@ export default function NotebookSurface({
           <div className="flex items-center justify-between gap-2">
             <h2 className="text-body-dense font-medium">Studio</h2>
             <details className="relative">
-              <summary
-                aria-label="More"
-                className="cursor-pointer list-none rounded-md px-2 py-0.5 text-body-dense text-muted-foreground hover:bg-muted"
-              >
-                …
-              </summary>
+              <Tooltip content="More">
+                <summary
+                  aria-label="More"
+                  className="cursor-pointer list-none rounded-md px-2 py-0.5 text-body-dense text-muted-foreground hover:bg-muted"
+                >
+                  …
+                </summary>
+              </Tooltip>
               <div className="absolute right-0 z-10 mt-1 w-64 rounded-md border border-border bg-popover p-3 text-popover-foreground shadow-md">
                 <nav aria-label="Project" className="mb-3 flex flex-col border-b border-border pb-2 text-body-dense">
                   <Link

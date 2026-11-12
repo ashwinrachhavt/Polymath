@@ -20,7 +20,7 @@ export default function CandidateFacts() {
   return (
     <Panel
       title="Candidate facts and résumé"
-      description="Candidate fact proposals are distinct from memory. Local wording review below does not verify profile truth or make a fact eligible for generated application materials."
+      description="Wording review only: it does not verify a fact or make it usable in applications."
     >
       <form
         className="grid gap-4"

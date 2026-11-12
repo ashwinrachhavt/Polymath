@@ -9,6 +9,7 @@ import { getMission } from "@/domains/learning/missions";
 import { MISSION_JOB_KIND, missionJobSubject } from "@/domains/learning/mission-jobs";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
+import { BackToLearn } from "../../back-to-learn";
 import { MissionJobs } from "../mission-jobs";
 import { MissionPlanEditor } from "./plan-editor";
 import { ReadinessReport } from "./readiness-report";
@@ -45,7 +46,8 @@ async function MissionSurface({ params }: { params: Promise<{ missionId: string 
   const auth = await getAuthContext();
   requireRole(auth, "member");
   const mission = await getMission(auth, missionId);
-  if (!mission) notFound();
+  // A deleted (archived) Mission is gone from Learn; its old links are too.
+  if (!mission || mission.status === "archived") notFound();
 
   const [jobs, report] = await Promise.all([
     listUnfinishedGenerationJobs(auth, { kindPrefix: MISSION_JOB_KIND, subject: missionJobSubject(mission.id) }),
@@ -64,8 +66,9 @@ async function MissionSurface({ params }: { params: Promise<{ missionId: string 
               day: "numeric",
               timeZone: "UTC",
             })}.`
-          : "A Mission without a date: a draft you can work on at your own pace."
+          : undefined
       }
+      leading={<BackToLearn />}
     >
       <p className="text-body-dense text-muted-foreground">
         From {mission.sourceTitles.length === 1 ? "" : `${mission.sourceTitles.length} sources: `}
@@ -122,9 +125,6 @@ async function MissionSurface({ params }: { params: Promise<{ missionId: string 
           )}{" "}
         </>
       )}
-      <Link href="/learn" className="text-body-dense font-medium underline-offset-4 hover:underline">
-        Back to Learn
-      </Link>
     </Screen>
   );
 }

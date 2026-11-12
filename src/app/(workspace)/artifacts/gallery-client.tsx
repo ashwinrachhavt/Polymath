@@ -4,12 +4,16 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { FileText, LayoutGrid, List, Search } from "lucide-react";
+import { IconButton } from "@/components/ui/icon-button";
 import { deckReviewHref } from "@/domains/learning/review-href";
+import { ArchiveArtifactButton } from "./archive-button";
 import { WriteFromLibrary } from "./write-from-library";
 
 /*
  * Gallery toolbar (filter tabs, search, grid/list toggle) and the artifact
- * preview card. All of it navigates; the page is the only fetcher.
+ * preview card. All of it navigates; the page is the only fetcher. Generated
+ * artifacts carry Delete in the card's corner; sources belong to the Document
+ * Vault and quizzes and decks to Learn, so they are deleted there.
  */
 
 export function GalleryToolbar({
@@ -130,25 +134,23 @@ export function GalleryToolbar({
         </div>
       </form>
       <WriteFromLibrary />
-      <div className="flex items-center rounded-md border border-border" role="group" aria-label="Layout">
-        <button
-          type="button"
-          aria-label="Grid view"
+      <div className="flex items-center gap-0.5" role="group" aria-label="Layout">
+        <IconButton
+          label="Grid view"
+          icon={<LayoutGrid aria-hidden />}
+          size="icon-sm"
           aria-pressed={currentView === "grid"}
-          className={`p-1.5 ${currentView === "grid" ? "bg-muted" : ""}`}
+          className="aria-pressed:bg-muted"
           onClick={() => navigate({ view: "grid" })}
-        >
-          <LayoutGrid aria-hidden className="size-4" />
-        </button>
-        <button
-          type="button"
-          aria-label="List view"
+        />
+        <IconButton
+          label="List view"
+          icon={<List aria-hidden />}
+          size="icon-sm"
           aria-pressed={currentView === "list"}
-          className={`p-1.5 ${currentView === "list" ? "bg-muted" : ""}`}
+          className="aria-pressed:bg-muted"
           onClick={() => navigate({ view: "list" })}
-        >
-          <List aria-hidden className="size-4" />
-        </button>
+        />
       </div>
     </div>
   );
@@ -183,23 +185,32 @@ export function ArtifactCard({
           : `/artifacts/${artifact.id}`;
   const label = artifact.recordType === "source" ? "Source" : artifact.kind;
   return (
-    <Link
-      href={href}
-      className={`group block rounded-xl border border-border p-4 transition-colors hover:bg-muted/40 ${isList ? "flex items-center gap-4" : ""}`}
-    >
-      <div className={isList ? "min-w-0 flex-1" : ""}>
-        <p
-          className={`text-muted-foreground leading-snug ${isList ? "line-clamp-2 text-body-dense" : "line-clamp-6 text-body-dense"}`}
-        >
-          {artifact.preview || (artifact.recordType === "source" ? "No extracted text yet." : "Empty artifact.")}
-        </p>
-      </div>
-      <div className={`mt-3 flex min-w-0 items-center gap-2 ${isList ? "mt-0 shrink-0" : ""}`}>
-        <FileText aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
-        <span className="truncate text-body-dense">{artifact.title}</span>
-        <span className="shrink-0 text-xs text-muted-foreground">{label}</span>
-        <span className="shrink-0 text-xs text-muted-foreground">{artifact.status}</span>
-      </div>
-    </Link>
+    <div className="group/artifact relative">
+      <Link
+        href={href}
+        className={`block rounded-xl border border-border p-4 transition-colors hover:bg-muted/40 ${isList ? "flex items-center gap-4 pr-12" : "pr-11"}`}
+      >
+        <div className={isList ? "min-w-0 flex-1" : ""}>
+          <p
+            className={`text-muted-foreground leading-snug ${isList ? "line-clamp-2 text-body-dense" : "line-clamp-6 text-body-dense"}`}
+          >
+            {artifact.preview || (artifact.recordType === "source" ? "No extracted text yet." : "Empty artifact.")}
+          </p>
+        </div>
+        <div className={`mt-3 flex min-w-0 items-center gap-2 ${isList ? "mt-0 shrink-0" : ""}`}>
+          <FileText aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+          <span className="truncate text-body-dense">{artifact.title}</span>
+          <span className="shrink-0 text-xs text-muted-foreground">{label}</span>
+          <span className="shrink-0 text-xs text-muted-foreground">{artifact.status}</span>
+        </div>
+      </Link>
+      {artifact.recordType === "artifact" ? (
+        <ArchiveArtifactButton
+          artifactId={artifact.id}
+          noun={artifact.kind === "zettel" ? "idea" : "artifact"}
+          className={`absolute right-2 bg-background opacity-0 group-hover/artifact:opacity-100 group-focus-within/artifact:opacity-100 data-[state=armed]:opacity-100 [@media(hover:none)]:opacity-100 ${isList ? "top-1/2 -translate-y-1/2" : "top-2"}`}
+        />
+      ) : null}
+    </div>
   );
 }

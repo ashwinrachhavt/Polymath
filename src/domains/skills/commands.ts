@@ -1,7 +1,8 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { withTransaction } from "@/lib/db-transaction";
+import { isUniqueViolation } from "@/lib/pg-errors";
 import type { InspectedSkill } from "./manifest";
 import { skills, type SkillSourceKind } from "./schema";
 
@@ -138,10 +139,7 @@ export async function setSkillEnabled(
  * live rows, so re-installing the same source later creates a fresh row with a
  * fresh id; the tombstone still serves the runs that pinned the old one.
  */
-export async function removeSkill(
-  auth: AuthContext,
-  input: { id: string },
-): Promise<{ removed: boolean }> {
+export async function removeSkill(auth: AuthContext, input: { id: string }): Promise<{ removed: boolean }> {
   return withTransaction(async (tx) => {
     const [row] = await tx
       .select({ id: skills.id, name: skills.name })
@@ -166,4 +164,35 @@ export async function removeSkill(
       .where(and(eq(skills.workspaceId, auth.workspaceId), eq(skills.id, row.id)));
     return { removed: true };
   });
+}
+
+/*
+ * Undo for removeSkill: clears the tombstone so the same row (same id, same
+ * runs pinned to it) is live again. If the same source was re-installed in
+ * the meantime, the identity index already holds a live row and the restore
+ * reports that instead of creating a duplicate.
+ */
+export async function restoreSkill(
+  auth: AuthContext,
+  input: { id: string },
+): Promise<{ restored: true } | { restored: false; reason: "not_found" | "reinstalled" }> {
+  try {
+    return await withTransaction(async (tx) => {
+      const [row] = await tx
+        .update(skills)
+        .set({ archivedAt: null, updatedBy: auth.userId, updatedAt: new Date() })
+        .where(and(eq(skills.workspaceId, auth.workspaceId), eq(skills.id, input.id), isNotNull(skills.archivedAt)))
+        .returning({ id: skills.id, name: skills.name });
+      if (!row) return { restored: false, reason: "not_found" } as const;
+      await recordAudit(
+        auth,
+        { action: "skill.restored", subjectType: "skill", subjectId: row.id, summary: `Skill restored: ${row.name}` },
+        tx,
+      );
+      return { restored: true } as const;
+    });
+  } catch (cause) {
+    if (isUniqueViolation(cause)) return { restored: false, reason: "reinstalled" };
+    throw cause;
+  }
 }

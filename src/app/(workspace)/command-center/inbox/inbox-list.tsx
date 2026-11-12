@@ -12,9 +12,10 @@ import { captureDisplayTitle } from "@/lib/display-text";
 import { MakeLearningButton } from "@/app/(workspace)/learn/make-learning-dialog";
 import { listHref } from "@/lib/list-params";
 import { setCaptureStateAction } from "./actions";
-import { generateZettelsAction } from "./zettel-actions";
-import { ZettelQueueWatch } from "./zettel-queue-watch";
-import { randomId } from "@/lib/random-id";
+import { GenerationJobRows } from "@/components/jobs/generation-job-rows";
+import { useZettelize, useZettelJobs } from "@/components/zettelize/zettel-jobs";
+import { MAX_ZETTELIZE_SOURCES, zettelJobSubject } from "@/domains/capture/zettel-job-names";
+import type { GenerationJobView } from "@/domains/jobs/state";
 
 /*
  * The list pane: one clamped line of primary text, a muted metadata line, and
@@ -202,6 +203,7 @@ export function InboxList({
   rawQuery,
   zettelProviderReady,
   zettelProviderReason,
+  zettelJobs,
 }: {
   rows: InboxRow[];
   view: InboxView;
@@ -209,6 +211,8 @@ export function InboxList({
   rawQuery: Record<string, string | string[] | undefined>;
   zettelProviderReady: boolean;
   zettelProviderReason: string;
+  /** Zettelize jobs still waiting or failed when the page rendered. */
+  zettelJobs: GenerationJobView[];
 }) {
   const [optimisticRows, decide] = useOptimistic(rows, (current: InboxRow[], decision: Decision) =>
     view === "all"
@@ -217,13 +221,17 @@ export function InboxList({
   );
   const [bulkErrors, setBulkErrors] = useState<Array<{ id: string; title: string; message: string }>>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  // The bulk zettelize outcome: what actually queued versus what the action
-  // skipped, kept while the toolbar is up so the honest answer survives the
-  // transition (rows stay in the list until the worker files them).
-  const [zettel, setZettel] = useState<{ queued: number; skipped: number } | null>(null);
-  // Each bulk click mounts a fresh queue watch; the key re-arms the poller
-  // after a previous watch already settled itself.
-  const [zettelPass, setZettelPass] = useState(0);
+  // Bulk zettelize: one job per selected capture. The jobs list above the
+  // captures carries each one to ready or failed.
+  const zettel = useZettelize();
+  const zettelSurface = useZettelJobs(zettelJobs);
+  // The open capture's own job shows in its detail pane; listing it here too would say it twice.
+  const listedJobs = {
+    ...zettelSurface,
+    jobs: zettelSurface.jobs.filter(
+      (job) => !selectedId || job.subject !== zettelJobSubject({ kind: "capture", id: selectedId }),
+    ),
+  };
   const [pending, startTransition] = useTransition();
   const lastToggledId = useRef<string | null>(null);
   const listRef = useRef<HTMLUListElement>(null);
@@ -291,31 +299,31 @@ export function InboxList({
   }
 
   /*
-   * Bulk zettelize: one creation pass for the selection. The action is the
-   * authority on eligibility - captures already filed, without readable text,
-   * or not open arrive back as skipped - so the summary renders what actually
-   * queued instead of guessing from previews. The selection is kept (like the
-   * failure path below): clearing it would unmount the toolbar and the
-   * outcome line before either is read.
+   * Bulk zettelize: one job per selected capture, bounded like learning
+   * sources. The action is the authority on eligibility - captures already
+   * filed, without readable text, or not open come back as skipped. The
+   * selection clears once the jobs are accepted; their rows stay above.
    */
   function zettelizeSelection() {
     setBulkErrors([]);
-    startTransition(async () => {
-      const result = await generateZettelsAction({
-        captureIds: [...selected],
-        idempotencyKey: randomId(),
-      });
-      if (!result.ok) {
-        setBulkErrors([{ id: "zettelize", title: "Zettelize", message: result.message }]);
-        return;
-      }
-      setZettel({ queued: result.queued, skipped: result.skipped });
-      setZettelPass((n) => n + 1);
-    });
+    zettel.zettelize(
+      [...selected].map((id) => ({ kind: "capture" as const, id })),
+      () => setSelected(new Set()),
+    );
   }
 
   return (
     <div className="relative pb-2">
+      {listedJobs.jobs.length > 0 || zettel.skipped > 0 ? (
+        <section aria-label="Zettelize" className="border-border border-b px-4 py-3 text-body-dense">
+          <GenerationJobRows surface={listedJobs} />
+          {zettel.skipped > 0 ? (
+            <p className="text-muted-foreground mt-2 text-xs" role="status">
+              Left out {zettel.skipped} with no readable text, already filed, or not open.
+            </p>
+          ) : null}
+        </section>
+      ) : null}
       <ul ref={listRef} className="py-1" role="list">
         {optimisticRows.map((capture) => {
           const isChecked = selected.has(capture.id);
@@ -408,12 +416,14 @@ export function InboxList({
             <Button
               size="sm"
               variant="outline"
-              disabled={pending || !zettelProviderReady}
+              disabled={pending || zettel.pending || !zettelProviderReady || selected.size > MAX_ZETTELIZE_SOURCES}
               onClick={zettelizeSelection}
               title={
                 !zettelProviderReady
                   ? zettelProviderReason
-                  : "Files the selected captures to your library, then proposes ideas for review."
+                  : selected.size > MAX_ZETTELIZE_SOURCES
+                    ? `Zettelize up to ${MAX_ZETTELIZE_SOURCES} at a time.`
+                    : "Makes ideas from each selected capture in the background. They land in Ideas."
               }
             >
               Zettelize
@@ -440,29 +450,16 @@ export function InboxList({
               onClick={() => {
                 setSelected(new Set());
                 setBulkErrors([]);
-                setZettel(null);
-                setZettelPass(0);
               }}
             >
               Clear
             </Button>
           </div>
-          {zettel ? (
-            <p className="w-full text-body-dense" role="status">
-              <span className="text-muted-foreground">
-                {zettel.queued
-                  ? `Creating zettels for ${zettel.queued} capture${zettel.queued === 1 ? "" : "s"}…`
-                  : "Nothing queued."}
-                {zettel.skipped
-                  ? ` Skipped ${zettel.skipped} not eligible (no readable text, already filed, or not open).`
-                  : ""}
-              </span>{" "}
-              <Link href="/polymath/ideas" className="text-foreground font-medium underline underline-offset-4">
-                See in Ideas
-              </Link>
+          {zettel.error ? (
+            <p className="text-destructive w-full text-body-dense" role="alert">
+              Zettelize: {zettel.error}
             </p>
           ) : null}
-          {zettel?.queued ? <ZettelQueueWatch key={zettelPass} /> : null}
           {bulkErrors.length ? (
             <ul className="w-full text-body-dense">
               {bulkErrors.map((failure) => (

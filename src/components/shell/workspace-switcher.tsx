@@ -7,6 +7,7 @@ import { Check, ChevronsUpDown, Mail, Plus } from "lucide-react";
 import { cn } from "cn";
 import { switchWorkspaceAction } from "@/app/(workspace)/settings/workspaces/actions";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip } from "@/components/ui/tooltip";
 import type { SwitchableWorkspace } from "@/domains/identity/resolve";
 
 /*
@@ -66,16 +67,21 @@ export function WorkspaceSwitcher({ data }: { data: WorkspaceSwitcherData | null
         if (!next) setError(null);
       }}
     >
-      <Popover.Trigger
-        aria-label={`Switch workspace, currently ${label}`}
-        className={cn(
-          "hover:bg-muted focus-visible:ring-ring flex h-8 min-w-0 items-center gap-1.5 rounded-md px-2 outline-none",
-          "focus-visible:ring-3 data-[state=open]:bg-muted data-[state=open]:text-foreground",
-        )}
-      >
-        <span className="max-w-[140px] truncate text-body-dense font-medium">{label}</span>
-        <ChevronsUpDown aria-hidden className="text-muted-foreground size-3.5 shrink-0" />
-      </Popover.Trigger>
+      <Tooltip content="Switch workspace">
+        <Popover.Trigger asChild>
+          <button
+            type="button"
+            aria-label={`Switch workspace, currently ${label}`}
+            className={cn(
+              "hover:bg-muted focus-visible:ring-ring flex h-8 min-w-0 items-center gap-1.5 rounded-md px-2 outline-none",
+              "focus-visible:ring-3 data-[state=open]:bg-muted data-[state=open]:text-foreground",
+            )}
+          >
+            <span className="max-w-[140px] truncate text-body-dense font-medium">{label}</span>
+            <ChevronsUpDown aria-hidden className="text-muted-foreground size-3.5 shrink-0" />
+          </button>
+        </Popover.Trigger>
+      </Tooltip>
 
       <Popover.Portal>
         <Popover.Content

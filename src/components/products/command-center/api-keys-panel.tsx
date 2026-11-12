@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { DeleteButton } from "@/components/ui/delete-button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Empty, Field, Status, Unavailable } from "@/components/workspace/ui";
@@ -37,7 +38,6 @@ export default function ApiKeysPanel() {
   const [creating, setCreating] = useState(false);
   const [shownToken, setShownToken] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [confirmRevoke, setConfirmRevoke] = useState<string | null>(null);
 
   const reload = () => {
     void listApiKeysAction().then((result) => {
@@ -63,10 +63,7 @@ export default function ApiKeysPanel() {
   return (
     <div className="flex flex-col gap-5">
       {keys.length === 0 ? (
-        <Empty
-          title="No API keys yet"
-          description="The Chrome companion and any script or agent authenticate with an API key. Create one, paste it into the client once, and revoke it here when it should stop working."
-        />
+        <Empty title="No API keys yet" description="Create one for the Chrome companion, a script or an agent." />
       ) : (
         <table className="w-full text-body-dense">
           <thead>
@@ -101,30 +98,16 @@ export default function ApiKeysPanel() {
                   {key.lastSeenAt ? dateFormat.format(new Date(key.lastSeenAt)) : "never"}
                 </td>
                 <td className="py-2 text-right">
-                  {confirmRevoke === key.id ? (
-                    <span className="flex items-center justify-end gap-2">
-                      <span className="text-xs text-muted-foreground">Revoke? It stops working immediately.</span>
-                      <Button
-                        variant="outline"
-                        onClick={() => {
-                          setConfirmRevoke(null);
-                          void revokeApiKeyAction({ clientId: key.id }).then((result) => {
-                            if (result.ok) reload();
-                            else setError(result.error);
-                          });
-                        }}
-                      >
-                        Confirm
-                      </Button>
-                      <Button variant="ghost" onClick={() => setConfirmRevoke(null)}>
-                        Keep
-                      </Button>
-                    </span>
-                  ) : (
-                    <Button variant="ghost" onClick={() => setConfirmRevoke(key.id)}>
-                      Revoke
-                    </Button>
-                  )}
+                  <DeleteButton
+                    label="Revoke key"
+                    deletedMessage="Key revoked"
+                    confirmHint="Click again to revoke. The key stops working at once."
+                    onDelete={async () => {
+                      const result = await revokeApiKeyAction({ clientId: key.id });
+                      if (!result.ok) throw new Error(result.error);
+                      reload();
+                    }}
+                  />
                 </td>
               </tr>
             ))}
