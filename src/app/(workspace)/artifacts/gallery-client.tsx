@@ -208,7 +208,7 @@ export function ArtifactCard({
         <ArchiveArtifactButton
           artifactId={artifact.id}
           noun={artifact.kind === "zettel" ? "idea" : "artifact"}
-          className={`absolute right-2 bg-background opacity-0 group-hover/artifact:opacity-100 group-focus-within/artifact:opacity-100 data-[state=armed]:opacity-100 [@media(hover:none)]:opacity-100 ${isList ? "top-1/2 -translate-y-1/2" : "top-2"}`}
+          className={`absolute right-2 bg-background invisible group-hover/artifact:visible group-focus-within/artifact:visible data-[state=armed]:visible [@media(hover:none)]:visible ${isList ? "top-1/2 -translate-y-1/2" : "top-2"}`}
         />
       ) : null}
     </div>
