@@ -6,7 +6,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/toast";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { APPEARANCE_BOOT_SCRIPT } from "@/lib/appearance";
-import { SIDEBAR_PIN_BOOT_SCRIPT } from "@/lib/sidebar-pin";
+import { SIDEBAR_BOOT_SCRIPT } from "@/lib/sidebar-pin";
 import "./globals.css";
 
 // Text is set in the platform's own sans (see --font-system in globals.css):
@@ -24,7 +24,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <script dangerouslySetInnerHTML={{ __html: APPEARANCE_BOOT_SCRIPT }} />
         {/* Marks a pinned focus-page rail before first paint, so the page
             never narrows after hydration (see lib/sidebar-pin.ts). */}
-        <script dangerouslySetInnerHTML={{ __html: SIDEBAR_PIN_BOOT_SCRIPT }} />
+        <script dangerouslySetInnerHTML={{ __html: SIDEBAR_BOOT_SCRIPT }} />
       </head>
       {/* Auth providers sit inside <body>; cacheComponents requires it. */}
       <body className="flex min-h-full flex-col">

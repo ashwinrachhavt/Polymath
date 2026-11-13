@@ -14,10 +14,25 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* The person pinned the focus-page rail; set on <html> before first paint by
-   lib/sidebar-pin.ts, so server-rendered markup lays out like the pinned rail
-   until React reads the pin. */
+/* The person kept the sidebar open on this kind of page; set on <html> before
+   first paint by lib/sidebar-pin.ts, so server-rendered markup lays out like
+   the docked sidebar until React reads the choice. */
 @custom-variant sidebar-pinned (&:is([data-sidebar-pinned] *));
+
+/* Folded sidebar groups. <html data-sidebar-closed="main shared"> is set before
+   first paint by lib/sidebar-pin.ts, so a folded group is already folded in the
+   server's markup and nothing below it moves after hydration. A fold is
+   instant (the chevron turns); animating the height would shift the rail's
+   lower group a frame at a time. */
+html[data-sidebar-closed~="main"] [data-sidebar-group="main"] [data-sidebar-group-body],
+html[data-sidebar-closed~="shared"] [data-sidebar-group="shared"] [data-sidebar-group-body] {
+  display: none;
+}
+html[data-sidebar-closed~="main"] [data-sidebar-group="main"] [data-sidebar-chevron],
+html[data-sidebar-closed~="shared"] [data-sidebar-group="shared"] [data-sidebar-chevron] {
+  opacity: 1;
+  transform: rotate(-90deg);
+}
 
 /*
  * Vendored from the shadcn Tailwind preset so the `shadcn` package itself can
