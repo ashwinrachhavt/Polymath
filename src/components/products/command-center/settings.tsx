@@ -729,6 +729,7 @@ export default function Settings({
               <div className="mt-4 flex flex-wrap gap-2">
                 <Destination href="/reviews">External action reviews</Destination>
                 <Destination href="/command-center/spending">Spending policy</Destination>
+                <Destination href="/settings/feedback">Answer ratings</Destination>
               </div>
             </Panel>
           </Section>

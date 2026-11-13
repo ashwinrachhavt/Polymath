@@ -18,7 +18,7 @@ import type { QuizForSitting } from "@/domains/learning/queries";
 
 const complete = vi.hoisted(() => vi.fn());
 vi.mock("@/app/(workspace)/learn/actions", () => ({ completeQuizAttemptAction: complete }));
-vi.mock("@/app/(workspace)/artifacts/[artifactId]/artifact-feedback", () => ({ ArtifactFeedback: () => null }));
+vi.mock("@/components/feedback/rate-output-action", () => ({ rateOutputAction: vi.fn() }));
 
 const { QuizRunner } = await import("@/app/(workspace)/learn/[documentId]/quiz-runner");
 

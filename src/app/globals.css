@@ -1003,6 +1003,42 @@ textarea {
   }
 }
 
+/* The live step label in the chat's step card: a slow light sweep across the
+   text says "still working" without a spinner's urgency. Reduced motion keeps
+   the text and drops the sweep. */
+@keyframes step-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
+.step-shimmer {
+  background: linear-gradient(
+      90deg,
+      var(--color-muted-foreground) 0%,
+      var(--color-muted-foreground) 40%,
+      var(--color-foreground) 50%,
+      var(--color-muted-foreground) 60%,
+      var(--color-muted-foreground) 100%
+    )
+    0 0 / 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: step-shimmer 1.6s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .step-shimmer {
+    animation: none;
+    background: none;
+    color: var(--color-muted-foreground);
+  }
+}
+
 /* ASH-312: the two interface languages, scoped from the shell's
    data-interface-mode attribute. Both stay inside the one accent and the
    warm bone/charcoal register - what changes is tempo: how much air the

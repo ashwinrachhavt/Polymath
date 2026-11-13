@@ -150,6 +150,8 @@ export default defineHook({
           workspaceId,
           runId,
           toolName,
+          turnId: event.data.turnId,
+          callId: callId ?? undefined,
           ok: event.data.status === "completed",
           // A HITL "rejected" is a policy denial, not a runtime failure: it
           // never executed. Distinguish it from a real error code.
@@ -257,9 +259,7 @@ export default defineHook({
       const workspaceId = workspaceIdOf(ctx);
       const runId = await runIdOf(ctx);
       if (!workspaceId || !runId) return;
-      await guarded("session.completed", () =>
-        closeRun({ runId, workspaceId, state: "succeeded" }),
-      );
+      await guarded("session.completed", () => closeRun({ runId, workspaceId, state: "succeeded" }));
       void event;
     },
 

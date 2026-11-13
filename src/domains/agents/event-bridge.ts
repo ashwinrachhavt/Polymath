@@ -168,6 +168,9 @@ export async function recordToolCall(input: {
   runId: string;
   stepId?: string;
   toolName: string;
+  /** The Eve turn and call id, so a reload can rebuild the turn's step card. */
+  turnId?: string;
+  callId?: string;
   ok: boolean;
   durationMs?: number;
   args?: unknown;
@@ -181,6 +184,8 @@ export async function recordToolCall(input: {
       runId: input.runId,
       stepId: input.stepId ?? null,
       toolName: input.toolName,
+      turnId: input.turnId ?? null,
+      callId: input.callId ?? null,
       ok: input.ok,
       errorCode: input.errorCode ?? null,
       durationMs: input.durationMs ?? null,
