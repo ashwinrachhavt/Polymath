@@ -8,7 +8,8 @@
 # Dropped: test/dev-only keys, Langfuse, and every URL that pointed at the
 # laptop. Added: production mode, the in-network service URLs and the tunnel
 # origin. Internal-only secrets are the server's own, never the laptop's: the
-# Postgres password and the two eve token secrets are generated on the server
+# Postgres password, the two eve token secrets and the key that seals stored
+# provider keys are generated on the server
 # on the first push and kept on later ones (the database volume was
 # initialised with that password; changing the eve secrets would only
 # invalidate in-flight agent runs).
@@ -27,7 +28,7 @@ for f in "$root/.env" "$root/.env.local"; do
   [ -f "$f" ] || { echo "missing $f" >&2; exit 1; }
 done
 
-drop='^(DATABASE_URL|TEST_DATABASE_URL|POLYMATH_DEV_AUTH|NODE_ENV|APP_ORIGIN|NEXT_PUBLIC_APP_URL|DOCLING_SERVE_URL|SEARXNG_URL|FIRECRAWL_API_URL|POLYMATH_GATEWAY_URL|POLYMATH_DB_PASSWORD|EVE_BRIDGE_SECRET|EVE_GATEWAY_SECRET|LANGFUSE_[A-Z0-9_]*|AXIOM_LOCAL_BLOB_DIR|POLYMATH_OBJECT_STORE|POLYMATH_ALLOWED_EMAILS)$'
+drop='^(DATABASE_URL|TEST_DATABASE_URL|POLYMATH_DEV_AUTH|NODE_ENV|APP_ORIGIN|NEXT_PUBLIC_APP_URL|DOCLING_SERVE_URL|SEARXNG_URL|FIRECRAWL_API_URL|POLYMATH_GATEWAY_URL|POLYMATH_DB_PASSWORD|EVE_BRIDGE_SECRET|EVE_GATEWAY_SECRET|SECRETS_ENCRYPTION_KEY|LANGFUSE_[A-Z0-9_]*|AXIOM_LOCAL_BLOB_DIR|POLYMATH_OBJECT_STORE|POLYMATH_ALLOWED_EMAILS)$'
 
 # Last occurrence of each KEY=value line wins; order of first appearance kept.
 merged="$(cat "$root/.env" "$root/.env.local" | awk -v drop="$drop" '
@@ -61,6 +62,12 @@ own() {
 pw="$(own POLYMATH_DB_PASSWORD 24)"
 bridge="$(own EVE_BRIDGE_SECRET 32)"
 gateway="$(own EVE_GATEWAY_SECRET 32)"
+# Seals workspace-held provider keys at rest (src/lib/secret-box.ts): 32 random
+# bytes as base64. Changing it makes every stored key unreadable, so it is
+# generated once on the server and never replaced.
+sealing=""
+[ -f "$home/.env" ] && sealing="$(grep -m1 '^SECRETS_ENCRYPTION_KEY=' "$home/.env" | cut -d= -f2- || true)"
+[ -n "$sealing" ] || sealing="$(openssl rand -base64 32)"
 # The optional invite list is the server's own (README "Invite only"): kept
 # across pushes when set on the VM, never copied from the laptop. Off unless
 # someone adds it there.
@@ -76,6 +83,7 @@ trap 'rm -f "$tmp"' EXIT
   echo "POLYMATH_DB_PASSWORD=$pw"
   echo "EVE_BRIDGE_SECRET=$bridge"
   echo "EVE_GATEWAY_SECRET=$gateway"
+  echo "SECRETS_ENCRYPTION_KEY=$sealing"
   echo "DATABASE_URL=postgresql://axiom:$pw@db:5432/axiom"
   echo "APP_ORIGIN=$ORIGIN"
   echo "NEXT_PUBLIC_APP_URL=$ORIGIN"
