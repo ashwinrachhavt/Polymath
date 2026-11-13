@@ -56,7 +56,6 @@ import { type EffectHandler, type EffectHandlers, type RawClient } from "./effec
 import { createSuperagentExecutor, parseExecutorConfig, type LaunchPayload, type SuperagentExecutor } from "./executor";
 import { createEveSeam } from "./executor/eve";
 import { CHAT_SOURCE_KIND, chatSourceKind, chatTrigger, type ChatSourceConfig } from "./sources/chat";
-import { routeChatMessage, type ChatLane } from "./routing";
 import type { ChatEvent, SourceContext, SourceState } from "./sources/host";
 import { SourceRegistry } from "./sources/registry";
 import { createSuperagentStore, getPolicy, storedPolicyConfig, writeStateValue } from "./store";
@@ -429,12 +428,13 @@ const chatReceiptSender: ReceiptSender = async (receipt: ClaimedReceipt) => {
 /* The chat intake entry (the send path)                               */
 /* ------------------------------------------------------------------ */
 
-/** What one intake did: the Engine's answer, plus the lane when Jev routed it. */
-type ConversationIntake = { received: ReceiveResult; lane?: ChatLane };
+/** What one intake did: the Engine's answer. */
+type ConversationIntake = { received: ReceiveResult };
 
 /**
  * One message into the pipeline: read its event, translate it to a Trigger,
- * classify the lane (fail-open), receive, advance the cursor, drain.
+ * receive, advance the cursor, drain. The lane is decided per turn inside the
+ * agent (src/domains/agents/turn-routing.ts), where it is enforced.
  *
  * `sequence` is the event just written, not "the last event in the run": a
  * follow-up can land behind an assistant reply, and taking the tail would
@@ -460,15 +460,6 @@ async function intakeConversationMessage(input: {
   const trigger = chatTrigger(event);
   if (!trigger) throw new Error("The conversation's message did not translate into a trigger.");
 
-  // A routed lane is a hint on the Trigger's own durable meta: the ticket's
-  // origin carries it to the executor's objective, so a retry or a crash
-  // replays the same routing decision instead of re-spending on Jev.
-  const route = await routeChatMessage({ workspaceId: input.auth.workspaceId, text: input.text });
-  if (route.routed) {
-    trigger.meta.lane = route.lane;
-    trigger.meta.laneSource = route.source;
-  }
-
   const result = host.engine.receive(trigger);
   // The read position advances only after the trigger was stored, so a crash
   // before it replays as a duplicate rather than a lost message (the plugin's
@@ -476,7 +467,7 @@ async function intakeConversationMessage(input: {
   await writeStateValue(db, input.auth.workspaceId, readCursorKey(input.runId), String(event.sequence));
   await host.flush();
   await drainSuperagentInline(input.auth.workspaceId);
-  return { received: result, ...(route.routed ? { lane: route.lane } : {}) };
+  return { received: result };
 }
 
 /**
@@ -509,7 +500,7 @@ export async function continueSuperagentConversation(input: {
   auth: AuthContext;
   runId: string;
   message: string;
-}): Promise<{ runId: string; received: ReceiveResult; lane?: ChatLane }> {
+}): Promise<{ runId: string; received: ReceiveResult }> {
   const text = input.message.trim();
   if (!text) throw new Error("Write a message first.");
 

@@ -91,6 +91,30 @@ describe("Eve session recovery", () => {
     expect(mocks.update).toHaveBeenCalledOnce();
   });
 
+  it("sends the follow-up that found the session stranded once, not in the replay and again after it", async () => {
+    RUNS.push({ id: "run-uuid" });
+    // The follow-up is stored before the replacement starts, so it is the
+    // replay's last row (the duplicate seen in run c359de81, 2026-11-12).
+    EVENTS.push(
+      { sequence: 1, type: "message", data: { role: "user", content: "Research Intangible" } },
+      { sequence: 2, type: "message", data: { role: "assistant", content: "Here is the brief." } },
+      { sequence: 3, type: "message", data: { role: "user", content: "Name the three key players" } },
+    );
+    const fetch = vi.fn().mockResolvedValue(Response.json({ sessionId: "wrun_new" }, { status: 202 }));
+    vi.stubGlobal("fetch", fetch);
+
+    await startReplacementSession({
+      runId: "run-uuid",
+      auth,
+      agentName: "polymath",
+      message: "Name the three key players",
+    });
+
+    const body = JSON.parse(String((fetch.mock.calls[0] as [string, RequestInit])[1].body)) as { message: string };
+    expect(body.message.split("Name the three key players")).toHaveLength(2);
+    expect(body.message).toContain("User: Research Intangible");
+  });
+
   it("replay caps at the most recent content", async () => {
     EVENTS.push(
       { sequence: 1, type: "message", data: { role: "user", content: `OLD${"x".repeat(9000)}` } },

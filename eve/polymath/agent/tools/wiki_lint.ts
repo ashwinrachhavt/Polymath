@@ -6,13 +6,13 @@ import { toolAllowed } from "../lib/policy";
 import { getRunBySessionRef } from "../../../../src/domains/agents/queries";
 import { lintWiki } from "../../../../src/domains/knowledge/wiki";
 import { WIKI_LINT_CAPABILITY } from "../../../../src/domains/knowledge/wiki-agent";
+import { runSessionRef } from "../lib/run-session";
 
 /*
  * The wiki health check. Read-only: it reports orphans, stale registrations
  * and gaps as a list and fixes nothing — the owner decides what to address.
  */
 export default defineTool({
-  deferred: true,
   description:
     "Health-check the workspace wiki: archived pages still registered, articles whose source was archived, empty topics, missing index or log. Use when the owner asks about wiki health or something in the wiki looks wrong. It will not repair anything — findings are reported and a fix is the owner's call — and it is not a content search; questions about what the wiki says belong to wiki_read. Read-only; the run's frozen policy must allow wiki.lint.",
   inputSchema: z.object({}),
@@ -22,7 +22,7 @@ export default defineTool({
     if (typeof workspaceId !== "string" || !current?.principalId) {
       return { ok: false as const, error: "no workspace in session" };
     }
-    const run = await getRunBySessionRef(ctx.session.id, workspaceId);
+    const run = await getRunBySessionRef(runSessionRef(ctx.session), workspaceId);
     if (!run || run.state !== "running") {
       return { ok: false as const, error: "no active Polymath run bound to this session" };
     }

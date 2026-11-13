@@ -25,6 +25,15 @@ import { DIAGRAM_TYPES, type DiagramType } from "@/domains/diagrams/types";
 import { stepFacts, type StepFacts } from "./agent-steps";
 
 /** One normalized frame the proxy writes to the browser. */
+
+/** How a replacement session's first message starts (eve-recovery.ts). */
+export const SESSION_REPLAY_PREFIX = "Earlier in this conversation, before the live agent session was replaced:";
+
+/** True for a replacement session's replayed transcript, which is never something the person said. */
+export function isSessionReplay(text: string): boolean {
+  return text.startsWith(SESSION_REPLAY_PREFIX);
+}
+
 export type ChatFrame =
   /** The reply so far, in full. Sent once at the head of a stream and after reconnect. */
   | { type: "snapshot"; runId: string; blocks: ChatBlock[]; cursor: number }
@@ -449,6 +458,11 @@ export function frameOf(
       const text = asString(data.message ?? data.content);
       if (text === null || text.length === 0) return [];
       if (options.suppressObjectiveText != null && text === options.suppressObjectiveText) return [];
+      // A replacement session's first message is the replayed conversation
+      // plus the new message (eve-recovery.ts). Both are already in the
+      // thread as the person's own stored rows; rendering the replay would
+      // show the conversation, and the new message, a second time.
+      if (event.type === "message.received" && isSessionReplay(text)) return [];
       return [
         {
           type: "message",

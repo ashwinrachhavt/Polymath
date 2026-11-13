@@ -1,4 +1,5 @@
 import { drizzle } from "drizzle-orm/postgres-js";
+import { ownerBackground } from "@/domains/agents/owner-brief";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { onboardingSessions } from "@/domains/agents/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
@@ -14,7 +15,11 @@ import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace"
 const handle = makeTestDb();
 const suite = handle ? describe : describe.skip;
 const holder: { db: ReturnType<typeof drizzle> | undefined } = { db: undefined };
-vi.mock("@/lib/db", () => ({ get db() { return holder.db; } }));
+vi.mock("@/lib/db", () => ({
+  get db() {
+    return holder.db;
+  },
+}));
 vi.mock("@/lib/db-transaction", () => ({
   get withTransaction() {
     return (fn: Parameters<typeof import("@/lib/db-transaction").withTransaction>[0]) =>
@@ -31,7 +36,9 @@ beforeAll(async () => {
   engineModule = await import("@/domains/agents/engine");
   commands = await import("@/domains/agents/commands");
 });
-afterAll(async () => { await handle?.client.end(); });
+afterAll(async () => {
+  await handle?.client.end();
+});
 
 type StartCall = { sessionId: string; instructions: string | null };
 function capturingDriver(calls: { starts: StartCall[]; signals: string[] }) {
@@ -39,7 +46,9 @@ function capturingDriver(calls: { starts: StartCall[]; signals: string[] }) {
     start: async (input: StartCall & { auth: unknown; policy: unknown; objective: string }) => {
       calls.starts.push({ sessionId: input.sessionId, instructions: input.instructions });
     },
-    signal: async (sessionId: string, signal: string) => { calls.signals.push(`${sessionId}:${signal}`); },
+    signal: async (sessionId: string, signal: string) => {
+      calls.signals.push(`${sessionId}:${signal}`);
+    },
     cancel: async () => {},
   };
 }
@@ -54,22 +63,38 @@ suite("run brief consumption (real Postgres)", () => {
 
     // The onboarding session retains the verbatim original as provenance.
     await holder.db!.insert(onboardingSessions).values({
-      workspaceId: seeded.workspaceId, userId: seeded.userId, status: "completed",
+      workspaceId: seeded.workspaceId,
+      userId: seeded.userId,
+      status: "completed",
       personifiedBrief: "ORIGINAL ONBOARDING BRIEF - provenance only",
     });
 
     // Brief v1 is consumed at run start.
-    await commands.updateDefaultProfileBrief(auth, { description: "d1", instructions: "Brief alpha.", expectedVersion: v0.version });
+    await commands.updateDefaultProfileBrief(auth, {
+      description: "d1",
+      instructions: "Brief alpha.",
+      expectedVersion: v0.version,
+    });
     const calls = { starts: [] as StartCall[], signals: [] as string[] };
     const engine = engineModule.createEngine(capturingDriver(calls));
-    const run1 = await engine.start({ auth, profileName: "polymath", objective: "First", subjects: [], estimateUsd: "0.0001" });
-    expect(calls.starts[0]).toMatchObject({ instructions: "Brief alpha." });
+    const run1 = await engine.start({
+      auth,
+      profileName: "polymath",
+      objective: "First",
+      subjects: [],
+      estimateUsd: "0.0001",
+    });
+    expect(calls.starts[0]).toMatchObject({ instructions: ownerBackground("Brief alpha.") });
 
     // Editing the brief changes what the NEXT run gets...
     const v1 = (await profile(auth))!;
-    await commands.updateDefaultProfileBrief(auth, { description: "d1", instructions: "Brief beta.", expectedVersion: v1.version });
+    await commands.updateDefaultProfileBrief(auth, {
+      description: "d1",
+      instructions: "Brief beta.",
+      expectedVersion: v1.version,
+    });
     await engine.start({ auth, profileName: "polymath", objective: "Second", subjects: [], estimateUsd: "0.0001" });
-    expect(calls.starts[1]).toMatchObject({ instructions: "Brief beta." });
+    expect(calls.starts[1]).toMatchObject({ instructions: ownerBackground("Brief beta.") });
 
     // ...while the already-running first run is never re-fed: a signal
     // reaches the same session and no fresh start (no fresh brief) occurs.
@@ -79,9 +104,19 @@ suite("run brief consumption (real Postgres)", () => {
 
     // Retiring passes null - NOT the onboarding original, NOT the last value.
     const v2 = (await profile(auth))!;
-    const retired = await commands.updateDefaultProfileBrief(auth, { description: "", instructions: "", expectedVersion: v2.version });
+    const retired = await commands.updateDefaultProfileBrief(auth, {
+      description: "",
+      instructions: "",
+      expectedVersion: v2.version,
+    });
     expect(retired).toMatchObject({ ok: true, profile: { description: null, instructions: null } });
-    const run3 = await engine.start({ auth, profileName: "polymath", objective: "Third", subjects: [], estimateUsd: "0.0001" });
+    const run3 = await engine.start({
+      auth,
+      profileName: "polymath",
+      objective: "Third",
+      subjects: [],
+      estimateUsd: "0.0001",
+    });
     expect(calls.starts[2]).toMatchObject({ sessionId: run3.runId, instructions: null });
   });
 });
