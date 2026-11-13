@@ -11,6 +11,8 @@ import {
   listActivityEvents,
 } from "@/domains/audit/queries";
 import { presentActivityEvents, type ActivityItem } from "@/domains/audit/present";
+import { listRecentGenerationJobs } from "@/domains/jobs/queries";
+import { BackgroundWork } from "@/components/jobs/background-work";
 import { cachedPreferences } from "@/lib/cached-shell-reads";
 import { getAuthContext } from "@/lib/auth";
 import { listHref, parseListParams } from "@/lib/list-params";
@@ -81,6 +83,7 @@ async function ActivitySurface({ searchParams }: { searchParams: SearchParams })
   // The actor filter's options are independent of every other read here, so
   // they start immediately instead of running last (spec W3).
   const actorsPromise = listActivityActors(auth);
+  const jobsPromise = listRecentGenerationJobs(auth);
   const { timezone } = await cachedPreferences(auth);
   const list = parseListParams(query, { filters: { category: CATEGORY_VALUES } });
 
@@ -146,7 +149,7 @@ async function ActivitySurface({ searchParams }: { searchParams: SearchParams })
     cursor: undefined,
   });
 
-  const actorOptions = await actorsPromise;
+  const [actorOptions, recentJobs] = await Promise.all([actorsPromise, jobsPromise]);
 
   return (
     <>
@@ -177,6 +180,8 @@ async function ActivitySurface({ searchParams }: { searchParams: SearchParams })
         <div className="mb-4">
           <UpNextSection auth={auth} />
         </div>
+
+        <BackgroundWork initialJobs={recentJobs} />
 
         {requestedEventId && linkedUnavailable ? (
           <p role="note" className="panel-empty mt-3 rounded-lg px-3.5 py-3 text-body-dense text-muted-foreground">

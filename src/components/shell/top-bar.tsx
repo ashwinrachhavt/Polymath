@@ -7,6 +7,7 @@ import { ModeToggle } from "@/components/shell/mode-toggle";
 import { UserMenu } from "@/components/shell/user-menu";
 import { CommandLayerMount } from "@/components/shell/command-layer-mount";
 import { NotificationsPanel } from "@/components/shell/notifications-panel";
+import { JobsIndicator } from "@/components/jobs/jobs-indicator";
 import type { TriageFeed } from "@/domains/notifications/triage";
 import type { ShellPreferencePatch, ShellPreferenceSnapshot } from "@/components/shell/shell-preferences";
 
@@ -120,6 +121,7 @@ export function TopBar({
 
       <div className="ml-auto flex min-w-0 items-center gap-1 max-[420px]:gap-0.5">
         <CommandLayerMount />
+        <JobsIndicator />
         <NotificationsPanel feed={notifications} />
         <ModeToggle
           resolved={interfaceMode}

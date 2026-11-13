@@ -1,5 +1,6 @@
 "use client";
 
+import { SubjectJobProgress } from "@/components/jobs/job-progress";
 import { cn } from "cn";
 import { AlignLeft, FileText, Forward, Link2, Mic, type LucideIcon } from "lucide-react";
 import Link from "next/link";
@@ -383,6 +384,8 @@ export function InboxList({
                         </>
                       ) : null}
                     </span>
+                    {/* What the capture's background work is doing: crawl, video, zettelize. */}
+                    <SubjectJobProgress subject={`capture:${capture.id}`} className="mt-1" />
                   </span>
                   <time
                     suppressHydrationWarning

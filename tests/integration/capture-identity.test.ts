@@ -108,11 +108,8 @@ suite("capture identity", () => {
     expect(events.filter((e) => (e.payload as { captureId?: string }).captureId === capture.id)).toHaveLength(0);
   });
 
-  it("waits for an explicit read request for a bare address", async () => {
+  it("reads a bare address once, when it is captured", async () => {
     const capture = await commands.createCapture(auth, { text: "https://example.com/fetched" });
-    const before = await db.select().from(outboxEvents).where(eq(outboxEvents.topic, "capture.url_content_requested"));
-    expect(before.filter((e) => (e.payload as { captureId?: string }).captureId === capture.id)).toHaveLength(0);
-
     await commands.retryCaptureUrl(auth, { captureId: capture.id });
     const after = await db.select().from(outboxEvents).where(eq(outboxEvents.topic, "capture.url_content_requested"));
     expect(after.filter((e) => (e.payload as { captureId?: string }).captureId === capture.id)).toHaveLength(1);

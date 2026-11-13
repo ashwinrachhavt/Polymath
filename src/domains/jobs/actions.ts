@@ -4,13 +4,14 @@ import { z } from "zod";
 import { actionError } from "@/lib/action-error";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
-import { dismissGenerationJob, queuedGenerationJobAttempt, retryGenerationJob } from "./commands";
+import { cancelGenerationJob, dismissGenerationJob, queuedGenerationJobAttempt, retryGenerationJob } from "./commands";
 import { kickGenerationJob } from "./kick";
+import { listRecentGenerationJobs } from "./queries";
 import type { GenerationJobView } from "./state";
 
 /*
  * What a person can do to their own generation job from any surface that
- * lists it. Both verbs answer with a typed union; nothing thrown reaches the
+ * lists it. Every verb answers with a typed union; nothing thrown reaches the
  * client.
  */
 
@@ -29,6 +30,20 @@ export async function retryGenerationJobAction(
     return { ok: true, job };
   } catch (error) {
     return { ok: false, error: actionError(error, "Could not start that again.") };
+  }
+}
+
+export async function cancelGenerationJobAction(
+  jobId: string,
+): Promise<{ ok: true; job: GenerationJobView | null } | { ok: false; error: string }> {
+  if (!jobIdSchema.safeParse(jobId).success) return { ok: true, job: null };
+  try {
+    const auth = await getAuthContext();
+    requireRole(auth, "member");
+    // Null: it settled before the click landed; the stream shows how.
+    return { ok: true, job: await cancelGenerationJob(auth, jobId) };
+  } catch (error) {
+    return { ok: false, error: actionError(error, "Could not stop that.") };
   }
 }
 
@@ -60,5 +75,18 @@ export async function startWaitingGenerationJobAction(jobId: string): Promise<vo
     if (attempt !== null) kickGenerationJob({ jobId, attempt });
   } catch (error) {
     actionError(error, "Could not start a waiting job.");
+  }
+}
+
+/** The person's recent background work, for the jobs panel when it opens. */
+export async function listRecentGenerationJobsAction(): Promise<
+  { ok: true; jobs: GenerationJobView[] } | { ok: false; error: string }
+> {
+  try {
+    const auth = await getAuthContext();
+    requireRole(auth, "member");
+    return { ok: true, jobs: await listRecentGenerationJobs(auth) };
+  } catch (error) {
+    return { ok: false, error: actionError(error, "Could not read your background work.") };
   }
 }

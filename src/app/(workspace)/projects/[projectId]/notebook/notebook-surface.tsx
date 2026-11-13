@@ -1,5 +1,6 @@
 "use client";
 
+import { SubjectJobProgress } from "@/components/jobs/job-progress";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
@@ -258,6 +259,7 @@ export default function NotebookSurface({
                   {source.kind === "video" ? "Video" : "Document"}
                   {source.detail ? ` · ${source.detail}` : ""}
                 </p>
+                <SubjectJobProgress subject={`document:${source.documentId}`} className="mt-1" />
                 {(source.readiness === "failed" || source.readiness === "unsupported") && (
                   <div className="mt-1 flex items-center gap-2">
                     <Button

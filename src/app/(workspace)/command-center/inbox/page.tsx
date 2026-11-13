@@ -1,4 +1,8 @@
 import { io } from "next/cache";
+import { listCaptureDocuments } from "@/domains/capture/children";
+import type { AuthContext } from "@/domains/identity/resolve";
+import { SITE_CRAWL_KIND } from "@/domains/knowledge/site-crawl";
+import { parseVideoId } from "@/integrations/youtube/transcript";
 import Link from "next/link";
 import { Suspense } from "react";
 import { cn } from "cn";
@@ -72,6 +76,10 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
   // The detail pane is a view of the record, not of the current filter: a
   // capture outside the view still renders, the list just shows no highlight.
   const selected = effectiveSelectedId ? await getCaptureForPage(auth, effectiveSelectedId) : null;
+  const site =
+    selected?.capture.captureMode === "url-reference" && selected.capture.url && !parseVideoId(selected.capture.url)
+      ? await loadCaptureSite(auth, selected.capture.id)
+      : null;
   const generation = capabilityStatus().find((c) => c.id === "generation");
   const pageSize = list.pageSize;
   redirectPastEnd("/command-center/inbox", query, list.page, pageSize, found.total);
@@ -231,6 +239,7 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
                 : null
             }
             priorWriting={selected?.priorWriting ?? null}
+            site={site}
             zettelJobs={zettelJobs}
             zettelProviderReady={generation?.configured ?? false}
             zettelProviderReason={
@@ -259,4 +268,13 @@ export default function InboxPage({
       <Inbox searchParams={searchParams} />
     </Suspense>
   );
+}
+
+/** A link capture's child pages and its crawl job, read together. */
+async function loadCaptureSite(auth: AuthContext, captureId: string) {
+  const [pages, initialJobs] = await Promise.all([
+    listCaptureDocuments(auth, captureId),
+    listUnfinishedGenerationJobs(auth, { kindPrefix: SITE_CRAWL_KIND, subject: `capture:${captureId}`, limit: 1 }),
+  ]);
+  return { pages, initialJobs };
 }
