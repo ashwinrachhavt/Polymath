@@ -1,0 +1,20 @@
+{
+  "name": "polymath",
+  "version": "0.1.0",
+  "description": "Turn a code change into a literate explainer in Polymath, then check your understanding in the terminal. Missed concepts become review items in your daily practice.",
+  "author": { "name": "Polymath" },
+  "userConfig": {
+    "polymath_url": {
+      "type": "string",
+      "title": "Polymath URL",
+      "description": "Where your Polymath runs, for example http://localhost:3000",
+      "default": "http://localhost:3000"
+    },
+    "api_key": {
+      "type": "string",
+      "title": "Polymath API key",
+      "description": "A key from Polymath Settings > API keys with understanding:read, understanding:write and captures:write",
+      "sensitive": true
+    }
+  }
+}

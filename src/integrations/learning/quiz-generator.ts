@@ -42,6 +42,8 @@ export type GeneratedQuestion = {
   concept?: string;
 };
 
+export type QuizDifficulty = "easier" | "standard" | "harder";
+
 type QuizGeneratorSource = { title: string; text: string };
 type QuizGeneratorOptions = {
   questionCount?: number;
@@ -52,6 +54,8 @@ type QuizGeneratorOptions = {
   part?: number;
   /** Concept names this workspace already uses; the model reuses one when it fits. */
   knownConcepts?: string[];
+  /** How hard the questions should be; omitted reads as standard. */
+  difficulty?: QuizDifficulty;
 };
 
 export interface QuizGenerator {
@@ -122,6 +126,14 @@ export function knownConceptsInstruction(names: string[] = []): string {
   return ` These concept names are already in use; when an item tests one of them, use that exact name: ${JSON.stringify(bounded)}.`;
 }
 
+function difficultyInstruction(difficulty?: QuizDifficulty): string {
+  if (difficulty === "easier")
+    return " Keep the questions direct: test whether the reader followed the main points, with distractors that are clearly wrong on a careful read.";
+  if (difficulty === "harder")
+    return " Make the questions demanding: test consequences and edge cases the text implies, with distractors that need real understanding to rule out.";
+  return "";
+}
+
 function fromGeneration(
   provider: GenerationProvider,
   run: (input: { system: string; prompt: string }) => Promise<{ text: string }>,
@@ -144,7 +156,7 @@ function fromGeneration(
   return {
     name: provider.name,
     generate(text, options) {
-      const system = `${SYSTEM}${options?.questionCount ? ` Generate exactly ${options.questionCount} questions when the source supports them.` : ""}${contextInstruction(options?.learningContext)}${avoidInstruction(options?.avoidPrompts)}${knownConceptsInstruction(options?.knownConcepts)}`;
+      const system = `${SYSTEM}${options?.questionCount ? ` Generate exactly ${options.questionCount} questions when the source supports them.` : ""}${contextInstruction(options?.learningContext)}${avoidInstruction(options?.avoidPrompts)}${knownConceptsInstruction(options?.knownConcepts)}${difficultyInstruction(options?.difficulty)}`;
       return call(system, sourceWindow(text, MAX_INPUT_CHARS, options?.part));
     },
     generateFromSources(sources, options) {
@@ -154,7 +166,7 @@ function fromGeneration(
         title: source.title.slice(0, 120),
         text: sourceWindow(source.text, perSourceLimit, options?.part),
       }));
-      const system = `${SYSTEM} Each question must include the zero-based sourceIndex for the one source that supports its answer and quote. Return that sourceIndex with every question.${options?.questionCount ? ` Generate exactly ${options.questionCount} questions when the sources support them.` : ""}${contextInstruction(options?.learningContext)}${avoidInstruction(options?.avoidPrompts)}${knownConceptsInstruction(options?.knownConcepts)}`;
+      const system = `${SYSTEM} Each question must include the zero-based sourceIndex for the one source that supports its answer and quote. Return that sourceIndex with every question.${options?.questionCount ? ` Generate exactly ${options.questionCount} questions when the sources support them.` : ""}${contextInstruction(options?.learningContext)}${avoidInstruction(options?.avoidPrompts)}${knownConceptsInstruction(options?.knownConcepts)}${difficultyInstruction(options?.difficulty)}`;
       return call(system, JSON.stringify({ sources: bounded }));
     },
   };

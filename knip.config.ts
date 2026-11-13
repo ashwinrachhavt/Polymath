@@ -38,6 +38,10 @@ const config = {
     // to stdout for the owner to set the bar against.
     "scripts/grader-eval.mts",
 
+    // Claude Code launches the Polymath plugin's hook script as a process from
+    // hooks.json; nothing imports it. The MCP server is the polymath-mcp script.
+    "plugins/polymath/hooks/understanding-hook.mjs",
+
     // The eve agent trees are compiled by the eve runner against root src —
     // through relative paths and the root tsconfig's @/ alias — so their
     // module graphs reach into src/domains and mark everything they consume

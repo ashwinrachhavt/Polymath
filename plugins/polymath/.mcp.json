@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "polymath": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/mcp/server.mjs"],
+      "env": {
+        "POLYMATH_URL": "${user_config.polymath_url}",
+        "POLYMATH_API_KEY": "${user_config.api_key}"
+      }
+    }
+  }
+}
