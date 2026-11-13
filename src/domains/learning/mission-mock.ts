@@ -1,7 +1,8 @@
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, isNull, ne } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { concepts } from "@/domains/knowledge/schema";
+import { awardCoins } from "@/domains/stones/coins";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import {
@@ -406,7 +407,11 @@ export async function answerMockQuestion(
   auth: AuthContext,
   input: { sessionId: string; questionId: string; answer: string },
   generator?: ExplainItGenerator,
-): Promise<{ status: "asking" | "complete"; grade: "correct" | "partial" | "incorrect" | "uncertain" }> {
+): Promise<{
+  status: "asking" | "complete";
+  grade: "correct" | "partial" | "incorrect" | "uncertain";
+  coinsEarned: number;
+}> {
   const answer = input.answer.trim().slice(0, MAX_ANSWER_CHARS);
   if (!answer) throw new MockError("generation_failed", "Write an answer before submitting.");
 
@@ -469,7 +474,7 @@ export async function answerMockQuestion(
       "uncertain",
       "This answer could not be checked. Read it against the source yourself.",
     );
-    return { status: await settleStatus(auth, session.id), grade: "uncertain" };
+    return { ...(await settleStatus(auth, session.id)), grade: "uncertain" };
   }
 
   const evidence = verifyEvidence(sources, evaluation.evidence);
@@ -479,7 +484,7 @@ export async function answerMockQuestion(
     ? evaluation.feedback.trim().slice(0, 1200)
     : "The selected source did not provide enough evidence to assess this answer confidently.";
   await storeAnswer(auth, session.id, current.id, answer, grade, feedback);
-  return { status: await settleStatus(auth, session.id), grade };
+  return { ...(await settleStatus(auth, session.id)), grade };
 }
 
 async function storeAnswer(
@@ -518,20 +523,42 @@ async function storeAnswer(
   });
 }
 
-async function settleStatus(auth: AuthContext, sessionId: string): Promise<"asking" | "complete"> {
+/**
+ * Closes the sitting once every question has an answer, and pays its coins in
+ * the same transaction: the readiness score is the share of questions graded
+ * correct. Only the call that flips the session to complete pays.
+ */
+async function settleStatus(
+  auth: AuthContext,
+  sessionId: string,
+): Promise<{ status: "asking" | "complete"; coinsEarned: number }> {
   const rows = await db
-    .select({ answered: missionMockQuestions.answer })
+    .select({ answered: missionMockQuestions.answer, grade: missionMockQuestions.grade })
     .from(missionMockQuestions)
     .where(and(eq(missionMockQuestions.workspaceId, auth.workspaceId), eq(missionMockQuestions.sessionId, sessionId)));
-  const complete = rows.every((row) => row.answered !== null);
-  if (complete) {
-    await db
+  if (!rows.every((row) => row.answered !== null)) return { status: "asking", coinsEarned: 0 };
+  const coinsEarned = await withTransaction(async (tx) => {
+    const [closed] = await tx
       .update(missionMockSessions)
       .set({ status: "complete", updatedBy: auth.userId, updatedAt: new Date() })
-      .where(and(eq(missionMockSessions.id, sessionId), eq(missionMockSessions.workspaceId, auth.workspaceId)));
-    return "complete";
-  }
-  return "asking";
+      .where(
+        and(
+          eq(missionMockSessions.id, sessionId),
+          eq(missionMockSessions.workspaceId, auth.workspaceId),
+          ne(missionMockSessions.status, "complete"),
+        ),
+      )
+      .returning({ missionId: missionMockSessions.missionId });
+    if (!closed) return 0;
+    return awardCoins(tx, auth, {
+      kind: "mission_mock",
+      missionId: closed.missionId,
+      sessionId,
+      proven: rows.filter((row) => row.grade === "correct").length,
+      asked: rows.length,
+    });
+  });
+  return { status: "complete", coinsEarned };
 }
 
 /**

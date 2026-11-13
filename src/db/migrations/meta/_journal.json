@@ -971,6 +971,13 @@
       "when": 1794490000000,
       "tag": "0320_user_preferences_accent",
       "breakpoints": true
+    },
+    {
+      "idx": 315,
+      "version": "7",
+      "when": 1794490100000,
+      "tag": "0315_stones_economy",
+      "breakpoints": true
     }
   ]
 }

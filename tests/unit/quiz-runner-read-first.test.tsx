@@ -61,11 +61,9 @@ beforeEach(() => {
       attemptId: "a",
       correctCount: 4,
       totalCount: 4,
-      stoneEarned: true,
-      emeraldEarned: true,
+      coinsEarned: 50,
       replayed: false,
     },
-    announcement: null,
   });
   window.localStorage.clear();
 });

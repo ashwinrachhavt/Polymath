@@ -168,10 +168,9 @@ const featureRoutes: Record<string, string> = {
   // to the Notes destination for as long as that bridge exists.
   "/polymath/notebook": "/polymath/notes",
   "/command-center/relationships": "/command-center/relationships/people",
-  // Reports and the stone collection moved out of the retired /apps preview;
-  // both are opened from Work, which Today absorbed, so Today stays lit.
+  // Reports moved out of the retired /apps preview; it is opened from Work,
+  // which Today absorbed, so Today stays lit.
   "/neuralflow/reports": "/today",
-  "/neuralflow/rewards": "/today",
   "/polymath/dossiers": "/projects",
   "/polymath/artifacts": "/artifacts",
   // Ideas became a top-level surface; the zettel, card, area and sitting

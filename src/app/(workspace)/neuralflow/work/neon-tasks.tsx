@@ -371,7 +371,7 @@ export async function TaskSection({ show, selectedTask, raw = {}, basePath }: Ta
               <Link className="py-1 hover:text-foreground hover:underline" href="/neuralflow/reports">
                 Weekly review
               </Link>
-              <Link className="py-1 hover:text-foreground hover:underline" href="/neuralflow/rewards">
+              <Link className="py-1 hover:text-foreground hover:underline" href="/learn/stones">
                 Stone collection
               </Link>
             </nav>

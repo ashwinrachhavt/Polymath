@@ -1,6 +1,7 @@
 import { and, asc, eq, isNull, lte, or, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
 import type { AuthContext } from "@/domains/identity/resolve";
+import { awardCoins } from "@/domains/stones/coins";
 import { db } from "@/lib/db";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { conceptName, recentConceptNames } from "@/domains/knowledge/concepts";
@@ -376,7 +377,7 @@ function isDue(now: Date) {
 export async function rateFlashcard(
   auth: AuthContext,
   input: { flashcardId: string; rating: "again" | "hard" | "good" | "easy" },
-): Promise<{ dueAt: Date }> {
+): Promise<{ dueAt: Date; coinsEarned: number }> {
   const [card] = await db
     .select({ id: flashcards.id })
     .from(flashcards)
@@ -425,7 +426,7 @@ export async function rateFlashcard(
     delayMs = intervalDays * 24 * 60 * 60 * 1000;
   }
   const dueAt = new Date(Date.now() + delayMs);
-  await withTransaction(async (tx) => {
+  const coinsEarned = await withTransaction(async (tx) => {
     await tx
       .insert(flashcardReviews)
       .values({
@@ -463,6 +464,7 @@ export async function rateFlashcard(
       },
       tx,
     );
+    return awardCoins(tx, auth, { kind: "flashcard", flashcardId: card.id });
   });
-  return { dueAt };
+  return { dueAt, coinsEarned };
 }

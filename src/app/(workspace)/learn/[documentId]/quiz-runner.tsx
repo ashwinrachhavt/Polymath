@@ -6,13 +6,13 @@ import { Markdown } from "@/components/markdown";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Panel } from "@/components/workspace/ui";
-import { CoachMark } from "@/components/shell/coach-mark";
 import { ArtifactFeedback } from "@/app/(workspace)/artifacts/[artifactId]/artifact-feedback";
 import type { ArtifactRating } from "@/domains/knowledge/artifact-feedback";
 import type { QuizForSitting } from "@/domains/learning/queries";
 import type { QuizPassage } from "@/domains/learning/quiz-passages";
 import { displayTitle } from "@/lib/display-text";
-import { completeQuizAttemptAction, type StoneAnnouncement } from "../actions";
+import { CoinsEarned } from "@/components/stones/coins-earned";
+import { completeQuizAttemptAction } from "../actions";
 import { randomId } from "@/lib/random-id";
 
 /*
@@ -109,10 +109,8 @@ type SittingResult = {
   attemptId: string;
   correctCount: number;
   totalCount: number;
-  stoneEarned: boolean;
-  emeraldEarned: boolean;
+  coinsEarned: number;
   replayed: boolean;
-  announcement: StoneAnnouncement | null;
 };
 
 /**
@@ -217,10 +215,8 @@ function Sitting({
           attemptId: response.result.attemptId,
           correctCount: response.result.correctCount,
           totalCount: response.result.totalCount,
-          stoneEarned: response.result.stoneEarned,
-          emeraldEarned: response.result.emeraldEarned,
+          coinsEarned: response.result.coinsEarned,
           replayed: response.result.replayed,
-          announcement: response.announcement,
         });
       });
     } else {
@@ -240,26 +236,16 @@ function Sitting({
         <p className="readout text-2xl">
           {result.correctCount} of {result.totalCount}
         </p>
-        <div className="relative mt-2">
-          <p className="text-body-dense">
-            {result.emeraldEarned
-              ? "Every answer right: an emerald, plus +10 stones."
-              : result.stoneEarned
-                ? "+10 stones for finishing this quiz."
-                : result.replayed
-                  ? "This sitting was already recorded - the stone it earned was not awarded twice."
-                  : "No stone for this sitting."}
-          </p>
-          {result.announcement ? (
-            <CoachMark
-              id={`stone-${result.announcement.id}`}
-              title={result.announcement.milestone ? "Milestone reached" : "Stone earned"}
-              actionLabel="Keep learning"
-            >
-              {result.announcement.label} · +{result.announcement.points} pts ·{" "}
-              {result.announcement.reason.replaceAll("_", " ")}. The collection lives on the rewards page.
-            </CoachMark>
-          ) : null}
+        <div className="mt-2">
+          {result.coinsEarned > 0 ? (
+            <CoinsEarned coins={result.coinsEarned} />
+          ) : (
+            <p className="text-body-dense text-muted-foreground">
+              {result.replayed
+                ? "This sitting was already recorded, so it paid nothing again."
+                : "No coins this time: each quiz pays once a day, up to 200 coins a day from quizzes."}
+            </p>
+          )}
         </div>
 
         <ul className="mt-4 flex flex-col gap-2">

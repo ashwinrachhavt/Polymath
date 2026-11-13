@@ -37,6 +37,8 @@ const config = {
     // The grader eval is run by hand against a provider; it writes its numbers
     // to stdout for the owner to set the bar against.
     "scripts/grader-eval.mts",
+    // Prints the stones catalog INSERT for a migration, run by hand (see its header).
+    "scripts/stones/catalog-sql.ts",
 
     // The eve agent trees are compiled by the eve runner against root src —
     // through relative paths and the root tsconfig's @/ alias — so their

@@ -26,11 +26,11 @@ server re-grades every completion through it; a client-supplied score has no
 path into `quiz_attempts`.
 
 `completeQuizAttempt` (`commands.ts`) is the completeTask shape: one
-transaction writes the attempt, the audit row, and the stone. The award is
-`recordLearningReview` in the gamification domain (`learning_reviewed`,
-idempotency key `quiz_attempt:<attemptId>`, 10 points), the same-transaction
-twin of the daily Quartz. Replaying an attempt's idempotency key returns the
-original attempt; the ledger's unique index makes a double award impossible.
+transaction writes the attempt, the audit row, and the coins it earned
+(`awardCoins` in the stones domain; the score is the server's grade).
+Replaying an attempt's idempotency key returns the original attempt and pays
+nothing; rating a flashcard and finishing a mock interview pay coins the same
+way, inside their own transactions.
 
 ## Other learning modes
 

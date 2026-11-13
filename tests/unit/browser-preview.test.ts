@@ -59,12 +59,6 @@ describe("browser-only UI preview", () => {
     expect(revised?.revision).toBe(2);
     expect(workspace.getSnapshot().activity[0].detail).toBe("No external action was performed");
   });
-  it("does not award the same preview focus session twice", () => {
-    const reward = { title: "Focus stone", earnedAt: "2026-10-11", sessionId: "session-one" };
-    workspace.awardReward(reward);
-    workspace.awardReward(reward);
-    expect(workspace.getSnapshot().rewards).toHaveLength(1);
-  });
   it("persists the local focus lifecycle in the same workspace snapshot", () => {
     workspace.updateFocus({
       taskId: "task-architecture",

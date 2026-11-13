@@ -143,7 +143,6 @@ export type WorkspaceState = {
   projects: Project[];
   events: CalendarEvent[];
   focus: Focus | null;
-  rewards: { id: string; title: string; earnedAt: string; sessionId: string }[];
   preferences: Preferences;
   activity: { id: string; title: string; detail: string; at: string }[];
 };

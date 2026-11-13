@@ -1,0 +1,34 @@
+[
+  {
+    "chat_id": "6af5852e4b51e8b9f4c26900",
+    "slugs": ["diamond", "amethyst", "labradorite", "pyrite", "rose-quartz"],
+    "credits": 163.0,
+    "seconds": 362,
+    "tier": "core",
+    "mode": "creative",
+    "provider": "cellcog",
+    "usd": 1.81
+  },
+  {
+    "chat_id": "6af588e29165e3f553f5b71d",
+    "slugs": [
+      "gold",
+      "painite",
+      "musgravite",
+      "red-beryl",
+      "grandidierite",
+      "padparadscha-sapphire",
+      "alexandrite",
+      "paraiba-tourmaline",
+      "ruby",
+      "jadeite"
+    ],
+    "credits": 71.0,
+    "seconds": 151,
+    "tier": "core",
+    "mode": "creative",
+    "provider": "cellcog",
+    "usd": 0.79,
+    "note": "The account ran out of credits mid-chat; charged, no images returned."
+  }
+]
