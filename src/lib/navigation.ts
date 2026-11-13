@@ -1,4 +1,5 @@
 import type { LucideIcon } from "lucide-react";
+import { FOCUS_SURFACE_ROOTS } from "@/lib/sidebar-pin";
 import {
   Activity,
   BookOpen,
@@ -263,12 +264,12 @@ export function isConversationSurface(pathname: string) {
 
 /**
  * Notes is a focus surface: the reading and writing canvas is the page, so the
- * rail yields the way it does on the conversation screen. Pinning does not
- * override this — the person asked for a Notes view with no sidebar, and the
- * opener at the top-left plus `[` still reach navigation.
+ * sidebar starts closed there. It is a separate switch from every other page
+ * (lib/sidebar-pin.ts): the opener at the top left and `[` open it on Notes,
+ * the choice is remembered for Notes, and the rest of the app is unaffected.
  */
 export function isFocusSurface(pathname: string) {
-  return pathname === "/polymath/notes" || pathname.startsWith("/polymath/notes/");
+  return FOCUS_SURFACE_ROOTS.some((root) => pathname === root || pathname.startsWith(`${root}/`));
 }
 
 export const moreDestination = {

@@ -104,17 +104,9 @@ async function getCapture(id: string) {
 }
 
 suite("capture enrichment ladder", () => {
-  it("queues URL classification only after an explicit read request", async () => {
+  it("queues URL classification with the read of a captured address", async () => {
     const text = await commands.createCapture(auth, { text: "A short thought." });
     const page = await commands.createCapture(auth, { text: "https://example.com/article" });
-    const fetchEventsBeforeRequest = await db
-      .select()
-      .from(outboxEvents)
-      .where(eq(outboxEvents.topic, "capture.url_content_requested"));
-    expect(
-      fetchEventsBeforeRequest.filter((e) => (e.payload as { captureId: string }).captureId === page.id),
-    ).toHaveLength(0);
-    await commands.retryCaptureUrl(auth, { captureId: page.id });
 
     const events = await db.select().from(outboxEvents).where(eq(outboxEvents.topic, handler.CAPTURE_ENRICHMENT_TOPIC));
     const byCapture = new Map(events.map((e) => [(e.payload as { captureId: string }).captureId, e]));
@@ -122,7 +114,7 @@ suite("capture enrichment ladder", () => {
     const urlEvent = byCapture.get(page.id);
     expect(textEvent).toBeDefined();
     expect(urlEvent).toBeDefined();
-    // URL classification is queued with the explicit read request. Its handler
+    // URL classification is queued with the read of the address. Its handler
     // parks behind the URL-fetch event until that event has completed.
     expect(textEvent!.availableAt.getTime()).toBeLessThanOrEqual(Date.now() + 1000);
     expect(urlEvent!.availableAt.getTime()).toBeLessThanOrEqual(Date.now() + 1000);

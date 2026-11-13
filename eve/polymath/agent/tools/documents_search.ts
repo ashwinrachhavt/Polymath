@@ -9,6 +9,7 @@ import {
   DOCUMENTS_SEARCH_CAPABILITY,
   searchDocumentsForAgent,
 } from "../../../../src/domains/knowledge/agent-search";
+import { runSessionRef } from "../lib/run-session";
 
 /*
  * A read capability over the workspace's extracted documents. It returns
@@ -18,9 +19,8 @@ import {
  * session's verified auth, never from the model's arguments.
  */
 export default defineTool({
-  deferred: true,
   description:
-    "Search the extracted text of the owner's library documents (notes and captured sources are NOT covered today). This is the FIRST call for anything in their documents — what they wrote, decided, or saved about a topic. Semantic + keyword hybrid when an embedding provider is configured, keyword full-text otherwise (the result's mode field says which, a degraded field names a failed leg — when it is present, say the search ran partial; a coverage field says 'partial' only when a document's tail is provably unindexed and 'unknown' when coverage cannot be established — treat both as 'this document may hold more', never as proof of absence). Returns the best matching passages with document id, title, character span, and passage lineage (extractionId, chunkIndex), so answers can cite them with [[n]] markers matching the result order. The owner's own words are stronger evidence than a web result: if the library can answer, do not search the web. Empty results mean no indexed extraction matched — that can be a retrieval miss, a document not yet indexed, or a degraded leg as much as genuine absence; say which you know and never claim the library holds nothing relevant unless the result is not degraded and indexing is known complete. Read-only; the run's frozen policy must allow documents.search.",
+    "Search the extracted text of the owner's library documents (notes and captured sources are NOT covered). Use it only when the answer depends on the owner's own material, never for general knowledge. Returns up to 5 relevant passages with document title and id; cite them as [[n]] in result order. Empty results mean no indexed extraction matched: a retrieval miss, not proof the library holds nothing. `degraded` or a partial/unknown `coverage` means the search could not see everything; say so. Read-only.",
   inputSchema: z.object({
     query: z.string().min(1).max(500),
     limit: z.number().int().min(1).max(AGENT_SEARCH_MAX_RESULTS).optional(),
@@ -37,7 +37,7 @@ export default defineTool({
       return { ok: false as const, error: "no workspace in session" };
     }
 
-    const run = await getRunBySessionRef(ctx.session.id, workspaceId);
+    const run = await getRunBySessionRef(runSessionRef(ctx.session), workspaceId);
     if (!run || run.state !== "running") {
       return { ok: false as const, error: "no active Polymath run bound to this session" };
     }

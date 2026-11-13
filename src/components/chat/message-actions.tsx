@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useState } from "react";
 import { Check, Copy, FileText, Lightbulb, MessageSquare, Sparkles } from "lucide-react";
 import { MessageComments } from "./message-comments";
-import { MessageFeedback } from "./message-feedback";
+import { OutputRating } from "@/components/feedback/output-rating";
+import type { RatedOutput, Rating } from "@/domains/feedback/ratings";
 import { saveMessageAsIdeaAction, saveMessageAsNoteAction } from "@/app/(workspace)/polymath/[runId]/message-actions";
 import { zettelizeThreadAction } from "@/app/(workspace)/polymath/[runId]/zettel-actions";
 import { randomId } from "@/lib/random-id";
@@ -22,7 +23,7 @@ const EXTRACT_SCOPES: Array<{ scope: ExtractScope; label: string }> = [
 
 /*
  * The action toolbar under a finished assistant message: copy, comment, save
- * as note, save as idea, extract ideas, then like and dislike. Icons rest at
+ * as note, save as idea, extract ideas, then the 1-5 rating. Icons rest at
  * a quiet muted tone and come forward on hover, so the actions stay
  * discoverable and keyboard-visible (a hover-only reveal would hide them from
  * axe and from keyboard users) without shouting in the transcript. A save or
@@ -31,12 +32,16 @@ const EXTRACT_SCOPES: Array<{ scope: ExtractScope; label: string }> = [
  */
 export function MessageActions({
   runId,
-  turnId,
+  rated,
+  rating,
   text,
   messageId,
 }: {
   runId: string;
-  turnId: string;
+  /** How the rating addresses this reply; absent on a block the turn's final answer follows. */
+  rated?: RatedOutput;
+  /** The viewer's rating of it, if any. */
+  rating?: Rating | null;
   text: string;
   /** Stored message to address; absent blocks cannot take comments. */
   messageId?: string | null;
@@ -152,7 +157,7 @@ export function MessageActions({
         >
           <Sparkles aria-hidden className="size-3.5" />
         </button>
-        <MessageFeedback runId={runId} turnId={turnId} initial={null} />
+        {rated ? <OutputRating output={rated} initial={rating ?? null} /> : null}
       </div>
       {extractOpen && !extracting ? (
         <div role="menu" aria-label="Extract ideas from" className="border-border mt-1 w-fit rounded-md border p-1">

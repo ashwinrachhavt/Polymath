@@ -36,6 +36,12 @@ import { EVAL_TOOLS, type EveForAssessor, type LiveEval } from "@/domains/supera
 import { Later } from "@/domains/superagent/effects/later";
 import type { DecideClient, DecideRequest, DecideResponse } from "@/domains/superagent/decide";
 
+// The Decisions call is held to the workspace's house allowance, which reads the database; the unit stubs the
+// gate open. Its rules are proven in tests/integration/billing.test.ts.
+vi.mock("@/domains/billing/resolver", () => ({
+  withHouseCall: async (_workspaceId: string, _purpose: string, _call: unknown, run: () => Promise<unknown>) => run(),
+}));
+
 const WORKSPACE = "ws-1";
 const auth: AuthContext = { userId: "owner-1", workspaceId: WORKSPACE, role: "owner" };
 const at = "2026-09-23T00:00:00Z";

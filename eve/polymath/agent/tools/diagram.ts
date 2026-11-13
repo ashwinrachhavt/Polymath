@@ -12,6 +12,7 @@ import {
   guardMermaidSource,
   persistDiagram,
 } from "../../../../src/domains/diagrams/diagrams";
+import { runSessionRef } from "../lib/run-session";
 
 /*
  * Generates or refines a diagram from Mermaid the model authors itself
@@ -29,7 +30,6 @@ import {
  * heavy conversion to an editable Excalidraw scene happens client-side.
  */
 export default defineTool({
-  deferred: true,
   description:
     "Generate or refine a diagram and persist it as a versioned diagram artifact. Author valid Mermaid (flowchart or sequence preferred); the tool guards it, stores it, and returns the ids. Call with no targetCanvasId to create a new diagram, or pass the canvasId from an earlier result to refine that existing diagram with a new version.",
   inputSchema: z.object({
@@ -44,7 +44,7 @@ export default defineTool({
     if (typeof workspaceId !== "string" || !current?.principalId) {
       return { ok: false as const, error: "no workspace in session" };
     }
-    const run = await getRunBySessionRef(ctx.session.id, workspaceId);
+    const run = await getRunBySessionRef(runSessionRef(ctx.session), workspaceId);
     if (!run || run.state !== "running") {
       return { ok: false as const, error: "no active Polymath run bound to this session" };
     }

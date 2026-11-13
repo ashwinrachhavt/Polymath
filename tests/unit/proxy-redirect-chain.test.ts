@@ -8,6 +8,9 @@ import { nextConfigRedirects } from "../../redirects";
 import proxy from "@/proxy";
 
 vi.mock("@/lib/clerk", () => ({ clerkConfigured: true, devAuthBypass: false, proxyArmed: true }));
+// Everyone is invited unless a test says otherwise (the invite-only cases).
+const isInvited = vi.hoisted(() => vi.fn(async (_clerkUserId: string) => true));
+vi.mock("@/lib/access-allowlist", () => ({ isClerkUserAllowed: isInvited }));
 vi.mock("@clerk/nextjs/server", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@clerk/nextjs/server")>()),
   clerkMiddleware: (handler: unknown) => handler,
@@ -85,6 +88,70 @@ describe("unmatched paths get the real 404 (QA F8)", () => {
   });
 });
 
+describe("invite-only (POLYMATH_ALLOWED_EMAILS)", () => {
+  function runSignedIn(path: string, clerkUserId: string): Promise<Response | void> {
+    const check = vi.fn().mockResolvedValue({ isAuthenticated: true, userId: clerkUserId, tokenType: "session_token" });
+    return runProxy(Object.assign(check, { protect: vi.fn() }), new NextRequest(`https://axiom.test${path}`));
+  }
+
+  it("sends an unlisted account to the invite-only page instead of the workspace", async () => {
+    isInvited.mockImplementation(async (id) => id === "user_owner");
+    const response = await runSignedIn("/polymath", "user_stranger");
+    expect(response?.status).toBe(307);
+    expect(response?.headers.get("location")).toBe("https://axiom.test/invite-only");
+    expect(isInvited).toHaveBeenCalledWith("user_stranger");
+  });
+
+  it("answers an unlisted account's API call with a 403, not data", async () => {
+    isInvited.mockImplementation(async (id) => id === "user_owner");
+    const response = await runSignedIn("/api/v1/runs", "user_stranger");
+    expect(response?.status).toBe(403);
+    expect(await (response as Response).json()).toMatchObject({ code: "invite_only" });
+  });
+
+  it("lets a listed account through untouched", async () => {
+    isInvited.mockImplementation(async (id) => id === "user_owner");
+    expect(await runSignedIn("/polymath", "user_owner")).toBeUndefined();
+    expect(await runSignedIn("/api/v1/runs", "user_owner")).toBeUndefined();
+  });
+
+  it("serves the invite-only page itself without a check, so it cannot loop", async () => {
+    isInvited.mockClear();
+    isInvited.mockImplementation(async () => false);
+    expect(await runSignedIn("/invite-only", "user_stranger")).toBeUndefined();
+    expect(await runAs("/invite-only", false)).toBeUndefined();
+    expect(isInvited).not.toHaveBeenCalled();
+    isInvited.mockImplementation(async () => true);
+  });
+});
+
+describe("eve agent routes pass through to eve's own auth", () => {
+  // Under `next start` the app reaches its agents same-origin from the server,
+  // with a bridge token and no Clerk session; eve refuses anything without a
+  // valid token. On Vercel these routes never reach this proxy at all.
+  it.each(["/eve/polymath/v1/session", "/eve/specialist/v1/health", "/eve/polymath/v1/session/abc/stream"])(
+    "lets a session-less request to %s through untouched",
+    async (path) => {
+      expect(await runAs(path, false)).toBeUndefined();
+    },
+  );
+
+  it.each(["/eve", "/evening", "/eve-polymath/v1/session"])("still 404s the look-alike %s", async (path) => {
+    const response = await runAs(path, false);
+    expect(response?.headers.get("x-middleware-rewrite")?.endsWith("/404")).toBe(true);
+  });
+});
+
+describe("the connector OAuth return", () => {
+  it("sends a signed-out browser through sign-in and back, keeping the state token", async () => {
+    const response = await runAs("/api/integrations/callback?state=abc123", false);
+    expect(response?.status).toBe(307);
+    expect(response?.headers.get("location")).toBe(
+      `https://axiom.test/landing?returnTo=${encodeURIComponent("/api/integrations/callback?state=abc123")}`,
+    );
+  });
+});
+
 describe("real routes still gate exactly as before", () => {
   it.each([
     "/onboarding",
@@ -152,5 +219,33 @@ describe("the proxy's route space covers the App Router tree", () => {
     for (const tree of apiChildren) {
       expect(apiSubTrees, `api subtree /${tree}`).toContain(tree);
     }
+  });
+});
+
+describe("the landing page's way in (/sign-in and /sign-up)", () => {
+  it.each(["/sign-in", "/sign-up"])("lets a signed-out visitor see the %s form", async (path) => {
+    expect(await runAs(`${path}?redirect_url=%2Fpolymath`, false)).toBeUndefined();
+  });
+
+  it.each(["/sign-in", "/sign-up"])("sends a signed-in visitor on %s straight to the workspace", async (path) => {
+    const response = await runAs(path, true);
+    expect(response?.status).toBe(307);
+    expect(response?.headers.get("location")).toBe("https://axiom.test/polymath");
+  });
+
+  it("keeps the destination the visitor was headed for, as a path or a same-origin URL", async () => {
+    for (const target of ["/polymath/notes?doc=1", "https://axiom.test/polymath/notes?doc=1"]) {
+      const response = await runAs(`/sign-in?redirect_url=${encodeURIComponent(target)}`, true);
+      expect(response?.headers.get("location")).toBe("https://axiom.test/polymath/notes?doc=1");
+    }
+  });
+
+  it.each(["https://evil.test/polymath", "//evil.test/x"])("never follows %s off the origin", async (target) => {
+    const response = await runAs(`/sign-in?redirect_url=${encodeURIComponent(target)}`, true);
+    expect(response?.headers.get("location")).toBe("https://axiom.test/polymath");
+  });
+
+  it("leaves Clerk's own steps alone while a session is being completed", async () => {
+    expect(await runAs("/sign-in/sso-callback", true)).toBeUndefined();
   });
 });

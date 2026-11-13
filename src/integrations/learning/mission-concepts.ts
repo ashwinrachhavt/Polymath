@@ -4,9 +4,9 @@ import { EmbeddingUnconfiguredError } from "@/integrations/embeddings/provider";
 import {
   GenerationRequestError,
   GenerationUnconfiguredError,
-  generationProvider,
   type GenerationProvider,
 } from "@/integrations/generation/provider";
+import { AllowanceExhaustedError, resolveGeneration } from "@/domains/billing/resolver";
 import { providerEntry } from "@/integrations/providers/registry";
 import { drizzleQuotaStore, withQuota, type QuotaStore } from "@/integrations/providers/quota";
 
@@ -95,23 +95,25 @@ function missionConceptGenerator(
   };
 }
 
-export function defaultMissionConceptGenerator(
-  workspaceId?: string,
+export async function defaultMissionConceptGenerator(
+  workspaceId: string,
   env: NodeJS.ProcessEnv = process.env,
   fetchImpl: typeof fetch = fetch,
   quotaStore?: QuotaStore,
-): MissionConceptGenerator {
+): Promise<MissionConceptGenerator> {
   let provider: GenerationProvider;
   try {
-    provider = generationProvider(env, fetchImpl);
+    provider = await resolveGeneration(workspaceId, "generation", { env, fetchImpl });
   } catch (cause) {
-    if (cause instanceof GenerationUnconfiguredError) throw new EmbeddingUnconfiguredError();
+    if (cause instanceof GenerationUnconfiguredError && !(cause instanceof AllowanceExhaustedError)) {
+      throw new EmbeddingUnconfiguredError();
+    }
     throw cause;
   }
   const entry = providerEntry(provider.registryId);
   return missionConceptGenerator(provider, (input) => {
     const call = () => provider.generate({ ...input, json: true });
-    if (workspaceId && entry?.quota && entry.enabled) {
+    if (entry?.quota && entry.enabled) {
       return withQuota(quotaStore ?? drizzleQuotaStore(), entry, workspaceId, 1, call);
     }
     return call();

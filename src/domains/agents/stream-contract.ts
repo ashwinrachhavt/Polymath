@@ -22,8 +22,18 @@
  */
 
 import { DIAGRAM_TYPES, type DiagramType } from "@/domains/diagrams/types";
+import { stepFacts, type StepFacts } from "./agent-steps";
 
 /** One normalized frame the proxy writes to the browser. */
+
+/** How a replacement session's first message starts (eve-recovery.ts). */
+export const SESSION_REPLAY_PREFIX = "Earlier in this conversation, before the live agent session was replaced:";
+
+/** True for a replacement session's replayed transcript, which is never something the person said. */
+export function isSessionReplay(text: string): boolean {
+  return text.startsWith(SESSION_REPLAY_PREFIX);
+}
+
 export type ChatFrame =
   /** The reply so far, in full. Sent once at the head of a stream and after reconnect. */
   | { type: "snapshot"; runId: string; blocks: ChatBlock[]; cursor: number }
@@ -33,6 +43,11 @@ export type ChatFrame =
   | { type: "block"; runId: string; blockId: string; text: string; finishReason: string | null; cursor: number }
   /** A tool call started or settled. `label` is the human-readable name. `detail` is a one-line outcome when settled. */
   /** `input` is the call's parsed arguments, `input` on a settled frame is the result payload — capped by MAX_TOOL_PAYLOAD. */
+  /**
+   * `turnId` places the call beside the answer it led to. `facts` is the query
+   * and sources read off the FULL payload before the cap, so a large result
+   * still shows its sources (agent-steps.ts).
+   */
   | {
       type: "tool";
       runId: string;
@@ -41,6 +56,8 @@ export type ChatFrame =
       status: "running" | "ok" | "error";
       detail?: string;
       input?: unknown;
+      turnId?: string;
+      facts?: StepFacts;
       cursor: number;
     }
   /** The person's own message, replayed from the durable stream so a reload keeps it. */
@@ -223,7 +240,7 @@ function capPayload(value: unknown): unknown {
  * than pasting it: the line answers "what came back" in a glance, and the full
  * redacted result lives in the conversation page's Details disclosure.
  */
-function summaryFromToolOutput(output: unknown): string {
+export function summaryFromToolOutput(output: unknown): string {
   if (output === null || output === undefined) return "no result";
   if (Array.isArray(output)) return `${output.length} result${output.length === 1 ? "" : "s"}`;
   const list = (output as { results?: unknown } | null)?.results;
@@ -358,17 +375,21 @@ export function frameOf(
     }
     case "actions.requested": {
       const actions = Array.isArray(data.actions) ? data.actions : [];
+      const turnId = asString(data.turnId);
       const frames: ChatFrame[] = [];
       for (const action of actions) {
         const a = action as { kind?: string; callId?: string; toolName?: string; input?: unknown };
         if (a.kind !== "tool-call" || typeof a.callId !== "string") continue;
+        const label = a.toolName ?? "tool";
         frames.push({
           type: "tool",
           runId,
           callId: a.callId,
-          label: a.toolName ?? "tool",
+          label,
           status: "running",
           input: a.input ?? undefined,
+          ...(turnId ? { turnId } : {}),
+          facts: stepFacts(label, a.input, undefined),
           cursor,
         });
       }
@@ -384,12 +405,14 @@ export function frameOf(
       // happened, and would emit citations from a partial result.
       const succeeded = data.status === "completed" || data.status === "succeeded";
       const error = (data.error ?? null) as { code?: unknown } | null;
+      const label = asString(result.toolName) ?? "tool";
+      const turnId = asString(data.turnId);
       const frames: ChatFrame[] = [
         {
           type: "tool",
           runId,
           callId,
-          label: asString(result.toolName) ?? "tool",
+          label,
           status: succeeded ? "ok" : "error",
           // One line the surface can show without expanding anything: an error
           // code when the call failed, a count when a list came back.
@@ -400,6 +423,8 @@ export function frameOf(
           // real data without the wire or the client state holding unbounded
           // provider output.
           input: result.output === undefined ? undefined : capPayload(result.output),
+          ...(turnId ? { turnId } : {}),
+          facts: stepFacts(label, undefined, succeeded ? result.output : undefined),
           cursor,
         },
       ];
@@ -433,6 +458,11 @@ export function frameOf(
       const text = asString(data.message ?? data.content);
       if (text === null || text.length === 0) return [];
       if (options.suppressObjectiveText != null && text === options.suppressObjectiveText) return [];
+      // A replacement session's first message is the replayed conversation
+      // plus the new message (eve-recovery.ts). Both are already in the
+      // thread as the person's own stored rows; rendering the replay would
+      // show the conversation, and the new message, a second time.
+      if (event.type === "message.received" && isSessionReplay(text)) return [];
       return [
         {
           type: "message",

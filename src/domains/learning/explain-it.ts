@@ -119,7 +119,7 @@ export async function startExplainItSession(
     return { sessionId: prior.id };
   }
 
-  const engine = generator ?? defaultExplainItGenerator(auth.workspaceId);
+  const engine = generator ?? (await defaultExplainItGenerator(auth.workspaceId));
   let question: ExplainQuestion;
   try {
     question = await engine.start(sources.map(({ title, text }) => ({ title, text })));
@@ -144,6 +144,7 @@ export async function startExplainItSession(
         generationKey: input.idempotencyKey,
         status: "active",
         questionLimit: 5,
+        promptVersion: EXPLAIN_IT_PROMPT_VERSION,
         createdBy: auth.userId,
         updatedBy: auth.userId,
       })
@@ -308,7 +309,7 @@ export async function answerExplainItTurn(
     throw new ExplainItError("answer_already_submitted", "This answer has already been submitted.");
 
   const sources = await loadPinnedExplainSources(auth, session.sourceManifest);
-  const engine = generator ?? defaultExplainItGenerator(auth.workspaceId);
+  const engine = generator ?? (await defaultExplainItGenerator(auth.workspaceId));
   let evaluation: ExplainEvaluation;
   try {
     evaluation = await engine.evaluate({

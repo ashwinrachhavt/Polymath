@@ -73,16 +73,15 @@ async function runHandlerDirect(captureId: string, url: string) {
 }
 
 suite("capture url content", () => {
-  it("enqueues url_content_requested only after an explicit read request", async () => {
+  it("enqueues url_content_requested once, when an address is captured", async () => {
     const capture = await commands.createCapture(auth, { text: `https://example.com/enqueue-${Date.now()}` });
-    const before = await db.select().from(outboxEvents).where(eq(outboxEvents.topic, "capture.url_content_requested"));
-    expect(before.some((e) => (e.payload as { captureId?: string }).captureId === capture.id)).toBe(false);
-
-    await commands.retryCaptureUrl(auth, { captureId: capture.id });
+    expect(capture.fetchOutcome).toBe("pending");
+    // A read already waiting is not asked for twice.
+    expect(await commands.retryCaptureUrl(auth, { captureId: capture.id })).toEqual({ enqueued: false });
     const events = await db.select().from(outboxEvents).where(eq(outboxEvents.topic, "capture.url_content_requested"));
-    const mine = events.find((e) => (e.payload as { captureId?: string }).captureId === capture.id);
-    expect(mine).toBeTruthy();
-    expect(mine!.workspaceId).toBe(workspaceId);
+    const mine = events.filter((e) => (e.payload as { captureId?: string }).captureId === capture.id);
+    expect(mine).toHaveLength(1);
+    expect(mine[0].workspaceId).toBe(workspaceId);
   });
 
   it("a text capture enqueues nothing", async () => {

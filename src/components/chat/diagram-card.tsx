@@ -13,7 +13,7 @@ import type { DiagramRenderResult } from "@/domains/diagrams/types";
 /*
  * The diagram card (spec art_Yi8Fwsqn §4): one card per `diagram` tool call,
  * rendered in ChatTranscript's transcript column in place of the bare
- * ChainOfThought pill. This component mounts behind next/dynamic ssr:false —
+ * step-card row (agent-steps.tsx). This component mounts behind next/dynamic ssr:false —
  * imported by chat-transcript.tsx — and the render pipeline itself is a lazy
  * `await import` below, so no mermaid or mermaid-to-excalidraw byte reaches
  * any route bundle until a card actually renders a preview (locked decision 7).

@@ -1,15 +1,11 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
-import {
-  flashcardDecks,
-  flashcardReviews,
-  flashcards,
-  learningArtifactFeedback,
-  quizAttempts,
-  quizQuestions,
-  quizzes,
-} from "./schema";
+import { llmFeedback } from "@/domains/feedback/schema";
+import { flashcardDecks, flashcardReviews, flashcards, quizAttempts, quizQuestions, quizzes } from "./schema";
+
+/** A rating at or below this is a "not this" signal the next generation should steer away from. */
+const UNHELPFUL_SCORE = 2;
 
 export type LearningGenerationContext = {
   missedQuestions: string[];
@@ -59,14 +55,12 @@ export async function quizGenerationContext(
       quizId: quizzes.id,
       documentId: quizzes.documentId,
       manifest: quizzes.sourceManifest,
-      rating: learningArtifactFeedback.rating,
+      score: llmFeedback.score,
     })
-    .from(learningArtifactFeedback)
-    .innerJoin(quizzes, and(eq(quizzes.id, learningArtifactFeedback.quizId), eq(quizzes.workspaceId, auth.workspaceId)))
-    .where(
-      and(eq(learningArtifactFeedback.workspaceId, auth.workspaceId), eq(learningArtifactFeedback.userId, auth.userId)),
-    )
-    .orderBy(desc(learningArtifactFeedback.updatedAt))
+    .from(llmFeedback)
+    .innerJoin(quizzes, and(eq(quizzes.id, llmFeedback.quizId), eq(quizzes.workspaceId, auth.workspaceId)))
+    .where(and(eq(llmFeedback.workspaceId, auth.workspaceId), eq(llmFeedback.userId, auth.userId)))
+    .orderBy(desc(llmFeedback.updatedAt))
     .limit(16);
   const relevantFeedback = feedback.filter((row) => includesSelectedSource(row.manifest, row.documentId, selectedIds));
   const quizIds = [
@@ -93,7 +87,7 @@ export async function quizGenerationContext(
     }
   }
   const avoidedQuizIds = new Set(
-    relevantFeedback.filter((row) => row.rating === "not_helpful").map((row) => row.quizId),
+    relevantFeedback.filter((row) => row.score <= UNHELPFUL_SCORE).map((row) => row.quizId),
   );
   return {
     missedQuestions: boundedPrompts(
@@ -115,7 +109,7 @@ export async function flashcardGenerationContext(
       prompt: flashcards.prompt,
       evidence: flashcards.evidence,
       lastRating: flashcardReviews.lastRating,
-      deckRating: learningArtifactFeedback.rating,
+      deckScore: llmFeedback.score,
     })
     .from(flashcardReviews)
     .innerJoin(
@@ -127,11 +121,11 @@ export async function flashcardGenerationContext(
       and(eq(flashcardDecks.id, flashcards.deckId), eq(flashcardDecks.workspaceId, auth.workspaceId)),
     )
     .leftJoin(
-      learningArtifactFeedback,
+      llmFeedback,
       and(
-        eq(learningArtifactFeedback.flashcardDeckId, flashcardDecks.id),
-        eq(learningArtifactFeedback.workspaceId, auth.workspaceId),
-        eq(learningArtifactFeedback.userId, auth.userId),
+        eq(llmFeedback.flashcardDeckId, flashcardDecks.id),
+        eq(llmFeedback.workspaceId, auth.workspaceId),
+        eq(llmFeedback.userId, auth.userId),
       ),
     )
     .where(and(eq(flashcardReviews.workspaceId, auth.workspaceId), eq(flashcardReviews.userId, auth.userId)))
@@ -143,7 +137,7 @@ export async function flashcardGenerationContext(
       relevant.filter((row) => row.lastRating === "again" || row.lastRating === "hard").map((row) => row.prompt),
     ),
     notHelpfulExamples: boundedPrompts(
-      relevant.filter((row) => row.deckRating === "not_helpful").map((row) => row.prompt),
+      relevant.filter((row) => row.deckScore !== null && row.deckScore <= UNHELPFUL_SCORE).map((row) => row.prompt),
     ),
   };
 }

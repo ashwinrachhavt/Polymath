@@ -2,19 +2,19 @@ import { useEffect, useRef, useState } from "react";
 import { loadPreferencesAction, savePreferencesAction } from "@/app/(workspace)/settings/actions";
 import { AppLauncher } from "@/components/shell/app-launcher";
 import { PathBreadcrumb } from "@/components/shell/path-breadcrumb";
-import { WorkspaceSwitcher, type WorkspaceSwitcherData } from "@/components/shell/workspace-switcher";
 import { AppearanceMenu } from "@/components/shell/appearance-menu";
 import { ModeToggle } from "@/components/shell/mode-toggle";
 import { UserMenu } from "@/components/shell/user-menu";
 import { CommandLayerMount } from "@/components/shell/command-layer-mount";
 import { NotificationsPanel } from "@/components/shell/notifications-panel";
+import { JobsIndicator } from "@/components/jobs/jobs-indicator";
 import type { TriageFeed } from "@/domains/notifications/triage";
 import type { ShellPreferencePatch, ShellPreferenceSnapshot } from "@/components/shell/shell-preferences";
 
 /*
- * The header. Where-you-are on the left — the workspace names the context the
- * breadcrumb's path lives in, so the switcher sits beside the breadcrumb —
- * and what acts globally on the right: command, notifications, appearance (mode and accent), the app
+ * The header. Where-you-are on the left (the workspace switcher lives at the
+ * top of the sidebar) and what acts globally on the right: command,
+ * notifications, appearance (mode and accent), the app
  * launcher, and the account menu. The launcher sits next to the avatar,
  * Google-apps-style, so all "leave this app" affordances live in one corner.
  *
@@ -27,13 +27,11 @@ export function TopBar({
   interfaceMode = "action",
   notifications,
   shellPreferences,
-  workspaceSwitcher = null,
 }: {
   clerkConfigured: boolean;
   interfaceMode?: "library" | "action";
   notifications: TriageFeed;
   shellPreferences: ShellPreferenceSnapshot;
-  workspaceSwitcher?: WorkspaceSwitcherData | null;
 }) {
   const [currentPreferences, setCurrentPreferences] = useState(shellPreferences);
   const [savingPreferences, setSavingPreferences] = useState(false);
@@ -113,16 +111,17 @@ export function TopBar({
   }
 
   return (
-    // While the rail is hidden, the sidebar's "Show sidebar" button sits at the
-    // top left; md:pl-12 keeps the workspace switcher out from under it.
-    <header className="border-border bg-background/85 sticky top-0 z-20 flex h-12 shrink-0 items-center gap-2 border-b px-3 backdrop-blur md:pl-12 sidebar-pinned:md:pl-3">
+    // The sidebar's opener sits at the top left whenever the rail is not docked
+    // (always under md, where the rail is a drawer); pl-12 keeps the
+    // breadcrumb out from under it.
+    <header className="border-border bg-background/85 sticky top-0 z-20 flex h-12 shrink-0 items-center gap-2 border-b pr-3 pl-12 backdrop-blur sidebar-pinned:md:pl-3">
       <div className="flex min-w-0 items-center gap-2">
-        <WorkspaceSwitcher data={workspaceSwitcher} />
         <PathBreadcrumb />
       </div>
 
       <div className="ml-auto flex min-w-0 items-center gap-1 max-[420px]:gap-0.5">
         <CommandLayerMount />
+        <JobsIndicator />
         <NotificationsPanel feed={notifications} />
         <ModeToggle
           resolved={interfaceMode}

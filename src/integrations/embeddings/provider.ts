@@ -33,7 +33,7 @@ const BATCH_SIZE = 64;
  * Pick the adapter from the environment. EMBEDDING_PROVIDER=openrouter|openai
  * wins; otherwise OpenRouter is used when OPENROUTER_API_KEY is set, then OpenAI.
  */
-export function embeddingProvider(env: NodeJS.ProcessEnv = process.env): EmbeddingProvider {
+export function embeddingProvider(env: Record<string, string | undefined> = process.env): EmbeddingProvider {
   const choice = env.EMBEDDING_PROVIDER?.toLowerCase();
   if (choice === "openrouter" || (!choice && env.OPENROUTER_API_KEY)) {
     return openRouterProvider(env);
@@ -44,7 +44,7 @@ export function embeddingProvider(env: NodeJS.ProcessEnv = process.env): Embeddi
   throw new EmbeddingUnconfiguredError();
 }
 
-function openAiProvider(env: NodeJS.ProcessEnv): EmbeddingProvider {
+function openAiProvider(env: Record<string, string | undefined>): EmbeddingProvider {
   const apiKey = env.OPENAI_API_KEY;
   if (!apiKey) throw new EmbeddingUnconfiguredError();
   const openai = createOpenAI({ apiKey });
@@ -69,7 +69,7 @@ function openAiProvider(env: NodeJS.ProcessEnv): EmbeddingProvider {
  * status code only.
  */
 export function openRouterProvider(
-  env: NodeJS.ProcessEnv = process.env,
+  env: Record<string, string | undefined> = process.env,
   fetchImpl: typeof fetch = fetch,
 ): EmbeddingProvider {
   const apiKey = env.OPENROUTER_API_KEY;
@@ -93,7 +93,9 @@ export function openRouterProvider(
         if (rows.length !== batch.length) throw new Error("Embedding response had the wrong size.");
         for (const r of rows) {
           if (r.embedding.length !== EMBEDDING_DIMENSIONS) {
-            throw new Error(`Embedding model returned ${r.embedding.length} dimensions, expected ${EMBEDDING_DIMENSIONS}.`);
+            throw new Error(
+              `Embedding model returned ${r.embedding.length} dimensions, expected ${EMBEDDING_DIMENSIONS}.`,
+            );
           }
           out.push(r.embedding);
         }

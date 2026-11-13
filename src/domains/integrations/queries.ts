@@ -128,6 +128,15 @@ export async function listSyncCursors(auth: AuthContext, accountId: string) {
     .limit(50);
 }
 
+/** The providers the workspace has at least one usable (active, linked) account for. */
+export async function connectedProviders(workspaceId: string): Promise<Set<string>> {
+  const rows = await db
+    .select({ provider: externalAccounts.provider, connectedAccountId: externalAccounts.composioConnectedAccountId })
+    .from(externalAccounts)
+    .where(and(eq(externalAccounts.workspaceId, workspaceId), eq(externalAccounts.status, "active")));
+  return new Set(rows.filter((row) => Boolean(row.connectedAccountId)).map((row) => row.provider));
+}
+
 /**
  * The connected account an agent tool should act through.
  *

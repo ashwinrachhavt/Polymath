@@ -30,8 +30,8 @@ An award that would pass the day's ceiling pays only what is left. Days are the 
 
 ## Catalog
 
-`scripts/stones/catalog.json` is the authoring source; migration 0315 seeds `stones` from it (`scripts/stones/catalog-sql.ts`). Corrections are an edit there plus a new migration; `tests/integration/stones-economy.test.ts` keeps table and file equal. Art is `public/stones/<slug>.webp`, drawn by `scripts/stones/generate_art.py` (Gemini image model, resumable, hard spend cap, cost per stone in `scripts/stones/art-spend.json`); the script keeps `src/components/stones/drawn-stones.json` current, and a stone not in it shows a placeholder in its own color, so the set works with any number of drawings. `lore` is folklore and the UI labels it so.
+`scripts/stones/catalog.json` is the authoring source; migration 0321 seeds `stones` from it (`scripts/stones/catalog-sql.ts`). Corrections are an edit there plus a new migration; `tests/integration/stones-economy.test.ts` keeps table and file equal. Art is `public/stones/<slug>.webp`, drawn by `scripts/stones/generate_art.py` (Gemini image model, resumable, hard spend cap, cost per stone in `scripts/stones/art-spend.json`); the script keeps `src/components/stones/drawn-stones.json` current, and a stone not in it shows a placeholder in its own color, so the set works with any number of drawings. `lore` is folklore and the UI labels it so.
 
 ## What replaced what
 
-Migration 0315 dropped the old reward system (`reward_definitions`, `reward_ledger`, `user_progress`). Each person's old points became coins 1:1 in one `legacy_rewards` row. Focus sessions no longer pay.
+Migration 0321 dropped the old reward system (`reward_definitions`, `reward_ledger`, `user_progress`). Each person's old points became coins 1:1 in one `legacy_rewards` row. Focus sessions no longer pay.

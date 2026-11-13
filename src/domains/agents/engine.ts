@@ -6,7 +6,8 @@ import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { recordRoundEvent, redactText } from "./event-bridge";
 import { loadMemoryIndex } from "./memory";
-import { resolveRunModel } from "./models";
+import { ownerBackground } from "./owner-brief";
+import { resolveRunModelFor } from "@/domains/billing/resolver";
 import { captureProfileRevision } from "./runtime-persistence";
 import { agentProfiles, agentRuns } from "./schema";
 import { SessionNotActiveError } from "./eve-driver";
@@ -210,7 +211,7 @@ export function createEngine(
        * can never disagree. Anything else in the policy stays in the frozen
        * snapshot untouched.
        */
-      const model = resolveRunModel(profile.modelPolicy)?.id ?? null;
+      const model = await resolveRunModelFor(input.auth.workspaceId, profile.modelPolicy);
       // The run keeps this revision even if the profile is edited afterwards.
       const revision = await captureProfileRevision({ workspaceId: input.auth.workspaceId, profileId: profile.id });
       const policy: PolicySnapshot = {
@@ -308,7 +309,8 @@ export function createEngine(
       /*
        * Two layers reach the session, both through the same instructions
        * channel the specialist brief already uses:
-       *   - the profile's learned brief, which is what the owner wrote;
+       *   - the profile's brief, as background that never overrides the
+       *     request (owner-brief.ts);
        *   - the memory index, a small capped list of notes from earlier
        *     sessions with this person. It rides AFTER the brief so the brief's
        *     emphasis survives, and it is data about the person, not a rule.
@@ -316,7 +318,7 @@ export function createEngine(
        * null), so the second layer costs nothing until it earns its place.
        */
       const memoryIndex = await loadMemoryIndexSafe(input.auth);
-      const brief = [profile.instructions ?? null, memoryIndex]
+      const brief = [ownerBackground(profile.instructions), memoryIndex]
         .filter((part): part is string => Boolean(part))
         .join("\n\n");
 

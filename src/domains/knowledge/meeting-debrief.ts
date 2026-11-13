@@ -7,11 +7,8 @@ import { proposeTask } from "@/domains/work/proposals";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { untrustedDataClauseJsonSafe } from "@/lib/prompts";
-import {
-  GenerationUnconfiguredError,
-  generationProvider,
-  type GenerationProvider,
-} from "@/integrations/generation/provider";
+import { GenerationUnconfiguredError, type GenerationProvider } from "@/integrations/generation/provider";
+import { resolveGeneration } from "@/domains/billing/resolver";
 import { proposeNote } from "./note-proposals";
 
 /*
@@ -56,20 +53,29 @@ const response = z.object({
         // actionable. Both are optional because a transcript often names
         // neither, and inventing either is worse than leaving it blank.
         owner: z.string().trim().max(120).optional(),
-        dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        dueDate: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .optional(),
         /** The line in the transcript this came from, so the reviewer can check it. */
         quote: z.string().trim().max(400).optional(),
       }),
     )
     .max(DEBRIEF_MAX_TASKS)
     .nullable(),
-  notes: z.array(z.object({ title: z.string().trim().min(1).max(200), markdown: z.string().trim().min(1).max(10_000) })).max(DEBRIEF_MAX_NOTES).nullable(),
+  notes: z
+    .array(z.object({ title: z.string().trim().min(1).max(200), markdown: z.string().trim().min(1).max(10_000) }))
+    .max(DEBRIEF_MAX_NOTES)
+    .nullable(),
   followUps: z
     .array(
       z.object({
         summary: z.string().trim().min(1).max(300),
         person: z.string().max(120).optional(),
-        dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        dueDate: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .optional(),
       }),
     )
     .max(DEBRIEF_MAX_FOLLOW_UPS)
@@ -175,7 +181,7 @@ async function debrief(
 
   let provider: GenerationProvider;
   try {
-    provider = deps?.provider ?? generationProvider(process.env);
+    provider = deps?.provider ?? (await resolveGeneration(auth.workspaceId, "generation"));
   } catch (error) {
     // No key configured is a clear refusal, not a failure: the owner sees why
     // the debrief cannot run, and nothing is proposed.
@@ -200,7 +206,11 @@ async function debrief(
     // The owner and the quote are review context, not task fields: they go in
     // the description so the approver sees who was named and what was actually
     // said before creating the task. A due date IS a task field.
-    const description = [task.description, task.owner ? `Owner: ${task.owner}` : null, task.quote ? `From the transcript: “${task.quote}”` : null]
+    const description = [
+      task.description,
+      task.owner ? `Owner: ${task.owner}` : null,
+      task.quote ? `From the transcript: “${task.quote}”` : null,
+    ]
       .filter((part): part is string => Boolean(part))
       .join("\n\n");
     const r = await proposeTask(auth, {
@@ -222,7 +232,9 @@ async function debrief(
     else noteProposalIds.push(r.proposalId);
   }
   for (const [i, followUp] of (draft.followUps ?? []).entries()) {
-    const title = followUp.person ? `Follow up with ${followUp.person}: ${followUp.summary}` : `Follow up: ${followUp.summary}`;
+    const title = followUp.person
+      ? `Follow up with ${followUp.person}: ${followUp.summary}`
+      : `Follow up: ${followUp.summary}`;
     const r = await proposeTask(auth, {
       title: title.slice(0, 200),
       description: "Proposed by the meeting debrief; schedule it when you approve.",

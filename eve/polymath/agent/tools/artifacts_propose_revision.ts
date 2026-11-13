@@ -8,6 +8,7 @@ import {
   proposeArtifactRevision,
   ArtifactReviseNotAllowedError,
 } from "../../../../src/domains/knowledge/revision-proposals";
+import { runSessionRef } from "../lib/run-session";
 
 /*
  * Proposes a revision to a saved artifact. The artifact's current words are
@@ -18,7 +19,6 @@ import {
  * must allow artifacts.revise.
  */
 export default defineTool({
-  deferred: true,
   description:
     "Propose new content for an existing artifact (a note, report, deck or infographic). Nothing changes until the owner approves it in the review queue; approval appends your content as a new version and keeps the old one. Read the artifact's current content first and revise against it. Pass a stable dedupe id so a retry proposes once.",
   inputSchema: z.object({
@@ -42,7 +42,7 @@ export default defineTool({
     if (typeof workspaceId !== "string" || !current?.principalId) {
       return { ok: false as const, error: "no workspace in session" };
     }
-    const run = await getRunBySessionRef(ctx.session.id, workspaceId);
+    const run = await getRunBySessionRef(runSessionRef(ctx.session), workspaceId);
     if (!run || run.state !== "running") {
       return { ok: false as const, error: "no active Polymath run bound to this session" };
     }

@@ -1,93 +1,33 @@
 import { defineAgent, defineDynamic } from "eve";
-import { createOpenAI } from "@ai-sdk/openai";
-import { geminiFetch } from "./lib/gemini-openai";
-import { providerErrorGuardFetch } from "./lib/provider-error-guard";
-import { withMaxOutputTokens } from "../../../src/domains/agents/model-output-limit";
 // Relative, not "@/...": eve bundles from its own package root (see hooks/bridge.ts).
-import { DEFAULT_MODEL_ID, modelById } from "../../../src/domains/agents/models";
+import { smallModelId } from "../../../src/domains/agents/models";
+import { TURN_INPUT_TOKEN_CAP } from "../../../src/domains/agents/lane-policy";
+import { withLane } from "./lib/lane-model";
+import { routedModel } from "./lib/model";
+import { routeForTurn } from "./lib/route";
 
 /*
  * Polymath: one first-party agent (agents/product.md — not a persona zoo).
  *
- * Gemini through its OpenAI-compatible surface
- * (https://generativelanguage.googleapis.com/v1beta/openai/). The repo's
- * free-first provider registry already treats Gemini as the generation route
- * (src/integrations/providers/registry.ts, src/integrations/generation/gemini.ts),
- * so the agent and the rest of the product share one provider and one quota
- * story instead of the agent holding a separate credential.
+ * Every turn is routed first (lib/route.ts → src/domains/agents/turn-routing.ts)
+ * and the lane decides the turn: which model answers, which tools it sees, its
+ * step and token caps, and whether a sub-agent (research, deep library
+ * search) does the gathering (src/domains/agents/lane-policy.ts, enforced by
+ * lib/lane-model.ts).
  *
- * The OpenAI-compatible endpoint is used rather than a Gemini-native client
- * because `@ai-sdk/openai` is already a dependency and the shape is identical to
- * the Groq setup this replaces: `createOpenAI({ baseURL }).chat(model)`. It also
- * keeps eve's openai-specific call options (`safetyIdentifier`,
- * `promptCacheKey`) out of the request — Gemini rejects `prompt_cache_key`.
- *
- * Credentials resolve INSIDE the dynamic model handler — at call time, not at
- * module load. The deployed Eve service bundles this module, and on Vercel the
- * bundle's module-scope env reads did not see the deployment's env (runs failed
- * with an invalid key while the vars were set). Resolving per step guarantees
- * the runtime env is what the provider sees.
+ * The run freezes its model at start (`agent_runs.model`, copied from the
+ * profile's `model_policy.primary`), so a conversation cannot change model
+ * mid-thread and the spend row and the executing model are the same value.
+ * `runModel` is passed by the session context (`axiom-run-model`); when it is
+ * absent the env var decides, which is what evals and the local TUI use. The
+ * one exception is the quick lane (greetings, thanks), which runs on the small
+ * model by owner decision (2026-11-13).
  *
  * `modelContextWindowTokens` rides in the resolver selection (a dynamic model
  * cannot declare it at the top level); it feeds the compaction trigger, which
  * otherwise demands AI Gateway catalog metadata an unlisted model lacks.
  */
-/*
- * The model for one step.
- *
- * The run freezes its model at start (`agent_runs.model`, copied from the
- * profile's `model_policy.primary`), so a conversation cannot change model
- * mid-thread and the spend row and the executing model are the same value.
- * Before this, the run recorded one model for pricing and the agent always ran
- * Gemini — two numbers that disagreed and only one of them was billed.
- *
- * `runModel` is passed by the session context (`axiom-run-model`); when it is
- * absent the env var decides, which is what evals and the local TUI use. The
- * catalog (src/domains/agents/models.ts) owns the ids, base URLs and key env
- * names; `eve eval chat-grounding` drives a real tool call and follow-up turn,
- * so run it before changing the default entry.
- */
-function polymathModel(runModel?: string | null) {
-  const wanted = runModel ?? process.env.GEMINI_AGENT_MODEL ?? DEFAULT_MODEL_ID;
-  // A frozen id that left the catalog (a probe-retired entry) must fail the
-  // run loudly: falling back to the default would record one model on the run
-  // row while another answered — the lie the spend contract forbids.
-  const entry = modelById(wanted);
-  if (!entry) {
-    throw new Error(
-      `Model "${wanted}" is not in the catalog. Choose another model; the run's frozen model is never silently substituted.`,
-    );
-  }
-
-  const apiKey = (process.env[entry.keyEnv] ?? "").trim();
-  if (!apiKey) {
-    // A model whose key vanished from the deployment must not silently fall back
-    // to a different provider: the run's frozen model is a spend and behaviour
-    // contract, and quietly running another one makes the run row a lie.
-    //
-    // The message names the restart case explicitly. A dev server inherits its
-    // environment at boot, so a key added to .env while eve is already running
-    // is invisible here and reads exactly like a missing key - which sent one
-    // person hunting for a credential that was already in place.
-    throw new Error(
-      `${entry.keyEnv} is not set, so ${entry.label} cannot run. Set ${entry.keyEnv} and restart the agent process (a dev server only sees .env as it was at boot), or choose another model.`,
-    );
-  }
-
-  const guarded = providerErrorGuardFetch();
-
-  const provider = createOpenAI({
-    apiKey,
-    baseURL: entry.baseUrl,
-    name: entry.provider,
-    fetch: entry.provider === "gemini" ? geminiFetch(guarded) : guarded,
-  });
-  const model = provider.chat(entry.id);
-  // OpenRouter's credit check reserves the full max_tokens amount. Its catalog
-  // maximum (16k) exceeded the remaining credit in a real chat and caused a
-  // silent-looking turn failure; cap the request while retaining streaming.
-  return entry.provider === "openrouter-free" ? withMaxOutputTokens(model, 12_000) : model;
-}
+const CONTEXT_WINDOW_TOKENS = 128_000;
 
 export default defineAgent({
   /*
@@ -108,14 +48,32 @@ export default defineAgent({
       // channel publishes as a session attribute; eve has no per-run config
       // channel before the first step. The env var is the fallback for evals
       // and the TUI, which have no run row.
-      "step.started": (_event, ctx) => {
-        const fromSession = ctx.session.auth.current?.attributes?.model;
-        const runModel = typeof fromSession === "string" ? fromSession : process.env.AXIOM_RUN_MODEL;
-        return {
-          model: polymathModel(runModel),
-          modelContextWindowTokens: 128_000,
-        };
+      "step.started": async (event, ctx) => {
+        const attributes = ctx.session.auth.current?.attributes;
+        const fromSession = attributes?.model;
+        // The run's frozen model; the resolver falls back to the catalog default.
+        const runModel =
+          (typeof fromSession === "string" ? fromSession : process.env.AXIOM_RUN_MODEL) ??
+          process.env.GEMINI_AGENT_MODEL;
+        const workspaceId = typeof attributes?.workspaceId === "string" ? attributes.workspaceId : null;
+        // eve's resolver type omits the lineage a sub-agent session carries at runtime.
+        const parent = (ctx.session as { parent?: { rootSessionId?: string } }).parent;
+        const route = await routeForTurn({
+          sessionId: ctx.session.id,
+          turnId: String((event as { data?: { turnId?: unknown } }).data?.turnId ?? ""),
+          parentSessionId: parent?.rootSessionId,
+          workspaceId,
+          messages: ctx.messages,
+        });
+        const model = await routedModel(workspaceId, route.lane === "quick" ? smallModelId() : runModel);
+        return { model: withLane(model, route), modelContextWindowTokens: CONTEXT_WINDOW_TOKENS };
       },
     },
   }),
+  /*
+   * Summarize at about 30k tokens instead of eve's default 90% of the window
+   * (115k). The summary runs on the turn's model, so it goes through the same
+   * resolver and allowance as every other call.
+   */
+  compaction: { thresholdPercent: TURN_INPUT_TOKEN_CAP / CONTEXT_WINDOW_TOKENS },
 });

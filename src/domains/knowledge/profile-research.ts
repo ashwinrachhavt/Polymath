@@ -10,11 +10,8 @@ import { searchWebForAgent } from "@/domains/knowledge/web-search";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { untrustedDataClauseJsonSafe } from "@/lib/prompts";
-import {
-  GenerationUnconfiguredError,
-  generationProvider,
-  type GenerationProvider,
-} from "@/integrations/generation/provider";
+import { GenerationUnconfiguredError, type GenerationProvider } from "@/integrations/generation/provider";
+import { resolveGeneration } from "@/domains/billing/resolver";
 import { artifactLinks, artifacts, artifactVersions, sources } from "./schema";
 
 /*
@@ -577,7 +574,7 @@ async function runPass(
 ): Promise<ProfileResearchResult> {
   let provider: GenerationProvider;
   try {
-    provider = deps?.provider ?? generationProvider(process.env);
+    provider = deps?.provider ?? (await resolveGeneration(auth.workspaceId, "generation"));
   } catch (error) {
     if (error instanceof GenerationUnconfiguredError) throw new ProfileResearchError(error.message);
     throw error;

@@ -7,7 +7,6 @@ import {
 } from "../../../../src/domains/integrations/connector-actions";
 
 export default defineTool({
-  deferred: true,
   description:
     "Find available actions for a connector, including creates, updates and sends. Returns catalog metadata only. Search first, then request one toolSlug for its exact argument schema. Use the corresponding <provider>_action_propose gateway tool. Enabled routine actions execute directly; other changes wait in Reviews. Report its actual returned outcome.",
   inputSchema: z.object({

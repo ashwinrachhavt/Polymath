@@ -69,32 +69,16 @@ export function inputMessage(input: TicketInput, triggerOf: (id: string) => Trig
   }
 }
 
-/** The routing lane's instruction line, from the Trigger's meta when Jev classified it. */
-const LANE_HINTS: Record<string, string> = {
-  answer:
-    "Routing lane: answer — answer from what is already known; call a tool only when the answer needs evidence you do not have.",
-  research: "Routing lane: research — gather evidence first, then answer with citations.",
-  draft: "Routing lane: draft — produce the artifact or proposal text, then say where it waits.",
-  operate: "Routing lane: operate — take the local steps, then report exactly what changed.",
-};
-
-function routingLine(trigger: Trigger | undefined): string | undefined {
-  const lane = trigger?.meta.lane;
-  return typeof lane === "string" ? LANE_HINTS[lane] : undefined;
-}
-
 /** The first thing a run's session reads: the ticket's scope, and the request that started it. */
 export function launchObjective(ticket: Ticket, triggerOf: (id: string) => Trigger | undefined): string {
   const origin = triggerOf(ticket.origin.triggerId);
   const originCard = origin
     ? triggerCard(origin)
     : `(the request that started this ticket is no longer stored: trigger ${ticket.origin.triggerId})`;
-  const routing = routingLine(origin);
   return [
     `Ticket id: ${ticket.id}`,
     `Ticket: ${cap(ticket.title, TITLE_CAP)}`,
     `Scope of your mandate: ${cap(ticket.mandate.scope, SCOPE_CAP)}`,
-    ...(routing ? [routing] : []),
     `The request that started this ticket:\n${originCard}`,
     `Further messages that arrive on this ticket reach you here as they come. Report progress as you go.`,
   ].join("\n\n");
