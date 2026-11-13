@@ -26,6 +26,8 @@ const SCOPE_LABELS: Record<string, string> = {
   "captures:read": "Read captures",
   "captures:write": "Write captures",
   "focus:read": "Read focus sessions and blocklist",
+  "understanding:read": "Read explainers, checks and what you know",
+  "understanding:write": "Write explainers and answer checks",
 };
 
 function keyPrefix(key: ApiKeyDto): string {

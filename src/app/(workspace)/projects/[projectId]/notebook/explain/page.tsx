@@ -4,6 +4,7 @@ import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 import { projectDocumentIds } from "@/domains/knowledge/projects";
 import { getExplainItSession } from "@/domains/learning/explain-it";
+import { ratingsOf } from "@/domains/feedback/ratings";
 import { ExplainItSession } from "../explain-session";
 
 export const metadata = { title: "Explain It · Polymath" };
@@ -26,6 +27,11 @@ export default async function NotebookExplainPage({
   if (!notebookSources) notFound();
   const session = await getExplainItSession(auth, projectId, sessionId);
   if (!session) notFound();
+  const ratings = await ratingsOf(
+    auth,
+    "explain",
+    session.turns.map((turn) => turn.id),
+  );
   return (
     <div className="page-content">
       <div className="mb-5">
@@ -37,7 +43,7 @@ export default async function NotebookExplainPage({
         </a>
         <h1 className="mt-2 text-xl font-medium">Explain It</h1>
       </div>
-      <ExplainItSession projectId={projectId} session={session} />
+      <ExplainItSession projectId={projectId} session={session} ratings={Object.fromEntries(ratings)} />
     </div>
   );
 }

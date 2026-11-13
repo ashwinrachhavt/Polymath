@@ -1,6 +1,6 @@
 {
-  "id": "17b9be44-76ae-4704-bcf8-2645d421a77a",
-  "prevId": "38971436-215e-402f-955f-ddd7efc37ccd",
+  "id": "76c74aa9-a6da-4e16-ab65-e4213bda45da",
+  "prevId": "e887100f-e5fe-44f0-8877-e43849818832",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -3282,12 +3282,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "feedback": {
-          "name": "feedback",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -3383,25 +3377,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "verdict": {
-          "name": "verdict",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "reasons": {
-          "name": "reasons",
-          "type": "text[]",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'"
-        },
-        "note": {
-          "name": "note",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "got_wrong": {
           "name": "got_wrong",
           "type": "text",
@@ -3485,28 +3460,6 @@
         }
       },
       "indexes": {
-        "run_reviews_one_feedback_per_run": {
-          "name": "run_reviews_one_feedback_per_run",
-          "columns": [
-            {
-              "expression": "workspace_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "run_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "kind = 'user_feedback'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "run_reviews_one_critique_per_run": {
           "name": "run_reviews_one_critique_per_run",
           "columns": [
@@ -3577,17 +3530,9 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
-        "run_reviews_verdict_check": {
-          "name": "run_reviews_verdict_check",
-          "value": "verdict is null or verdict in ('up', 'down')"
-        },
-        "run_reviews_reasons_check": {
-          "name": "run_reviews_reasons_check",
-          "value": "reasons <@ array['wrong','incomplete','wrong-target','messy','overscoped','other']::text[]"
-        },
         "run_reviews_field_caps": {
           "name": "run_reviews_field_caps",
-          "value": "char_length(coalesce(got_wrong, '')) <= 600 and char_length(coalesce(was_thin, '')) <= 600 and char_length(coalesce(would_do_differently, '')) <= 600 and char_length(coalesce(note, '')) <= 280"
+          "value": "char_length(coalesce(got_wrong, '')) <= 600 and char_length(coalesce(was_thin, '')) <= 600 and char_length(coalesce(would_do_differently, '')) <= 600"
         }
       },
       "isRLSEnabled": false
@@ -3815,6 +3760,18 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "turn_id": {
+          "name": "turn_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "call_id": {
+          "name": "call_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "account_alias": {
           "name": "account_alias",
@@ -7632,6 +7589,330 @@
       },
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.llm_feedback": {
+      "name": "llm_feedback",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "surface": {
+          "name": "surface",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "run_event_id": {
+          "name": "run_event_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "run_id": {
+          "name": "run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "quiz_id": {
+          "name": "quiz_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "flashcard_deck_id": {
+          "name": "flashcard_deck_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "explain_turn_id": {
+          "name": "explain_turn_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "artifact_id": {
+          "name": "artifact_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "output_id": {
+          "name": "output_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true,
+          "generated": {
+            "as": "coalesce(run_event_id, run_id, quiz_id, flashcard_deck_id, explain_turn_id, artifact_id)",
+            "type": "stored"
+          }
+        },
+        "score": {
+          "name": "score",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "comment": {
+          "name": "comment",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "model": {
+          "name": "model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "prompt_version": {
+          "name": "prompt_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        }
+      },
+      "indexes": {
+        "llm_feedback_one_per_user_output": {
+          "name": "llm_feedback_one_per_user_output",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "output_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "llm_feedback_workspace_surface_idx": {
+          "name": "llm_feedback_workspace_surface_idx",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "surface",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "updated_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "llm_feedback_workspace_id_workspaces_id_fk": {
+          "name": "llm_feedback_workspace_id_workspaces_id_fk",
+          "tableFrom": "llm_feedback",
+          "tableTo": "workspaces",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "llm_feedback_user_id_users_id_fk": {
+          "name": "llm_feedback_user_id_users_id_fk",
+          "tableFrom": "llm_feedback",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "llm_feedback_run_event_id_run_events_id_fk": {
+          "name": "llm_feedback_run_event_id_run_events_id_fk",
+          "tableFrom": "llm_feedback",
+          "tableTo": "run_events",
+          "columnsFrom": [
+            "run_event_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "llm_feedback_run_id_agent_runs_id_fk": {
+          "name": "llm_feedback_run_id_agent_runs_id_fk",
+          "tableFrom": "llm_feedback",
+          "tableTo": "agent_runs",
+          "columnsFrom": [
+            "run_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "llm_feedback_quiz_id_quizzes_id_fk": {
+          "name": "llm_feedback_quiz_id_quizzes_id_fk",
+          "tableFrom": "llm_feedback",
+          "tableTo": "quizzes",
+          "columnsFrom": [
+            "quiz_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "llm_feedback_flashcard_deck_id_flashcard_decks_id_fk": {
+          "name": "llm_feedback_flashcard_deck_id_flashcard_decks_id_fk",
+          "tableFrom": "llm_feedback",
+          "tableTo": "flashcard_decks",
+          "columnsFrom": [
+            "flashcard_deck_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "llm_feedback_explain_turn_id_explain_turns_id_fk": {
+          "name": "llm_feedback_explain_turn_id_explain_turns_id_fk",
+          "tableFrom": "llm_feedback",
+          "tableTo": "explain_turns",
+          "columnsFrom": [
+            "explain_turn_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "llm_feedback_artifact_id_artifacts_id_fk": {
+          "name": "llm_feedback_artifact_id_artifacts_id_fk",
+          "tableFrom": "llm_feedback",
+          "tableTo": "artifacts",
+          "columnsFrom": [
+            "artifact_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "llm_feedback_score_check": {
+          "name": "llm_feedback_score_check",
+          "value": "\"llm_feedback\".\"score\" between 1 and 5 or (\"llm_feedback\".\"surface\" = 'run' and \"llm_feedback\".\"score\" = 0)"
+        },
+        "llm_feedback_comment_check": {
+          "name": "llm_feedback_comment_check",
+          "value": "char_length(coalesce(\"llm_feedback\".\"comment\", '')) <= 1000"
+        },
+        "llm_feedback_one_output": {
+          "name": "llm_feedback_one_output",
+          "value": "num_nonnulls(\"llm_feedback\".\"run_event_id\", \"llm_feedback\".\"run_id\", \"llm_feedback\".\"quiz_id\", \"llm_feedback\".\"flashcard_deck_id\", \"llm_feedback\".\"explain_turn_id\", \"llm_feedback\".\"artifact_id\") = 1"
+        },
+        "llm_feedback_surface_output": {
+          "name": "llm_feedback_surface_output",
+          "value": "case \"llm_feedback\".\"surface\"\n        when 'chat' then \"llm_feedback\".\"run_event_id\" is not null\n        when 'run' then \"llm_feedback\".\"run_id\" is not null\n        when 'quiz' then \"llm_feedback\".\"quiz_id\" is not null\n        when 'flashcards' then \"llm_feedback\".\"flashcard_deck_id\" is not null\n        when 'explain' then \"llm_feedback\".\"explain_turn_id\" is not null\n        when 'artifact' then \"llm_feedback\".\"artifact_id\" is not null\n        else false end"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.focus_blocklist": {
@@ -19967,6 +20248,12 @@
           "notNull": true,
           "default": 5
         },
+        "prompt_version": {
+          "name": "prompt_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_by": {
           "name": "created_by",
           "type": "uuid",
@@ -20523,7 +20810,13 @@
           "name": "flashcard_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
+        },
+        "quiz_question_id": {
+          "name": "quiz_question_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
         },
         "user_id": {
           "name": "user_id",
@@ -20633,6 +20926,33 @@
           "method": "btree",
           "with": {}
         },
+        "flashcard_reviews_user_question_key": {
+          "name": "flashcard_reviews_user_question_key",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "quiz_question_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "flashcard_reviews_due_idx": {
           "name": "flashcard_reviews_due_idx",
           "columns": [
@@ -20688,6 +21008,19 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
+        "flashcard_reviews_quiz_question_id_quiz_questions_id_fk": {
+          "name": "flashcard_reviews_quiz_question_id_quiz_questions_id_fk",
+          "tableFrom": "flashcard_reviews",
+          "tableTo": "quiz_questions",
+          "columnsFrom": [
+            "quiz_question_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
         "flashcard_reviews_user_id_users_id_fk": {
           "name": "flashcard_reviews_user_id_users_id_fk",
           "tableFrom": "flashcard_reviews",
@@ -20706,6 +21039,10 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
+        "flashcard_reviews_one_item_check": {
+          "name": "flashcard_reviews_one_item_check",
+          "value": "num_nonnulls(\"flashcard_id\", \"quiz_question_id\") = 1"
+        },
         "flashcard_reviews_schedule_check": {
           "name": "flashcard_reviews_schedule_check",
           "value": "interval_days >= 0 and ease_hundredths between 130 and 350 and repetitions >= 0"
@@ -21091,288 +21428,6 @@
         "graph_recall_attempts_distinct_cards": {
           "name": "graph_recall_attempts_distinct_cards",
           "value": "source_artifact_id <> target_artifact_id"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.artifact_feedback": {
-      "name": "artifact_feedback",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "workspace_id": {
-          "name": "workspace_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "artifact_id": {
-          "name": "artifact_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "quiz_id": {
-          "name": "quiz_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "flashcard_deck_id": {
-          "name": "flashcard_deck_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "rating": {
-          "name": "rating",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "updated_by": {
-          "name": "updated_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "archived_at": {
-          "name": "archived_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "version": {
-          "name": "version",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        }
-      },
-      "indexes": {
-        "artifact_feedback_artifact_user_key": {
-          "name": "artifact_feedback_artifact_user_key",
-          "columns": [
-            {
-              "expression": "workspace_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "artifact_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"artifact_feedback\".\"artifact_id\" is not null",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "artifact_feedback_quiz_user_key": {
-          "name": "artifact_feedback_quiz_user_key",
-          "columns": [
-            {
-              "expression": "workspace_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "quiz_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"artifact_feedback\".\"quiz_id\" is not null",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "artifact_feedback_flashcard_deck_user_key": {
-          "name": "artifact_feedback_flashcard_deck_user_key",
-          "columns": [
-            {
-              "expression": "workspace_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "flashcard_deck_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"artifact_feedback\".\"flashcard_deck_id\" is not null",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "artifact_feedback_workspace_user_idx": {
-          "name": "artifact_feedback_workspace_user_idx",
-          "columns": [
-            {
-              "expression": "workspace_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "updated_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "artifact_feedback_workspace_id_workspaces_id_fk": {
-          "name": "artifact_feedback_workspace_id_workspaces_id_fk",
-          "tableFrom": "artifact_feedback",
-          "tableTo": "workspaces",
-          "columnsFrom": [
-            "workspace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "artifact_feedback_artifact_id_artifacts_id_fk": {
-          "name": "artifact_feedback_artifact_id_artifacts_id_fk",
-          "tableFrom": "artifact_feedback",
-          "tableTo": "artifacts",
-          "columnsFrom": [
-            "artifact_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "artifact_feedback_quiz_id_quizzes_id_fk": {
-          "name": "artifact_feedback_quiz_id_quizzes_id_fk",
-          "tableFrom": "artifact_feedback",
-          "tableTo": "quizzes",
-          "columnsFrom": [
-            "quiz_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "artifact_feedback_flashcard_deck_id_flashcard_decks_id_fk": {
-          "name": "artifact_feedback_flashcard_deck_id_flashcard_decks_id_fk",
-          "tableFrom": "artifact_feedback",
-          "tableTo": "flashcard_decks",
-          "columnsFrom": [
-            "flashcard_deck_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "artifact_feedback_user_id_users_id_fk": {
-          "name": "artifact_feedback_user_id_users_id_fk",
-          "tableFrom": "artifact_feedback",
-          "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "artifact_feedback_target_check": {
-          "name": "artifact_feedback_target_check",
-          "value": "num_nonnulls(\"artifact_feedback\".\"artifact_id\", \"artifact_feedback\".\"quiz_id\", \"artifact_feedback\".\"flashcard_deck_id\") = 1"
-        },
-        "artifact_feedback_rating_check": {
-          "name": "artifact_feedback_rating_check",
-          "value": "\"artifact_feedback\".\"rating\" in ('helpful', 'not_helpful')"
         }
       },
       "isRLSEnabled": false
@@ -24512,6 +24567,397 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.code_explainers": {
+      "name": "code_explainers",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "request_key": {
+          "name": "request_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "repo": {
+          "name": "repo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "commit_sha": {
+          "name": "commit_sha",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "range": {
+          "name": "range",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "artifact_id": {
+          "name": "artifact_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "document_id": {
+          "name": "document_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "quiz_id": {
+          "name": "quiz_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        }
+      },
+      "indexes": {
+        "code_explainers_request_key": {
+          "name": "code_explainers_request_key",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "request_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "code_explainers_repo_commit_idx": {
+          "name": "code_explainers_repo_commit_idx",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "repo",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "commit_sha",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "code_explainers_workspace_id_workspaces_id_fk": {
+          "name": "code_explainers_workspace_id_workspaces_id_fk",
+          "tableFrom": "code_explainers",
+          "tableTo": "workspaces",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "code_explainers_user_id_users_id_fk": {
+          "name": "code_explainers_user_id_users_id_fk",
+          "tableFrom": "code_explainers",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "code_explainers_artifact_id_artifacts_id_fk": {
+          "name": "code_explainers_artifact_id_artifacts_id_fk",
+          "tableFrom": "code_explainers",
+          "tableTo": "artifacts",
+          "columnsFrom": [
+            "artifact_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "code_explainers_document_id_documents_id_fk": {
+          "name": "code_explainers_document_id_documents_id_fk",
+          "tableFrom": "code_explainers",
+          "tableTo": "documents",
+          "columnsFrom": [
+            "document_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "code_explainers_quiz_id_quizzes_id_fk": {
+          "name": "code_explainers_quiz_id_quizzes_id_fk",
+          "tableFrom": "code_explainers",
+          "tableTo": "quizzes",
+          "columnsFrom": [
+            "quiz_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.understanding_preferences": {
+      "name": "understanding_preferences",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "auto_suggest": {
+          "name": "auto_suggest",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "push_warning": {
+          "name": "push_warning",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "question_count": {
+          "name": "question_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 5
+        },
+        "difficulty": {
+          "name": "difficulty",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'standard'"
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        }
+      },
+      "indexes": {
+        "understanding_preferences_user_key": {
+          "name": "understanding_preferences_user_key",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "understanding_preferences_workspace_id_workspaces_id_fk": {
+          "name": "understanding_preferences_workspace_id_workspaces_id_fk",
+          "tableFrom": "understanding_preferences",
+          "tableTo": "workspaces",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "understanding_preferences_user_id_users_id_fk": {
+          "name": "understanding_preferences_user_id_users_id_fk",
+          "tableFrom": "understanding_preferences",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "understanding_preferences_count_check": {
+          "name": "understanding_preferences_count_check",
+          "value": "question_count between 5 and 10"
+        },
+        "understanding_preferences_difficulty_check": {
+          "name": "understanding_preferences_difficulty_check",
+          "value": "difficulty in ('easier', 'standard', 'harder')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.boards": {
@@ -28734,8 +29180,7 @@
       "name": "run_review_kind",
       "schema": "public",
       "values": [
-        "critique",
-        "user_feedback"
+        "critique"
       ]
     },
     "public.run_state": {

@@ -8,14 +8,23 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Markdown } from "@/components/markdown";
 import { inline } from "@/components/markdown-inline";
 import { ChatSurface } from "@/components/chat/chat-surface";
-import { ChainOfThought } from "@/components/chat/chain-of-thought";
-import { MessageFeedback } from "@/components/chat/message-feedback";
+import { AgentSteps, type StepRow } from "@/components/chat/agent-steps";
+import { reasoningStepRow, toolStepRow } from "@/components/chat/step-rows";
+import { OutputRating } from "@/components/feedback/output-rating";
+import { chatRatingsForRun, ratingOf } from "@/domains/feedback/ratings";
 import { getAuthContext } from "@/lib/auth";
 import { timeAgo } from "@/lib/time";
 import { displayTitle } from "@/lib/display-text";
-import { getRun, getRunUsage, listRecentRuns, listRunMessageIds, type RunUsage } from "@/domains/agents/queries";
+import {
+  getRun,
+  getRunUsage,
+  listRecentRuns,
+  listRunMessageIds,
+  listRunSteps,
+  type RunUsage,
+} from "@/domains/agents/queries";
 import { getOpenQuestion, getRunAgent, listRunPendingProposals } from "@/domains/agents/run-context";
-import { getRunReviews } from "@/domains/agents/run-reviews";
+import { getRunCritique } from "@/domains/agents/run-reviews";
 import { modelById } from "@/domains/agents/models";
 import { listThreads } from "@/domains/agents/thread";
 import { threadBlocks } from "@/domains/agents/stream-contract";
@@ -65,21 +74,36 @@ async function ConversationSurface({ runId }: { runId: string }) {
   // Missing and other-workspace are the same answer on purpose (see getRun).
   if (!run) notFound();
 
-  const [history, threads, drafts, usage, reviews, agent, openQuestion, pendingProposals, messageIds] =
-    await Promise.all([
-      // The history menu is the same conversation list the idle home renders
-      // (history.ts feeds both), so it excludes onboarding runs for the same
-      // reason: machinery the person never typed is not a conversation.
-      listRecentRuns(auth.workspaceId, 50, { excludeOnboarding: true }),
-      listThreads(auth.workspaceId, [run.id]),
-      draftsForRuns(auth, [run.id]),
-      getRunUsage(auth.workspaceId, run.id),
-      getRunReviews(auth.workspaceId, run.id),
-      getRunAgent(auth.workspaceId, run.id),
-      getOpenQuestion(auth.workspaceId, run.id),
-      listRunPendingProposals(auth.workspaceId, run.id),
-      listRunMessageIds(auth.workspaceId, run.id),
-    ]);
+  const [
+    history,
+    threads,
+    drafts,
+    usage,
+    critique,
+    agent,
+    openQuestion,
+    pendingProposals,
+    messageIds,
+    steps,
+    ratings,
+    runRating,
+  ] = await Promise.all([
+    // The history menu is the same conversation list the idle home renders
+    // (history.ts feeds both), so it excludes onboarding runs for the same
+    // reason: machinery the person never typed is not a conversation.
+    listRecentRuns(auth.workspaceId, 50, { excludeOnboarding: true }),
+    listThreads(auth.workspaceId, [run.id]),
+    draftsForRuns(auth, [run.id]),
+    getRunUsage(auth.workspaceId, run.id),
+    getRunCritique(auth.workspaceId, run.id),
+    getRunAgent(auth.workspaceId, run.id),
+    getOpenQuestion(auth.workspaceId, run.id),
+    listRunPendingProposals(auth.workspaceId, run.id),
+    listRunMessageIds(auth.workspaceId, run.id),
+    listRunSteps(auth.workspaceId, run.id),
+    chatRatingsForRun(auth, run.id),
+    ratingOf(auth, { surface: "run", id: run.id }),
+  ]);
   const historyGroups = groupHistory(
     history.map((row): HistoryRow => ({
       id: row.id,
@@ -128,6 +152,36 @@ async function ConversationSurface({ runId }: { runId: string }) {
   const isLive = !finished && !unavailable;
   // The model's display label, not its provider id — the header speaks product words.
   const modelLabel = run.model ? (modelById(run.model)?.label ?? run.model) : null;
+
+  /*
+   * The stored transcript's step cards, one per model turn: the turn's visible
+   * reasoning and its recorded tool calls, shown above the turn's first entry
+   * (the same placement the live transcript uses). A turn whose steps have no
+   * entry to sit above (it failed before answering) is listed at the end.
+   */
+  const stepsByTurn = new Map<string, StepRow[]>();
+  const addStep = (turnId: string, row: StepRow) => stepsByTurn.set(turnId, [...(stepsByTurn.get(turnId) ?? []), row]);
+  for (const entry of visibleThread) {
+    if (entry.kind === "reasoning" && entry.turnId)
+      addStep(entry.turnId, reasoningStepRow(`reasoning:${entry.sequence}`, entry.text, true));
+  }
+  for (const step of steps) addStep(step.turnId, toolStepRow(step));
+  // The sequence of each turn's first assistant or reasoning entry: its card's anchor.
+  const anchorOfTurn = new Map<string, number>();
+  for (const entry of visibleThread) {
+    if ((entry.kind === "assistant" || entry.kind === "reasoning") && entry.turnId && !anchorOfTurn.has(entry.turnId))
+      anchorOfTurn.set(entry.turnId, entry.sequence);
+  }
+  const unanchoredSteps = [...stepsByTurn].filter(([turnId]) => !anchorOfTurn.has(turnId));
+  const stepsBefore = (entry: (typeof visibleThread)[number]) => {
+    if (!entry.turnId || anchorOfTurn.get(entry.turnId) !== entry.sequence) return null;
+    const rows = stepsByTurn.get(entry.turnId);
+    return rows ? <AgentSteps key={`steps:${entry.turnId}`} steps={rows} active={false} /> : null;
+  };
+  const ratingOfSequence = (sequence: number) => {
+    const rating = ratings.find((entry) => entry.sequence === sequence);
+    return rating ? { score: rating.score, comment: rating.comment } : null;
+  };
 
   /*
    * What the run is waiting on, if anything. A question is answered right here
@@ -212,6 +266,8 @@ async function ConversationSurface({ runId }: { runId: string }) {
               runId={run.id}
               subject={{ type: "artifact", id: run.id }}
               initial={threadBlocks(pairedStored)}
+              initialSteps={steps}
+              ratings={ratings}
               placeholder="Reply to continue…"
               composerLabel="Follow-up message"
               emptyText="This conversation has no messages yet."
@@ -249,7 +305,8 @@ async function ConversationSurface({ runId }: { runId: string }) {
               {visibleThread.length === 0 ? (
                 <p className="text-muted-foreground text-body-dense">This conversation has no messages yet.</p>
               ) : null}
-              {visibleThread.map((entry) =>
+              {visibleThread.map((entry) => [
+                stepsBefore(entry),
                 entry.kind === "user" ? (
                   // The owner's words stay visible without a slab of chrome: right-aligned,
                   // tinted only enough to separate from the answer, no big bubble.
@@ -262,32 +319,31 @@ async function ConversationSurface({ runId }: { runId: string }) {
                 ) : entry.kind === "assistant" ? (
                   <div key={entry.sequence} className="prose-reading w-full font-[family-name:var(--font-reading)]">
                     <Markdown text={entry.text} />
-                    <MessageFeedback runId={run.id} sequence={entry.sequence} initial={entry.feedback ?? null} />
+                    <OutputRating
+                      output={{ surface: "chat", runId: run.id, sequence: entry.sequence }}
+                      initial={ratingOfSequence(entry.sequence)}
+                      className="mt-1"
+                    />
                   </div>
                 ) : entry.kind === "reasoning" ? (
-                  // The model's visible rationale, kept from the stored thread.
-                  // One collapsed block for the whole transcript rather than a
-                  // pill per entry: the working is evidence for the answer, not
-                  // a second transcript interleaved with it.
-                  <ChainOfThought
-                    key={entry.sequence}
-                    streaming={false}
-                    steps={[
-                      {
-                        id: String(entry.sequence),
-                        kind: "reasoning",
-                        label: "Thought process",
-                        text: entry.text,
-                        status: "complete",
-                      },
-                    ]}
-                  />
+                  // A turn's reasoning rides its step card (above). Reasoning
+                  // stored without a turn has no card to join, so it gets one.
+                  entry.turnId ? null : (
+                    <AgentSteps
+                      key={entry.sequence}
+                      active={false}
+                      steps={[reasoningStepRow(`reasoning:${entry.sequence}`, entry.text, true)]}
+                    />
+                  )
                 ) : (
                   <p key={entry.sequence} className="text-muted-foreground text-label">
                     {entry.text} · {timeAgo(entry.at)}
                   </p>
                 ),
-              )}
+              ])}
+              {unanchoredSteps.map(([turnId, rows]) => (
+                <AgentSteps key={`steps:${turnId}`} steps={rows} active={false} />
+              ))}
             </div>
           )}
 
@@ -313,28 +369,7 @@ async function ConversationSurface({ runId }: { runId: string }) {
               operator's verdict. Finished runs only - a live run's review would
               be a verdict on a run that has not finished being itself. An empty
               critique renders nothing, per the spec. */}
-          {finished ? (
-            <RunReview
-              runId={run.id}
-              initial={{
-                critique: reviews.critique
-                  ? {
-                      gotWrong: reviews.critique.gotWrong,
-                      wasThin: reviews.critique.wasThin,
-                      wouldDoDifferently: reviews.critique.wouldDoDifferently,
-                      dismissedAt: reviews.critique.dismissedAt,
-                    }
-                  : null,
-                feedback: reviews.feedback
-                  ? {
-                      verdict: reviews.feedback.verdict,
-                      reasons: reviews.feedback.reasons,
-                      note: reviews.feedback.note,
-                    }
-                  : null,
-              }}
-            />
-          ) : null}
+          {finished ? <RunReview runId={run.id} critique={critique} initialRating={runRating} /> : null}
         </section>
       </div>
     </div>

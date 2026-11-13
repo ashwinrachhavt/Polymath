@@ -11,6 +11,7 @@ import {
   defaultQuizGenerator,
   QUIZ_PROMPT_VERSION,
   type GeneratedQuestion,
+  type QuizDifficulty,
   type QuizGenerator,
 } from "@/integrations/learning/quiz-generator";
 import { quizzes, quizQuestions, type QuizEvidence, type QuizSourceSnapshot } from "./schema";
@@ -337,6 +338,7 @@ export async function generateQuiz(
     documentId: string;
     documentIds?: string[];
     questionCount?: number;
+    difficulty?: QuizDifficulty;
     idempotencyKey?: string;
   },
   generator?: QuizGenerator,
@@ -447,7 +449,14 @@ export async function generateQuiz(
   let proposedQuestions = 0;
   let droppedQuestions = 0;
   async function proposeVerifiedQuestions(count: number, avoidPrompts: string[], part: number) {
-    const options = { questionCount: count, learningContext, avoidPrompts, part, knownConcepts };
+    const options = {
+      questionCount: count,
+      learningContext,
+      avoidPrompts,
+      part,
+      knownConcepts,
+      difficulty: input.difficulty,
+    };
     let raw: { questions: GeneratedQuestion[] };
     if (readable.length === 1) {
       raw = await engine.generate(readable[0].text, options);

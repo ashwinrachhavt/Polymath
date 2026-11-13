@@ -276,6 +276,8 @@ export const explainSessions = pgTable(
     generationKey: text("generation_key").notNull(),
     status: text("status").$type<"active" | "completed">().notNull().default("active"),
     questionLimit: integer("question_limit").notNull().default(5),
+    /** The Explain It prompt the session's verdicts were written under; null on sessions before 0314. */
+    promptVersion: text("prompt_version"),
     ...mutable,
   },
   (t) => [
@@ -462,37 +464,6 @@ export const graphRecallAttempts = pgTable(
     uniqueIndex("graph_recall_attempts_request_key").on(t.workspaceId, t.userId, t.requestKey),
     index("graph_recall_attempts_notebook_user_idx").on(t.workspaceId, t.notebookId, t.userId, t.createdAt),
     check("graph_recall_attempts_distinct_cards", sql.raw("source_artifact_id <> target_artifact_id")),
-  ],
-);
-
-/** One user's rating for a generated artifact, quiz, or flashcard deck. */
-export const learningArtifactFeedback = pgTable(
-  "artifact_feedback",
-  {
-    id: primaryId(),
-    workspaceId: tenantId(),
-    artifactId: uuid("artifact_id").references(() => artifacts.id, { onDelete: "cascade" }),
-    quizId: uuid("quiz_id").references(() => quizzes.id, { onDelete: "cascade" }),
-    flashcardDeckId: uuid("flashcard_deck_id").references(() => flashcardDecks.id, { onDelete: "cascade" }),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    rating: text("rating").$type<"helpful" | "not_helpful">().notNull(),
-    ...mutable,
-  },
-  (t) => [
-    uniqueIndex("artifact_feedback_artifact_user_key")
-      .on(t.workspaceId, t.artifactId, t.userId)
-      .where(sql`${t.artifactId} is not null`),
-    uniqueIndex("artifact_feedback_quiz_user_key")
-      .on(t.workspaceId, t.quizId, t.userId)
-      .where(sql`${t.quizId} is not null`),
-    uniqueIndex("artifact_feedback_flashcard_deck_user_key")
-      .on(t.workspaceId, t.flashcardDeckId, t.userId)
-      .where(sql`${t.flashcardDeckId} is not null`),
-    check("artifact_feedback_target_check", sql`num_nonnulls(${t.artifactId}, ${t.quizId}, ${t.flashcardDeckId}) = 1`),
-    check("artifact_feedback_rating_check", sql`${t.rating} in ('helpful', 'not_helpful')`),
-    index("artifact_feedback_workspace_user_idx").on(t.workspaceId, t.userId, t.updatedAt),
   ],
 );
 

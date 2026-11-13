@@ -1,7 +1,7 @@
 import { and, asc, count, desc, eq, ilike, isNull, ne, or, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { recordAudit } from "@/domains/audit/record";
-import { learningArtifactFeedback } from "@/domains/learning/schema";
+import { llmFeedback } from "@/domains/feedback/schema";
 import { db } from "@/lib/db";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { escapeLike } from "@/lib/list-params";
@@ -360,29 +360,37 @@ type ZettelCandidatePass = {
 type ZettelFeedbackExample = { rating: "helpful" | "not_helpful"; title: string; content: string };
 
 async function recentZettelFeedback(auth: AuthContext): Promise<ZettelFeedbackExample[]> {
+  // A 1-5 rating reads as helpful from 4 up and not helpful from 2 down; a 3
+  // says neither, so it is not an example of anything.
   const rows = await db
-    .select({ rating: learningArtifactFeedback.rating, title: artifacts.title, content: artifactVersions.plainText })
-    .from(learningArtifactFeedback)
-    .innerJoin(
-      artifacts,
-      and(eq(artifacts.id, learningArtifactFeedback.artifactId), eq(artifacts.workspaceId, auth.workspaceId)),
-    )
+    .select({ score: llmFeedback.score, title: artifacts.title, content: artifactVersions.plainText })
+    .from(llmFeedback)
+    .innerJoin(artifacts, and(eq(artifacts.id, llmFeedback.artifactId), eq(artifacts.workspaceId, auth.workspaceId)))
     .leftJoin(
       artifactVersions,
       and(eq(artifactVersions.id, artifacts.currentVersionId), eq(artifactVersions.workspaceId, auth.workspaceId)),
     )
     .where(
       and(
-        eq(learningArtifactFeedback.workspaceId, auth.workspaceId),
-        eq(learningArtifactFeedback.userId, auth.userId),
+        eq(llmFeedback.workspaceId, auth.workspaceId),
+        eq(llmFeedback.userId, auth.userId),
+        ne(llmFeedback.score, 3),
         eq(artifacts.kind, "zettel"),
         isNull(artifacts.archivedAt),
       ),
     )
-    .orderBy(desc(learningArtifactFeedback.updatedAt), desc(learningArtifactFeedback.id))
+    .orderBy(desc(llmFeedback.updatedAt), desc(llmFeedback.id))
     .limit(4);
   return rows.flatMap((row) =>
-    row.content ? [{ rating: row.rating, title: row.title.slice(0, 120), content: row.content.slice(0, 200) }] : [],
+    row.content
+      ? [
+          {
+            rating: row.score >= 4 ? ("helpful" as const) : ("not_helpful" as const),
+            title: row.title.slice(0, 120),
+            content: row.content.slice(0, 200),
+          },
+        ]
+      : [],
   );
 }
 
