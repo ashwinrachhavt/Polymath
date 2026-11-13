@@ -110,3 +110,5 @@ docs/
 # Python bytecode (the stone art script)
 __pycache__/
 *.pyc
+# Local spend log of the stone art script; the script creates it on first run
+scripts/stones/art-spend.json
