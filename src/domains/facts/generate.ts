@@ -1,7 +1,8 @@
 import { eq } from "drizzle-orm";
-import { generateText } from "ai";
+import { generateText, type LanguageModel } from "ai";
 import type { ClaimedOutboxEvent, OutboxHandler } from "@/domains/audit/outbox";
-import { chatModel, DEFAULT_MODEL_ID, modelById } from "@/domains/agents/models";
+import { chatModelWithKey, DEFAULT_MODEL_ID } from "@/domains/agents/models";
+import { houseRoute } from "@/domains/billing/resolver";
 import { pollFacts } from "@/lib/poll-facts";
 import { db } from "@/lib/db";
 import { pollFactSuggestions } from "./schema";
@@ -158,11 +159,12 @@ function cleanTags(tags: string[]): string[] {
  */
 async function runFactSuggestionRequested(
   event: ClaimedOutboxEvent,
-  deps: { model?: ReturnType<typeof chatModel> } = {},
+  deps: { model?: LanguageModel } = {},
 ): Promise<{ landed: number }> {
-  const option = modelById(DEFAULT_MODEL_ID);
-  if (!option) throw new Error(`${FACT_SUGGESTION_TOPIC}: the default model is no longer in the catalog`);
-  const model = deps.model ?? chatModel(option);
+  // The public poll deck belongs to no workspace: this is operator work on the house key, outside every
+  // workspace's allowance and ledger.
+  const route = deps.model ? null : houseRoute(DEFAULT_MODEL_ID);
+  const model = deps.model ?? chatModelWithKey(route!.option, route!.apiKey);
 
   const rows = await db
     .select({ text: pollFactSuggestions.text })

@@ -1,12 +1,14 @@
 import { and, eq, inArray, or, sql, type SQL } from "drizzle-orm";
 import { enqueueOutbox, type OutboxHandler } from "@/domains/audit/outbox";
 import type { AuthContext } from "@/domains/identity/resolve";
+import { AllowanceExhaustedError } from "@/domains/billing/resolver";
 import { memberships } from "@/domains/identity/schema";
 import { db } from "@/lib/db";
-import { withTransaction } from "@/lib/db-transaction";
-import { generationJobRunners, type GenerationJobRunner } from "./runners";
+import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
+import { generationJobRunners, type GenerationJobRun, type GenerationJobRunner } from "./runners";
 import { generationJobs, type GenerationJobResult } from "./schema";
 import {
+  GenerationJobCancelled,
   GenerationJobFailure,
   HEARTBEAT_EVERY_MS,
   STALLED_AFTER_MS,
@@ -28,6 +30,9 @@ import {
  * - A failure never throws out of runGenerationJob: it lands on the row as
  *   authored copy, and the person retries from there. The outbox therefore
  *   never re-runs a failed generation on its own.
+ * - cancelGenerationJob settles a queued or running job as cancelled at once.
+ *   A running runner sees run.signal abort at its next progress report or
+ *   heartbeat; nothing it does after that can settle the job.
  * - Every command is scoped to the workspace and the job's maker.
  */
 
@@ -50,6 +55,7 @@ export const jobViewColumns = {
   attempt: generationJobs.attempt,
   result: generationJobs.result,
   error: generationJobs.error,
+  progress: generationJobs.progress,
   createdAt: generationJobs.createdAt,
   updatedAt: generationJobs.updatedAt,
   stalled: stalledSql().mapWith(Boolean),
@@ -81,12 +87,17 @@ function canonical(value: unknown): string {
  * Accepts work for later. `created` is false when the key was seen before:
  * the first job is returned whatever state it has reached. The same key with
  * a different kind, maker or input throws GenerationJobConflictError.
+ *
+ * Pass `tx` to accept the job in the caller's transaction, so the job exists
+ * exactly when the thing it works on does. Start it (kickGenerationJob) only
+ * after that transaction commits.
  */
 export async function submitGenerationJob(
   auth: Pick<AuthContext, "workspaceId" | "userId">,
   input: { kind: string; subject?: string; idempotencyKey: string; title: string; input: unknown },
+  outer?: TxDrizzle,
 ): Promise<{ job: GenerationJobView; created: boolean }> {
-  return withTransaction(async (tx) => {
+  const accept = async (tx: TxDrizzle) => {
     const [created] = await tx
       .insert(generationJobs)
       .values({
@@ -124,7 +135,26 @@ export async function submitGenerationJob(
       throw new GenerationJobConflictError();
     }
     return { job: toJobView(existing), created: false };
-  });
+  };
+  return outer ? accept(outer) : withTransaction(accept);
+}
+
+/**
+ * The same as submitGenerationJob, except that asking again for work whose
+ * job failed or was stopped tries that job again (a new attempt) instead of
+ * returning it settled. For work that has one job per thing, such as a
+ * capture's crawl or a video's absorption, where asking again means "again".
+ * `started` names the attempt to kick, or is null when nothing new was queued.
+ */
+export async function submitOrRetryGenerationJob(
+  auth: Pick<AuthContext, "workspaceId" | "userId">,
+  input: Parameters<typeof submitGenerationJob>[1],
+): Promise<{ job: GenerationJobView; started: { jobId: string; attempt: number } | null }> {
+  const { job, created } = await submitGenerationJob(auth, input);
+  if (created) return { job, started: { jobId: job.id, attempt: job.attempt } };
+  if (job.status !== "failed" && job.status !== "cancelled") return { job, started: null };
+  const retried = await retryGenerationJob(auth, job.id);
+  return retried ? { job: retried, started: { jobId: retried.id, attempt: retried.attempt } } : { job, started: null };
 }
 
 /**
@@ -160,39 +190,67 @@ export async function runGenerationJob(
     eq(generationJobs.attempt, ref.attempt),
     eq(generationJobs.status, "running"),
   );
+  const cancelled = new AbortController();
+  /** A write fenced to this live attempt that touched no row means the job was cancelled (or retried) under us. */
+  const stillMine = (rows: unknown[]) => {
+    if (rows.length === 0 && !cancelled.signal.aborted) cancelled.abort(new GenerationJobCancelled());
+    return rows.length > 0;
+  };
   const heartbeat = setInterval(() => {
     db.update(generationJobs)
       .set({ heartbeatAt: sql`now()` })
       .where(mine)
+      .returning({ id: generationJobs.id })
+      .then(stillMine)
       .catch(() => {
         // A missed beat is tolerated; six in a row read as stalled.
       });
   }, HEARTBEAT_EVERY_MS);
 
-  let outcome: { status: "ready"; result: GenerationJobResult } | { status: "failed"; error: string };
+  const run: GenerationJobRun = {
+    generationKey: `${ref.jobId}:${ref.attempt}`,
+    signal: cancelled.signal,
+    async progress(step, counts) {
+      if (cancelled.signal.aborted) throw new GenerationJobCancelled();
+      const rows = await db
+        .update(generationJobs)
+        .set({
+          progress: { step: step.slice(0, 120), done: counts?.done ?? null, total: counts?.total ?? null },
+          progressAt: sql`now()`,
+          heartbeatAt: sql`now()`,
+        })
+        .where(mine)
+        .returning({ id: generationJobs.id });
+      if (!stillMine(rows)) throw new GenerationJobCancelled();
+    },
+  };
+
+  let outcome: { status: "ready"; result: GenerationJobResult } | { status: "failed"; error: string } | null;
   try {
     const auth = await makerAuth(job);
     const runner = runners[job.kind];
     if (!auth || !runner) throw new Error(auth ? `no runner for ${job.kind}` : "the job's maker left the workspace");
-    outcome = {
-      status: "ready",
-      result: await runner(auth, job.input, { generationKey: `${ref.jobId}:${ref.attempt}` }),
-    };
+    outcome = { status: "ready", result: await runner(auth, job.input, run) };
   } catch (cause) {
-    if (!(cause instanceof GenerationJobFailure)) console.error("[generation-job] run failed", ref.jobId, cause);
-    outcome = {
-      status: "failed",
-      error: cause instanceof GenerationJobFailure ? cause.message.slice(0, 500) : UNEXPECTED_FAILURE_COPY,
-    };
+    if (cause instanceof GenerationJobCancelled || cancelled.signal.aborted) {
+      outcome = null;
+    } else {
+      // An exhausted allowance is the expected stop, and its message says what to do; no runner has to map it.
+      const readable = cause instanceof GenerationJobFailure || cause instanceof AllowanceExhaustedError;
+      if (!readable) console.error("[generation-job] run failed", ref.jobId, cause);
+      outcome = { status: "failed", error: readable ? cause.message.slice(0, 500) : UNEXPECTED_FAILURE_COPY };
+    }
   } finally {
     clearInterval(heartbeat);
   }
+  // A cancelled run has nothing to settle: cancelGenerationJob already did.
+  if (!outcome) return;
   await db
     .update(generationJobs)
     .set(
       outcome.status === "ready"
-        ? { status: "ready", result: outcome.result, updatedAt: sql`now()` }
-        : { status: "failed", error: outcome.error, updatedAt: sql`now()` },
+        ? { status: "ready", result: outcome.result, progress: null, updatedAt: sql`now()` }
+        : { status: "failed", error: outcome.error, progress: null, updatedAt: sql`now()` },
     )
     .where(mine);
 }
@@ -231,7 +289,24 @@ export async function queuedGenerationJobAttempt(
 }
 
 /**
- * Puts a failed (or stalled) job back in the queue as a new attempt. Returns
+ * Stops a queued or running job. The row settles as cancelled now; a running
+ * runner stops at its next progress report or heartbeat (run.signal). Null
+ * when the job is not the caller's or has already settled.
+ */
+export async function cancelGenerationJob(
+  auth: Pick<AuthContext, "workspaceId" | "userId">,
+  jobId: string,
+): Promise<GenerationJobView | null> {
+  const [job] = await db
+    .update(generationJobs)
+    .set({ status: "cancelled", progress: null, heartbeatAt: null, updatedAt: sql`now()` })
+    .where(and(ownedBy(auth, jobId), inArray(generationJobs.status, statusesThatMayBecome("cancelled"))))
+    .returning(jobViewColumns);
+  return job ? toJobView(job) : null;
+}
+
+/**
+ * Puts a failed, cancelled (or stalled) job back in the queue as a new attempt. Returns
  * null when the job is not the caller's or is not in a state a retry applies
  * to, which includes a second click on Retry: one retry, one attempt.
  */
@@ -247,6 +322,7 @@ export async function retryGenerationJob(
         attempt: sql`${generationJobs.attempt} + 1`,
         error: null,
         heartbeatAt: null,
+        progress: null,
         updatedAt: sql`now()`,
       })
       .where(
@@ -263,14 +339,14 @@ export async function retryGenerationJob(
   });
 }
 
-/** Removes a failed (or stalled) job its maker no longer wants to see. True when a row went. */
+/** Removes a failed, cancelled (or stalled) job its maker no longer wants to see. True when a row went. */
 export async function dismissGenerationJob(
   auth: Pick<AuthContext, "workspaceId" | "userId">,
   jobId: string,
 ): Promise<boolean> {
   const removed = await db
     .delete(generationJobs)
-    .where(and(ownedBy(auth, jobId), or(eq(generationJobs.status, "failed"), stalledSql())))
+    .where(and(ownedBy(auth, jobId), or(inArray(generationJobs.status, ["failed", "cancelled"]), stalledSql())))
     .returning({ id: generationJobs.id });
   return removed.length > 0;
 }

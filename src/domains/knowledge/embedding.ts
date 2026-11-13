@@ -1,3 +1,4 @@
+import { resolveEmbedding } from "@/domains/billing/resolver";
 import { and, count, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { enqueueOutbox } from "@/domains/audit/outbox";
@@ -5,7 +6,6 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import {
   EMBEDDING_DIMENSIONS,
   EmbeddingUnconfiguredError,
-  embeddingProvider,
   type EmbeddingProvider,
 } from "@/integrations/embeddings/provider";
 import { db } from "@/lib/db";
@@ -139,7 +139,7 @@ export async function embedExtraction(
   let provider: EmbeddingProvider | null = null;
   let setupError: string | null = null;
   try {
-    provider = input.provider ?? embeddingProvider();
+    provider = input.provider ?? (await resolveEmbedding(auth.workspaceId));
   } catch (cause) {
     setupError = cause instanceof EmbeddingUnconfiguredError ? SAFE_UNCONFIGURED : SAFE_SETUP;
   }
@@ -378,7 +378,7 @@ export async function embedArtifact(
     let provider: EmbeddingProvider | null = null;
     let setupError: string | null = null;
     try {
-      provider = input.provider ?? embeddingProvider();
+      provider = input.provider ?? (await resolveEmbedding(auth.workspaceId));
     } catch (cause) {
       setupError = cause instanceof EmbeddingUnconfiguredError ? SAFE_UNCONFIGURED : SAFE_SETUP;
     }

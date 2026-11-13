@@ -10,6 +10,7 @@ import {
   WEB_SEARCH_CAPABILITY,
   WEB_SEARCH_MAX_RESULTS,
 } from "../../../../src/domains/knowledge/web-search";
+import { runSessionRef } from "../lib/run-session";
 
 /*
  * A read capability over the public web. It returns titles, URLs and snippets
@@ -27,7 +28,7 @@ const MAX_EMPTY_SEARCHES_PER_TURN = 2;
 
 export default defineTool({
   description:
-    "Search the public web. Returns ranked results with title, URL and snippet, plus which provider answered. Use for the world rather than the owner's workspace: current events, prices, versions, documentation, anything that changed after the library was captured. Search the owner's documents first when the question is about their own work — a web answer to a library question is a weaker claim. It will not open pages (that is web_fetch), and snippets go stale and truncate: fetch the page before quoting anything from it. One search per intent; if a query came back useless, rephrase once rather than repeating it, because every search spends a metered allowance. Read-only; the run's frozen policy must allow web.search.",
+    "Search the public web for current or outside information (news, prices, versions, documentation, companies). Returns ranked results with title, URL and snippet; fetch a page with web_fetch before quoting it. One search per intent; rephrase once at most. Read-only.",
   inputSchema: z.object({
     query: z.string().min(1).max(500),
     limit: z.number().int().min(1).max(WEB_SEARCH_MAX_RESULTS).optional(),
@@ -36,7 +37,7 @@ export default defineTool({
     const workspaceId = ctx.session.auth.current?.attributes?.workspaceId;
     if (typeof workspaceId !== "string") return { ok: false as const, error: "no workspace in session" };
 
-    const run = await getRunBySessionRef(ctx.session.id, workspaceId);
+    const run = await getRunBySessionRef(runSessionRef(ctx.session), workspaceId);
     if (!run || run.state !== "running") {
       return { ok: false as const, error: "no active Polymath run bound to this session" };
     }

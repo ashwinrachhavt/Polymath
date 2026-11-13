@@ -6,7 +6,8 @@ import { EmptyState } from "@/components/empty-state";
 import { getAuthContext } from "@/lib/auth";
 import { findUnwelcomedOnboardingSession, isWorkspaceOnboarded } from "@/domains/agents/onboarding";
 import { getProfileModelPolicy, listRecentRuns } from "@/domains/agents/queries";
-import { availableModels, resolveModelId } from "@/domains/agents/models";
+import { resolveModelId } from "@/domains/agents/models";
+import { selectableModels } from "@/domains/billing/resolver";
 import { listSkills } from "@/domains/skills/queries";
 import { displayTitle } from "@/lib/display-text";
 import { stripMentionContext } from "@/components/chat/mention-context";
@@ -76,9 +77,9 @@ export async function PolymathSurface() {
     description: skill.description,
   }));
   const unavailable = eveBridgeUnavailableReason();
-  // Only models whose provider key is present: offering one that cannot run
+  // Only models a key can serve (the workspace's own or the house's): offering one that cannot run
   // would freeze a model into a run that then fails on its first step.
-  const models = availableModels();
+  const models = await selectableModels(auth.workspaceId);
   const stored = (modelPolicy as { primary?: unknown } | null)?.primary;
   const currentModel = resolveModelId(stored);
 

@@ -1,7 +1,8 @@
+import { resolveEmbedding } from "@/domains/billing/resolver";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { enqueueOutbox, OutboxParkError, type ClaimedOutboxEvent, type OutboxHandler } from "@/domains/audit/outbox";
 import type { AuthContext } from "@/domains/identity/resolve";
-import { embeddingProvider, type EmbeddingProvider } from "@/integrations/embeddings/provider";
+import type { EmbeddingProvider } from "@/integrations/embeddings/provider";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { artifacts, artifactVersions, documentExtractions, documents } from "./schema";
@@ -70,7 +71,7 @@ export async function sweepUncoveredEmbeddings(
   auth: Pick<AuthContext, "workspaceId">,
   input: { limit?: number; provider?: EmbeddingProvider } = {},
 ): Promise<EmbeddingRetrySweep> {
-  const provider = input.provider ?? embeddingProvider();
+  const provider = input.provider ?? (await resolveEmbedding(auth.workspaceId));
   const limit = clampSweepLimit(input.limit);
 
   const artifactRows = await db

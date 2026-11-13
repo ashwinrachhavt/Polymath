@@ -1,5 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { defaultFlashcardGenerator } from "@/integrations/learning/flashcard-generator";
+
+vi.mock("@/domains/billing/resolver", async () =>
+  (await import("../helpers/house-generation-resolver")).houseGenerationResolver(),
+);
 
 /*
  * The e2e fixture provider answers the flashcard generator (consolidation
@@ -18,7 +22,10 @@ const TEXT =
   "Notebooks pin source versions. Reviews are scheduled per learner. Stones need two thirds correct.";
 
 describe("fixture flashcards", () => {
-  const generator = defaultFlashcardGenerator(undefined, { GENERATION_PROVIDER: "fixture", NODE_ENV: "test" });
+  let generator: Awaited<ReturnType<typeof defaultFlashcardGenerator>>;
+  beforeAll(async () => {
+    generator = await defaultFlashcardGenerator("w1", { GENERATION_PROVIDER: "fixture", NODE_ENV: "test" });
+  });
 
   it("makes the requested number of cards, each quoting a sentence of its source", async () => {
     const { cards } = await generator.generateFromSources([{ title: "Notes", text: TEXT }], { cardCount: 5 });

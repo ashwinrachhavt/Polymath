@@ -1,7 +1,8 @@
+import { resolveEmbedding } from "@/domains/billing/resolver";
 import { and, asc, count, desc, eq, ilike, isNull, ne, or, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { recordAudit } from "@/domains/audit/record";
-import { learningArtifactFeedback } from "@/domains/learning/schema";
+import { llmFeedback } from "@/domains/feedback/schema";
 import { db } from "@/lib/db";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { escapeLike } from "@/lib/list-params";
@@ -11,12 +12,8 @@ import { splitSections } from "./zettel-chunking";
 import { capForSize, ZETTEL_DUPLICATE_MAX_DISTANCE, ZETTEL_DUPLICATE_STRONG_DISTANCE } from "./zettel-capacity";
 import { recordDisagreement } from "./tidy";
 import { defaultZettelExtractor, type IdeaVerdict, type ZettelExtractor } from "@/integrations/zettels/extractor";
-import { generationProvider } from "@/integrations/generation/provider";
-import {
-  EmbeddingUnconfiguredError,
-  embeddingProvider,
-  type EmbeddingProvider,
-} from "@/integrations/embeddings/provider";
+import { resolveGeneration } from "@/domains/billing/resolver";
+import { EmbeddingUnconfiguredError, type EmbeddingProvider } from "@/integrations/embeddings/provider";
 import { embedArtifact, vectorLiteral } from "./embedding";
 import {
   artifactLinks,
@@ -73,7 +70,7 @@ async function findDuplicateIdea(
   claim: string,
   options: { provider?: EmbeddingProvider; excludeArtifactId?: string; conn?: Pick<TxDrizzle, "execute"> } = {},
 ): Promise<DuplicateHit | null> {
-  const provider = options.provider ?? embeddingProvider();
+  const provider = options.provider ?? (await resolveEmbedding(auth.workspaceId));
   const [vector] = await provider.embed([claim]);
   const conn = options.conn ?? db;
   const literal = vectorLiteral(vector);
@@ -360,29 +357,37 @@ type ZettelCandidatePass = {
 type ZettelFeedbackExample = { rating: "helpful" | "not_helpful"; title: string; content: string };
 
 async function recentZettelFeedback(auth: AuthContext): Promise<ZettelFeedbackExample[]> {
+  // A 1-5 rating reads as helpful from 4 up and not helpful from 2 down; a 3
+  // says neither, so it is not an example of anything.
   const rows = await db
-    .select({ rating: learningArtifactFeedback.rating, title: artifacts.title, content: artifactVersions.plainText })
-    .from(learningArtifactFeedback)
-    .innerJoin(
-      artifacts,
-      and(eq(artifacts.id, learningArtifactFeedback.artifactId), eq(artifacts.workspaceId, auth.workspaceId)),
-    )
+    .select({ score: llmFeedback.score, title: artifacts.title, content: artifactVersions.plainText })
+    .from(llmFeedback)
+    .innerJoin(artifacts, and(eq(artifacts.id, llmFeedback.artifactId), eq(artifacts.workspaceId, auth.workspaceId)))
     .leftJoin(
       artifactVersions,
       and(eq(artifactVersions.id, artifacts.currentVersionId), eq(artifactVersions.workspaceId, auth.workspaceId)),
     )
     .where(
       and(
-        eq(learningArtifactFeedback.workspaceId, auth.workspaceId),
-        eq(learningArtifactFeedback.userId, auth.userId),
+        eq(llmFeedback.workspaceId, auth.workspaceId),
+        eq(llmFeedback.userId, auth.userId),
+        ne(llmFeedback.score, 3),
         eq(artifacts.kind, "zettel"),
         isNull(artifacts.archivedAt),
       ),
     )
-    .orderBy(desc(learningArtifactFeedback.updatedAt), desc(learningArtifactFeedback.id))
+    .orderBy(desc(llmFeedback.updatedAt), desc(llmFeedback.id))
     .limit(4);
   return rows.flatMap((row) =>
-    row.content ? [{ rating: row.rating, title: row.title.slice(0, 120), content: row.content.slice(0, 200) }] : [],
+    row.content
+      ? [
+          {
+            rating: row.score >= 4 ? ("helpful" as const) : ("not_helpful" as const),
+            title: row.title.slice(0, 120),
+            content: row.content.slice(0, 200),
+          },
+        ]
+      : [],
   );
 }
 
@@ -391,7 +396,7 @@ async function zettelCandidatesForSource(auth: AuthContext, input: ZettelSourceI
   const source = await resolveZettelSource(auth, input, conn);
   const origin = zettelOrigin(source);
 
-  const extractor = input.extractor ?? defaultZettelExtractor(auth.workspaceId);
+  const extractor = input.extractor ?? (await defaultZettelExtractor(auth.workspaceId));
   const feedback = await recentZettelFeedback(auth);
 
   // One size-derived cap for the whole pass, computed once from the resolved
@@ -437,7 +442,10 @@ async function zettelCandidatesForSource(auth: AuthContext, input: ZettelSourceI
   // fit one section is the extractor's own single call, capped flat below.
   let merged = survivors;
   if (sections.length > 1 && survivors.length > 1) {
-    merged = await mergeCandidates(survivors, { provider: generationProvider(), max: cap });
+    merged = await mergeCandidates(survivors, {
+      provider: await resolveGeneration(auth.workspaceId, "generation"),
+      max: cap,
+    });
   }
 
   return { source, origin, extractor, cap, merged, readChars, unreadChars, unreadSections };

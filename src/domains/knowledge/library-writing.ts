@@ -4,11 +4,8 @@ import { recordAudit } from "@/domains/audit/record";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { withTransaction } from "@/lib/db-transaction";
 import { untrustedDataClauseJsonSafe } from "@/lib/prompts";
-import {
-  GenerationUnconfiguredError,
-  generationProvider,
-  type GenerationProvider,
-} from "@/integrations/generation/provider";
+import { GenerationUnconfiguredError, type GenerationProvider } from "@/integrations/generation/provider";
+import { resolveGeneration } from "@/domains/billing/resolver";
 import { searchDocumentsForAgent } from "./agent-search";
 import { createNoteInTx } from "./notes";
 
@@ -27,7 +24,9 @@ import { createNoteInTx } from "./notes";
 
 export class LibraryEmptyError extends Error {
   constructor(topic: string) {
-    super(`The library has nothing on "${topic}" yet. Capture sources first - the co-pilot only writes from what is there.`);
+    super(
+      `The library has nothing on "${topic}" yet. Capture sources first - the co-pilot only writes from what is there.`,
+    );
     this.name = "LibraryEmptyError";
   }
 }
@@ -106,7 +105,9 @@ function render(draft: LibraryDraft, sources: LibrarySource[]): string {
   // The artifact page already renders the title as its H1; the body starts
   // with the drafting disclaimer, not a duplicate heading.
   const md: string[] = [];
-  md.push("*Drafted from the library only. Paragraphs marked [citation needed] make claims the sources do not support.*");
+  md.push(
+    "*Drafted from the library only. Paragraphs marked [citation needed] make claims the sources do not support.*",
+  );
   md.push("");
   for (const paragraph of draft.paragraphs) {
     const cites = paragraph.citations.map((n) => `[${n}]`).join("");
@@ -147,7 +148,7 @@ export async function draftFromLibrary(
 
   let provider: GenerationProvider;
   try {
-    provider = deps?.provider ?? generationProvider(process.env);
+    provider = deps?.provider ?? (await resolveGeneration(auth.workspaceId, "generation"));
   } catch (error) {
     if (error instanceof GenerationUnconfiguredError) throw new WritingUnusableAnswerError(error.message);
     throw error;

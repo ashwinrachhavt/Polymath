@@ -5,6 +5,7 @@ import { toolAllowed } from "../lib/policy";
 // does not carry the app's tsconfig paths (see hooks/bridge.ts).
 import { getRunBySessionRef } from "../../../../src/domains/agents/queries";
 import { proposeTask } from "../../../../src/domains/work/proposals";
+import { runSessionRef } from "../lib/run-session";
 
 /*
  * Turns a run finding into a reviewable task proposal. The agent tool
@@ -15,7 +16,6 @@ import { proposeTask } from "../../../../src/domains/work/proposals";
  * policy must allow tasks.create.
  */
 export default defineTool({
-  deferred: true,
   description:
     "Propose a follow-up task for the owner to review. Call when the run finds work someone should do later - a follow-up from a document, an open question, a next step. Do not propose work the open-task list already covers (check tasks_read first). Nothing is created until the owner approves it in the review queue; the approval creates the task with links back to the source material. Pass stable source identifiers so a retry resolves the same proposal.",
   inputSchema: z.object({
@@ -73,7 +73,7 @@ export default defineTool({
     if (typeof workspaceId !== "string" || !current?.principalId) {
       return { ok: false as const, error: "no workspace in session" };
     }
-    const run = await getRunBySessionRef(ctx.session.id, workspaceId);
+    const run = await getRunBySessionRef(runSessionRef(ctx.session), workspaceId);
     if (!run || run.state !== "running") {
       return { ok: false as const, error: "no active Polymath run bound to this session" };
     }

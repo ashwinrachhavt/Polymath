@@ -223,7 +223,7 @@ export async function prepareChallenge(
   let outcome: ReturnType<typeof acceptProposedChallenge>;
   try {
     const sources = await loadPinnedExplainSources(auth, row.sourceManifest);
-    const engine = generator ?? defaultExplainItGenerator(auth.workspaceId);
+    const engine = generator ?? (await defaultExplainItGenerator(auth.workspaceId));
     const proposed = await engine.challenge(
       row.format,
       sources.map(({ title, text }) => ({ title, text })),
@@ -496,7 +496,7 @@ async function decide(
   if (rules.grade === "uncertain") {
     try {
       const sources = await loadPinnedExplainSources(auth, row.sourceManifest);
-      const engine = generator ?? defaultExplainItGenerator(auth.workspaceId);
+      const engine = generator ?? (await defaultExplainItGenerator(auth.workspaceId));
       const evaluation = await engine.evaluate({
         sources: sources.map(({ title, text }) => ({ title, text })),
         question: evaluatorQuestion(content),

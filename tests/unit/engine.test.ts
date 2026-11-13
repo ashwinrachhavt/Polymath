@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ownerBackground } from "@/domains/agents/owner-brief";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { releaseSpend, reserveSpend } from "@/domains/spending/commands";
 import { createEngine } from "@/domains/agents/engine";
@@ -46,6 +47,13 @@ const { fakeDb, ops, setCalls, whereCalls } = vi.hoisted(() => ({
   setCalls: [] as unknown[],
   whereCalls: [] as unknown[],
 }));
+
+// The run's frozen model resolves through billing (the workspace's keys, the allowance); that reads the
+// database, which this test fakes op by op. Billing's own rules are proven in tests/integration/billing.test.ts.
+vi.mock("@/domains/billing/resolver", async () => {
+  const { resolveRunModel } = await import("@/domains/agents/models");
+  return { resolveRunModelFor: async (_workspaceId: string, policy: unknown) => resolveRunModel(policy)?.id ?? null };
+});
 
 vi.mock("@/lib/db", () => {
   const current = () => stubResults[(ops.at(-1) ?? "") as string] ?? {};
@@ -158,7 +166,7 @@ describe("engine", () => {
       expect.objectContaining({
         sessionId: RUN.id,
         auth,
-        instructions: "Be brief.",
+        instructions: ownerBackground("Be brief."),
         policy: expect.objectContaining({ profileId: "prof_1", model: "gemini-3.5-flash-lite" }),
       }),
     );

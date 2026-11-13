@@ -1,5 +1,6 @@
 import { clerkMiddleware } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+import { isClerkUserAllowed } from "@/lib/access-allowlist";
 import { proxyArmed } from "@/lib/clerk";
 import { isKnownRoute } from "@/lib/proxy-routing";
 
@@ -28,6 +29,24 @@ function matches(pathname: string, patterns: string[]) {
   );
 }
 
+/**
+ * A post-sign-in destination is honoured only on this origin. Clerk writes
+ * redirect_url both as a path and as an absolute URL, so both are accepted
+ * and reduced to a path; anything pointing elsewhere is dropped.
+ */
+function sameOriginPath(value: string | null, current: URL): string | null {
+  if (!value) return null;
+  try {
+    const target = new URL(value, current);
+    return target.origin === current.origin ? target.pathname + target.search : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Where a signed-in visitor goes when nothing names a destination. */
+const workspaceHome = "/polymath";
+
 const apiPatterns = ["/api/v1", "/api/v1/(.*)"];
 
 const publicPatterns = [
@@ -35,6 +54,8 @@ const publicPatterns = [
   "/landing",
   "/sign-in(.*)",
   "/sign-up(.*)",
+  // Where a signed-in account that is not on POLYMATH_ALLOWED_EMAILS lands.
+  "/invite-only",
   // The real-404 renderer the proxy rewrites unmatched paths to (QA F8).
   "/404",
   "/api/webhooks(.*)",
@@ -45,6 +66,12 @@ const publicPatterns = [
   // agent, not a Clerk session. Clerk here would 307 the agent's own tool call
   // to the sign-in page, which is what "fetch failed" looked like from eve.
   "/api/mcp",
+  // The eve agents (withEve rewrites /eve/<agent>/v1/* to them). Under
+  // `next start` the app calls them same-origin from the server with a signed
+  // bridge token and no Clerk session; eve's channel refuses any request
+  // without a valid token (eve/*/agent/channels/eve.ts). On Vercel these
+  // routes are served before this proxy runs, so this matches production.
+  "/eve/(.*)",
 ];
 
 // The proxy enforces whenever Clerk is configured, regardless of
@@ -81,10 +108,26 @@ export default proxyArmed
         const search = url.search;
         const session = await auth({ acceptsToken: ["session_token"] });
         return session.isAuthenticated
-          ? NextResponse.redirect(new URL(`/polymath${search}`, request.url))
+          ? NextResponse.redirect(new URL(`${workspaceHome}${search}`, request.url))
           : NextResponse.redirect(
-              new URL(`/landing?returnTo=${encodeURIComponent(`/polymath${search}`)}`, request.url),
+              new URL(`/landing?returnTo=${encodeURIComponent(`${workspaceHome}${search}`)}`, request.url),
             );
+      }
+
+      // The sign-in and sign-up entries are the landing page's way into the
+      // app, for everyone: the landing is static, so it cannot know who is
+      // signed in. A signed-out visitor gets the form; a signed-in one is sent
+      // on to where they were going, in one hop. Only the bare entry paths:
+      // Clerk's own steps below them (factor-one, sso-callback, tasks) must
+      // render while a session is being completed.
+      if (pathname === "/sign-in" || pathname === "/sign-up") {
+        const session = await auth({ acceptsToken: ["session_token"] });
+        if (session.isAuthenticated) {
+          return NextResponse.redirect(
+            new URL(sameOriginPath(url.searchParams.get("redirect_url"), url) ?? workspaceHome, request.url),
+          );
+        }
+        return;
       }
 
       if (!matches(pathname, publicPatterns)) {
@@ -100,6 +143,25 @@ export default proxyArmed
           const session = companionBearer
             ? { isAuthenticated: true }
             : await auth({ acceptsToken: ["session_token", "m2m_token", "api_key"] });
+          if (
+            session.isAuthenticated &&
+            "tokenType" in session &&
+            session.tokenType === "session_token" &&
+            !(await isClerkUserAllowed(session.userId))
+          ) {
+            // Invite-only (src/lib/access-allowlist.ts): a human session for an
+            // unlisted account. Machine tokens were issued by a member, so they
+            // pass through to the route's own checks.
+            return NextResponse.json(
+              {
+                type: "https://axiom.dev/problems/forbidden",
+                code: "invite_only",
+                title: "This Polymath is invite-only.",
+                status: 403,
+              },
+              { status: 403, headers: { "content-type": "application/problem+json" } },
+            );
+          }
           if (!session.isAuthenticated) {
             return NextResponse.json(
               {
@@ -133,8 +195,15 @@ export default proxyArmed
             }
             const destination = pathname + url.search;
             const returnTo =
-              pathname.startsWith("/") && !pathname.startsWith("//") ? `?returnTo=${encodeURIComponent(destination)}` : "";
+              pathname.startsWith("/") && !pathname.startsWith("//")
+                ? `?returnTo=${encodeURIComponent(destination)}`
+                : "";
             return NextResponse.redirect(new URL(`/landing${returnTo}`, request.url));
+          }
+          // Invite-only: a real account that is not on the list sees one
+          // polite page and never reaches a route that could provision it.
+          if (!(await isClerkUserAllowed(session.userId))) {
+            return NextResponse.redirect(new URL("/invite-only", request.url));
           }
         }
       }

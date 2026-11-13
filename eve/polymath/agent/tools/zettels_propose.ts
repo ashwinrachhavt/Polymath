@@ -9,6 +9,7 @@ import { db } from "../../../../src/lib/db";
 import { documentExtractions, documents } from "../../../../src/domains/knowledge/schema";
 import { and, eq } from "drizzle-orm";
 import { createHash } from "node:crypto";
+import { runSessionRef } from "../lib/run-session";
 
 /*
  * Creates ideas (zettels) from material a run has in hand. The tool call is
@@ -24,7 +25,6 @@ import { createHash } from "node:crypto";
  * minting duplicates.
  */
 export default defineTool({
-  deferred: true,
   description:
     "Create ideas (zettels) from source text or a saved artifact. Ideas become knowledge cards immediately - the tool call is the acceptance, and near-duplicates of existing cards are skipped.",
   inputSchema: z.object({
@@ -38,7 +38,7 @@ export default defineTool({
     if (typeof workspaceId !== "string" || !current?.principalId) {
       return { ok: false as const, error: "no workspace in session" };
     }
-    const run = await getRunBySessionRef(ctx.session.id, workspaceId);
+    const run = await getRunBySessionRef(runSessionRef(ctx.session), workspaceId);
     if (!run || run.state !== "running") {
       return { ok: false as const, error: "no active Polymath run bound to this session" };
     }

@@ -1,5 +1,6 @@
 "use client";
 
+import { CaptureSite, type CaptureSitePage } from "./capture-site";
 import { CaptureContextPanel } from "./capture-context-panel";
 import Link from "next/link";
 import { useEffect, useOptimistic, useRef, useState, useTransition } from "react";
@@ -141,6 +142,7 @@ export function InboxDetail({
   zettelProviderReady,
   zettelProviderReason,
   zettelJobs,
+  site = null,
 }: {
   capture:
     | (Omit<InboxRow, "preview" | "hasText"> & {
@@ -168,6 +170,8 @@ export function InboxDetail({
   zettelProviderReason: string;
   /** Zettelize jobs still waiting or failed when the page rendered; the stream moves them from here. */
   zettelJobs: GenerationJobView[];
+  /** For a captured address: the pages its crawl filed and the crawl's job, if any. */
+  site?: { pages: CaptureSitePage[]; initialJobs: GenerationJobView[] } | null;
 }) {
   const [optimisticState, decide] = useOptimistic(
     capture?.processingState ?? null,
@@ -469,7 +473,9 @@ export function InboxDetail({
         )}
       </div>
 
-      {/* Opt-in: a link is fetched and summarized only when the person asks. */}
+      {site ? <CaptureSite key={`site:${capture.id}`} captureId={capture.id} {...site} /> : null}
+
+      {/* Opt-in: a summary is written only when the person asks. */}
       {capture.url && isHttpUrl(capture.url) ? (
         <EnrichPanel
           key={`enrich:${capture.id}`}

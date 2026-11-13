@@ -69,6 +69,16 @@ export type Guard = {
 export type TableDeclaration = { guards: Guard[] };
 
 export const GUARDED_WITHOUT_VERSION: Record<string, TableDeclaration> = {
+  "billing.workspace_plans": {
+    guards: [
+      {
+        kind: "sole-writer",
+        detail:
+          "the plan is derived state with exactly two writers in plans.ts (the owner's Pro switch and the plan a key change implies); both take a per-workspace advisory lock and re-read the plan and key count inside the transaction before writing, so neither overwrites the other from a stale read",
+        evidence: "src/domains/billing/plans.ts:56-121",
+      },
+    ],
+  },
   "superagent.superagent_state": {
     guards: [
       {

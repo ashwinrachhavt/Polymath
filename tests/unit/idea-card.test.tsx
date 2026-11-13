@@ -35,6 +35,13 @@ describe("IdeaCard", () => {
     expect(screen.getByRole("link").contains(remove)).toBe(false);
   });
 
+  it("hides Delete with visibility, never opacity (an opacity-0 button never passes the e2e settle check)", () => {
+    render(<IdeaCard item={item} href="/polymath/ideas/z1" />);
+    const { className } = screen.getByRole("button", { name: "Delete idea" });
+    expect(className).toContain("invisible");
+    expect(className).not.toContain("opacity-0");
+  });
+
   it("carries no mastery, recall, or progress chrome", () => {
     const { container } = render(<IdeaCard item={{ ...item, bloom: { level: 1, levelName: "Recall" } }} href="/x" />);
     expect(container.textContent).not.toMatch(/mastery|recall|practice|progress/i);

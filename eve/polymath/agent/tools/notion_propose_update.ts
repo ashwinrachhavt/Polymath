@@ -9,6 +9,7 @@ import {
   NOTION_PAGE_CREATE,
   proposeNotionPageUpdate,
 } from "../../../../src/domains/knowledge/notion-proposals";
+import { runSessionRef } from "../lib/run-session";
 
 /*
  * ASH-283: propose a Notion page write the owner approves as a diff. The tool
@@ -22,7 +23,6 @@ import {
  * the owner made between proposal and approval.
  */
 export default defineTool({
-  deferred: true,
   description:
     "Propose adding content to a Notion page, or creating a new one, for the owner to approve. Use when the owner asks to save something to Notion, or when a finding belongs in a page they already keep there. Nothing reaches Notion until the owner approves the diff in the review queue. Appending is safe and reversible by deleting the blocks; do not use this to rewrite or reorganise an existing page, which this cannot do safely. Pass a stable dedupeId so a retry proposes once.",
   inputSchema: z.object({
@@ -64,7 +64,7 @@ export default defineTool({
     if (typeof workspaceId !== "string" || !current?.principalId) {
       return { ok: false as const, error: "no workspace in session" };
     }
-    const run = await getRunBySessionRef(ctx.session.id, workspaceId);
+    const run = await getRunBySessionRef(runSessionRef(ctx.session), workspaceId);
     if (!run || run.state !== "running") {
       return { ok: false as const, error: "no active Polymath run bound to this session" };
     }

@@ -4,6 +4,7 @@ import { ConnectionAuthorizationRequiredError, defineMcpClientConnection } from 
 import { gatewaySecret, signGatewayToken } from "../../../../src/domains/agents/gateway-token";
 import { getRunBySessionRef } from "../../../../src/domains/agents/queries";
 import { PROVIDER_TOOLS } from "../../../../src/domains/integrations/capabilities";
+import { runSessionRef } from "../lib/run-session";
 
 /*
  * The one door to provider tools.
@@ -47,7 +48,7 @@ export default defineMcpClientConnection({
 
       // The gateway authorizes a run, not a session. With no run there is
       // nothing to bind the call to, so this fails loudly.
-      const run = await getRunBySessionRef(ctx.session.id, workspaceId);
+      const run = await getRunBySessionRef(runSessionRef(ctx.session), workspaceId);
       if (!run) {
         throw new ConnectionAuthorizationRequiredError(CONNECTION_NAME, {
           message: "No Polymath run is bound to this session, so the provider gateway cannot be called.",
@@ -67,10 +68,7 @@ export default defineMcpClientConnection({
       }
 
       return {
-        token: signGatewayToken(
-          { runId: run.id, userId: current.principalId, workspaceId },
-          { secret },
-        ),
+        token: signGatewayToken({ runId: run.id, userId: current.principalId, workspaceId }, { secret }),
         // The gateway checks the signature and the 60-second expiry itself.
         // This only stops eve from replaying one token across a long turn:
         // evicting it before the real expiry keeps the mint per call.
@@ -80,7 +78,7 @@ export default defineMcpClientConnection({
   }),
   // The token is what authorizes; this header lets the gateway reject a driver
   // bound to the wrong session before it acts (route.ts step 6).
-  headers: (ctx) => ({ "x-polymath-session": ctx.session.id }),
+  headers: (ctx) => ({ "x-polymath-session": runSessionRef(ctx.session) }),
   // Generated from the capability catalog, not hand-listed: a new provider
   // read ships in PROVIDER_TOOLS and is shown to the model without a second
   // edit here. The gateway still enforces policy on every call, so widening

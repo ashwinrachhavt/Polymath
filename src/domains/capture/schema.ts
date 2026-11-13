@@ -1,7 +1,20 @@
 import { sql } from "drizzle-orm";
-import { check, index, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { mutable, primaryId, tenantId } from "../../db/columns";
+import {
+  check,
+  index,
+  integer,
+  jsonb,
+  pgEnum,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
+import { mutable, primaryId, recorded, tenantId } from "../../db/columns";
 import { blobObjects } from "../audit/schema";
+import { documents } from "../knowledge/schema";
 
 /*
  * Capture is deliberately dumb: whatever arrived, exactly as it arrived, plus
@@ -139,5 +152,31 @@ export const captures = pgTable(
       "captures_kind_source_known",
       sql`(kind_label is null) = (kind_source is null) and (kind_source is null or kind_source in ('rules', 'jev', 'user'))`,
     ),
+  ],
+);
+
+/*
+ * The library documents a link capture brought in: every page of the site its
+ * crawl read, root first. A page that was already in the library is linked,
+ * not filed twice (documents are unique per URL), so one document may belong
+ * to several captures. Deleting either side drops the link only.
+ */
+export const captureDocuments = pgTable(
+  "capture_documents",
+  {
+    workspaceId: tenantId(),
+    captureId: uuid("capture_id")
+      .notNull()
+      .references(() => captures.id, { onDelete: "cascade" }),
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => documents.id, { onDelete: "cascade" }),
+    /** The page's place in the crawl's order, 0 for the address captured. */
+    position: integer("position").notNull(),
+    ...recorded,
+  },
+  (t) => [
+    primaryKey({ columns: [t.captureId, t.documentId] }),
+    index("capture_documents_document_idx").on(t.workspaceId, t.documentId),
   ],
 );

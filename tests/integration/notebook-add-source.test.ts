@@ -26,6 +26,8 @@ vi.mock("@/lib/db-transaction", () => ({
   },
 }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn(), updateTag: vi.fn() }));
+// Jobs are accepted here, not run: nothing starts behind the test's back.
+vi.mock("@/domains/jobs/kick", () => ({ kickGenerationJob: vi.fn() }));
 vi.mock("@/lib/auth", () => ({
   getAuthContext: vi.fn(async () => {
     if (!holder.auth) throw new Error("no auth seeded");
@@ -50,6 +52,7 @@ vi.mock("@/lib/safe-fetch", async (importOriginal) => ({
 
 import { blobObjects, outboxEvents } from "@/domains/audit/schema";
 import { documentExtractions, documents, files, sources } from "@/domains/knowledge/schema";
+import { generationJobs } from "@/domains/jobs/schema";
 import { attachToNotebookAction, addUrlToNotebookAction, retryNotebookSourceAction } from "@/app/(workspace)/projects/[projectId]/notebook/add-source-actions";
 import { createProject, projectDocumentIds } from "@/domains/knowledge/projects";
 
@@ -153,7 +156,7 @@ suite("notebook add-source actions (real Postgres)", () => {
     expect(refused).toMatchObject({ ok: false, message: "No reader accepts this source type. There is nothing to retry." });
   });
 
-  it("a YouTube link queues the transcript job and binds the video to the notebook by address", async () => {
+  it("a YouTube link queues the video's absorption job and binds the video to the notebook by address", async () => {
     // A fresh UUID-based id: Date.now()'s leading digits repeat for over a
     // minute, and a colliding address would let the unscoped document lookup
     // below read another run's row.
@@ -161,9 +164,9 @@ suite("notebook add-source actions (real Postgres)", () => {
     const url = `https://www.youtube.com/watch?v=${videoId}`;
     const out = await addUrlToNotebookAction({ projectId, url });
     expect(out.ok).toBe(true);
-    const events = await db.select().from(outboxEvents)
-      .where(eq(outboxEvents.workspaceId, holder.auth!.workspaceId));
-    expect(events.some((e) => e.topic === "youtube.transcript_requested")).toBe(true);
+    const jobs = await db.select().from(generationJobs)
+      .where(eq(generationJobs.workspaceId, holder.auth!.workspaceId));
+    expect(jobs.filter((job) => job.kind === "knowledge.youtube")).toHaveLength(1);
 
     // Binding through the join, not just the dossierSources rows: the queued
     // video has no fileId yet, so the address match is what resolves it.

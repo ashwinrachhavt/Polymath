@@ -9,11 +9,8 @@ import { tasks } from "@/domains/work/schema";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { untrustedDataClauseJsonSafe } from "@/lib/prompts";
-import {
-  GenerationUnconfiguredError,
-  generationProvider,
-  type GenerationProvider,
-} from "@/integrations/generation/provider";
+import { GenerationUnconfiguredError, type GenerationProvider } from "@/integrations/generation/provider";
+import { resolveGeneration } from "@/domains/billing/resolver";
 import { artifacts, artifactVersions } from "./schema";
 import { createNoteInTx } from "./notes";
 
@@ -50,7 +47,10 @@ export const PREP_MAX_CONTEXT_CHARS = 30_000;
 
 const response = z.object({
   summary: z.string().trim().min(1).max(2000),
-  attendeeBriefs: z.array(z.object({ name: z.string().trim().min(1).max(120), brief: z.string().trim().min(1).max(1000) })).max(10).nullable(),
+  attendeeBriefs: z
+    .array(z.object({ name: z.string().trim().min(1).max(120), brief: z.string().trim().min(1).max(1000) }))
+    .max(10)
+    .nullable(),
   history: z.string().trim().min(1).max(3000).nullable(),
   openLoops: z.string().trim().min(1).max(3000).nullable(),
   talkingPoints: z.array(z.string().trim().min(1).max(300)).min(1).max(PREP_MAX_TALKING_POINTS),
@@ -93,7 +93,16 @@ export function parseMeetingPrepAnswer(text: string): MeetingPrepDraft {
   return parsed.data;
 }
 
-type AttendeeContext = { name: string; email: string | null; contact: { title: string | null; notes: string | null; relationshipStatus: string; lastInteractionAt: Date | null } | null };
+type AttendeeContext = {
+  name: string;
+  email: string | null;
+  contact: {
+    title: string | null;
+    notes: string | null;
+    relationshipStatus: string;
+    lastInteractionAt: Date | null;
+  } | null;
+};
 
 async function gatherContext(auth: AuthContext, eventId: string) {
   const [event] = await db
@@ -122,13 +131,21 @@ async function gatherContext(auth: AuthContext, eventId: string) {
     name: row.fullName ?? row.displayName ?? row.email ?? "Unknown attendee",
     email: row.email,
     contact: row.contactId
-      ? { title: row.title, notes: row.notes, relationshipStatus: row.relationshipStatus ?? "unknown", lastInteractionAt: row.lastInteractionAt }
+      ? {
+          title: row.title,
+          notes: row.notes,
+          relationshipStatus: row.relationshipStatus ?? "unknown",
+          lastInteractionAt: row.lastInteractionAt,
+        }
       : null,
   }));
 
   // Past notes and open loops are matched on what is actually on the event:
   // attendee names plus the significant words of its title. Nothing wider.
-  const needles = [...attendees.map((a) => a.name).filter((n) => n !== "Unknown attendee"), ...titleTokens(event.title)];
+  const needles = [
+    ...attendees.map((a) => a.name).filter((n) => n !== "Unknown attendee"),
+    ...titleTokens(event.title),
+  ];
 
   const pastNotes =
     needles.length === 0
@@ -160,7 +177,10 @@ async function gatherContext(auth: AuthContext, eventId: string) {
               or(
                 ...needles.flatMap((n) => {
                   const pat = `%${escapeLike(n)}%`;
-                  return [ilike(tasks.title, pat), sql`${tasks.description} is not null and ${tasks.description} ilike ${pat}`];
+                  return [
+                    ilike(tasks.title, pat),
+                    sql`${tasks.description} is not null and ${tasks.description} ilike ${pat}`,
+                  ];
                 }),
               ),
             ),
@@ -183,7 +203,8 @@ function contextPrompt(ctx: Awaited<ReturnType<typeof gatherContext>>): string {
     if (a.contact) {
       if (a.contact.title) parts.push(`title: ${a.contact.title}`);
       parts.push(`relationship: ${a.contact.relationshipStatus}`);
-      if (a.contact.lastInteractionAt) parts.push(`last interaction: ${a.contact.lastInteractionAt.toISOString().slice(0, 10)}`);
+      if (a.contact.lastInteractionAt)
+        parts.push(`last interaction: ${a.contact.lastInteractionAt.toISOString().slice(0, 10)}`);
       if (a.contact.notes) parts.push(`notes: ${a.contact.notes}`);
     } else {
       parts.push("(no contact record)");
@@ -197,7 +218,8 @@ function contextPrompt(ctx: Awaited<ReturnType<typeof gatherContext>>): string {
   lines.push("");
   lines.push("OPEN TASKS THAT MENTION THEM OR THIS TOPIC:");
   if (ctx.openTasks.length === 0) lines.push("- none");
-  for (const t of ctx.openTasks) lines.push(`- [${t.status}] ${t.title}${t.dueAt ? ` (due ${t.dueAt.toISOString().slice(0, 10)})` : ""}`);
+  for (const t of ctx.openTasks)
+    lines.push(`- [${t.status}] ${t.title}${t.dueAt ? ` (due ${t.dueAt.toISOString().slice(0, 10)})` : ""}`);
   const prompt = lines.join("\n");
   return prompt.slice(0, PREP_MAX_CONTEXT_CHARS);
 }
@@ -206,7 +228,9 @@ function renderReport(ctx: Awaited<ReturnType<typeof gatherContext>>, draft: Mee
   // The artifact page renders the title as its H1; the body opens with the
   // provenance line, not a duplicate heading.
   const md: string[] = [];
-  md.push(`*${ctx.event.startsAt.toISOString().slice(0, 16).replace("T", " ")} - generated from workspace context. Talking points are proposals, not commitments.*`);
+  md.push(
+    `*${ctx.event.startsAt.toISOString().slice(0, 16).replace("T", " ")} - generated from workspace context. Talking points are proposals, not commitments.*`,
+  );
   md.push("");
   md.push("## Summary");
   md.push(draft.summary);
@@ -238,7 +262,7 @@ export async function generateMeetingPrep(
 
   let provider: GenerationProvider;
   try {
-    provider = deps?.provider ?? generationProvider(process.env);
+    provider = deps?.provider ?? (await resolveGeneration(auth.workspaceId, "generation"));
   } catch (error) {
     if (error instanceof GenerationUnconfiguredError) throw new MeetingPrepNotAllowedError(error.message);
     throw error;
@@ -259,7 +283,13 @@ export async function generateMeetingPrep(
     // on regeneration so the event always points at the latest report.
     await tx
       .delete(eventLinks)
-      .where(and(eq(eventLinks.eventId, ctx.event.id), eq(eventLinks.targetType, "artifact"), eq(eventLinks.label, "Meeting prep")));
+      .where(
+        and(
+          eq(eventLinks.eventId, ctx.event.id),
+          eq(eventLinks.targetType, "artifact"),
+          eq(eventLinks.label, "Meeting prep"),
+        ),
+      );
     await tx.insert(eventLinks).values({
       workspaceId: auth.workspaceId,
       eventId: ctx.event.id,

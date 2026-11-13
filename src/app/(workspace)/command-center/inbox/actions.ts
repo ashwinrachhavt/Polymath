@@ -20,6 +20,10 @@ import { readCaptureEnrichment, requestCaptureEnrich } from "@/domains/capture/e
 import { ENRICH_PENDING_LABEL } from "@/domains/capture/enrich-state";
 import { CAPTURE_KINDS, setCaptureKind, type CaptureKind } from "@/domains/capture/kind-label";
 import { unparkCapture } from "@/domains/capture/parking";
+import { crawlCaptureSite } from "@/domains/capture/link-reading";
+import { kickGenerationJob } from "@/domains/jobs/kick";
+import type { GenerationJobView } from "@/domains/jobs/state";
+import { actionError } from "@/lib/action-error";
 import { getAuthContext } from "@/lib/auth";
 import { capturesTag, tasksTag } from "@/lib/cache-tags";
 import { requireRole } from "@/lib/auth/guards";
@@ -45,11 +49,15 @@ function fail(error: unknown): { ok: false; error: string } {
 
 export async function captureTextAction(input: {
   text: string;
+  linkScope?: "site" | "page";
 }): Promise<{ ok: true; id: string } | { ok: false; error: string; existingId?: string }> {
   const auth = await authorize();
   let capture: { id: string };
   try {
-    capture = await createCapture(auth, input);
+    capture = await createCapture(auth, {
+      text: String(input.text ?? ""),
+      linkScope: input.linkScope === "page" ? "page" : "site",
+    });
   } catch (error) {
     // A duplicate already names the capture it collided with; pass the id so
     // the notice can open it.
@@ -266,4 +274,21 @@ export async function captureEnrichStatusAction(input: {
         ? { phase: "failed", label: enrichment.error }
         : { phase: "done", label: "Summary ready." };
   return { ok: true, state };
+}
+
+/** "Read the whole site" for a capture read as one page: starts (or returns) its crawl job. */
+export async function crawlCaptureSiteAction(input: {
+  captureId: string;
+}): Promise<{ ok: true; job: GenerationJobView | null } | { ok: false; error: string }> {
+  const parsed = retryUrlInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "That capture no longer exists. Reload the inbox." };
+  try {
+    const auth = await authorize();
+    const accepted = await crawlCaptureSite(auth, parsed.data);
+    if (!accepted) return { ok: false, error: "This capture has no web address to read." };
+    if (accepted.started) kickGenerationJob(accepted.started);
+    return { ok: true, job: accepted.job };
+  } catch (error) {
+    return { ok: false, error: actionError(error, "Could not start reading the site.") };
+  }
 }

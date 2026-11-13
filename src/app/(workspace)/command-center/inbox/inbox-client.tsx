@@ -28,9 +28,13 @@ import { captureTextAction } from "./actions";
 
 const FILE_CHIP_THRESHOLD = 600;
 
+/** A capture that is one web address and nothing else: the only kind a site crawl applies to. */
+const LONE_ADDRESS = /^https?:\/\/\S+$/i;
+
 export function CaptureForm() {
   const router = useRouter();
   const [text, setText] = useState("");
+  const [wholeSite, setWholeSite] = useState(true);
   const [expanded, setExpanded] = useState(false);
   const [error, setError] = useState<{ message: string; existingId?: string } | null>(null);
   const [pending, startTransition] = useTransition();
@@ -50,7 +54,7 @@ export function CaptureForm() {
     setError(null);
     if (!text.trim()) return;
     startTransition(async () => {
-      const result = await captureTextAction({ text });
+      const result = await captureTextAction({ text, linkScope: wholeSite ? "site" : "page" });
       if (!result.ok) {
         setError({ message: result.error, existingId: result.existingId });
         return;
@@ -203,6 +207,17 @@ export function CaptureForm() {
             aria-label="Capture a thought, excerpt, or URL"
             className="min-h-16 resize-none border-0 bg-transparent p-1 text-body-dense shadow-none focus-visible:ring-0"
           />
+          {LONE_ADDRESS.test(text.trim()) ? (
+            <label className="flex items-center gap-2 px-1 pb-2 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={wholeSite}
+                onChange={(event) => setWholeSite(event.target.checked)}
+                className="size-3.5 accent-foreground"
+              />
+              Read the whole site too (up to 25 pages), not just this page
+            </label>
+          ) : null}
           <div className="flex flex-wrap items-center gap-2 border-border border-t px-1 pt-2">
             {fileInput}
             <Button type="button" variant="outline" size="sm" disabled={filePending || pending} onClick={pickFile}>
