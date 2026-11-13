@@ -330,7 +330,11 @@ export async function listRunSteps(workspaceId: string, runId: string): Promise<
     )
     .orderBy(asc(toolCalls.createdAt), asc(toolCalls.id))
     .limit(MAX_RECORDED_STEPS);
-  return rows.map((row) => ({
+  // The bridge's hooks are at-least-once and recordToolCall does not dedupe, so a
+  // redelivered result can leave two rows for one call; one call is one step.
+  const firstPerCall = new Map<string, (typeof rows)[number]>();
+  for (const row of rows) if (!firstPerCall.has(row.callId as string)) firstPerCall.set(row.callId as string, row);
+  return [...firstPerCall.values()].map((row) => ({
     callId: row.callId as string,
     turnId: row.turnId as string,
     label: row.toolName,

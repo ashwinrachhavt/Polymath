@@ -8,6 +8,7 @@ import {
   frameOf,
   splitLines,
   threadBlocks,
+  type ChatBlock,
   type ChatFrame,
 } from "@/domains/agents/stream-contract";
 
@@ -695,5 +696,81 @@ describe("decodeDiagramToolOutput", () => {
     expect(decodeDiagramToolOutput({ ...payload, renderMode: "excalidraw", somethingNew: true })?.canvasId).toBe(
       CANVAS,
     );
+  });
+});
+
+describe("ChatAccumulator replay of stored history", () => {
+  // The page seeds the stored transcript; Eve then replays the session from
+  // cursor 0 under its own ids. Before reconciliation every replayed message
+  // except a turn's first assistant block rendered a second time.
+  const stored: ChatBlock[] = [
+    { id: "user:stored:1", kind: "user", text: "Help me understand the company", done: true, messageId: "m1" },
+    { id: "assistant:t1:0", kind: "assistant", text: "Let me search.", done: true, messageId: "m2" },
+    { id: "assistant:stored:3", kind: "assistant", text: "Reading two pages.", done: true, messageId: "m3" },
+    { id: "assistant:stored:4", kind: "assistant", text: "The full brief.", done: true, messageId: "m4" },
+  ];
+  const replay = (): ChatFrame[] => [
+    {
+      type: "message",
+      runId: RUN,
+      role: "user",
+      text: 'Help me understand the company\n[context:mention id=x]\n{"a":1}',
+      cursor: 1,
+    },
+    { type: "delta", runId: RUN, blockId: "assistant:t1:0", text: "Let me search.", cursor: 2 },
+    { type: "block", runId: RUN, blockId: "assistant:t1:0", text: "Let me search.", finishReason: null, cursor: 3 },
+    { type: "delta", runId: RUN, blockId: "assistant:t1:1", text: "Reading two ", cursor: 4 },
+    { type: "delta", runId: RUN, blockId: "assistant:t1:1", text: "pages.", cursor: 5 },
+    { type: "block", runId: RUN, blockId: "assistant:t1:1", text: "Reading two pages.", finishReason: null, cursor: 6 },
+    { type: "block", runId: RUN, blockId: "assistant:t1:2", text: "The full brief.", finishReason: "stop", cursor: 7 },
+  ];
+  const seed = () => {
+    const acc = new ChatAccumulator({
+      normalizeUser: (text) => text.replace(/\n?\[context:mention id=[^\]]*?\]\n\{.*\}/g, ""),
+    });
+    acc.apply({ type: "snapshot", runId: RUN, blocks: stored, cursor: 0 });
+    return acc;
+  };
+
+  it("renders a replayed turn once, in the stored order", () => {
+    const acc = seed();
+    for (const frame of replay()) acc.apply(frame);
+    expect(acc.list().map((block) => `${block.kind}:${block.text}`)).toEqual([
+      "user:Help me understand the company",
+      "assistant:Let me search.",
+      "assistant:Reading two pages.",
+      "assistant:The full brief.",
+    ]);
+  });
+
+  it("replaying the same frames again (a reconnect from cursor 0) changes nothing", () => {
+    const acc = seed();
+    for (const frame of replay()) acc.apply(frame);
+    for (const frame of replay()) acc.apply(frame);
+    expect(acc.list()).toHaveLength(4);
+  });
+
+  it("a new reply after the replay still appends, even if it repeats an old message's text", () => {
+    const acc = seed();
+    for (const frame of replay()) acc.apply(frame);
+    acc.apply({
+      type: "block",
+      runId: RUN,
+      blockId: "assistant:t2:0",
+      text: "The full brief.",
+      finishReason: "stop",
+      cursor: 8,
+    });
+    acc.apply({ type: "message", runId: RUN, role: "user", text: "Help me understand the company", cursor: 9 });
+    expect(acc.list()).toHaveLength(6);
+  });
+
+  it("keeps stored block ids and comment pairing, and leaves unseeded accumulation alone", () => {
+    const acc = seed();
+    for (const frame of replay()) acc.apply(frame);
+    expect(acc.list().map((block) => block.messageId)).toEqual(["m1", "m2", "m3", "m4"]);
+    const fresh = new ChatAccumulator();
+    for (const frame of replay()) fresh.apply(frame);
+    expect(fresh.list()).toHaveLength(4);
   });
 });
