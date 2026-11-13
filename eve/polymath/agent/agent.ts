@@ -86,7 +86,7 @@ function polymathModel(runModel?: string | null) {
   // OpenRouter's credit check reserves the full max_tokens amount. Its catalog
   // maximum (16k) exceeded the remaining credit in a real chat and caused a
   // silent-looking turn failure; cap the request while retaining streaming.
-  return entry.provider === "openrouter-free" ? withMaxOutputTokens(model, 12_000) : model;
+  return entry.provider === "openrouter" ? withMaxOutputTokens(model, 12_000) : model;
 }
 
 export default defineAgent({

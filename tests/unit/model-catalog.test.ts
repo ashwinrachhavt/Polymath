@@ -88,7 +88,7 @@ describe("model catalog invariants", () => {
       expect(model.baseUrl, model.id).toMatch(/^https:\/\//);
       // DeepSeek ids differ per gateway; an id paired with the wrong base URL
       // fails with "not a valid model ID", so the mapping is asserted, not assumed.
-      if (model.provider === "openrouter-free") expect(model.baseUrl, model.id).toBe("https://openrouter.ai/api/v1");
+      if (model.provider === "openrouter") expect(model.baseUrl, model.id).toBe("https://openrouter.ai/api/v1");
       if (model.provider === "nvidia") expect(model.baseUrl, model.id).toBe("https://integrate.api.nvidia.com/v1");
     }
   });
