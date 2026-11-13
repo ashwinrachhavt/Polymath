@@ -1,5 +1,6 @@
 "use client";
 
+import { captureException } from "@sentry/nextjs";
 import { useEffect } from "react";
 
 /*
@@ -13,9 +14,13 @@ import { useEffect } from "react";
  */
 export default function GlobalError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   // The boundary is where a render crash becomes visible; log the real error
-  // here or it is swallowed behind the generic copy (ASH-163).
+  // here or it is swallowed behind the generic copy (ASH-163). A boundary
+  // catches the error, so Sentry's global handlers never see it; report it
+  // explicitly. The DSN is inlined at build time, so a build without one drops
+  // the call and the SDK with it.
   useEffect(() => {
     console.error("Polymath failed to start", error);
+    if (process.env.NEXT_PUBLIC_SENTRY_DSN) captureException(error);
   }, [error]);
   return (
     <html lang="en">
