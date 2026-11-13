@@ -37,7 +37,7 @@ export const workspaceSegments: readonly string[] = [
 
 // Public page segments (also mirrored as publicPatterns in src/proxy.ts).
 // /404 is the real-404 renderer the proxy rewrites unmatched paths to.
-export const publicPageSegments: readonly string[] = ["landing", "sign-in", "sign-up", "404"];
+export const publicPageSegments: readonly string[] = ["landing", "sign-in", "sign-up", "invite-only", "404"];
 
 // Second-segment granularity: /api/v1/... and friends. /api/<other> (e.g. a
 // mistyped /api/healthz) is unmatched and gets the 404.
