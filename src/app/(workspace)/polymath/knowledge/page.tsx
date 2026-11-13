@@ -32,8 +32,11 @@ import { StatementPanel, type StatementPanelData } from "./statement-panel";
 import { SummaryPanel } from "./summary-panel";
 import { OpenRecorder } from "./open-recorder";
 import { DocumentVault } from "./vault";
+import { ZETTEL_JOB_KIND_PREFIX } from "@/domains/capture/zettel-job-names";
+import { listUnfinishedGenerationJobs } from "@/domains/jobs/queries";
+import { capabilityStatus } from "@/lib/capability-config";
 
-export const metadata = { title: "Knowledge · Polymath" };
+export const metadata = { title: "Document Vault · Polymath" };
 
 /*
  * The document vault. The screen is three things: a search field, a quiet +,
@@ -83,7 +86,7 @@ export async function KnowledgeSurface({ searchParams }: { searchParams: Promise
   if (!process.env.DATABASE_URL?.trim()) {
     return (
       <>
-        <PageHeader title="Knowledge" purpose="Write, retrieve, and connect." />
+        <PageHeader title="Document Vault" />
         <div className="page-content">
           <EmptyState
             title="Knowledge storage is not configured"
@@ -145,7 +148,12 @@ export async function KnowledgeSurface({ searchParams }: { searchParams: Promise
     );
   }
 
-  const [folders, vaultDocuments] = await Promise.all([listFolders(auth), getVaultDocuments(auth, params.folder)]);
+  const [folders, vaultDocuments, zettelJobs] = await Promise.all([
+    listFolders(auth),
+    getVaultDocuments(auth, params.folder),
+    listUnfinishedGenerationJobs(auth, { kindPrefix: ZETTEL_JOB_KIND_PREFIX }),
+  ]);
+  const generation = capabilityStatus().find((c) => c.id === "generation");
 
   // The vault always has a root crumb, so the toolbar reads the same at the
   // root and inside a folder (and Drive's location line has a first word).
@@ -167,7 +175,7 @@ export async function KnowledgeSurface({ searchParams }: { searchParams: Promise
 
   return (
     <>
-      <PageHeader title="Knowledge" purpose="Write, retrieve, and connect." />
+      <PageHeader title="Document Vault" />
 
       <div className="page-content">
         <DocumentVault
@@ -177,8 +185,15 @@ export async function KnowledgeSurface({ searchParams }: { searchParams: Promise
             parentId: f.parentId,
             name: f.name,
             documentCount: f.documentCount,
+            folderCount: folders.filter((child) => child.parentId === f.id).length,
+            version: f.version,
           }))}
           documents={vaultDocuments}
+          zettelJobs={zettelJobs}
+          zettelProviderReady={generation?.configured ?? false}
+          zettelProviderReason={
+            generation?.reason ?? "Zettelize needs a model. Set OPENROUTER_API_KEY or GEMINI_API_KEY."
+          }
           currentFolderId={params.folder}
           breadcrumb={breadcrumb}
         />

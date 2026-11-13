@@ -12,7 +12,7 @@ import {
 import { acceptAssertions, acceptParty, type PartyDecision } from "@/domains/knowledge/parties";
 import { acceptObligation, rejectObligation } from "@/domains/knowledge/obligations";
 import { captureUrl } from "@/domains/knowledge/capture-url";
-import { createFolder, FolderError } from "@/domains/knowledge/folders";
+import { createFolder, FolderError, renameFolder, setDocumentFolder } from "@/domains/knowledge/folders";
 import { applyTitle } from "@/domains/knowledge/naming";
 import {
   acceptClassification,
@@ -97,6 +97,72 @@ export async function createVaultFolder(folderName: string, parentId: string | n
     if (cause instanceof FolderError) return { ok: false, error: cause.message };
     throw cause;
   }
+}
+
+export type VaultResult = { ok: true } | { ok: false; error: string };
+
+const renameInput = z.object({ folderId: uuid, name: folderNameSchema, expectedVersion: z.number().int().min(1) });
+
+/** Rename a vault folder in place. Version-checked: a stale rename says so instead of overwriting. */
+export async function renameVaultFolder(input: z.input<typeof renameInput>): Promise<VaultResult> {
+  const parsed = renameInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "A folder needs a name under 120 characters." };
+  const auth = await authorize();
+  try {
+    await renameFolder(auth, parsed.data);
+    revalidate();
+    return { ok: true };
+  } catch (cause) {
+    if (cause instanceof FolderError) return { ok: false, error: cause.message };
+    throw cause;
+  }
+}
+
+/** The vault moves at most one page of documents per request. */
+const MAX_MOVE = 100;
+
+const moveInput = z.object({
+  documents: z
+    .array(z.object({ id: uuid, version: z.number().int().min(1) }))
+    .min(1)
+    .max(MAX_MOVE),
+  /** Null files them at the top of the vault. */
+  folderId: uuid.nullable(),
+});
+
+/*
+ * File documents into a folder. Each move is its own version-checked folder
+ * event (setDocumentFolder), so one stale row fails alone and the rest still
+ * move; the answer names how many did not.
+ */
+export async function moveVaultDocuments(input: z.input<typeof moveInput>): Promise<VaultResult> {
+  const parsed = moveInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "That move was malformed. Reload and try again." };
+  const auth = await authorize();
+  let failed = 0;
+  let firstError: string | null = null;
+  for (const doc of parsed.data.documents) {
+    try {
+      await setDocumentFolder(auth, {
+        documentId: doc.id,
+        folderId: parsed.data.folderId,
+        expectedVersion: doc.version,
+      });
+    } catch (cause) {
+      if (!(cause instanceof FolderError)) throw cause;
+      failed += 1;
+      firstError ??= cause.message;
+    }
+  }
+  revalidate();
+  if (failed === 0) return { ok: true };
+  return {
+    ok: false,
+    error:
+      failed === parsed.data.documents.length
+        ? (firstError ?? "Nothing moved.")
+        : `${failed} of ${parsed.data.documents.length} did not move: ${firstError}`,
+  };
 }
 
 const partyDecision: z.ZodType<PartyDecision> = z.discriminatedUnion("action", [

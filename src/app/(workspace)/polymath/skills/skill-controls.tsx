@@ -3,16 +3,21 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
+import { DeleteButton } from "@/components/ui/delete-button";
+import { Switch } from "@/components/ui/switch";
+import { Tooltip } from "@/components/ui/tooltip";
+import { toast } from "@/components/ui/toast";
 import { requestJson } from "@/lib/client-request";
-import { installBundledSkillAction, removeSkillAction, setSkillEnabledAction } from "./actions";
+import { installBundledSkillAction, removeSkillAction, restoreSkillAction, setSkillEnabledAction } from "./actions";
 import type { SkillWriteAction } from "./contract";
 import { randomId } from "@/lib/random-id";
 
 /*
- * The three controls a skill row carries. Each returns a typed refusal rather
- * than throwing, so a stale row says so in place instead of blanking the page:
- * a disable on a skill someone removed in another tab reports it and offers a
- * refresh.
+ * The controls a skill row carries. Each action returns a typed refusal
+ * rather than throwing, so a stale row says so instead of blanking the page:
+ * a disable on a skill someone removed in another tab reports it. The toggle
+ * and remove are icons with tooltips; remove is the shared two-click delete,
+ * with Undo restoring the same row.
  */
 
 function useWrite() {
@@ -34,58 +39,41 @@ function useWrite() {
 }
 
 export function SkillToggle({ id, name, enabled }: { id: string; name: string; enabled: boolean }) {
-  const { pending, error, run } = useWrite();
+  const [pending, start] = useTransition();
   return (
-    <span className="flex flex-wrap items-center gap-2">
-      <Button
-        size="sm"
-        variant="secondary"
-        disabled={pending}
-        onClick={() => run(() => setSkillEnabledAction({ id, enabled: !enabled }))}
-        aria-label={enabled ? `Disable ${name}` : `Enable ${name}`}
-      >
-        {pending ? "Saving…" : enabled ? "Disable" : "Enable"}
-      </Button>
-      {error ? (
-        <span role="alert" className="text-destructive text-xs">
-          {error}
-        </span>
-      ) : null}
-    </span>
+    <Tooltip content={enabled ? "On: the assistant can use it" : "Off: hidden from the assistant"}>
+      <span className="inline-flex">
+        <Switch
+          checked={enabled}
+          disabled={pending}
+          aria-label={`${name} enabled`}
+          onCheckedChange={(next) =>
+            start(async () => {
+              const result = await setSkillEnabledAction({ id, enabled: next });
+              if (!result.ok) toast(result.error, { tone: "error" });
+            })
+          }
+        />
+      </span>
+    </Tooltip>
   );
 }
 
 export function RemoveSkillButton({ id, name }: { id: string; name: string }) {
-  const { pending, error, run } = useWrite();
-  const [confirming, setConfirming] = useState(false);
   return (
-    <span className="flex flex-wrap items-center gap-2">
-      {confirming ? (
-        <>
-          <Button
-            size="sm"
-            variant="destructive"
-            disabled={pending}
-            onClick={() => run(() => removeSkillAction({ id }))}
-            aria-label={`Remove ${name}`}
-          >
-            {pending ? "Removing…" : "Remove"}
-          </Button>
-          <Button size="sm" variant="ghost" disabled={pending} onClick={() => setConfirming(false)}>
-            Keep
-          </Button>
-        </>
-      ) : (
-        <Button size="sm" variant="ghost" onClick={() => setConfirming(true)} aria-label={`Remove ${name}`}>
-          Remove
-        </Button>
-      )}
-      {error ? (
-        <span role="alert" className="text-destructive text-xs">
-          {error}
-        </span>
-      ) : null}
-    </span>
+    <DeleteButton
+      label={`Remove ${name}`}
+      size="icon-sm"
+      deletedMessage={`${name} removed`}
+      onDelete={async () => {
+        const result = await removeSkillAction({ id });
+        if (!result.ok) throw new Error(result.error);
+      }}
+      undo={async () => {
+        const result = await restoreSkillAction({ id });
+        if (!result.ok) throw new Error(result.error);
+      }}
+    />
   );
 }
 

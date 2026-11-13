@@ -55,7 +55,6 @@ export const jobViewColumns = {
   result: generationJobs.result,
   error: generationJobs.error,
   progress: generationJobs.progress,
-  costMicroUsd: generationJobs.costMicroUsd,
   createdAt: generationJobs.createdAt,
   updatedAt: generationJobs.updatedAt,
   stalled: stalledSql().mapWith(Boolean),
@@ -222,15 +221,6 @@ export async function runGenerationJob(
         .where(mine)
         .returning({ id: generationJobs.id });
       if (!stillMine(rows)) throw new GenerationJobCancelled();
-    },
-    async spend(microUsd) {
-      const amount = Math.max(0, Math.round(microUsd));
-      if (amount === 0) return;
-      // Fenced by the attempt, not the status: money spent before a cancel was still spent.
-      await db
-        .update(generationJobs)
-        .set({ costMicroUsd: sql`${generationJobs.costMicroUsd} + ${amount}` })
-        .where(and(eq(generationJobs.id, ref.jobId), eq(generationJobs.attempt, ref.attempt)));
     },
   };
 

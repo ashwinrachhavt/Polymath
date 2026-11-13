@@ -41,13 +41,7 @@ export const LIBRARY_SORTS: readonly LibrarySort[] = ["recent", "added", "title"
 
 /** The status.ts labels, as filter values. The label text itself never leaves status.ts. */
 export type LibraryStateFilter =
-  | "added"
-  | "reading"
-  | "could_not_read"
-  | "fields_not_read"
-  | "fields_not_proposed"
-  | "needs_check"
-  | "filed";
+  "added" | "reading" | "could_not_read" | "fields_not_read" | "fields_not_proposed" | "needs_check" | "filed";
 export const LIBRARY_STATE_FILTERS: readonly LibraryStateFilter[] = [
   "added",
   "reading",
@@ -78,6 +72,12 @@ export type LibraryFilters = {
   taskId?: string;
   createdFrom?: Date;
   createdTo?: Date;
+  /**
+   * Only documents a person uploaded (files.origin = 'upload'): the Document
+   * Vault's rule. Captures filed by Zettelize or Learn, fetched web pages,
+   * crawls, videos and Notion imports are library sources, not vault files.
+   */
+  uploadsOnly?: boolean;
 };
 
 export type LibraryPageInput = {
@@ -92,8 +92,7 @@ export type LibraryPageInput = {
  * "Current" is the restored version when one is pinned, else the newest row
  * (versions.ts owns the definition).
  */
-const latestExtraction = (column: "status" | "proposal_status") =>
-  sql<string | null>`${currentExtractionSql(column)}`;
+const latestExtraction = (column: "status" | "proposal_status") => sql<string | null>`${currentExtractionSql(column)}`;
 
 const undecidedCount = sql<number>`(
   select count(*)::int from field_proposals fp
@@ -165,12 +164,12 @@ export type LibraryFolder = {
   id: string;
   parentId: string | null;
   name: string;
-  /** Live documents filed directly in this folder. */
+  /** Live uploaded documents filed directly in this folder (the vault's own rule). */
   documentCount: number;
   version: number;
 };
 
-/** Every live folder in the workspace with its direct document count; the tree is composed client-side. */
+/** Every live folder in the workspace with its direct count of uploaded documents; the tree is composed client-side. */
 export async function listFolders(auth: AuthContext): Promise<LibraryFolder[]> {
   const rows = await db
     .select({
@@ -180,7 +179,8 @@ export async function listFolders(auth: AuthContext): Promise<LibraryFolder[]> {
       version: documentFolders.version,
       documentCount: sql<number>`(
         select count(*)::int from documents d
-        where d.folder_id = document_folders.id and d.archived_at is null
+        join files f on f.id = d.file_id
+        where d.folder_id = document_folders.id and d.archived_at is null and f.origin = 'upload'
       )`,
     })
     .from(documentFolders)
@@ -225,13 +225,19 @@ function libraryWhere(auth: AuthContext, filters: LibraryFilters): SQL[] {
   if (filters.docType) parts.push(eq(documents.docType, filters.docType as never));
   if (filters.state) parts.push(eq(libraryStateSql, filters.state));
   if (filters.contactId) {
-    parts.push(sql`exists (select 1 from document_parties dp where dp.document_id = ${documents.id} and dp.contact_id = ${filters.contactId})`);
+    parts.push(
+      sql`exists (select 1 from document_parties dp where dp.document_id = ${documents.id} and dp.contact_id = ${filters.contactId})`,
+    );
   }
   if (filters.companyId) {
-    parts.push(sql`exists (select 1 from document_parties dp where dp.document_id = ${documents.id} and dp.company_id = ${filters.companyId})`);
+    parts.push(
+      sql`exists (select 1 from document_parties dp where dp.document_id = ${documents.id} and dp.company_id = ${filters.companyId})`,
+    );
   }
   if (filters.tag) {
-    parts.push(sql`exists (select 1 from document_tags dt where dt.document_id = ${documents.id} and dt.tag = ${filters.tag})`);
+    parts.push(
+      sql`exists (select 1 from document_tags dt where dt.document_id = ${documents.id} and dt.tag = ${filters.tag})`,
+    );
   }
   if (filters.taskId) {
     parts.push(
@@ -240,6 +246,7 @@ function libraryWhere(auth: AuthContext, filters: LibraryFilters): SQL[] {
   }
   if (filters.createdFrom) parts.push(gte(documents.createdAt, filters.createdFrom));
   if (filters.createdTo) parts.push(lte(documents.createdAt, filters.createdTo));
+  if (filters.uploadsOnly) parts.push(eq(files.origin, "upload"));
   const q = filters.q?.trim();
   if (q) {
     const like = `%${escapeLike(q)}%`;
@@ -299,7 +306,10 @@ function orderByFor(sort: LibrarySort): SQL[] {
   }
 }
 
-function cursorOf(sort: LibrarySort, row: { id: string; title: string; sizeBytes: number | null; createdAt: Date; updatedAt: Date }): string {
+function cursorOf(
+  sort: LibrarySort,
+  row: { id: string; title: string; sizeBytes: number | null; createdAt: Date; updatedAt: Date },
+): string {
   switch (sort) {
     case "title":
       return encodeCursor({ v: row.title.toLowerCase(), id: row.id });
@@ -375,7 +385,10 @@ export async function listDocuments(auth: AuthContext, input: LibraryPageInput =
   ]);
 
   const page = rows.slice(0, limit);
-  const tagsByDocument = await getDocumentTags(auth, page.map((row) => row.id));
+  const tagsByDocument = await getDocumentTags(
+    auth,
+    page.map((row) => row.id),
+  );
   return {
     rows: page.map((row) => ({
       ...row,
@@ -403,7 +416,10 @@ export type DocumentVersionRow = {
 };
 
 /** Every extraction version of a document, newest first - re-reading creates rows, never edits. */
-export async function getDocumentVersions(auth: AuthContext, input: { documentId: string }): Promise<DocumentVersionRow[]> {
+export async function getDocumentVersions(
+  auth: AuthContext,
+  input: { documentId: string },
+): Promise<DocumentVersionRow[]> {
   const rows = await db
     .select({
       extractionId: documentExtractions.id,
@@ -470,25 +486,47 @@ export async function getDocumentActivity(
         })
         .from(documentExtractionAttempts)
         .innerJoin(documentExtractions, eq(documentExtractions.id, documentExtractionAttempts.extractionId))
-        .where(and(eq(documentExtractions.documentId, doc.id), eq(documentExtractionAttempts.workspaceId, auth.workspaceId)))
+        .where(
+          and(eq(documentExtractions.documentId, doc.id), eq(documentExtractionAttempts.workspaceId, auth.workspaceId)),
+        )
         .orderBy(desc(documentExtractionAttempts.startedAt))
         .limit(limit),
       db
-        .select({ at: documentRenameEvents.createdAt, oldTitle: documentRenameEvents.oldTitle, newTitle: documentRenameEvents.newTitle, source: documentRenameEvents.source })
+        .select({
+          at: documentRenameEvents.createdAt,
+          oldTitle: documentRenameEvents.oldTitle,
+          newTitle: documentRenameEvents.newTitle,
+          source: documentRenameEvents.source,
+        })
         .from(documentRenameEvents)
         .where(and(eq(documentRenameEvents.documentId, doc.id), eq(documentRenameEvents.workspaceId, auth.workspaceId)))
         .orderBy(desc(documentRenameEvents.createdAt))
         .limit(limit),
       db
-        .select({ at: documentFolderEvents.createdAt, fromFolderId: documentFolderEvents.fromFolderId, toFolderId: documentFolderEvents.toFolderId })
+        .select({
+          at: documentFolderEvents.createdAt,
+          fromFolderId: documentFolderEvents.fromFolderId,
+          toFolderId: documentFolderEvents.toFolderId,
+        })
         .from(documentFolderEvents)
         .where(and(eq(documentFolderEvents.documentId, doc.id), eq(documentFolderEvents.workspaceId, auth.workspaceId)))
         .orderBy(desc(documentFolderEvents.createdAt))
         .limit(limit),
       db
-        .select({ at: documentClassificationProposals.createdAt, decidedAt: documentClassificationProposals.decidedAt, status: documentClassificationProposals.status, proposedType: documentClassificationProposals.proposedType, proposer: documentClassificationProposals.proposer })
+        .select({
+          at: documentClassificationProposals.createdAt,
+          decidedAt: documentClassificationProposals.decidedAt,
+          status: documentClassificationProposals.status,
+          proposedType: documentClassificationProposals.proposedType,
+          proposer: documentClassificationProposals.proposer,
+        })
         .from(documentClassificationProposals)
-        .where(and(eq(documentClassificationProposals.documentId, doc.id), eq(documentClassificationProposals.workspaceId, auth.workspaceId)))
+        .where(
+          and(
+            eq(documentClassificationProposals.documentId, doc.id),
+            eq(documentClassificationProposals.workspaceId, auth.workspaceId),
+          ),
+        )
         .orderBy(desc(documentClassificationProposals.createdAt))
         .limit(limit),
       db
@@ -500,13 +538,29 @@ export async function getDocumentActivity(
       db
         .select({ at: fieldProposals.decidedAt, status: fieldProposals.status, fieldName: fieldProposals.fieldName })
         .from(fieldProposals)
-        .where(and(eq(fieldProposals.documentId, doc.id), eq(fieldProposals.workspaceId, auth.workspaceId), isNotNull(fieldProposals.decidedAt)))
+        .where(
+          and(
+            eq(fieldProposals.documentId, doc.id),
+            eq(fieldProposals.workspaceId, auth.workspaceId),
+            isNotNull(fieldProposals.decidedAt),
+          ),
+        )
         .orderBy(desc(fieldProposals.decidedAt))
         .limit(limit),
       db
-        .select({ at: documentObligations.decidedAt, status: documentObligations.status, kind: documentObligations.kind })
+        .select({
+          at: documentObligations.decidedAt,
+          status: documentObligations.status,
+          kind: documentObligations.kind,
+        })
         .from(documentObligations)
-        .where(and(eq(documentObligations.documentId, doc.id), eq(documentObligations.workspaceId, auth.workspaceId), isNotNull(documentObligations.decidedAt)))
+        .where(
+          and(
+            eq(documentObligations.documentId, doc.id),
+            eq(documentObligations.workspaceId, auth.workspaceId),
+            isNotNull(documentObligations.decidedAt),
+          ),
+        )
         .orderBy(desc(documentObligations.decidedAt))
         .limit(limit),
       db
@@ -529,19 +583,30 @@ export async function getDocumentActivity(
     ]);
 
   const folderName = new Map(folderRows.map((f) => [f.id, f.name]));
-  const items: DocumentActivityItem[] = [{ kind: "added", at: doc.createdAt, summary: "Added", detail: { title: doc.title } }];
+  const items: DocumentActivityItem[] = [
+    { kind: "added", at: doc.createdAt, summary: "Added", detail: { title: doc.title } },
+  ];
 
   for (const a of attempts) {
     items.push({
       kind: "extraction_attempt",
       at: a.at,
       summary:
-        a.outcome === "succeeded" ? `Read (attempt ${a.attempt})` : a.outcome === "failed" ? `Could not read (attempt ${a.attempt})` : `Reading abandoned (attempt ${a.attempt})`,
+        a.outcome === "succeeded"
+          ? `Read (attempt ${a.attempt})`
+          : a.outcome === "failed"
+            ? `Could not read (attempt ${a.attempt})`
+            : `Reading abandoned (attempt ${a.attempt})`,
       detail: { error: a.error },
     });
   }
   for (const r of renames) {
-    items.push({ kind: "renamed", at: r.at, summary: `Renamed to "${r.newTitle}"`, detail: { from: r.oldTitle, to: r.newTitle, source: r.source } });
+    items.push({
+      kind: "renamed",
+      at: r.at,
+      summary: `Renamed to "${r.newTitle}"`,
+      detail: { from: r.oldTitle, to: r.newTitle, source: r.source },
+    });
   }
   for (const m of moves) {
     const to = m.toFolderId ? (folderName.get(m.toFolderId) ?? "a folder") : "the library root";
@@ -550,25 +615,52 @@ export async function getDocumentActivity(
   }
   for (const c of classifications) {
     if (c.status === "proposed") {
-      items.push({ kind: "classified", at: c.at, summary: `Proposed type ${c.proposedType} (${c.proposer})`, detail: { status: c.status } });
+      items.push({
+        kind: "classified",
+        at: c.at,
+        summary: `Proposed type ${c.proposedType} (${c.proposer})`,
+        detail: { status: c.status },
+      });
     } else if (c.decidedAt) {
-      items.push({ kind: "classified", at: c.decidedAt, summary: `Type ${c.proposedType} ${c.status}`, detail: { status: c.status } });
+      items.push({
+        kind: "classified",
+        at: c.decidedAt,
+        summary: `Type ${c.proposedType} ${c.status}`,
+        detail: { status: c.status },
+      });
     }
   }
   for (const d of decisions) {
     items.push({ kind: "decision", at: d.at, summary: `Decision: ${d.decision}`, detail: {} });
   }
   for (const f of fieldRows) {
-    if (f.at) items.push({ kind: "field_decided", at: f.at, summary: `Field ${f.fieldName} ${f.status}`, detail: { status: f.status } });
+    if (f.at)
+      items.push({
+        kind: "field_decided",
+        at: f.at,
+        summary: `Field ${f.fieldName} ${f.status}`,
+        detail: { status: f.status },
+      });
   }
   for (const o of obligationRows) {
-    if (o.at) items.push({ kind: "obligation_decided", at: o.at, summary: `Obligation ${o.kind} ${o.status}`, detail: { status: o.status } });
+    if (o.at)
+      items.push({
+        kind: "obligation_decided",
+        at: o.at,
+        summary: `Obligation ${o.kind} ${o.status}`,
+        detail: { status: o.status },
+      });
   }
 
   for (const r of restores) {
     const payload = (r.payload ?? {}) as Record<string, unknown>;
     const hash = typeof payload.contentHash === "string" ? payload.contentHash.slice(0, 12) : null;
-    items.push({ kind: "restored", at: r.at, summary: `Restored an earlier read${hash ? ` (${hash})` : ""}`, detail: { contentHash: hash } });
+    items.push({
+      kind: "restored",
+      at: r.at,
+      summary: `Restored an earlier read${hash ? ` (${hash})` : ""}`,
+      detail: { contentHash: hash },
+    });
   }
 
   return items.sort((a, b) => b.at.getTime() - a.at.getTime()).slice(0, limit);
@@ -593,13 +685,23 @@ export async function getDocumentParties(auth: AuthContext, input: { documentId:
   const contactIds = rows.map((p) => p.contactId).filter((v): v is string => v !== null);
   const companyIds = rows.map((p) => p.companyId).filter((v): v is string => v !== null);
   const [contactRows, companyRows] = await Promise.all([
-    contactIds.length ? db.select({ id: contacts.id, fullName: contacts.fullName }).from(contacts).where(inArray(contacts.id, contactIds)) : Promise.resolve([]),
-    companyIds.length ? db.select({ id: companies.id, name: companies.name }).from(companies).where(inArray(companies.id, companyIds)) : Promise.resolve([]),
+    contactIds.length
+      ? db
+          .select({ id: contacts.id, fullName: contacts.fullName })
+          .from(contacts)
+          .where(inArray(contacts.id, contactIds))
+      : Promise.resolve([]),
+    companyIds.length
+      ? db.select({ id: companies.id, name: companies.name }).from(companies).where(inArray(companies.id, companyIds))
+      : Promise.resolve([]),
   ]);
   const contactName = new Map(contactRows.map((c) => [c.id, c.fullName]));
   const companyName = new Map(companyRows.map((c) => [c.id, c.name]));
   return rows.map((p) => ({
     ...p,
-    resolvedName: (p.contactId ? contactName.get(p.contactId) : undefined) ?? (p.companyId ? companyName.get(p.companyId) : undefined) ?? null,
+    resolvedName:
+      (p.contactId ? contactName.get(p.contactId) : undefined) ??
+      (p.companyId ? companyName.get(p.companyId) : undefined) ??
+      null,
   }));
 }

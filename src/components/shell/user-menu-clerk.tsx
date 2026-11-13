@@ -5,6 +5,7 @@ import { SignInButton, SignOutButton, useUser } from "@clerk/nextjs";
 import { Popover } from "radix-ui";
 import { cn } from "cn";
 import { Activity, IdCard, LogOut, Settings, Sparkles } from "lucide-react";
+import { Tooltip } from "@/components/ui/tooltip";
 import { AnonymousMenu, MenuItem } from "./user-menu-shared";
 import { UserProfilePanel } from "./user-profile-panel";
 
@@ -34,26 +35,31 @@ export default function SignedInMenu() {
   return (
     <>
       <Popover.Root open={menuOpen} onOpenChange={setMenuOpen}>
-        <Popover.Trigger
-          aria-label="Open account menu"
-          className={cn(
-            "text-muted-foreground hover:bg-muted hover:text-foreground flex size-7 items-center justify-center overflow-hidden rounded-full bg-muted text-data font-medium outline-none",
-            "focus-visible:ring-ring focus-visible:ring-3",
-            "data-[state=open]:text-foreground",
-          )}
-        >
-          {user.imageUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element -- Clerk hosts the avatar; next/image would need a remote-pattern entry per provider.
-            <img
-              src={user.imageUrl}
-              alt=""
-              className="size-full rounded-full object-cover"
-              referrerPolicy="no-referrer"
-            />
-          ) : (
-            initial
-          )}
-        </Popover.Trigger>
+        <Tooltip content="Account">
+          <Popover.Trigger asChild>
+            <button
+              type="button"
+              aria-label="Open account menu"
+              className={cn(
+                "text-muted-foreground hover:bg-muted hover:text-foreground flex size-7 items-center justify-center overflow-hidden rounded-full bg-muted text-data font-medium outline-none",
+                "focus-visible:ring-ring focus-visible:ring-3",
+                "data-[state=open]:text-foreground",
+              )}
+            >
+              {user.imageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element -- Clerk hosts the avatar; next/image would need a remote-pattern entry per provider.
+                <img
+                  src={user.imageUrl}
+                  alt=""
+                  className="size-full rounded-full object-cover"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                initial
+              )}
+            </button>
+          </Popover.Trigger>
+        </Tooltip>
         <Popover.Portal>
           <Popover.Content
             align="end"

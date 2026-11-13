@@ -2,14 +2,8 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { linkCaptureDocument, captureInWorkspace } from "@/domains/capture/children";
 import type { AuthContext } from "@/domains/identity/resolve";
-import type { GenerationJobRun, GenerationJobRunner } from "@/domains/jobs/runners";
+import type { GenerationJobRunner } from "@/domains/jobs/runners";
 import { GenerationJobFailure } from "@/domains/jobs/state";
-import {
-  groqWhisperConfigured,
-  transcribeClipWithGroq,
-  type AudioClip,
-  type SpeechSegment,
-} from "@/integrations/transcription/groq-whisper";
 import { canonicalVideoUrl, fetchTranscript, type TranscriptCue } from "@/integrations/youtube/transcript";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
@@ -23,31 +17,30 @@ import { recordSource } from "./sources";
  * video document, which the person watches in the jobs panel.
  *
  *   1. the transcript: the shared cache (video_transcripts) first, then the
- *      video's own captions (free, one or two seconds), and only when the
- *      video has none, its speech transcribed by Groq Whisper in clips of
- *      SPEECH_CLIP_SECONDS (about $0.04 an hour), with the spend recorded on
- *      the job. Whatever was made is cached by video id, so absorbing the
- *      same video again, anywhere, costs nothing;
+ *      video's own captions (free, well under a second). Whatever was found is
+ *      cached by video id, so absorbing the same video again, anywhere, is
+ *      instant;
  *   2. the text filed as the document's bytes, with its source identity;
- *   3. the cue table, so a citation can deep-link to ?t=<seconds>;
+ *   3. the cue table, so a citation can deep-link to ?t=<seconds>.
+ *
+ * A video with no captions is skipped: the job ends ready with that said
+ * plainly, and the document records why, so the notebook's source list shows
+ * it. Transcribing speech was weighed and left out on purpose (cost and
+ * moving parts for the minority of videos without captions).
  *
  * The job is ready once the transcript is filed. Extraction (chunking,
  * embeddings, zettel proposals) is the document pipeline's own work, queued by
  * intakeFile as `document.extraction_requested` exactly as for an upload or a
  * crawled page; it takes far longer than the transcript (tens of seconds for
  * an hour of speech) and has its own state on the source row, so the job does
- * not wait for it.
- *
- * Each step is idempotent: a retried job finds the file already attached and
- * the transcript cached. A video that cannot be transcribed fails the job
- * with a reason and records the failure on the document, where the notebook's
- * source list shows it and offers a retry.
+ * not wait for it. Each step is idempotent: a retried job finds the file
+ * already attached and the transcript cached.
  */
 
 export const YOUTUBE_ABSORB_KIND = "knowledge.youtube";
 
-/** Speech is transcribed in clips this long: well inside Groq's upload limit at audio bitrates. */
-export const SPEECH_CLIP_SECONDS = 20 * 60;
+/** What a skipped video says, on the job and on its document. */
+const NO_CAPTIONS_COPY = "No captions, so this video was skipped.";
 
 const inputSchema = z.object({
   documentId: z.uuid(),
@@ -58,20 +51,8 @@ const inputSchema = z.object({
 
 export type YouTubeAbsorbInput = z.infer<typeof inputSchema>;
 
-/**
- * Where a video's audio comes from when it has no captions. Asked for the
- * video's length first, then for each clip of SPEECH_CLIP_SECONDS.
- */
-type VideoAudioSource = {
-  durationSeconds(videoId: string, signal: AbortSignal): Promise<number>;
-  clip(videoId: string, range: { from: number; to: number }, signal: AbortSignal): Promise<AudioClip>;
-};
-
 export type YouTubeAbsorbDeps = {
   fetchCaptions?: typeof fetchTranscript;
-  transcribeClip?: typeof transcribeClipWithGroq;
-  /** Null: no audio can be had, so a video without captions fails with that reason. */
-  audio?: VideoAudioSource | null;
 };
 
 type Transcript = {
@@ -79,32 +60,9 @@ type Transcript = {
   cues: TranscriptCue[];
   language: string | null;
   generated: boolean;
-  source: "captions" | "speech";
-  /** True when it came from the cache: nothing was fetched or paid for this time. */
+  /** True when it came from the cache: nothing was fetched this time. */
   cached: boolean;
 };
-
-/** The clips a speech transcription is split into, as [from, to) seconds. */
-export function speechClips(durationSeconds: number): Array<{ from: number; to: number }> {
-  const clips: Array<{ from: number; to: number }> = [];
-  for (let from = 0; from < durationSeconds; from += SPEECH_CLIP_SECONDS) {
-    clips.push({ from, to: Math.min(durationSeconds, from + SPEECH_CLIP_SECONDS) });
-  }
-  return clips;
-}
-
-/** Whisper segments of one clip as cues on the video's own clock. */
-export function clipCues(segments: SpeechSegment[], offsetSeconds: number): TranscriptCue[] {
-  return segments.map((segment) => ({
-    start: round3(segment.start + offsetSeconds),
-    duration: round3(Math.max(0, segment.end - segment.start)),
-    text: segment.text,
-  }));
-}
-
-function round3(n: number): number {
-  return Math.round(n * 1000) / 1000;
-}
 
 export const youtubeAbsorbRunner =
   (deps: YouTubeAbsorbDeps = {}): GenerationJobRunner =>
@@ -118,14 +76,14 @@ export const youtubeAbsorbRunner =
       .where(and(eq(documents.id, input.documentId), eq(documents.workspaceId, auth.workspaceId)))
       .limit(1);
     if (!doc) throw new GenerationJobFailure("The video was removed from your library before it was read.");
+    const result = (notice: string) => ({ href: `/polymath/knowledge?doc=${doc.id}`, notice });
+
     let notice: string | null = null;
     if (!doc.fileId) {
-      let transcript: Transcript;
-      try {
-        transcript = await videoTranscript(input.videoId, run, deps);
-      } catch (cause) {
-        if (cause instanceof GenerationJobFailure) await recordTranscriptFailure(auth, doc.id, cause.message);
-        throw cause;
+      const transcript = await videoTranscript(input.videoId, run.progress, deps);
+      if (!transcript) {
+        await recordTranscriptFailure(auth, doc.id, NO_CAPTIONS_COPY);
+        return result(NO_CAPTIONS_COPY);
       }
       await run.progress("Filing the transcript");
       await fileTranscript(auth, { documentId: doc.id, videoId: input.videoId, fallbackTitle: doc.title, transcript });
@@ -140,14 +98,18 @@ export const youtubeAbsorbRunner =
 function transcriptNotice(transcript: Transcript): string {
   const minutes = Math.round((transcript.cues.at(-1)?.start ?? 0) / 60);
   const length = minutes > 0 ? `${minutes} min` : "short";
-  if (transcript.cached) return `Used the saved transcript (${length}).`;
-  return transcript.source === "captions"
-    ? `Read from the video's captions (${length}).`
-    : `Transcribed from the video's speech (${length}).`;
+  return transcript.cached ? `Used the saved transcript (${length}).` : `Read from the video's captions (${length}).`;
 }
 
-/** The cache, then the captions, then the speech. Throws GenerationJobFailure with a reason a person can read. */
-async function videoTranscript(videoId: string, run: GenerationJobRun, deps: YouTubeAbsorbDeps): Promise<Transcript> {
+/**
+ * The cache, then the captions. Null when the video has none. Throws
+ * GenerationJobFailure (with a retry) when YouTube could not answer.
+ */
+async function videoTranscript(
+  videoId: string,
+  progress: (step: string) => Promise<void>,
+  deps: YouTubeAbsorbDeps,
+): Promise<Transcript | null> {
   const [cached] = await db.select().from(videoTranscripts).where(eq(videoTranscripts.videoId, videoId)).limit(1);
   if (cached) {
     return {
@@ -155,12 +117,11 @@ async function videoTranscript(videoId: string, run: GenerationJobRun, deps: You
       cues: cached.cues as TranscriptCue[],
       language: cached.language,
       generated: cached.generated,
-      source: cached.source === "speech" ? "speech" : "captions",
       cached: true,
     };
   }
 
-  await run.progress("Looking for captions");
+  await progress("Fetching captions");
   let captions;
   try {
     captions = await (deps.fetchCaptions ?? fetchTranscript)(canonicalVideoUrl(videoId));
@@ -173,72 +134,24 @@ async function videoTranscript(videoId: string, run: GenerationJobRun, deps: You
       cues: captions.cues,
       language: captions.language,
       generated: captions.generated,
-      source: "captions",
       cached: false,
     };
-    await cacheTranscript(videoId, transcript, 0);
+    await cacheTranscript(videoId, transcript);
     return transcript;
   }
-  if (!captions.error.includes("no captions")) throw new GenerationJobFailure(captions.error);
-
-  const audio = deps.audio === undefined ? null : deps.audio;
-  if (!audio || !groqWhisperConfigured()) {
-    throw new GenerationJobFailure("This video has no captions, and transcribing speech is not set up here.");
-  }
-  return transcribeSpeech(videoId, audio, run, deps.transcribeClip ?? transcribeClipWithGroq);
+  if (captions.error.includes("no captions")) return null;
+  throw new GenerationJobFailure(captions.error);
 }
 
-async function transcribeSpeech(
-  videoId: string,
-  audio: VideoAudioSource,
-  run: GenerationJobRun,
-  transcribe: typeof transcribeClipWithGroq,
-): Promise<Transcript> {
-  await run.progress("Fetching the audio");
-  const duration = await audio.durationSeconds(videoId, run.signal);
-  const clips = speechClips(duration);
-  if (clips.length === 0) throw new GenerationJobFailure("This video has no audio to transcribe.");
-  const cues: TranscriptCue[] = [];
-  let spent = 0;
-  for (const [index, range] of clips.entries()) {
-    await run.progress("Transcribing speech", { done: index, total: clips.length });
-    let clip: AudioClip;
-    let heard: Awaited<ReturnType<typeof transcribeClipWithGroq>>;
-    try {
-      clip = await audio.clip(videoId, range, run.signal);
-      heard = await transcribe(clip, { signal: run.signal });
-    } catch (cause) {
-      if (run.signal.aborted) throw cause;
-      throw new GenerationJobFailure("The video's speech could not be transcribed. Try again.");
-    }
-    await run.spend(heard.costMicroUsd);
-    spent += heard.costMicroUsd;
-    cues.push(...clipCues(heard.segments, range.from));
-  }
-  if (cues.length === 0) throw new GenerationJobFailure("No speech was heard in this video.");
-  const transcript: Transcript = {
-    title: null,
-    cues,
-    language: null,
-    generated: true,
-    source: "speech",
-    cached: false,
-  };
-  await cacheTranscript(videoId, transcript, spent);
-  return transcript;
-}
-
-async function cacheTranscript(videoId: string, transcript: Transcript, costMicroUsd: number): Promise<void> {
+async function cacheTranscript(videoId: string, transcript: Transcript): Promise<void> {
   await db
     .insert(videoTranscripts)
     .values({
       videoId,
-      source: transcript.source,
       title: transcript.title,
       language: transcript.language,
       generated: transcript.generated,
       cues: transcript.cues,
-      costMicroUsd,
     })
     .onConflictDoNothing();
 }

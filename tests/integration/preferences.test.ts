@@ -28,7 +28,15 @@ suite("server-saved preferences (D23)", () => {
     const seeded = await seedWorkspace(db, `prefs-default-${Date.now()}`);
     const auth = ownerAuth(seeded.userId, seeded.workspaceId);
     const loaded = await preferences.getPreferences(auth);
-    expect(loaded).toEqual({ timezone: "UTC", weekStart: 1, appearance: "system", motion: "full", interfaceMode: "auto", version: 0 });
+    expect(loaded).toEqual({
+      timezone: "UTC",
+      weekStart: 1,
+      appearance: "system",
+      motion: "full",
+      interfaceMode: "auto",
+      accent: "graphite",
+      version: 0,
+    });
   });
 
   it("first save inserts version 1 and round-trips", async () => {
@@ -40,7 +48,13 @@ suite("server-saved preferences (D23)", () => {
       weekStart: 7,
       motion: "reduced",
     });
-    expect(saved).toMatchObject({ timezone: "Asia/Kolkata", weekStart: 7, motion: "reduced", appearance: "system", version: 1 });
+    expect(saved).toMatchObject({
+      timezone: "Asia/Kolkata",
+      weekStart: 7,
+      motion: "reduced",
+      appearance: "system",
+      version: 1,
+    });
     const loaded = await preferences.getPreferences(auth);
     expect(loaded).toEqual(saved);
   });
@@ -48,9 +62,9 @@ suite("server-saved preferences (D23)", () => {
   it("first save with a nonzero expectation conflicts instead of inserting", async () => {
     const seeded = await seedWorkspace(db, `prefs-stale0-${Date.now()}`);
     const auth = ownerAuth(seeded.userId, seeded.workspaceId);
-    await expect(
-      preferences.updatePreferences(auth, { expectedVersion: 3, timezone: "UTC" }),
-    ).rejects.toThrow(/changed in another tab or device/);
+    await expect(preferences.updatePreferences(auth, { expectedVersion: 3, timezone: "UTC" })).rejects.toThrow(
+      /changed in another tab or device/,
+    );
     expect((await preferences.getPreferences(auth)).version).toBe(0);
   });
 
@@ -71,14 +85,23 @@ suite("server-saved preferences (D23)", () => {
   it("the mode scopes per (workspace, user): a teammate keeps their own (ASH-312)", async () => {
     const seeded = await seedWorkspace(db, `prefs-scope-${Date.now()}`);
     const owner = ownerAuth(seeded.userId, seeded.workspaceId);
-    const [teammate] = await db.insert(users).values({ clerkUserId: `tw_teammate_${Date.now()}` }).returning();
-    await db.insert(memberships).values({ workspaceId: seeded.workspaceId, userId: teammate.id, role: "member", status: "active" });
+    const [teammate] = await db
+      .insert(users)
+      .values({ clerkUserId: `tw_teammate_${Date.now()}` })
+      .returning();
+    await db
+      .insert(memberships)
+      .values({ workspaceId: seeded.workspaceId, userId: teammate.id, role: "member", status: "active" });
     const member = { userId: teammate.id, workspaceId: seeded.workspaceId, role: "member" as const };
 
     await preferences.updatePreferences(owner, { expectedVersion: 0, interfaceMode: "library" });
     // The teammate's row is untouched: default, version 0, and their own save
     // does not read or move the owner's mode.
-    expect(await preferences.getPreferences(member)).toMatchObject({ interfaceMode: "auto", version: 0 });
+    expect(await preferences.getPreferences(member)).toMatchObject({
+      interfaceMode: "auto",
+      accent: "graphite",
+      version: 0,
+    });
     const teammateSaved = await preferences.updatePreferences(member, { expectedVersion: 0, interfaceMode: "action" });
     expect(teammateSaved.interfaceMode).toBe("action");
     expect((await preferences.getPreferences(owner)).interfaceMode).toBe("library");
@@ -112,9 +135,28 @@ suite("server-saved preferences (D23)", () => {
   it("an invalid timezone is refused before any write", async () => {
     const seeded = await seedWorkspace(db, `prefs-bad-${Date.now()}`);
     const auth = ownerAuth(seeded.userId, seeded.workspaceId);
+    await expect(preferences.updatePreferences(auth, { expectedVersion: 0, timezone: "Not/AZone" })).rejects.toThrow(
+      /not a recognized IANA timezone/,
+    );
+    expect((await preferences.getPreferences(auth)).version).toBe(0);
+  });
+
+  it("the accent saves per user and follows to every device; a patch without it keeps it", async () => {
+    const seeded = await seedWorkspace(db, `prefs-accent-${Date.now()}`);
+    const auth = ownerAuth(seeded.userId, seeded.workspaceId);
+    const v1 = await preferences.updatePreferences(auth, { expectedVersion: 0, accent: "blue" });
+    expect(v1.accent).toBe("blue");
+    const v2 = await preferences.updatePreferences(auth, { expectedVersion: v1.version, appearance: "dark" });
+    expect(v2.accent).toBe("blue");
+    expect((await preferences.getPreferences(auth)).accent).toBe("blue");
+  });
+
+  it("an unknown accent is refused before any write", async () => {
+    const seeded = await seedWorkspace(db, `prefs-accent-bad-${Date.now()}`);
+    const auth = ownerAuth(seeded.userId, seeded.workspaceId);
     await expect(
-      preferences.updatePreferences(auth, { expectedVersion: 0, timezone: "Not/AZone" }),
-    ).rejects.toThrow(/not a recognized IANA timezone/);
+      preferences.updatePreferences(auth, { expectedVersion: 0, accent: "chartreuse" as never }),
+    ).rejects.toThrow(/Accent must be one of/);
     expect((await preferences.getPreferences(auth)).version).toBe(0);
   });
 });

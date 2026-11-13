@@ -42,6 +42,7 @@ export function ContactDetailPanel({
       <Panel
         title={contact.fullName}
         description={`${contact.title || "No title recorded"}${currentCompany ? ` at ${currentCompany.name}` : ""}`}
+        actions={<ArchiveContactButton contactId={contact.id} version={contact.version} />}
       >
         <dl className="mb-4 grid gap-2 text-body-dense sm:grid-cols-2">
           <div>
@@ -93,14 +94,8 @@ export function ContactDetailPanel({
             />
           </div>
         </details>
-        <div className="mt-4 border-t border-border pt-4">
-          <ArchiveContactButton contactId={contact.id} version={contact.version} name={contact.fullName} />
-        </div>
       </Panel>
-      <Panel
-        title="Research"
-        description="A bounded web pass over this person's public footprint becomes a grounded card set; the focus buttons research one angle."
-      >
+      <Panel title="Research">
         <div className="space-y-4">
           <ContactResearchControls contactId={contact.id} researched={researchCardSet !== null} />
           {researchCardSet ? (
@@ -138,10 +133,7 @@ export function ContactDetailPanel({
         <FollowUpForm contactId={contact.id} />
       </Panel>
 
-      <Panel
-        title="Correspondence"
-        description="Outreach is drafted here. You approve the exact send in Reviews, then send it from here through the connected Gmail account. Every row carries its state."
-      >
+      <Panel title="Correspondence" description="Each send is approved in Reviews first.">
         <div className="mb-4 divide-y divide-border">
           {correspondence.map((item) => (
             <div key={item.id} className="py-3 first:pt-0">
@@ -178,7 +170,7 @@ export function ContactDetailPanel({
         <CorrespondenceForm contactId={contact.id} />
       </Panel>
 
-      <Panel title="Observations" description="Everything asserted about this contact carries where it came from.">
+      <Panel title="Observations">
         <div className="mb-4 space-y-3">
           {detail.observations.map((observation) => (
             <div key={observation.id} className="border-b border-border pb-3 last:border-0">

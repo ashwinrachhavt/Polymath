@@ -36,7 +36,6 @@ const viewSchema = z.object({
   notice: z.string().nullable(),
   error: z.string().nullable(),
   progress: z.object({ step: z.string(), done: z.number().nullable(), total: z.number().nullable() }).nullable(),
-  costUsd: z.number(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

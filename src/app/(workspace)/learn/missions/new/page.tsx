@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { connection } from "next/server";
 import type { Metadata } from "next";
 import { getAuthContext } from "@/lib/auth";
@@ -6,6 +5,7 @@ import { requireRole } from "@/lib/auth/guards";
 import { searchCaptures } from "@/domains/capture/queries";
 import { searchLearningDocuments } from "@/domains/learning/queries";
 import type { LearningSourceOption } from "../../make-actions";
+import { BackToLearn } from "../../back-to-learn";
 import { MissionForm } from "./mission-form";
 
 export const metadata: Metadata = { title: "New Mission · Polymath" };
@@ -39,15 +39,9 @@ export default async function NewMissionPage() {
 
   return (
     <main className="page-content mx-auto w-full max-w-3xl">
-      <div className="mb-5">
-        <Link href="/learn" className="text-sm text-muted-foreground underline-offset-4 hover:underline">
-          Back to Learn
-        </Link>
-        <h1 className="mt-2 text-2xl font-medium">New Mission</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Say what you must be able to do and bring what to study from. Polymath lists the concepts worth owning, and
-          you approve the list.
-        </p>
+      <div className="mb-4 flex items-center gap-2">
+        <BackToLearn />
+        <h1 className="min-w-0 text-2xl font-medium">New Mission</h1>
       </div>
       <MissionForm initialSources={initialSources} />
     </main>

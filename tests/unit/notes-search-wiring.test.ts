@@ -3,10 +3,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /*
- * The notes page is one always-editable note. Bare /polymath/notes renders the
- * most recent note with content in place (no redirect, so no second render)
- * and asks the client to put its id in the URL. A retired ?stack= opens its
- * last note; the other retired view params (board, mode, layout, q) are ignored.
+ * The notes page is one always-editable note, with linked notes open as panes
+ * beside it. Bare /polymath/notes renders the most recent note with content in
+ * place (no redirect, so no second render) and asks the client to put its id
+ * in the URL. ?stack= names the panes; retired view params are ignored.
  */
 
 vi.mock("next/server", () => ({ connection: async () => undefined }));
@@ -35,29 +35,45 @@ vi.mock("@/domains/knowledge/notes", () => ({
   getLinkPreviews: vi.fn(async () => []),
 }));
 vi.mock("@/domains/knowledge/note-comments", () => ({ listNoteComments: vi.fn(async () => []) }));
-vi.mock("@/domains/knowledge/relations", () => ({ relatedNotes: vi.fn(async () => []) }));
 vi.mock("@/app/(workspace)/polymath/notes/note-editor", () => ({
   NewNoteButton: () => h("button", null, "New note"),
-  NoteEditor: (props: { noteId: string; missingLinkTitles: string[] }) =>
-    h("div", { "data-testid": "editor", "data-note": props.noteId, "data-missing": props.missingLinkTitles.join(";") }),
+  NoteEditor: (props: { noteId: string; missingLinkTitles: string[]; nav: ReactNode }) =>
+    h(
+      "div",
+      { "data-testid": "editor", "data-note": props.noteId, "data-missing": props.missingLinkTitles.join(";") },
+      props.nav,
+    ),
 }));
 vi.mock("@/app/(workspace)/polymath/notes/notebook-workspace", () => ({
-  NotebookWorkspace: (props: { children: ReactNode; replaceUrl?: string; library?: ReactNode }) =>
-    h("div", { "data-replace-url": props.replaceUrl }, props.library, props.children),
+  NotebookWorkspace: (props: { children: ReactNode; replaceUrl?: string }) =>
+    h("div", { "data-replace-url": props.replaceUrl }, props.children),
   FindNoteButton: () => h("button", null, "Find a note"),
 }));
-vi.mock("@/app/(workspace)/polymath/notes/notes-library", () => ({
-  NotesLibrary: (props: { notes: { id: string }[]; selectedId: string | null; total: number; page: number }) =>
+vi.mock("@/app/(workspace)/polymath/notes/notes-nav", () => ({
+  NotesNav: (props: { groups: { rows: { id: string }[] }[]; currentId?: string }) =>
     h("div", {
-      "data-library": props.selectedId ?? "",
-      "data-notes": props.notes.map((note) => note.id).join(";"),
-      "data-total": props.total,
-      "data-page": props.page,
+      "data-nav-current": props.currentId ?? "",
+      "data-nav-notes": props.groups.flatMap((g) => g.rows.map((r) => r.id)).join(";"),
     }),
+}));
+vi.mock("@/app/(workspace)/polymath/notes/note-stack", () => ({
+  NoteStack: (props: { noteId: string; editor: ReactNode; notes: { id: string }[] }) =>
+    h("div", { "data-stack": props.notes.map((n) => n.id).join(";") }, props.editor),
 }));
 
 import { NotesSurface } from "@/app/(workspace)/polymath/notes/page";
-import { extractWikiLinkTitles, getLinkPreviews, getNote, listNotes, pageNotes } from "@/domains/knowledge/notes";
+import {
+  extractWikiLinkTitles,
+  getLinkPreviews,
+  getNote,
+  listNoteBacklinks,
+  listNotes,
+  pageNotes,
+} from "@/domains/knowledge/notes";
+
+const U1 = "11111111-1111-4111-8111-111111111111";
+const U2 = "22222222-2222-4222-8222-222222222222";
+const U3 = "33333333-3333-4333-8333-333333333333";
 
 const params = (raw: Record<string, string>) => Promise.resolve(raw);
 const libraryRow = { id: "b", title: "Quarterly plan", kind: "note", excerpt: "text", updatedAt: now, hasDraft: false };
@@ -90,11 +106,24 @@ describe("notes page", () => {
     expect(listNotes).not.toHaveBeenCalled();
   });
 
-  it("a retired ?stack= opens its last note in the editor", async () => {
-    vi.mocked(getNote).mockResolvedValue(noteRow as never);
-    const html = renderToStaticMarkup(await NotesSurface({ searchParams: params({ stack: "a,b" }) }));
-    expect(getNote).toHaveBeenCalledWith(auth, "b");
-    expect(html).toContain('data-replace-url="/polymath/notes?id=b"');
+  it("?stack= opens linked notes as panes beside the written note", async () => {
+    const [w, a, b] = [U1, U2, U3];
+    vi.mocked(getNote).mockImplementation(async (_auth, id) => ({ ...noteRow, id, title: id }) as never);
+    const html = renderToStaticMarkup(
+      await NotesSurface({ searchParams: params({ id: w, stack: `${a},${w},${b},bad` }) }),
+    );
+    expect(html).toContain(`data-note="${w}"`);
+    // The written note is never its own pane, and a malformed id is dropped.
+    expect(html).toContain(`data-stack="${a};${b}"`);
+    expect(listNoteBacklinks).toHaveBeenCalledWith(auth, a);
+  });
+
+  it("a trail with no ?id= writes its first note and keeps the rest open", async () => {
+    vi.mocked(getNote).mockImplementation(async (_auth, id) => ({ ...noteRow, id, title: id }) as never);
+    const html = renderToStaticMarkup(await NotesSurface({ searchParams: params({ stack: `${U1},${U2}` }) }));
+    expect(html).toContain(`data-note="${U1}"`);
+    expect(html).toContain(`data-stack="${U2}"`);
+    expect(html).toContain(`data-replace-url="/polymath/notes?id=${U1}&amp;stack=${U2}"`);
   });
 
   it("a missing note offers the finder and a new note, in words that fit any device", async () => {
@@ -145,44 +174,26 @@ describe("notes page", () => {
 });
 
 /*
- * The library rail: every note the workspace holds, not only what is due or
- * recently opened. A completed note stays in the list, and a bookmark to an
- * older note still shows that note marked in the rail.
+ * The Notes popover at the top of the page: notes only (never zettels), newest
+ * first, grouped by day, with the open one marked.
  */
-describe("notes library rail", () => {
-  it("lists the page beside the note and marks the open one", async () => {
+describe("notes popover", () => {
+  it("lists notes, not zettels, and marks the one being written", async () => {
     vi.mocked(getNote).mockResolvedValue(noteRow as never);
     vi.mocked(pageNotes).mockResolvedValue({
       items: [libraryRow, { ...libraryRow, id: "a" }],
       total: 2,
     } as never);
     const html = renderToStaticMarkup(await NotesSurface({ searchParams: params({ id: "b" }) }));
-    expect(html).toContain('data-library="b"');
-    expect(html).toContain('data-notes="b;a"');
-    expect(html).toContain('data-total="2"');
-    expect(pageNotes).toHaveBeenCalledWith(auth, { limit: 30, offset: 0 });
+    expect(html).toContain('data-nav-current="b"');
+    expect(html).toContain('data-nav-notes="b;a"');
+    expect(pageNotes).toHaveBeenCalledWith(auth, { kinds: ["note"], limit: 30, offset: 0 });
   });
 
-  it("pages the rail on the server instead of loading every note", async () => {
-    vi.mocked(getNote).mockResolvedValue(noteRow as never);
-    vi.mocked(pageNotes).mockResolvedValue({ items: [libraryRow], total: 61 } as never);
-    const html = renderToStaticMarkup(await NotesSurface({ searchParams: params({ id: "b", page: "2" }) }));
-    expect(pageNotes).toHaveBeenCalledWith(auth, { limit: 30, offset: 30 });
-    expect(html).toContain('data-page="2"');
-  });
-
-  it("keeps a bookmarked note older than this page in the rail, marked", async () => {
-    vi.mocked(getNote).mockResolvedValue(noteRow as never);
-    vi.mocked(pageNotes).mockResolvedValue({ items: [{ ...libraryRow, id: "a" }], total: 61 } as never);
-    const html = renderToStaticMarkup(await NotesSurface({ searchParams: params({ id: "b", page: "2" }) }));
-    expect(html).toContain('data-notes="b;a"');
-    expect(html).toContain('data-library="b"');
-  });
-
-  it("offers the rail when a note id no longer resolves, so another can be opened", async () => {
+  it("still offers the list when a note id no longer resolves, so another can be opened", async () => {
     vi.mocked(pageNotes).mockResolvedValue({ items: [libraryRow], total: 1 } as never);
     const html = renderToStaticMarkup(await NotesSurface({ searchParams: params({ id: "gone" }) }));
     expect(html).toContain("That note is not here");
-    expect(html).toContain('data-library=""');
+    expect(html).toContain('data-nav-notes="b"');
   });
 });

@@ -66,7 +66,6 @@ const running: GenerationJobView = {
   notice: null,
   error: null,
   progress: null,
-  costUsd: 0,
   createdAt: "2026-11-11T10:00:00.000Z",
   updatedAt: "2026-11-11T10:00:01.000Z",
 };

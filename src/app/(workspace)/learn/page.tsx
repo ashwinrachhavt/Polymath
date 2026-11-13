@@ -55,13 +55,8 @@ async function LearnSurface() {
 
   return (
     <main className="page-content mx-auto w-full max-w-4xl">
-      <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-medium">Learn</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Review the flashcards that are due, continue a quiz, or make new ones from any sources.
-          </p>
-        </div>
+      <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="min-w-0 text-2xl font-medium">Learn</h1>
         <MakeLearningButton />
       </header>
       <LearnJobs initialJobs={jobs} kindPrefix={LEARNING_JOB_KIND_PREFIX} />

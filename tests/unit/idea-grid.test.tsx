@@ -1,6 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { IdeaGrid } from "@/components/polymath/ideas/idea-grid";
+
+// Each card carries Delete, whose archive can navigate; the list itself never does.
+vi.mock("next/navigation", () => ({ useRouter: () => ({ replace: vi.fn(), refresh: vi.fn(), push: vi.fn() }) }));
 
 const items = [
   {

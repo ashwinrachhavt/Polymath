@@ -203,10 +203,11 @@ describe("Results", () => {
     expect(within(deck).getByText("The sources support no more.")).toBeTruthy();
     expect(within(deck).queryByText("Card 1 of 2")).toBeNull();
 
-    const open = within(deck).getByRole("button", { name: "Open" });
+    const open = within(deck).getByRole("button", { name: "Open result" });
+    expect(open.getAttribute("aria-expanded")).toBe("false");
     fireEvent.click(open);
     expect(within(deck).getByText("Card 1 of 2")).toBeTruthy();
-    expect(within(deck).getByRole("button", { name: "Close" }).getAttribute("aria-expanded")).toBe("true");
+    expect(within(deck).getByRole("button", { name: "Close result" }).getAttribute("aria-expanded")).toBe("true");
   });
 
   it("says what Learn this makes when nothing is made yet", () => {

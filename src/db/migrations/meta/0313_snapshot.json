@@ -1,6 +1,6 @@
 {
-  "id": "764fa713-5709-465a-a699-8c4f5b169bbc",
-  "prevId": "65a3aa76-3e68-4014-90b2-2b39f7d02e52",
+  "id": "17b9be44-76ae-4704-bcf8-2645d421a77a",
+  "prevId": "38971436-215e-402f-955f-ddd7efc37ccd",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -10714,6 +10714,13 @@
           "notNull": true,
           "default": "'auto'"
         },
+        "accent": {
+          "name": "accent",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'graphite'"
+        },
         "notification_policy": {
           "name": "notification_policy",
           "type": "jsonb",
@@ -12192,13 +12199,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "cost_micro_usd": {
-          "name": "cost_micro_usd",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
         "created_by": {
           "name": "created_by",
           "type": "uuid",
@@ -12367,10 +12367,6 @@
         "generation_jobs_attempt_check": {
           "name": "generation_jobs_attempt_check",
           "value": "attempt >= 1"
-        },
-        "generation_jobs_cost_check": {
-          "name": "generation_jobs_cost_check",
-          "value": "cost_micro_usd >= 0"
         }
       },
       "isRLSEnabled": false
@@ -19149,12 +19145,6 @@
           "primaryKey": true,
           "notNull": true
         },
-        "source": {
-          "name": "source",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
         "title": {
           "name": "title",
           "type": "text",
@@ -19180,13 +19170,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "cost_micro_usd": {
-          "name": "cost_micro_usd",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -19200,12 +19183,7 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {
-        "video_transcripts_source_check": {
-          "name": "video_transcripts_source_check",
-          "value": "source in ('captions', 'speech')"
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.wiki_pages": {

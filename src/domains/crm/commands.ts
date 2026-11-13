@@ -1,16 +1,10 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { recordAudit } from "@/domains/audit/record";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { isUniqueViolation } from "@/lib/pg-errors";
 import type { RelationshipStatus } from "./status";
-import {
-  companies,
-  contactCompanies,
-  contactObservations,
-  contacts,
-  followUps,
-} from "./schema";
+import { companies, contactCompanies, contactObservations, contacts, followUps } from "./schema";
 
 /*
  * CRM mutations. The database guards carry the concurrency story: the email
@@ -73,12 +67,16 @@ export async function createContact(auth: AuthContext, input: ContactInput) {
           isCurrent: true,
         });
       }
-      await recordAudit(auth, {
-        action: "contact.created",
-        subjectType: "contact",
-        subjectId: contact.id,
-        summary: `Contact created: ${contact.fullName}`,
-      }, tx);
+      await recordAudit(
+        auth,
+        {
+          action: "contact.created",
+          subjectType: "contact",
+          subjectId: contact.id,
+          summary: `Contact created: ${contact.fullName}`,
+        },
+        tx,
+      );
       return contact;
     });
   } catch (cause) {
@@ -93,13 +91,7 @@ async function requireCompany(auth: AuthContext, companyId: string, tx: TxDrizzl
   const [company] = await tx
     .select({ id: companies.id })
     .from(companies)
-    .where(
-      and(
-        eq(companies.id, companyId),
-        eq(companies.workspaceId, auth.workspaceId),
-        isNull(companies.archivedAt),
-      ),
-    )
+    .where(and(eq(companies.id, companyId), eq(companies.workspaceId, auth.workspaceId), isNull(companies.archivedAt)))
     .limit(1);
   if (!company) throw new NotFoundError("That company is not in this workspace.");
 }
@@ -175,12 +167,16 @@ export async function updateContact(
           }
         }
       }
-      await recordAudit(auth, {
-        action: "contact.updated",
-        subjectType: "contact",
-        subjectId: updated.id,
-        summary: `Contact updated: ${updated.fullName}`,
-      }, tx);
+      await recordAudit(
+        auth,
+        {
+          action: "contact.updated",
+          subjectType: "contact",
+          subjectId: updated.id,
+          summary: `Contact updated: ${updated.fullName}`,
+        },
+        tx,
+      );
       return updated;
     });
   } catch (cause) {
@@ -192,10 +188,7 @@ export async function updateContact(
 }
 
 /** Soft delete: the record stays so linked history (documents, follow-ups) keeps its referent. */
-export async function archiveContact(
-  auth: AuthContext,
-  input: { contactId: string; expectedVersion: number },
-) {
+export async function archiveContact(auth: AuthContext, input: { contactId: string; expectedVersion: number }) {
   await withTransaction(async (tx) => {
     const [archived] = await tx
       .update(contacts)
@@ -217,12 +210,55 @@ export async function archiveContact(
     if (!archived) {
       throw new StaleWriteError("This contact changed since you loaded it. Reload and try again.");
     }
-    await recordAudit(auth, {
-      action: "contact.archived",
-      subjectType: "contact",
-      subjectId: archived.id,
-      summary: `Contact archived: ${archived.fullName}`,
-    }, tx);
+    await recordAudit(
+      auth,
+      {
+        action: "contact.archived",
+        subjectType: "contact",
+        subjectId: archived.id,
+        summary: `Contact archived: ${archived.fullName}`,
+      },
+      tx,
+    );
+  });
+}
+
+/*
+ * Undo for archiveContact. It matches only an archived row, so it needs no
+ * expected version: a second restore finds nothing. If a live contact took
+ * the email while this one was archived, the partial unique index refuses it.
+ */
+export async function restoreContact(auth: AuthContext, input: { contactId: string }) {
+  // No email-collision path: contacts_workspace_email_key spans archived rows,
+  // so an archived contact keeps its address and no live duplicate can exist.
+  await withTransaction(async (tx) => {
+    const [restored] = await tx
+      .update(contacts)
+      .set({
+        archivedAt: null,
+        version: sql`${contacts.version} + 1`,
+        updatedAt: new Date(),
+        updatedBy: auth.userId,
+      })
+      .where(
+        and(
+          eq(contacts.id, input.contactId),
+          eq(contacts.workspaceId, auth.workspaceId),
+          isNotNull(contacts.archivedAt),
+        ),
+      )
+      .returning({ id: contacts.id, fullName: contacts.fullName });
+    if (!restored) throw new NotFoundError("That archived contact is not in this workspace.");
+    await recordAudit(
+      auth,
+      {
+        action: "contact.restored",
+        subjectType: "contact",
+        subjectId: restored.id,
+        summary: `Contact restored: ${restored.fullName}`,
+      },
+      tx,
+    );
   });
 }
 
@@ -235,11 +271,7 @@ export async function addObservation(
       .select({ id: contacts.id })
       .from(contacts)
       .where(
-        and(
-          eq(contacts.id, input.contactId),
-          eq(contacts.workspaceId, auth.workspaceId),
-          isNull(contacts.archivedAt),
-        ),
+        and(eq(contacts.id, input.contactId), eq(contacts.workspaceId, auth.workspaceId), isNull(contacts.archivedAt)),
       )
       .limit(1);
     if (!contact) throw new NotFoundError("That contact is not in this workspace.");
@@ -254,12 +286,16 @@ export async function addObservation(
         updatedBy: auth.userId,
       })
       .returning();
-    await recordAudit(auth, {
-      action: "contact.observation_added",
-      subjectType: "contact",
-      subjectId: contact.id,
-      summary: `Observation added (${input.source})`,
-    }, tx);
+    await recordAudit(
+      auth,
+      {
+        action: "contact.observation_added",
+        subjectType: "contact",
+        subjectId: contact.id,
+        summary: `Observation added (${input.source})`,
+      },
+      tx,
+    );
     return observation;
   });
 }
@@ -273,11 +309,7 @@ export async function createFollowUp(
       .select({ id: contacts.id, fullName: contacts.fullName })
       .from(contacts)
       .where(
-        and(
-          eq(contacts.id, input.contactId),
-          eq(contacts.workspaceId, auth.workspaceId),
-          isNull(contacts.archivedAt),
-        ),
+        and(eq(contacts.id, input.contactId), eq(contacts.workspaceId, auth.workspaceId), isNull(contacts.archivedAt)),
       )
       .limit(1);
     if (!contact) throw new NotFoundError("That contact is not in this workspace.");
@@ -292,12 +324,16 @@ export async function createFollowUp(
         updatedBy: auth.userId,
       })
       .returning();
-    await recordAudit(auth, {
-      action: "follow_up.created",
-      subjectType: "contact",
-      subjectId: contact.id,
-      summary: `Follow-up created for ${contact.fullName}`,
-    }, tx);
+    await recordAudit(
+      auth,
+      {
+        action: "follow_up.created",
+        subjectType: "contact",
+        subjectId: contact.id,
+        summary: `Follow-up created for ${contact.fullName}`,
+      },
+      tx,
+    );
     return followUp;
   });
 }
@@ -328,12 +364,16 @@ export async function resolveFollowUp(
     if (!resolved) {
       throw new StaleWriteError("This follow-up is no longer open. Reload to see the current state.");
     }
-    await recordAudit(auth, {
-      action: `follow_up.${input.resolution}`,
-      subjectType: "follow_up",
-      subjectId: resolved.id,
-      summary: `Follow-up ${input.resolution}`,
-    }, tx);
+    await recordAudit(
+      auth,
+      {
+        action: `follow_up.${input.resolution}`,
+        subjectType: "follow_up",
+        subjectId: resolved.id,
+        summary: `Follow-up ${input.resolution}`,
+      },
+      tx,
+    );
   });
 }
 
@@ -354,12 +394,16 @@ export async function createCompany(
           updatedBy: auth.userId,
         })
         .returning();
-      await recordAudit(auth, {
-        action: "company.created",
-        subjectType: "company",
-        subjectId: company.id,
-        summary: `Company created: ${company.name}`,
-      }, tx);
+      await recordAudit(
+        auth,
+        {
+          action: "company.created",
+          subjectType: "company",
+          subjectId: company.id,
+          summary: `Company created: ${company.name}`,
+        },
+        tx,
+      );
       return company;
     });
   } catch (cause) {

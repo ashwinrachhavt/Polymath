@@ -219,7 +219,7 @@ describe("generation jobs", () => {
     expect(await stored(job.id)).toMatchObject({ status: "queued", attempt: 2, result: null });
   });
 
-  it("streams each progress step, records spend, and clears the step once the job settles", async () => {
+  it("streams each progress step and clears the step once the job settles", async () => {
     const auth = await signIn("progress");
     const { job } = await submit(auth);
     const before = (await tailGenerationJobs(auth, null)).now;
@@ -229,7 +229,6 @@ describe("generation jobs", () => {
       {
         [KIND]: async (_auth, _input, ctx) => {
           await ctx.progress("Crawling", { done: 3, total: 25 });
-          await ctx.spend(1_250);
           await new Promise<void>((resolve) => (release = resolve));
           return READY;
         },
@@ -242,11 +241,10 @@ describe("generation jobs", () => {
     expect(tailed).toMatchObject({
       status: "running",
       progress: { step: "Crawling", done: 3, total: 25 },
-      costUsd: 0.00125,
     });
     release();
     await run;
-    expect(await stored(job.id)).toMatchObject({ status: "ready", progress: null, costMicroUsd: 1_250 });
+    expect(await stored(job.id)).toMatchObject({ status: "ready", progress: null });
   });
 
   it("cancels a running job at once, stops its runner at the next step, and lets it be tried again", async () => {

@@ -2,7 +2,7 @@
 
 import { RELATION_GROUPS, RELATION_LABELS, RELATION_TYPES } from "@/domains/knowledge/relation-vocabulary";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/button";
@@ -33,9 +33,13 @@ import {
   setNoteTagsAction,
   startNoteAIAction,
 } from "./actions";
-import { X, History, Info, Link2, Plus, MessageSquare } from "lucide-react";
+import { X, History, Ellipsis, Plus, MessageSquare } from "lucide-react";
 import { MarginNotes } from "@/components/products/polymath/margin-notes";
-import { FindNoteButton, LibraryToggle } from "./notebook-workspace";
+import { Tooltip } from "@/components/ui/tooltip";
+import type { RichEditorHandle } from "@/components/products/polymath/rich-editor";
+import { historyChipClass } from "../history-menu";
+import { useNoteStack } from "./note-stack";
+import { SimilarNotesButton } from "./similar-notes";
 import type { LinkPreview } from "@/domains/knowledge/notes";
 import type { NoteAICoverage } from "@/domains/knowledge/note-ai";
 import { NotionAppendAction } from "./notion-append";
@@ -118,8 +122,8 @@ const AI_HEADINGS: Record<NoteAIRequest["action"], string> = {
 
 const AI_TERMINAL = new Set(["succeeded", "failed", "cancelled"]);
 
-/** Rendered as a labelled button in the empty states, as an icon in the note's top row. */
-export function NewNoteButton({ icon = false }: { icon?: boolean }) {
+/** A labelled button in the empty states; a quiet chip beside the Notes list at the top of a note. */
+export function NewNoteButton({ chip = false }: { chip?: boolean }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -133,10 +137,12 @@ export function NewNoteButton({ icon = false }: { icon?: boolean }) {
   };
   return (
     <span className="inline-flex items-center gap-2">
-      {icon ? (
-        <Button type="button" variant="ghost" size="icon-sm" disabled={pending} aria-label="New note" onClick={create}>
-          <Plus aria-hidden className="text-muted-foreground" />
-        </Button>
+      {chip ? (
+        <button type="button" disabled={pending} onClick={create} className={`${historyChipClass} disabled:opacity-50`}>
+          <Plus aria-hidden className="size-3.5 shrink-0" />
+          {/* The name stays for assistive tech when a phone has room for the icon only. */}
+          <span className="max-sm:sr-only">New note</span>
+        </button>
       ) : (
         <Button type="button" disabled={pending} onClick={create}>
           {pending ? "Creating…" : "New note"}
@@ -269,6 +275,7 @@ function BacklinkRow({
   noteId: string;
   link: { id: string; title: string; kind: string; linkType: string; context: string | null; excerpt: string | null };
 }) {
+  const stack = useNoteStack();
   const context = link.context?.replace(/\s+/g, " ").trim();
   return (
     <li className="group">
@@ -279,8 +286,11 @@ function BacklinkRow({
         >
           ↖
         </span>
+        {/* Opens beside this note, so the backlink is read without leaving the page. */}
         <Link
-          href={`/polymath/notes?id=${link.id}`}
+          href={stack ? stack.href(0, link.id) : `/polymath/notes?id=${link.id}`}
+          scroll={false}
+          onClick={stack ? (event) => stack.follow(event, 0, link.id) : undefined}
           className="rounded-sm text-body text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         >
           {link.title}
@@ -358,7 +368,19 @@ function MeaningIndexStatus({ noteId, notice }: { noteId: string; notice: IndexN
   const [error, setError] = useState<string | null>(null);
   return (
     <span className="inline-flex flex-wrap items-center gap-1.5">
-      <span>{notice.kind === "failed" ? `Not meaning-searchable: ${notice.error}` : "Not meaning-searchable yet"}</span>
+      {/* The reason is for whoever fixes it; the page only says what it means. */}
+      {notice.kind === "failed" ? (
+        <Tooltip content={notice.error}>
+          <span
+            tabIndex={0}
+            className="cursor-help rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            Not in meaning search
+          </span>
+        </Tooltip>
+      ) : (
+        <span>Not in meaning search yet</span>
+      )}
       <button
         type="button"
         disabled={pending}
@@ -371,7 +393,7 @@ function MeaningIndexStatus({ noteId, notice }: { noteId: string; notice: IndexN
           if (!result.ok) return setError(result.error);
         }}
       >
-        {pending ? "Indexing…" : notice.kind === "failed" ? "Retry indexing" : "Index for meaning search"}
+        {pending ? "Indexing…" : notice.kind === "failed" ? "Retry" : "Index now"}
       </button>
       {error && (
         <span role="alert" className="text-destructive">
@@ -396,10 +418,10 @@ export function NoteEditor({
   versions,
   outlinks,
   backlinks,
-  related,
   comments,
   linkedPreviews,
   missingLinkTitles,
+  nav,
 }: {
   noteId: string;
   /** Null while the current version is meaning-searchable or nothing is committed. */
@@ -430,12 +452,13 @@ export function NoteEditor({
     context: string | null;
     excerpt: string | null;
   }[];
-  related: { id: string; title: string; kind: string; score: number; excerpt: string | null; alreadyLinked: boolean }[];
   comments: PanelComment[];
   /** First lines of the notes this one links to, shown in the margin beside the citing text. */
   linkedPreviews: LinkPreview[];
   /** Titles this note linked to when the server rendered it that name no note: shown muted, not as links. */
   missingLinkTitles: string[];
+  /** The way to the other notes, at the left of the top bar. */
+  nav: ReactNode;
 }) {
   const localKey = `polymath-note-local-${noteId}`;
   const findLinkTargets = useCallback(
@@ -448,10 +471,8 @@ export function NoteEditor({
   const [saveState, setSaveState] = useState<"idle" | "dirty" | "saving" | "saved" | "error">("idle");
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
-  const [awaitingVersion, setAwaitingVersion] = useState(0);
   const [savedVersions, setSavedVersions] = useState<VersionItem[] | null>(null);
   const history = savedVersions ?? versions;
-  const historyReady = !pending && history.some((item) => item.versionNumber >= awaitingVersion);
   const versionRef = useRef(initialVersion);
   const savedRef = useRef(initialMarkdown);
   const markdownRef = useRef(initialMarkdown);
@@ -575,7 +596,6 @@ export function NoteEditor({
     setPending(false);
     if (!result.ok) return setError(result.error);
     versionRef.current = result.version;
-    setAwaitingVersion(result.versionNumber);
     setSavedVersions(result.versions);
     savedRef.current = text;
     try {
@@ -606,21 +626,21 @@ export function NoteEditor({
   const noteColumnRef = useRef<HTMLDivElement>(null);
   const [editorRoot, setEditorRoot] = useState<HTMLElement | null>(null);
   useEffect(() => setEditorRoot(noteColumnRef.current), []);
-  // Scroll-away chrome: once the reader is into the document, the header rows
-  // recede; scroll back or hover to return them. The scroller is the suite
-  // screen ancestor — the note column never scrolls itself.
-  const [scrolled, setScrolled] = useState(false);
-  useEffect(() => {
-    const scroller = noteColumnRef.current?.closest(".suite-screen");
-    if (!(scroller instanceof HTMLElement)) return;
-    const onScroll = () => {
-      const next = scroller.scrollTop > 8;
-      setScrolled((current) => (current === next ? current : next));
-    };
-    onScroll();
-    scroller.addEventListener("scroll", onScroll, { passive: true });
-    return () => scroller.removeEventListener("scroll", onScroll);
+  // The editor's icons render into the top bar, and the bar's tools write
+  // into the editor through its handle.
+  const [toolsSlot, setToolsSlot] = useState<HTMLElement | null>(null);
+  const editorHandle = useRef<RichEditorHandle | null>(null);
+  const setEditorHandle = useCallback((handle: RichEditorHandle | null) => {
+    editorHandle.current = handle;
   }, []);
+  const stack = useNoteStack();
+  const openBeside = useCallback((id: string) => stack?.follow(null, 0, id), [stack]);
+  /** Writes a [[link]] at the caret; in Markdown source it goes at the end of the text. */
+  const insertLink = (wikiLink: string) => {
+    if (editorHandle.current) return editorHandle.current.insertAtCaret(wikiLink);
+    const current = markdownRef.current;
+    updateMarkdown(current.trim() ? `${current.trimEnd()} ${wikiLink.trimEnd()}` : wikiLink.trimEnd());
+  };
 
   const [ai, setAi] = useState<AIProposal | null>(null);
   const [aiMenuOpen, setAiMenuOpen] = useState(false);
@@ -756,63 +776,111 @@ export function NoteEditor({
   }, []);
 
   /*
-   * The page is the note, Notion-style: the document column is the screen,
-   * the list shrinks to a quiet left rail, and everything else recedes. The
-   * top row of actions is chrome, not content - it shows on hover/focus of
-   * the header zone on fine pointers and stays visible on coarse pointers
-   * (touch has no hover). Prose never leaves the reading measure; on wide
-   * screens the margin panel sits in the right margin, below it on narrow.
+   * The page is the note, Notion-style: one quiet bar at the top (the way to
+   * the other notes on the left, the writing tools as icons on the right),
+   * then the title and the text in one column at the reading measure, with no
+   * box around either. The pane scrolls as one document, and a click anywhere
+   * below the text puts the caret after its last word. Prose never leaves the
+   * reading measure; on wide screens linked notes' first lines and comments
+   * sit in the right margin.
    */
   const openCommentCount = comments.filter((c) => c.resolvedAt === null).length;
+  const crowded = stack?.crowded ?? false;
   return (
-    <div className={noteLayout.row}>
-      <div data-note-container className={noteLayout.cell}>
-        <motion.div
-          initial={{ opacity: 0, y: 4 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={motionTransition}
-          className={noteLayout.column}
-        >
-          {/* The header zone: chrome fades in on pointer hover, always on for
-              keyboard focus and coarse pointers. */}
-          <div className={`header-zone ${noteLayout.header} ${scrolled ? "is-scrolled" : ""}`}>
-            <div className="header-actions flex items-center gap-1">
-              <LibraryToggle />
-              <FindNoteButton icon />
-              <NewNoteButton icon />
-              <Dialog>
+    <div className="flex min-h-full flex-col">
+      <header className="sticky top-0 z-20 bg-background/95 backdrop-blur">
+        <div className={noteLayout.bar}>
+          {nav}
+          <span role="status" className="ml-auto truncate pr-1 text-data text-muted-foreground max-sm:sr-only">
+            {saveState === "saving"
+              ? "Saving…"
+              : saveState === "dirty"
+                ? "Unsaved changes"
+                : saveState === "saved"
+                  ? "Saved"
+                  : null}
+          </span>
+          {saveState === "error" && (
+            <span role="status" className="text-data text-destructive">
+              Not saved
+            </span>
+          )}
+          <div className="flex shrink-0 items-center gap-0.5 max-sm:ml-auto">
+            <SimilarNotesButton
+              noteId={noteId}
+              title={title}
+              markdown={markdown}
+              onLink={insertLink}
+              onOpen={openBeside}
+            />
+            {/* Autocomplete, dictation and Ask AI: the editor renders them here. */}
+            <div ref={setToolsSlot} className="contents" />
+            <Tooltip content={commentsOpen ? "Hide comments" : "Comments"}>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                className="relative"
+                aria-label={openCommentCount > 0 ? `Comments, ${openCommentCount} open` : "Comments"}
+                aria-expanded={commentsOpen}
+                aria-controls="note-comments"
+                onClick={() => setCommentsOpen((open) => !open)}
+              >
+                <MessageSquare aria-hidden className={commentsOpen ? "text-foreground" : "text-muted-foreground"} />
+                {openCommentCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 min-w-3.5 rounded-full bg-foreground px-1 text-[10px] leading-3.5 text-background tabular-nums">
+                    {openCommentCount}
+                  </span>
+                )}
+              </Button>
+            </Tooltip>
+            <Dialog>
+              <Tooltip content="Checkpoints and history">
                 <DialogTrigger asChild>
-                  <Button type="button" variant="ghost" size="icon-sm" aria-label="History" disabled={!historyReady}>
+                  <Button type="button" variant="ghost" size="icon-sm" aria-label="History">
                     <History aria-hidden className="text-muted-foreground" />
                   </Button>
                 </DialogTrigger>
-                <DialogContent>
-                  <DialogTitle>Version history</DialogTitle>
-                  <DialogDescription>
-                    Every checkpoint is immutable - this is what the note said, when.
-                  </DialogDescription>
-                  {history.length === 0 ? (
-                    <p className="text-body-dense text-muted-foreground">No checkpoints yet.</p>
-                  ) : (
-                    <ul className="flex max-h-80 flex-col gap-2 overflow-y-auto">
-                      {history.map((v) => (
-                        <li key={v.id} className="rounded-md border border-border px-3 py-2 text-body-dense">
-                          <span className="flex items-center justify-between gap-2">
-                            <span className="font-medium">Version {v.versionNumber}</span>
-                            <span className="text-xs text-muted-foreground">
-                              <Stamp iso={v.createdAt} />
-                            </span>
+              </Tooltip>
+              <DialogContent>
+                <DialogTitle>Version history</DialogTitle>
+                <DialogDescription>
+                  Every checkpoint is immutable - this is what the note said, when. Cmd/Ctrl+S saves one too.
+                </DialogDescription>
+                <div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={checkpoint}
+                    disabled={pending || saveState === "saving"}
+                  >
+                    {pending ? "Saving…" : "Save checkpoint"}
+                  </Button>
+                </div>
+                {history.length === 0 ? (
+                  <p className="text-body-dense text-muted-foreground">No checkpoints yet.</p>
+                ) : (
+                  <ul className="flex max-h-80 flex-col gap-2 overflow-y-auto">
+                    {history.map((v) => (
+                      <li key={v.id} className="rounded-md border border-border px-3 py-2 text-body-dense">
+                        <span className="flex items-center justify-between gap-2">
+                          <span className="font-medium">Version {v.versionNumber}</span>
+                          <span className="text-xs text-muted-foreground">
+                            <Stamp iso={v.createdAt} />
                           </span>
-                          <span className="mt-0.5 block text-xs text-muted-foreground">
-                            {v.reason}
-                            {v.note ? ` · ${v.note}` : ""}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </DialogContent>
-              </Dialog>
+                        </span>
+                        <span className="mt-0.5 block text-xs text-muted-foreground">
+                          {v.reason}
+                          {v.note ? ` · ${v.note}` : ""}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </DialogContent>
+            </Dialog>
+            <Tooltip content="Details, links and editing mode">
               <Button
                 type="button"
                 variant="ghost"
@@ -822,47 +890,56 @@ export function NoteEditor({
                 aria-controls="note-details"
                 onClick={() => setDetailsOpen((open) => !open)}
               >
-                <Info aria-hidden className="text-muted-foreground" />
+                <Ellipsis aria-hidden className="text-muted-foreground" />
               </Button>
-            </div>
+            </Tooltip>
           </div>
-          {localOffer && (
-            <div
-              role="status"
-              className="mb-6 flex flex-wrap items-center gap-2 rounded-lg border border-(--tone-attention-wash)/40 bg-(--tone-attention-wash)/15 p-3 text-body-dense"
-            >
-              <span>
-                Unsent changes from <Stamp iso={localOffer.savedAt} /> were found in this browser.
-              </span>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  updateMarkdown(localOffer.markdown);
-                  setLocalOffer(null);
-                }}
+        </div>
+      </header>
+      <div className={`${noteLayout.row} flex-1`}>
+        <div data-note-container className={noteLayout.cell}>
+          <motion.div
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={motionTransition}
+            className={noteLayout.column}
+          >
+            {localOffer && (
+              <div
+                role="status"
+                className="mb-6 flex flex-wrap items-center gap-2 rounded-lg border border-(--tone-attention-wash)/40 bg-(--tone-attention-wash)/15 p-3 text-body-dense"
               >
-                Restore
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  setLocalOffer(null);
-                  try {
-                    window.localStorage.removeItem(localKey);
-                  } catch {
-                    // Already gone.
-                  }
-                }}
-              >
-                Discard
-              </Button>
-            </div>
-          )}
-          <div>
+                <span>
+                  Unsent changes from <Stamp iso={localOffer.savedAt} /> were found in this browser.
+                </span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    updateMarkdown(localOffer.markdown);
+                    setLocalOffer(null);
+                  }}
+                >
+                  Restore
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setLocalOffer(null);
+                    try {
+                      window.localStorage.removeItem(localKey);
+                    } catch {
+                      // Already gone.
+                    }
+                  }}
+                >
+                  Discard
+                </Button>
+              </div>
+            )}
             {/*
              * The title is an input, and an input is not a heading: the screen
              * still owes assistive tech an h1 naming the page. It sits beside
@@ -870,237 +947,204 @@ export function NoteEditor({
              * the shell's one-heading-per-screen contract holds.
              */}
             <h1 className="sr-only">{title.trim() || "Untitled note"}</h1>
-            <div className={noteLayout.titleRow}>
-              {/* A textarea so a long title wraps instead of being clipped;
-                  Enter commits rather than adding a line break. */}
-              <textarea
-                ref={titleRef}
-                aria-label="Note title"
-                rows={1}
-                value={title}
-                onChange={(e) => setTitle(e.target.value.replace(/\n/g, " "))}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    e.currentTarget.blur();
-                  }
-                }}
-                onBlur={rename}
-                placeholder="Untitled note"
-                style={{ fontFamily: "var(--font-display)" }}
-                className={`field-sizing-content w-full min-w-0 resize-none overflow-hidden bg-transparent ${noteLayout.titleText} outline-none placeholder:text-muted-foreground/40`}
-              />
-              {outlinks.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setDetailsOpen(true)}
-                  aria-label={`${outlinks.length} ${outlinks.length === 1 ? "reference" : "references"} in this note`}
-                  className="mt-3 hidden shrink-0 items-center gap-1 rounded-full border border-border px-2 py-0.5 text-data text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring sm:inline-flex"
-                >
-                  <Link2 aria-hidden className="size-3.5" />
-                  {outlinks.length} {outlinks.length === 1 ? "reference" : "references"}
-                </button>
-              )}
-            </div>
-            {/* Metadata is small and muted; the actions it used to carry are
-                the header zone's problem now. */}
+            {/* A textarea so a long title wraps instead of being clipped;
+                Enter goes to the text, the way it does in a Notion page. */}
+            <textarea
+              ref={titleRef}
+              aria-label="Note title"
+              rows={1}
+              value={title}
+              onChange={(e) => setTitle(e.target.value.replace(/\n/g, " "))}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  e.currentTarget.blur();
+                  editorHandle.current?.focusEnd();
+                }
+              }}
+              onBlur={rename}
+              placeholder="Untitled note"
+              style={{ fontFamily: "var(--font-display)" }}
+              className={`writing-surface field-sizing-content w-full min-w-0 resize-none overflow-hidden bg-transparent ${noteLayout.titleText} outline-none placeholder:text-muted-foreground/40`}
+            />
             <div className={`${noteLayout.meta} text-muted-foreground`}>
-              {saveState === "saving" && <span role="status">Saving…</span>}
-              {saveState === "dirty" && <span role="status">Unsaved changes</span>}
-              {saveState === "saved" && <span role="status">Saved</span>}
-              {saveState === "error" && (
-                <span role="status" className="text-destructive">
-                  Not saved
-                </span>
-              )}
               <span>
-                Updated <Stamp iso={updatedAt} />
+                Edited <Stamp iso={updatedAt} />
               </span>
-            </div>
-            {indexNotice && (
-              <div className="mt-1.5 text-xs text-muted-foreground">
-                <MeaningIndexStatus noteId={noteId} notice={indexNotice} />
-              </div>
-            )}
-          </div>
-          {/* The one quiet action row, hover-revealed like the header chrome. */}
-          <div className={`header-actions quiet-actions ${noteLayout.actions} ${scrolled ? "is-scrolled" : ""}`}>
-            <NotionAppendAction
-              noteId={noteId}
-              title={title}
-              markdown={markdown}
-              disabled={pending || saveState === "saving"}
-            />
-            <Button
-              type="button"
-              size="xs"
-              variant="ghost"
-              className="text-muted-foreground"
-              onClick={checkpoint}
-              disabled={pending || saveState === "saving"}
-            >
-              {pending ? "Saving…" : "Save checkpoint"}
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="xs"
-              className="text-muted-foreground"
-              aria-expanded={commentsOpen}
-              aria-controls="note-comments"
-              onClick={() => setCommentsOpen((open) => !open)}
-            >
-              <MessageSquare aria-hidden className="size-3.5" />
-              {openCommentCount > 0 ? `Comments ${openCommentCount}` : "Comments"}
-            </Button>
-          </div>
-          <div ref={noteColumnRef} data-note-title={title} className={noteLayout.body}>
-            <RichEditor
-              chrome="minimal"
-              autocomplete
-              mode={editorMode}
-              onModeChange={setEditorMode}
-              findLinkTargets={findLinkTargets}
-              content={markdown}
-              linkPreviews={linkedPreviews}
-              missingLinkTitles={missingLinkTitles}
-              onChange={updateMarkdown}
-              ai={{ pending: aiBusy, onAction: startAI, open: aiMenuOpen, onOpenChange: setAiMenuOpen }}
-              onStructuredPasteDropped={() => setSourceHint(true)}
-            />
-            <MarginNotes previews={linkedPreviews} editorRoot={editorRoot} />
-            {sourceHint && editorMode === "rich" && (
-              <div role="status" className="mt-2 flex items-center gap-2 text-body-dense text-muted-foreground">
-                <span>The paste lost its structure.</span>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    setEditorMode("source");
-                    setSourceHint(false);
-                  }}
-                >
-                  Paste again in Markdown source
-                </Button>
-              </div>
-            )}
-          </div>
-          {ai && (
-            <div className="mt-6 flex flex-col gap-2 rounded-lg border border-border p-3">
-              <div className="flex items-center gap-2">
-                <Status>AI · {ai.heading}</Status>
-                <span className="text-xs text-muted-foreground">
-                  {ai.failed
-                    ? "Something went wrong"
-                    : AI_TERMINAL.has(ai.state)
-                      ? ai.output
-                        ? "Draft ready - review it before anything is written"
-                        : "Finished without output"
-                      : "Working - the draft appears here when the run finishes"}
-                </span>
-              </div>
-              {ai.coverage === "note_start" && (
-                <p className="text-xs text-muted-foreground">
-                  This note is long, so only the first part was read. Select a passage to work on a later part.
-                </p>
-              )}
-              {ai.output && !ai.failed && (
+              {indexNotice && (
                 <>
-                  <div className="max-h-64 overflow-y-auto whitespace-pre-wrap rounded-md bg-muted/40 p-3 text-body-dense leading-6">
-                    {ai.output}
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {ai.selection && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        disabled={pending}
-                        onClick={() => acceptAI("replace")}
-                      >
-                        Replace the selection
-                      </Button>
-                    )}
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      disabled={pending}
-                      onClick={() => acceptAI("append")}
-                    >
-                      {ai.heading === "Answer" ? "Insert the answer" : "Add at the end"}
-                    </Button>
-                    {ai.heading !== "Answer" && ai.coverage === "whole_note" && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        disabled={pending}
-                        onClick={() => acceptAI("replaceNote")}
-                      >
-                        Replace the note
-                      </Button>
-                    )}
-                    <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => setAi(null)}>
-                      Discard
-                    </Button>
-                  </div>
+                  <span aria-hidden>·</span>
+                  <MeaningIndexStatus noteId={noteId} notice={indexNotice} />
                 </>
               )}
-              {ai.notice && (
-                <p role="alert" className="text-xs text-destructive">
-                  {ai.notice}
-                </p>
-              )}
-              {ai.failed && (
-                <Button type="button" size="sm" variant="ghost" className="w-fit" onClick={() => setAi(null)}>
-                  Dismiss
-                </Button>
+            </div>
+            <div
+              ref={noteColumnRef}
+              data-note-title={title}
+              className={noteLayout.body}
+              // The page below the text is still the note: a click there puts
+              // the caret after the last word instead of doing nothing.
+              onMouseDown={(event) => {
+                if (event.target !== event.currentTarget || !editorHandle.current) return;
+                event.preventDefault();
+                editorHandle.current.focusEnd();
+              }}
+            >
+              <RichEditor
+                chrome="minimal"
+                autocomplete
+                mode={editorMode}
+                onModeChange={setEditorMode}
+                findLinkTargets={findLinkTargets}
+                content={markdown}
+                linkPreviews={linkedPreviews}
+                missingLinkTitles={missingLinkTitles}
+                onChange={updateMarkdown}
+                ai={{ pending: aiBusy, onAction: startAI, open: aiMenuOpen, onOpenChange: setAiMenuOpen }}
+                onStructuredPasteDropped={() => setSourceHint(true)}
+                toolsSlot={toolsSlot}
+                onOpenNote={stack ? openBeside : undefined}
+                onHandle={setEditorHandle}
+              />
+              <MarginNotes previews={linkedPreviews} editorRoot={editorRoot} />
+              {sourceHint && editorMode === "rich" && (
+                <div role="status" className="mt-2 flex items-center gap-2 text-body-dense text-muted-foreground">
+                  <span>The paste lost its structure.</span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setEditorMode("source");
+                      setSourceHint(false);
+                    }}
+                  >
+                    Paste again in Markdown source
+                  </Button>
+                </div>
               )}
             </div>
-          )}
-          {error && (
-            <p role="alert" className="mt-4 text-body-dense text-destructive">
-              {error}
-            </p>
-          )}
-          {/* Backlinks are part of reading the note, not a property of it:
-              they sit at the foot of the document, always visible, so the
-              reader sees what this note is part of. */}
-          <section id="note-backlinks" aria-label="Backlinks" className="mt-14 border-t border-border pt-6">
-            <h2 className="text-xs font-medium text-muted-foreground">
-              Backlinks <span className="tabular-nums">{backlinks.length}</span>
-            </h2>
-            {backlinks.length === 0 ? (
-              <p className="mt-3 text-body-dense text-muted-foreground">
-                No notes link here yet. Another note links to this one when it writes [[{title.trim() || "this title"}
-                ]].
-              </p>
-            ) : (
-              <ul className="mt-3 flex flex-col gap-2.5">
-                {backlinks.map((link) => (
-                  <BacklinkRow key={link.id} noteId={noteId} link={link} />
-                ))}
-              </ul>
+            {ai && (
+              <div className="mt-6 flex flex-col gap-2 rounded-lg border border-border p-3">
+                <div className="flex items-center gap-2">
+                  <Status>AI · {ai.heading}</Status>
+                  <span className="text-xs text-muted-foreground">
+                    {ai.failed
+                      ? "Something went wrong"
+                      : AI_TERMINAL.has(ai.state)
+                        ? ai.output
+                          ? "Draft ready - review it before anything is written"
+                          : "Finished without output"
+                        : "Working - the draft appears here when the run finishes"}
+                  </span>
+                </div>
+                {ai.coverage === "note_start" && (
+                  <p className="text-xs text-muted-foreground">
+                    This note is long, so only the first part was read. Select a passage to work on a later part.
+                  </p>
+                )}
+                {ai.output && !ai.failed && (
+                  <>
+                    <div className="max-h-64 overflow-y-auto whitespace-pre-wrap rounded-md bg-muted/40 p-3 text-body-dense leading-6">
+                      {ai.output}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {ai.selection && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={pending}
+                          onClick={() => acceptAI("replace")}
+                        >
+                          Replace the selection
+                        </Button>
+                      )}
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={pending}
+                        onClick={() => acceptAI("append")}
+                      >
+                        {ai.heading === "Answer" ? "Insert the answer" : "Add at the end"}
+                      </Button>
+                      {ai.heading !== "Answer" && ai.coverage === "whole_note" && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={pending}
+                          onClick={() => acceptAI("replaceNote")}
+                        >
+                          Replace the note
+                        </Button>
+                      )}
+                      <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => setAi(null)}>
+                        Discard
+                      </Button>
+                    </div>
+                  </>
+                )}
+                {ai.notice && (
+                  <p role="alert" className="text-xs text-destructive">
+                    {ai.notice}
+                  </p>
+                )}
+                {ai.failed && (
+                  <Button type="button" size="sm" variant="ghost" className="w-fit" onClick={() => setAi(null)}>
+                    Dismiss
+                  </Button>
+                )}
+              </div>
             )}
-          </section>
-          {/* Comments below the column on narrow screens; the margin column
-              on wide screens renders the same panel. One state, one composer. */}
-          <div id="note-comments" className={`mt-10 ${commentsOpen ? "2xl:hidden" : "xl:hidden"}`}>
-            <NoteCommentsPanel noteId={noteId} initialComments={comments} />
-          </div>
-        </motion.div>
+            {error && (
+              <p role="alert" className="mt-4 text-body-dense text-destructive">
+                {error}
+              </p>
+            )}
+            {/* Backlinks are part of reading the note, not a property of it:
+                they sit at the foot of the document, always visible, so the
+                reader sees what this note is part of. */}
+            <section id="note-backlinks" aria-label="Backlinks" className="mt-14 border-t border-border pt-6">
+              <h2 className="text-xs font-medium text-muted-foreground">
+                Backlinks <span className="tabular-nums">{backlinks.length}</span>
+              </h2>
+              {backlinks.length === 0 ? (
+                <p className="mt-3 text-body-dense text-muted-foreground">
+                  No notes link here yet. Another note links to this one when it writes [[{title.trim() || "this title"}
+                  ]].
+                </p>
+              ) : (
+                <ul className="mt-3 flex flex-col gap-2.5">
+                  {backlinks.map((link) => (
+                    <BacklinkRow key={link.id} noteId={noteId} link={link} />
+                  ))}
+                </ul>
+              )}
+            </section>
+            {/* Comments below the column on narrow screens and beside a linked
+                pane; the margin column on wide screens renders the same panel.
+                One state, one composer. */}
+            <div
+              id="note-comments"
+              className={`mt-10 ${crowded ? (commentsOpen ? "" : "hidden") : commentsOpen ? "2xl:hidden" : "xl:hidden"}`}
+            >
+              <NoteCommentsPanel noteId={noteId} initialComments={comments} />
+            </div>
+          </motion.div>
+        </div>
+        {/* The right margin (Notion's margin comments): ≥1280px only, where it
+            costs the prose column nothing, and never while a linked note
+            takes the room beside it. The toggle controls both placements. */}
+        {commentsOpen && !crowded && (
+          <aside aria-label="Comments margin" className="sticky top-12 hidden w-72 shrink-0 self-start xl:block">
+            <div className="pt-8 pr-6">
+              <NoteCommentsPanel noteId={noteId} initialComments={comments} />
+            </div>
+          </aside>
+        )}
       </div>
-      {/* The right margin (Notion's margin comments): ≥1280px only, where it
-          costs the prose column nothing. The toggle controls both placements. */}
-      {commentsOpen && (
-        <aside aria-label="Comments margin" className="sticky top-0 hidden w-72 shrink-0 xl:block">
-          <div className="pt-20">
-            <NoteCommentsPanel noteId={noteId} initialComments={comments} />
-          </div>
-        </aside>
-      )}
       <Sheet open={detailsOpen} onOpenChange={setDetailsOpen}>
         <SheetContent id="note-details" className="overflow-y-auto p-5 pt-12">
           <SheetTitle>Note details</SheetTitle>
@@ -1217,33 +1261,15 @@ export function NoteEditor({
               </div>
             </section>
           )}
-          {related.filter((r) => !r.alreadyLinked).length > 0 && (
-            <section aria-label="Related" className="flex flex-col gap-2">
-              <h2 className="text-xs font-medium text-muted-foreground">Related by meaning</h2>
-              <ul className="flex flex-wrap gap-1.5">
-                {related
-                  .filter((r) => !r.alreadyLinked)
-                  .map((r) => (
-                    <li
-                      key={r.id}
-                      className="inline-flex max-w-full items-center rounded-full border border-border bg-background text-body-dense transition-colors hover:bg-muted/60"
-                    >
-                      <Link
-                        className="flex min-w-0 items-center gap-1.5 rounded-full py-1 pl-2.5 pr-2 outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        href={`/polymath/notes?id=${r.id}`}
-                        title={r.excerpt ?? r.title}
-                      >
-                        {r.kind === "zettel" && <span className="text-data text-muted-foreground">zettel</span>}
-                        <span className="truncate">{r.title}</span>
-                        <span className="tabular-nums text-data text-muted-foreground">
-                          {Math.round(r.score * 100)}%
-                        </span>
-                      </Link>
-                    </li>
-                  ))}
-              </ul>
-            </section>
-          )}
+          <section aria-label="Share" className="flex flex-col items-start gap-2">
+            <h2 className="text-xs font-medium text-muted-foreground">Share</h2>
+            <NotionAppendAction
+              noteId={noteId}
+              title={title}
+              markdown={markdown}
+              disabled={pending || saveState === "saving"}
+            />
+          </section>
         </SheetContent>
       </Sheet>
     </div>

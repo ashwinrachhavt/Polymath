@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
+import { ChevronDown, ChevronUp } from "lucide-react";
+import { IconButton } from "@/components/ui/icon-button";
 import type { ArtifactRating } from "@/domains/knowledge/artifact-feedback";
 import type { QuizForSitting } from "@/domains/learning/queries";
 import { QuizRunner } from "../../../learn/[documentId]/quiz-runner";
@@ -75,9 +76,12 @@ function ResultCard({
           </p>
           {note ? <p className="mt-0.5 text-xs text-muted-foreground">{note}</p> : null}
         </div>
-        <Button size="sm" variant="outline" aria-expanded={open} onClick={onToggle}>
-          {open ? "Close" : "Open"}
-        </Button>
+        <IconButton
+          label={open ? "Close result" : "Open result"}
+          icon={open ? <ChevronUp aria-hidden className="size-4" /> : <ChevronDown aria-hidden className="size-4" />}
+          aria-expanded={open}
+          onClick={onToggle}
+        />
       </div>
       {open ? <div className="mt-3 border-t border-border pt-3">{children}</div> : null}
     </article>

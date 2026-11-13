@@ -153,9 +153,6 @@ function JobRow({ job, actions }: { job: GenerationJobView; actions: JobActions 
         <p className="truncate font-medium">{job.title}</p>
         <WorkStatus state={jobWorkState(job)} className="text-xs" />
         {job.status === "running" ? <ProgressBar fraction={fraction} /> : null}
-        {job.costUsd > 0 ? (
-          <p className="text-xs text-muted-foreground tabular-nums">Cost ${job.costUsd.toFixed(4)}</p>
-        ) : null}
       </div>
       <div className="flex shrink-0 items-center gap-1">
         {/* A result that lands on this very page needs no link to it. */}

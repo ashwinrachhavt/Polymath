@@ -200,10 +200,7 @@ export type AgentRootStatus = { source: "Claude Code" | "Codex"; path: string; p
 function AgentSessionsPanel({ roots }: { roots?: AgentRootStatus[] }) {
   if (!roots || roots.length === 0) return null;
   return (
-    <Panel
-      title="Local agent sessions"
-      description="Folders this deployment reads when you scan agent sessions from a project page. Files are parsed on this machine and nothing is sent to a model."
-    >
+    <Panel title="Local agent sessions" description="Parsed on this machine; nothing is sent to a model.">
       <dl className="grid gap-3 text-body-dense">
         {roots.map((root) => (
           <div key={root.source}>
@@ -238,10 +235,7 @@ function CapabilityPanel({ capabilities }: { capabilities?: CapabilityStatus[] }
   const missing = capabilities.filter((c) => !c.configured);
   const ready = capabilities.filter((c) => c.configured);
   return (
-    <Panel
-      title="Configured capabilities"
-      description="What this deployment can run right now, read from its environment. Names only, never values."
-    >
+    <Panel title="Configured capabilities" description="Read from the environment: names only, never values.">
       {missing.length > 0 ? (
         <div className="flex flex-col gap-3">
           {missing.map((c) => (
@@ -302,7 +296,7 @@ function AssistantPanel({ profile }: { profile: AssistantProfile }) {
   return (
     <Panel
       title="Your assistant"
-      description={`What your assistant knows about how you work, learned during onboarding (profile: ${saved.name}). Edit to correct it; save empty fields to retire them for future runs. Retiring is not erasing: the onboarding interview and the change history are kept.`}
+      description={`Learned during onboarding (profile: ${saved.name}). Save a field empty to retire it; its history is kept.`}
     >
       <form
         className="grid gap-4"
@@ -414,7 +408,7 @@ function MemoryPanel() {
   return (
     <Panel
       title="Memory"
-      description="Short observations your assistant carried forward from earlier sessions. Notes are checked against the transcripts they came from, corrected when they are wrong, and only a small index of them is loaded into a session."
+      description="Notes from earlier sessions, checked against their transcripts."
       actions={<Status>{dream ? `Last pass: ${dream.transcripts} sessions` : "No pass yet"}</Status>}
     >
       {dream ? (
@@ -478,13 +472,14 @@ export default function Settings({
   // submits against the version it rendered (compare-and-set on the server).
   // The /settings route passes the row in; the legacy /apps dispatch is
   // client-rendered, so it loads the same row on mount instead.
-  const [saved, setSaved] = useState(
+  const [saved, setSaved] = useState<LoadedPreferences>(
     serverPreferences ?? {
       timezone: "UTC",
       weekStart: 1,
       appearance: "system",
       motion: "full",
-      interfaceMode: "auto" as const,
+      interfaceMode: "auto",
+      accent: "graphite",
       version: 0,
     },
   );
@@ -504,10 +499,9 @@ export default function Settings({
       title="Settings"
       description={
         browserPreview
-          ? "This browser preview keeps its own local state; nothing here is an account. The panels below describe what the preview stores or name what is not built yet."
-          : "Timezone, week start, appearance and motion save to your account and load on every device. The remaining panels name this deployment's capabilities and what is not built yet."
+          ? "This browser preview keeps its own local state; nothing here is an account."
+          : "Your preferences save to your account and load on every device."
       }
-      actions={<Destination href="/command-center/integrations">Connection catalog</Destination>}
     >
       <div className="flex flex-col gap-6 lg:flex-row lg:gap-8">
         <SettingsNav groups={SECTION_GROUPS} active={active} />
@@ -584,7 +578,7 @@ export default function Settings({
           <Section id="interface">
             <Panel
               title="Interface mode"
-              description="Two interface languages: Library is the calm reading surface (serif titles, generous whitespace), Action is the dense decision surface (tighter rhythm, loud focus). Auto follows your working day (08:00-18:00 in your timezone) and resolves to Action during it. The header toggle pins a side in one tap."
+              description="Library is for reading, Action for deciding. Auto uses Action from 08:00 to 18:00 in your timezone."
             >
               <form
                 key={saved.interfaceMode}
@@ -652,7 +646,7 @@ export default function Settings({
           </Section>
 
           <Section id="appearance">
-            <Panel title="Appearance" description="Mode, page colour and accent. Changes apply immediately.">
+            <Panel title="Appearance">
               <AppearancePicker
                 onModeChange={(appearance) => {
                   const before = saved;
@@ -666,9 +660,21 @@ export default function Settings({
                     notify(result.error);
                   });
                 }}
+                onAccentChange={(accent) => {
+                  const before = saved;
+                  setSaved({ ...saved, accent });
+                  void savePreferencesAction({ expectedVersion: before.version, accent }).then((result) => {
+                    if (result.ok) {
+                      setSaved(result.preferences);
+                      return;
+                    }
+                    setSaved(before);
+                    notify(result.error);
+                  });
+                }}
               />
               <p className="mt-3 text-xs text-muted-foreground">
-                Mode saves to your account; page colour and accent are remembered in this browser.
+                Mode and accent follow your account to every device; page colour stays in this browser.
               </p>
             </Panel>
           </Section>
@@ -724,7 +730,7 @@ export default function Settings({
           </Section>
 
           <Section id="connectors">
-            <Panel title="Connector state" description="See the connection catalog.">
+            <Panel title="Connector state">
               <Unavailable feature="Connector credentials">
                 Provider secrets never reach this browser. Account connection, aliasing and revocation are server-side
                 domain commands against Composio.
@@ -755,10 +761,7 @@ export default function Settings({
           </Section>
 
           <Section id="account">
-            <Panel
-              title="Account and machine clients"
-              description="API keys let the Chrome companion, scripts and agents authenticate. Only the key's digest is stored; the secret is shown once at creation."
-            >
+            <Panel title="Account and machine clients" description="Only a digest of each key is stored.">
               <ApiKeysPanel />
             </Panel>
           </Section>
@@ -813,7 +816,7 @@ export default function Settings({
           <Section id="candidate-facts">
             <Panel
               title="Candidate facts and résumé setup"
-              description="Structured facts about the owner, reused by the assistant when it drafts or reviews career material."
+              description="Reused when the assistant drafts career material."
             >
               <Button variant="outline" onClick={() => setFactsOpen(!factsOpen)}>
                 {factsOpen ? "Close candidate facts" : "Prepare candidate facts and résumé setup"}
@@ -831,8 +834,8 @@ export default function Settings({
               title="Reset browser preview"
               description={
                 browserPreview
-                  ? "Clear local edits, notes, checkpoints, tasks and review decisions back to an empty workspace. No production or provider data is affected."
-                  : "Clear this browser's local preview edits only - notes, checkpoints, tasks and review decisions stored in this browser. Your account settings and server records are not affected."
+                  ? "Clears local edits back to an empty workspace. No production or provider data is affected."
+                  : "Clears this browser's local preview edits only. Your account settings and server records are not affected."
               }
             >
               <Dialog

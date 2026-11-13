@@ -40,7 +40,9 @@ import { composioNotionClient } from "@/integrations/notion/client";
 import { noteNotionDedupeKey, proposeNotionPageUpdate } from "@/domains/knowledge/notion-proposals";
 import { requireRole } from "@/lib/auth/guards";
 import { bindGuarded, type Result } from "@/lib/result";
-import { LIBRARY_PAGE_SIZE, libraryNote, type LibraryNote } from "./library-notes";
+import { markdownToPlainText } from "@/lib/display-text";
+import type { HistoryGroup } from "../history";
+import { LISTED_KINDS, NOTES_LIST_SIZE, noteHistory } from "./notes-history";
 
 /*
  * Notes mutations on the canonical artifact rows (ASH-141 / B04). A note
@@ -380,7 +382,7 @@ export async function findLinkTargetsAction(
   const auth = await getAuthContext();
   const query = parsed.data.query.trim();
   if (!query)
-    return (await listNotes(auth, 9))
+    return (await listNotes(auth, 9, LINKABLE_KINDS))
       .filter((r) => r.id !== parsed.data.excludeId)
       .slice(0, 8)
       .map((r) => ({ id: r.id, title: r.title, kind: r.kind }));
@@ -407,24 +409,72 @@ const browseInput = z.object({
 });
 
 /**
- * One page of the Notes library rail, newest first, narrowed by a keyword.
- * The same paged query the page renders its first page with, so the rail's
- * search and `/polymath/notes?page=2` can never disagree about which notes
- * exist or in what order they come. A read: membership is enough, and nothing
- * is revalidated - filtering the rail must not re-render the note being read.
+ * The Notes popover's search: the newest notes matching a keyword, grouped by
+ * day like the list it narrows. The same paged query the page renders the list
+ * with, so search and the unsearched list can never disagree about which notes
+ * exist or in what order. A read: membership is enough, and nothing is
+ * revalidated, so searching never re-renders the note being written.
  */
-export async function browseNotesAction(
-  input: z.input<typeof browseInput>,
-): Promise<{ items: LibraryNote[]; total: number }> {
+export async function browseNotesAction(input: z.input<typeof browseInput>): Promise<HistoryGroup[]> {
   const parsed = browseInput.safeParse(input);
-  if (!parsed.success) return { items: [], total: 0 };
+  if (!parsed.success) return [];
   const auth = await getAuthContext();
-  const { items, total } = await pageNotes(auth, {
+  const { items } = await pageNotes(auth, {
     query: parsed.data.query,
-    limit: LIBRARY_PAGE_SIZE,
+    kinds: LISTED_KINDS,
+    limit: NOTES_LIST_SIZE,
     offset: 0,
   });
-  return { items: items.map(libraryNote), total };
+  return noteHistory(items);
+}
+
+const similarInput = z.object({
+  noteId: z.string().uuid(),
+  title: z.string().max(500),
+  text: z.string().max(100_000),
+});
+
+/** How much of the note the similarity query reads: its opening is what it is about. */
+const SIMILAR_QUERY_CHARS = 2000;
+
+type SimilarNote = { id: string; title: string; kind: string; similarity: number | null; snippet: string | null };
+export type SimilarNotes = { notes: SimilarNote[]; meaning: "ok" | "off" | "unconfigured" | "failed" };
+
+/**
+ * Notes that mean something close to the one being written, for the writer to
+ * link by hand. Reads the live text (the draft, not the last checkpoint), so a
+ * note is comparable before it was ever committed or embedded. Meaning search
+ * only: a keyword match on a whole page of prose finds nothing useful, and
+ * when meaning search is not available the caller says so rather than showing
+ * weaker matches as if they were similar.
+ */
+export async function similarNotesAction(input: z.input<typeof similarInput>): Promise<SimilarNotes> {
+  const parsed = similarInput.safeParse(input);
+  if (!parsed.success) return { notes: [], meaning: "failed" };
+  const auth = await getAuthContext();
+  const query = `${parsed.data.title.trim()}\n\n${markdownToPlainText(parsed.data.text)}`
+    .slice(0, SIMILAR_QUERY_CHARS)
+    .trim();
+  if (!query) return { notes: [], meaning: "ok" };
+  const result = await searchKnowledge(auth, { query, mode: "meaning", limit: 9, kinds: LINKABLE_KINDS });
+  return {
+    meaning: result.meaning,
+    notes: result.hits
+      .filter((hit) => hit.id !== parsed.data.noteId)
+      .slice(0, 8)
+      .map((hit) => ({
+        id: hit.id,
+        title: hit.title,
+        kind: hit.kind,
+        similarity: hit.why.similarity,
+        // Keyword hits mark matches with [[ ]]; here they would read as links.
+        snippet: hit.snippet
+          ? markdownToPlainText(hit.snippet.replace(/\[\[|\]\]/g, ""))
+              .replace(/\s+/g, " ")
+              .trim() || null
+          : null,
+      })),
+  };
 }
 
 /*

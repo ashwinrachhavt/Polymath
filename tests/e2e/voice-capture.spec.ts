@@ -59,5 +59,5 @@ test("a voice note records, transcribes, and converts like any capture", async (
 
   // The fixture's words are the capture's text; conversion affordances return.
   await expect(detail).toContainText("Fixture transcript: send the Q3 roadmap to Priya by Friday");
-  await expect(detail.getByRole("button", { name: "Make task", exact: true })).toBeVisible();
+  await expect(detail.getByRole("button", { name: "Make a task", exact: true })).toBeVisible();
 });

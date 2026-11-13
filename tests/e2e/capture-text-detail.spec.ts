@@ -45,9 +45,11 @@ test("a text capture reads as its own body with nothing to fetch", async ({ page
   // do anything, or worse, implies the text is incomplete when it is not.
   await expect(detail.getByRole("button", { name: /retry/i })).toHaveCount(0);
 
-  // Invariant 3: both filing actions are available on text.
+  // Invariant 3: both filing actions are available on text: the note verb
+  // in the row, the library document behind "Turn into".
   await expect(detail.getByRole("button", { name: "Save as note", exact: true })).toBeVisible();
-  await expect(detail.getByRole("button", { name: "Save to library", exact: true })).toBeVisible();
+  await detail.getByRole("button", { name: "Turn into", exact: true }).click();
+  await expect(page.getByRole("menuitem", { name: "Library document" })).toBeVisible();
 });
 
 test("a capture with nothing to fetch never shows a fetch-state line", async ({ page }) => {

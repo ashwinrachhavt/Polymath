@@ -3,7 +3,7 @@ import { loadPreferencesAction, savePreferencesAction } from "@/app/(workspace)/
 import { AppLauncher } from "@/components/shell/app-launcher";
 import { PathBreadcrumb } from "@/components/shell/path-breadcrumb";
 import { WorkspaceSwitcher, type WorkspaceSwitcherData } from "@/components/shell/workspace-switcher";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { AppearanceMenu } from "@/components/shell/appearance-menu";
 import { ModeToggle } from "@/components/shell/mode-toggle";
 import { UserMenu } from "@/components/shell/user-menu";
 import { CommandLayerMount } from "@/components/shell/command-layer-mount";
@@ -15,7 +15,7 @@ import type { ShellPreferencePatch, ShellPreferenceSnapshot } from "@/components
 /*
  * The header. Where-you-are on the left — the workspace names the context the
  * breadcrumb's path lives in, so the switcher sits beside the breadcrumb —
- * and what acts globally on the right: command, notifications, theme, the app
+ * and what acts globally on the right: command, notifications, appearance (mode and accent), the app
  * launcher, and the account menu. The launcher sits next to the avatar,
  * Google-apps-style, so all "leave this app" affordances live in one corner.
  *
@@ -66,6 +66,7 @@ export function TopBar({
           kind: "ready" as const,
           version: result.preferences.version,
           appearance: result.preferences.appearance,
+          accent: result.preferences.accent,
         };
         currentRef.current = next;
         setCurrentPreferences(next);
@@ -81,7 +82,12 @@ export function TopBar({
     try {
       const result = await savePreferencesAction({ expectedVersion: current.version, ...patch });
       if (result.ok) {
-        const next = { ...current, version: result.preferences.version, appearance: result.preferences.appearance };
+        const next = {
+          ...current,
+          version: result.preferences.version,
+          appearance: result.preferences.appearance,
+          accent: result.preferences.accent,
+        };
         currentRef.current = next;
         setCurrentPreferences(next);
         return true;
@@ -93,6 +99,7 @@ export function TopBar({
           kind: "ready" as const,
           version: fresh.preferences.version,
           appearance: fresh.preferences.appearance,
+          accent: fresh.preferences.accent,
         };
         currentRef.current = next;
         setCurrentPreferences(next);
@@ -124,11 +131,7 @@ export function TopBar({
           disabled={savingPreferences || currentPreferences.kind !== "ready"}
           onSave={savePreference}
         />
-        <ThemeToggle
-          initialPreference={currentPreferences.kind === "ready" ? currentPreferences : null}
-          disabled={savingPreferences}
-          onSave={savePreference}
-        />
+        <AppearanceMenu preferences={currentPreferences} disabled={savingPreferences} onSave={savePreference} />
         <AppLauncher />
         <UserMenu configured={clerkConfigured} />
       </div>

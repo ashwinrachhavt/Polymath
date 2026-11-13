@@ -4,6 +4,7 @@ import { revalidatePath, updateTag } from "next/cache";
 import {
   getPreferences,
   updatePreferences,
+  type AccentValue,
   type AppearanceValue,
   type InterfaceModeValue,
   type LoadedPreferences,
@@ -61,6 +62,7 @@ export async function savePreferencesAction(input: {
   appearance?: AppearanceValue;
   motion?: MotionValue;
   interfaceMode?: InterfaceModeValue;
+  accent?: AccentValue;
 }): Promise<Result<{ preferences: LoadedPreferences }>> {
   let auth;
   try {
@@ -75,6 +77,7 @@ export async function savePreferencesAction(input: {
   if (input.appearance !== undefined) patch.appearance = input.appearance;
   if (input.motion !== undefined) patch.motion = input.motion;
   if (input.interfaceMode !== undefined) patch.interfaceMode = input.interfaceMode;
+  if (input.accent !== undefined) patch.accent = input.accent;
   try {
     const preferences = await updatePreferences(auth, {
       expectedVersion: Number(input.expectedVersion),

@@ -122,7 +122,7 @@ function project(extraction: {
   ageSeconds: number;
 } | null): { readiness: SourceReadiness; detail: string | null; queuedForMs: number | null } {
   if (!extraction) {
-    return { readiness: "queued", detail: "Waiting for the queue worker.", queuedForMs: null };
+    return { readiness: "queued", detail: "Queued.", queuedForMs: null };
   }
   if (extraction.status === "failed") {
     return { readiness: "failed", detail: extraction.error ?? "The source could not be read.", queuedForMs: null };
@@ -134,7 +134,7 @@ function project(extraction: {
     const liveClaim = extraction.claimedAt !== null && (extraction.claimAgeSeconds ?? 0) < LIVE_LEASE_SECONDS;
     return liveClaim
       ? { readiness: "extracting", detail: "Reading the source.", queuedForMs: null }
-      : { readiness: "queued", detail: extraction.ageSeconds > 120 ? "Waiting for the queue worker." : null, queuedForMs: extraction.ageSeconds * 1000 };
+      : { readiness: "queued", detail: extraction.ageSeconds > 120 ? "Queued." : null, queuedForMs: extraction.ageSeconds * 1000 };
   }
   // succeeded
   if (extraction.embedError) {

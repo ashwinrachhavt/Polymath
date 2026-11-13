@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, useOptimistic, useTransition } fr
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Bell } from "lucide-react";
+import { Tooltip } from "@/components/ui/tooltip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { NotificationCard } from "@/components/shell/notifications/NotificationCard";
@@ -264,24 +265,26 @@ export function NotificationsPanel({ feed }: { feed: TriageFeed }) {
         if (next) setSelected(0);
       }}
     >
-      <SheetTrigger asChild>
-        <button
-          type="button"
-          aria-label={
-            feed.counts.inbox > 0
-              ? `Notifications, ${feed.counts.inbox} ${feed.counts.inbox === 1 ? "item needs" : "items need"} you`
-              : "Notifications"
-          }
-          className="text-muted-foreground hover:bg-muted hover:text-foreground relative flex size-8 items-center justify-center rounded-md"
-        >
-          <Bell aria-hidden className="size-4" />
-          {feed.counts.inbox > 0 ? (
-            <span className="bg-primary text-primary-foreground absolute -top-0.5 -right-0.5 flex min-w-4 items-center justify-center rounded-full px-1 text-data leading-4 tabular-nums">
-              {feed.counts.inbox > 99 ? "99+" : feed.counts.inbox}
-            </span>
-          ) : null}
-        </button>
-      </SheetTrigger>
+      <Tooltip content="Notifications">
+        <SheetTrigger asChild>
+          <button
+            type="button"
+            aria-label={
+              feed.counts.inbox > 0
+                ? `Notifications, ${feed.counts.inbox} ${feed.counts.inbox === 1 ? "item needs" : "items need"} you`
+                : "Notifications"
+            }
+            className="text-muted-foreground hover:bg-muted hover:text-foreground relative flex size-8 items-center justify-center rounded-md"
+          >
+            <Bell aria-hidden className="size-4" />
+            {feed.counts.inbox > 0 ? (
+              <span className="bg-primary text-primary-foreground absolute -top-0.5 -right-0.5 flex min-w-4 items-center justify-center rounded-full px-1 text-data leading-4 tabular-nums">
+                {feed.counts.inbox > 99 ? "99+" : feed.counts.inbox}
+              </span>
+            ) : null}
+          </button>
+        </SheetTrigger>
+      </Tooltip>
       <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-md">
         <SheetHeader className="border-b border-border px-4 py-3">
           <SheetTitle className="text-body font-medium">Notifications</SheetTitle>

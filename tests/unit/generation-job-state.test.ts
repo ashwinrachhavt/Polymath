@@ -30,7 +30,6 @@ const base: GenerationJobFacts = {
   result: null,
   error: null,
   progress: null,
-  costMicroUsd: 0,
   createdAt: new Date("2026-11-11T10:00:00Z"),
   updatedAt: new Date("2026-11-11T10:00:05Z"),
   stalled: false,
@@ -50,9 +49,9 @@ describe("generation job state", () => {
     expect(["ready", "failed", "cancelled"].map((s) => isSettled(s as never))).toEqual([true, true, true]);
   });
 
-  it("shows progress only while the job runs, and its spend in dollars", () => {
+  it("shows progress only while the job runs", () => {
     const progress = { step: "Crawling", done: 12, total: 25 };
-    expect(toJobView({ ...base, progress, costMicroUsd: 37_500 })).toMatchObject({ progress, costUsd: 0.0375 });
+    expect(toJobView({ ...base, progress })).toMatchObject({ progress });
     expect(toJobView({ ...base, status: "ready", progress, result: { href: "/x", notice: null } }).progress).toBeNull();
     expect(toJobView({ ...base, progress, stalled: true }).progress).toBeNull();
   });

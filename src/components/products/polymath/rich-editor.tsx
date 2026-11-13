@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type MouseEvent } from "react";
+import { createPortal } from "react-dom";
 import { linkTargetInsertion, type LinkTarget } from "./link-target-insertion";
 import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
@@ -12,9 +13,10 @@ import { WIKI_LINK_OPEN, WikiLinks, refreshWikiPreviews, type WikiLinkOpen } fro
 import type { LinkPreview } from "@/domains/knowledge/notes";
 import { InlineCompletion } from "./inline-completion";
 import { setAutocompleteEnabled, useAutocomplete } from "./autocomplete-client";
-import { Bold, Italic, List, ListOrdered, Quote, Undo2, Redo2 } from "lucide-react";
+import { Bold, Italic, List, ListOrdered, Quote, Undo2, Redo2, TextCursorInput } from "lucide-react";
 import { filterBlockCommands, slashQuery, type BlockCommand } from "@/components/workspace/slash-commands";
 import { Button } from "@/components/ui/button";
+import { Tooltip } from "@/components/ui/tooltip";
 import { DictationButton } from "@/components/speech/dictation-button";
 import { useWorkspace } from "@/components/workspace/workspace-provider";
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
@@ -69,12 +71,22 @@ async function insertImageCapture(
   notify(`Captured ${name} to your inbox and linked it here.`);
 }
 
+/** What a host can ask of the rich editor without owning it. */
+export type RichEditorHandle = {
+  /** Inserts text at the caret, or at the end when the writer has not placed one yet. */
+  insertAtCaret: (text: string) => void;
+  /** Puts the caret after the last character. */
+  focusEnd: () => void;
+};
+
 /*
  * Two chromes for the same editor. "full" (the dossier surfaces) keeps the
  * persistent toolbar and the mode row. "minimal" (the notebook) puts the
  * writing first: no persistent toolbar, formatting floats up on a selection,
  * "/" opens blocks, and the mode toggle is controlled from outside (the note
- * inspector), so the only persistent control is one quiet Ask AI button.
+ * inspector). Its few persistent controls (autocomplete, dictation, Ask AI)
+ * are quiet icons the host places through `toolsSlot`, so they sit in the
+ * page's own top bar instead of a row above the text.
  */
 export default function RichEditor({
   content,
@@ -90,10 +102,19 @@ export default function RichEditor({
   onStructuredPasteDropped,
   linkPreviews,
   missingLinkTitles,
+  toolsSlot,
+  onOpenNote,
+  onHandle,
 }: {
   content: string;
   onChange: (content: string) => void;
   ai?: RichEditorAI;
+  /** Where the minimal chrome's icons render (the host's top bar); inline above the text without one. */
+  toolsSlot?: HTMLElement | null;
+  /** Opens a clicked [[link]]'s note; without it the link navigates to the note's page. */
+  onOpenNote?: (id: string) => void;
+  /** Receives the handle while the rich editor is mounted, and null when it leaves (Markdown source mode). */
+  onHandle?: (handle: RichEditorHandle | null) => void;
   /** First lines of linked notes, folded into the text where the page has no margin. */
   linkPreviews?: LinkPreview[];
   /** Linked titles the server found no note for: they read as muted text, not links. */
@@ -132,6 +153,28 @@ export default function RichEditor({
   };
   const minimal = chrome === "minimal";
   const root = useRef<HTMLDivElement>(null);
+  const minimalTools = (
+    <>
+      {autocomplete && mode === "rich" && editable ? <AutocompleteToggle /> : null}
+      {mode === "rich" && editable ? (
+        <DictationButton
+          size="icon-sm"
+          className="text-muted-foreground"
+          field={() => root.current?.querySelector<HTMLElement>('[contenteditable="true"]') ?? null}
+        />
+      ) : null}
+      {ai ? (
+        <NoteAIMenu
+          icon
+          selection={selection}
+          pending={ai.pending}
+          onAction={ai.onAction}
+          open={ai.open}
+          onOpenChange={ai.onOpenChange}
+        />
+      ) : null}
+    </>
+  );
   // The minimal chrome is flex-based so a host that stretches it (the notes
   // column gives the canvas its --canvas-min floor) can hand the slack to the
   // writing area itself; hosts without spare height are unaffected.
@@ -139,26 +182,11 @@ export default function RichEditor({
     <div ref={root} className={minimal ? "relative flex flex-1 flex-col" : "space-y-3"}>
       {minimal ? (
         ai || autocomplete ? (
-          // Floats in the gap above the document instead of taking a row of
-          // its own, so the first line of text sits right under the title.
-          <div className="absolute -top-12 right-0 z-10 flex items-center justify-end gap-1">
-            {autocomplete && mode === "rich" && editable ? <AutocompleteToggle /> : null}
-            {mode === "rich" && editable ? (
-              <DictationButton
-                size="icon-sm"
-                field={() => root.current?.querySelector<HTMLElement>('[contenteditable="true"]') ?? null}
-              />
-            ) : null}
-            {ai ? (
-              <NoteAIMenu
-                selection={selection}
-                pending={ai.pending}
-                onAction={ai.onAction}
-                open={ai.open}
-                onOpenChange={ai.onOpenChange}
-              />
-            ) : null}
-          </div>
+          toolsSlot ? (
+            createPortal(minimalTools, toolsSlot)
+          ) : (
+            <div className="flex items-center justify-end gap-1">{minimalTools}</div>
+          )
         ) : null
       ) : (
         <div className="flex flex-wrap items-center gap-2">
@@ -230,10 +258,27 @@ export default function RichEditor({
           onStructuredPasteDropped={onStructuredPasteDropped}
           linkPreviews={linkPreviews}
           missingLinkTitles={missingLinkTitles}
+          onOpenNote={onOpenNote}
+          onHandle={onHandle}
         />
       )}
     </div>
   );
+}
+
+/*
+ * Where an insert from outside lands: the caret, unless the caret sits inside
+ * a [[wiki link]] (clicking a link to open it leaves it there), in which case
+ * just after that link, so one link is never written into another.
+ */
+function caretOutsideWikiLink(editor: Editor): number {
+  const { $from, from } = editor.state.selection;
+  const text = $from.parent.textContent;
+  const offset = $from.parentOffset;
+  const open = text.lastIndexOf("[[", offset - 1);
+  if (open === -1 || text.slice(open, offset).includes("]]")) return from;
+  const close = text.indexOf("]]", offset - 1);
+  return close === -1 ? from : Math.min($from.start() + close + 2, $from.end());
 }
 
 /*
@@ -306,35 +351,32 @@ function SlashMenu({
 function AutocompleteToggle() {
   const { enabled, status } = useAutocomplete();
   const unavailable = status === "unavailable";
+  const on = enabled && !unavailable;
+  const state = unavailable
+    ? "Autocomplete unavailable: no model provider is configured for suggestions."
+    : !enabled
+      ? "Autocomplete off"
+      : status === "paused"
+        ? "Autocomplete paused for a few minutes (allowance or rate limit)."
+        : status === "silent"
+          ? "Autocomplete is not responding. It keeps trying as you write."
+          : "Autocomplete on: suggestions appear when you pause. Tab accepts, Cmd/Ctrl+→ takes a word, Esc dismisses.";
   return (
-    <Button
-      type="button"
-      variant="ghost"
-      size="sm"
-      className="text-muted-foreground"
-      aria-pressed={enabled && !unavailable}
-      disabled={unavailable}
-      title={
-        unavailable
-          ? "No model provider is configured for suggestions."
-          : status === "paused"
-            ? "Suggestions are paused for a few minutes (allowance or rate limit)."
-            : status === "silent"
-              ? "The model behind suggestions has not replied to the last few requests. It keeps trying as you write."
-              : "Suggestions appear when you pause. Tab accepts, Cmd/Ctrl+→ accepts a word, Esc dismisses."
-      }
-      onClick={() => setAutocompleteEnabled(!enabled)}
-    >
-      {unavailable
-        ? "Autocomplete unavailable"
-        : !enabled
-          ? "Autocomplete off"
-          : status === "paused"
-            ? "Autocomplete paused"
-            : status === "silent"
-              ? "Autocomplete not responding"
-              : "Autocomplete on"}
-    </Button>
+    <Tooltip content={state}>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        // Typing on a phone has no Tab key to accept a suggestion.
+        className={`max-sm:hidden ${on ? "text-foreground" : "text-muted-foreground/60"}`}
+        aria-label="Autocomplete"
+        aria-pressed={on}
+        disabled={unavailable}
+        onClick={() => setAutocompleteEnabled(!enabled)}
+      >
+        <TextCursorInput aria-hidden />
+      </Button>
+    </Tooltip>
   );
 }
 
@@ -351,9 +393,13 @@ function RichMarkdownEditor({
   onStructuredPasteDropped,
   linkPreviews,
   missingLinkTitles,
+  onOpenNote,
+  onHandle,
 }: {
   linkPreviews?: LinkPreview[];
   missingLinkTitles?: string[];
+  onOpenNote?: (id: string) => void;
+  onHandle?: (handle: RichEditorHandle | null) => void;
   compact?: boolean;
   editable?: boolean;
   autocomplete?: boolean;
@@ -416,21 +462,26 @@ function RichMarkdownEditor({
   // one, otherwise the title resolves through the same finder the [[ picker
   // uses, so a link reads and navigates the same way.
   const router = useRouter();
+  // Whether the writer has put the caret anywhere yet: until then an insert
+  // from outside (a link picked in the similar-notes list) goes at the end,
+  // not at the document's first position.
+  const caretPlaced = useRef(false);
   useEffect(() => {
     const host = containerRef.current;
     if (!host) return;
+    const go = (id: string) => (onOpenNote ? onOpenNote(id) : router.push(`/polymath/notes?id=${id}`));
     const open = (event: Event) => {
       const { title, id } = (event as CustomEvent<WikiLinkOpen>).detail;
-      if (id) return router.push(`/polymath/notes?id=${id}`);
+      if (id) return go(id);
       const wanted = title.toLowerCase();
       const exact = (rows: LinkTarget[]) => rows.find((row) => !row.href && row.title.trim().toLowerCase() === wanted);
       const local = state.artifacts.find((a) => a.id !== undefined && a.title.trim().toLowerCase() === wanted);
-      if (local?.id) return router.push(`/polymath/notes?id=${local.id}`);
+      if (local?.id) return go(local.id);
       if (!findLinkTargets) return notify(`No note titled "${title}" yet.`);
       void findLinkTargets(title, "keyword").then(
         (rows) => {
           const hit = exact(rows);
-          if (hit) router.push(`/polymath/notes?id=${hit.id}`);
+          if (hit) go(hit.id);
           else notify(`No note titled "${title}" yet.`);
         },
         () => notify(`Could not open "${title}". Try again.`),
@@ -438,7 +489,7 @@ function RichMarkdownEditor({
     };
     host.addEventListener(WIKI_LINK_OPEN, open);
     return () => host.removeEventListener(WIKI_LINK_OPEN, open);
-  }, [findLinkTargets, notify, router, state.artifacts]);
+  }, [findLinkTargets, notify, onOpenNote, router, state.artifacts]);
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ link: { openOnClick: false } }),
@@ -560,8 +611,11 @@ function RichMarkdownEditor({
         role: "textbox",
         "aria-label": "Rich note content",
         "aria-multiline": "true",
-        class: `${compact ? "min-h-24 p-2 text-body-dense leading-6" : floating ? "prose-reading flex-1 cursor-text font-[family-name:var(--font-reading)] text-foreground" : "min-h-72 max-w-[var(--measure-prose)] p-4 text-sm leading-7"} ${editable ? "writing-surface outline-none" : "outline-none [&_*]:cursor-text"} [&_p]:mb-4 [&_h1]:text-2xl [&_h2]:text-xl [&_h2]:mb-3 [&_h3]:text-lg [&_h3]:mb-2 [&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-6 [&_ol]:pl-6 [&_ul[data-type=taskList]]:list-none [&_ul[data-type=taskList]]:pl-1 [&_li[data-type=taskItem]]:flex [&_li[data-type=taskItem]]:items-start [&_li[data-type=taskItem]]:gap-2 [&_li[data-type=taskItem]>label]:mt-[0.3em] [&_li[data-type=taskItem]>label]:select-none [&_li[data-type=taskItem]>div]:min-w-0 [&_li[data-type=taskItem]>div]:flex-1 [&_li[data-type=taskItem]_p]:mb-1 [&_li[data-type=taskItem][data-checked=true]>div]:text-muted-foreground [&_li[data-type=taskItem][data-checked=true]>div]:line-through [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-4 [&_blockquote]:italic [&_pre]:overflow-auto [&_pre]:bg-muted [&_pre]:p-3 [&_a]:text-[var(--link)] [&_a]:no-underline [&_a:hover]:underline`,
+        class: `${compact ? "min-h-24 p-2 text-body-dense leading-6" : floating ? "prose-reading min-h-[45dvh] flex-1 cursor-text pb-16 font-[family-name:var(--font-reading)] text-foreground" : "min-h-72 max-w-[var(--measure-prose)] p-4 text-sm leading-7"} ${editable ? "writing-surface outline-none" : "outline-none [&_*]:cursor-text"} [&_p]:mb-4 [&_h1]:text-2xl [&_h2]:text-xl [&_h2]:mb-3 [&_h3]:text-lg [&_h3]:mb-2 [&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-6 [&_ol]:pl-6 [&_ul[data-type=taskList]]:list-none [&_ul[data-type=taskList]]:pl-1 [&_li[data-type=taskItem]]:flex [&_li[data-type=taskItem]]:items-start [&_li[data-type=taskItem]]:gap-2 [&_li[data-type=taskItem]>label]:mt-[0.3em] [&_li[data-type=taskItem]>label]:select-none [&_li[data-type=taskItem]>div]:min-w-0 [&_li[data-type=taskItem]>div]:flex-1 [&_li[data-type=taskItem]_p]:mb-1 [&_li[data-type=taskItem][data-checked=true]>div]:text-muted-foreground [&_li[data-type=taskItem][data-checked=true]>div]:line-through [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-4 [&_blockquote]:italic [&_pre]:overflow-auto [&_pre]:bg-muted [&_pre]:p-3 [&_a]:text-[var(--link)] [&_a]:no-underline [&_a:hover]:underline`,
       },
+    },
+    onFocus: () => {
+      caretPlaced.current = true;
     },
     onSelectionUpdate: ({ editor }) => {
       const sel = editor.state.selection;
@@ -600,6 +654,33 @@ function RichMarkdownEditor({
     // editor's re-serialized Markdown to onChange and rewrite untouched notes.
     if (editor && editor.isEditable !== editable) editor.setEditable(editable, false);
   }, [editor, editable]);
+  useEffect(() => {
+    if (!onHandle || !editor) return;
+    onHandle({
+      insertAtCaret: (text) => {
+        if (!caretPlaced.current) {
+          const empty = editor.state.doc.textContent.length === 0;
+          editor
+            .chain()
+            .focus("end")
+            .insertContent(`${empty ? "" : " "}${text}`)
+            .run();
+          return;
+        }
+        const at = caretOutsideWikiLink(editor);
+        const before = editor.state.doc.textBetween(Math.max(0, at - 1), at);
+        editor
+          .chain()
+          .focus()
+          .insertContentAt(at, `${before && !/\s/.test(before) ? " " : ""}${text}`)
+          .run();
+      },
+      focusEnd: () => {
+        editor.commands.focus("end");
+      },
+    });
+    return () => onHandle(null);
+  }, [editor, onHandle]);
   const slashMatches = slash ? filterBlockCommands(slash.query) : [];
   const linkMatches = link ? candidates(link.query) : [];
   const formatting = useEditorState({

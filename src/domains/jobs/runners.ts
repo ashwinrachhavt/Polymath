@@ -1,9 +1,9 @@
 import type { AuthContext } from "@/domains/identity/resolve";
+import { zettelJobRunners } from "@/domains/capture/zettel-generation";
 import { learningJobRunners } from "@/domains/learning/generation-jobs";
 import { missionJobRunners } from "@/domains/learning/mission-jobs";
 import { SITE_CRAWL_KIND, siteCrawlRunner } from "@/domains/knowledge/site-crawl";
 import { YOUTUBE_ABSORB_KIND, youtubeAbsorbRunner } from "@/domains/knowledge/youtube-absorb";
-import { ZETTELIZE_KIND, zettelizeRunner } from "@/domains/capture/zettel-generation";
 import type { GenerationJobResult } from "./schema";
 
 /** What a runner is handed besides its input. */
@@ -18,8 +18,6 @@ export type GenerationJobRun = {
    * GenerationJobCancelled once the job was cancelled; let it propagate.
    */
   progress(step: string, counts?: { done: number; total?: number }): Promise<void>;
-  /** Records paid provider spend against the job, in millionths of a US dollar. */
-  spend(microUsd: number): Promise<void>;
 };
 
 /**
@@ -39,8 +37,8 @@ export function generationJobRunners(): Record<string, GenerationJobRunner> {
   return {
     ...learningJobRunners,
     ...missionJobRunners,
+    ...zettelJobRunners,
     [SITE_CRAWL_KIND]: siteCrawlRunner(),
     [YOUTUBE_ABSORB_KIND]: youtubeAbsorbRunner(),
-    [ZETTELIZE_KIND]: zettelizeRunner(),
   };
 }

@@ -69,14 +69,12 @@ export function ReadinessReport({ mission, report }: { mission: MissionView; rep
           </li>
         ))}
       </ul>
-      <div className="mt-4 flex flex-wrap items-center gap-3">
-        <Link href="/learn" className="text-sm font-medium underline underline-offset-4">
-          Back to Learn
-        </Link>
-        <Link href={`/learn/missions/${mission.id}/mock?retake=1`} className="text-sm underline underline-offset-4">
-          Retake the mock
-        </Link>
-      </div>{" "}
+      <Link
+        href={`/learn/missions/${mission.id}/mock?retake=1`}
+        className="mt-4 inline-block text-sm underline underline-offset-4"
+      >
+        Retake the mock
+      </Link>
     </section>
   );
 }

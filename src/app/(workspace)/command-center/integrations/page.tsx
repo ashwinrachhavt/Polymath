@@ -70,10 +70,7 @@ async function Connectors({ searchParams }: { searchParams: Promise<Record<strin
   }));
 
   return (
-    <Screen
-      title="Connectors"
-      description="Enable Write to run routine actions directly. Other changes wait in Reviews; each action uses your selected account."
-    >
+    <Screen title="Connectors">
       {resultMessage ? (
         <p
           role="status"

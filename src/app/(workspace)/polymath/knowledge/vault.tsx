@@ -17,7 +17,9 @@ import {
   Globe,
   LayoutGrid,
   List,
+  Lightbulb,
   LoaderCircle,
+  Pencil,
   Plus,
   RotateCw,
   Search,
@@ -41,7 +43,12 @@ import { Markdown } from "@/components/markdown";
 import { vaultReview, type VaultReview, type VaultStateKey, type VaultTone } from "@/domains/knowledge/vault-review";
 import { phaseForReadiness } from "@/domains/knowledge/readiness-batch";
 import type { SourceReadiness } from "@/domains/knowledge/source-readiness";
-import { createVaultFolder } from "./actions";
+import { createVaultFolder, moveVaultDocuments, renameVaultFolder } from "./actions";
+import { GenerationJobRows } from "@/components/jobs/generation-job-rows";
+import { IconButton } from "@/components/ui/icon-button";
+import { useZettelize, useZettelJobs } from "@/components/zettelize/zettel-jobs";
+import { MAX_ZETTELIZE_SOURCES, zettelJobSubject } from "@/domains/capture/zettel-job-names";
+import { isSettled, type GenerationJobView } from "@/domains/jobs/state";
 import { StatementStrip } from "./statement-section";
 import { randomId } from "@/lib/random-id";
 
@@ -61,7 +68,22 @@ import { randomId } from "@/lib/random-id";
  * Nothing loops, nothing decorates.
  */
 
-export type VaultFolder = { id: string; parentId: string | null; name: string; documentCount: number };
+export type VaultFolder = {
+  id: string;
+  parentId: string | null;
+  name: string;
+  documentCount: number;
+  /** Live folders directly inside this one. */
+  folderCount: number;
+  version: number;
+};
+
+/** "2 folders, 5 documents": what a folder holds, so an empty-looking parent is not called empty. */
+function folderSummary(folder: Pick<VaultFolder, "documentCount" | "folderCount">): string {
+  const docs = `${folder.documentCount} ${folder.documentCount === 1 ? "document" : "documents"}`;
+  if (folder.folderCount === 0) return docs;
+  return `${folder.folderCount} ${folder.folderCount === 1 ? "folder" : "folders"}, ${docs}`;
+}
 
 export type VaultDocument = {
   id: string;
@@ -78,6 +100,7 @@ export type VaultDocument = {
   sizeBytes: number | null;
   pageCount: number | null;
   docType: string | null;
+  version: number;
   href: string;
 };
 
@@ -279,20 +302,57 @@ function DocumentPlate({ doc }: { doc: VaultDocument }) {
 
 const ROW_GRID = "grid-cols-[minmax(0,1fr)_112px] sm:grid-cols-[minmax(0,1fr)_112px_84px_72px]";
 
+/** Which documents are picked for a bulk verb. `active` shows every box, not only the hovered one. */
+type Selection = { ids: ReadonlySet<string>; toggle: (id: string) => void; active: boolean };
+
+function SelectBox({ doc, selection, className }: { doc: VaultDocument; selection: Selection; className?: string }) {
+  const checked = selection.ids.has(doc.id);
+  return (
+    <input
+      type="checkbox"
+      checked={checked}
+      onChange={() => selection.toggle(doc.id)}
+      aria-label={`Select ${doc.title}`}
+      className={cn(
+        "size-3.5 shrink-0 cursor-pointer accent-[var(--primary)] transition-opacity duration-150 focus-visible:opacity-100 max-sm:size-4 max-sm:opacity-100",
+        checked || selection.active ? "opacity-100" : "opacity-0 group-hover/row:opacity-100",
+        className,
+      )}
+    />
+  );
+}
+
+/** A folder's rename verb, shown on hover beside its row or tile. */
+function RenameFolderButton({ folder, onRename }: { folder: VaultFolder; onRename: (folder: VaultFolder) => void }) {
+  return (
+    <IconButton
+      size="icon-sm"
+      label={`Rename ${folder.name}`}
+      icon={<Pencil aria-hidden />}
+      onClick={() => onRename(folder)}
+      className="opacity-0 transition-opacity group-hover/row:opacity-100 focus-visible:opacity-100 max-sm:opacity-100"
+    />
+  );
+}
+
 function ListView({
   folders,
   documents,
   onOpen,
+  selection,
+  onRenameFolder,
 }: {
   folders: VaultFolder[];
   documents: VaultDocument[];
   onOpen: (id: string) => void;
+  selection: Selection;
+  onRenameFolder: (folder: VaultFolder) => void;
 }) {
   return (
     <div className="min-w-0">
       <div
         className={cn(
-          "text-muted-foreground border-border grid items-center gap-3 border-b px-2 pb-1.5 text-data font-medium",
+          "text-muted-foreground border-border grid items-center gap-3 border-b pr-2 pb-1.5 pl-[1.875rem] text-data font-medium",
           ROW_GRID,
         )}
       >
@@ -303,27 +363,22 @@ function ListView({
       </div>
 
       {folders.map((folder) => (
-        <Link
+        <div
           key={folder.id}
-          href={`/polymath/knowledge?folder=${folder.id}`}
-          className={cn(
-            "hover:bg-muted/40 focus-visible:bg-muted/60 focus-visible:ring-ring/50 border-border grid items-center gap-3 border-b px-2 py-2 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-inset",
-            ROW_GRID,
-          )}
+          className="group/row border-border hover:bg-muted/40 flex items-center border-b pr-1 transition-colors"
         >
-          <span className="flex min-w-0 items-center gap-2.5">
-            <FolderOpen className="text-muted-foreground size-4" aria-hidden />
+          <Link
+            href={`/polymath/knowledge?folder=${folder.id}`}
+            className="focus-visible:bg-muted/60 focus-visible:ring-ring/50 flex min-w-0 flex-1 items-center gap-2.5 py-2 pr-2 pl-[1.875rem] outline-none focus-visible:ring-2 focus-visible:ring-inset"
+          >
+            <FolderOpen className="text-muted-foreground size-4 shrink-0" aria-hidden />
             <span className="min-w-0">
               <span className="block truncate text-body-dense font-medium">{folder.name}</span>
-              <span className="text-muted-foreground block truncate text-xs">
-                Folder · {folder.documentCount} {folder.documentCount === 1 ? "document" : "documents"}
-              </span>
+              <span className="text-muted-foreground block truncate text-xs">{folderSummary(folder)}</span>
             </span>
-          </span>
-          <span aria-hidden />
-          <span className="text-muted-foreground hidden text-xs sm:block"></span>
-          <span className="text-muted-foreground hidden text-right text-xs sm:block"></span>
-        </Link>
+          </Link>
+          <RenameFolderButton folder={folder} onRename={onRenameFolder} />
+        </div>
       ))}
 
       <motion.ul layout className="flex flex-col" aria-label="Documents">
@@ -336,15 +391,19 @@ function ListView({
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
               transition={motionTransition}
-              className="border-border border-b last:border-b-0"
+              className={cn(
+                "group/row border-border hover:bg-muted/40 flex items-center gap-2 border-b pl-2 transition-colors last:border-b-0",
+                selection.ids.has(doc.id) && "bg-muted/40",
+              )}
             >
+              <SelectBox doc={doc} selection={selection} />
               <button
                 type="button"
                 onClick={() => onOpen(doc.id)}
                 aria-haspopup="dialog"
                 title={doc.title}
                 className={cn(
-                  "hover:bg-muted/40 focus-visible:bg-muted/60 focus-visible:ring-ring/50 grid w-full items-center gap-3 px-2 py-2 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-inset",
+                  "focus-visible:bg-muted/60 focus-visible:ring-ring/50 grid min-w-0 flex-1 items-center gap-3 py-2 pr-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset",
                   ROW_GRID,
                 )}
               >
@@ -375,15 +434,22 @@ function GridView({
   folders,
   documents,
   onOpen,
+  selection,
+  onRenameFolder,
 }: {
   folders: VaultFolder[];
   documents: VaultDocument[];
   onOpen: (id: string) => void;
+  selection: Selection;
+  onRenameFolder: (folder: VaultFolder) => void;
 }) {
   return (
     <ul className="grid grid-cols-[repeat(auto-fill,minmax(168px,1fr))] gap-x-4 gap-y-6" aria-label="Files and folders">
       {folders.map((folder) => (
-        <li key={folder.id} className="min-w-0">
+        <li key={folder.id} className="group/row relative min-w-0">
+          <div className="absolute top-1 right-1 z-10">
+            <RenameFolderButton folder={folder} onRename={onRenameFolder} />
+          </div>
           <Link
             href={`/polymath/knowledge?folder=${folder.id}`}
             className="group focus-visible:ring-ring/50 flex h-full min-w-0 flex-col gap-2 rounded-md outline-none focus-visible:ring-2"
@@ -393,9 +459,7 @@ function GridView({
             </div>
             <span className="min-w-0">
               <span className="block truncate text-body-dense font-medium">{folder.name}</span>
-              <span className="text-muted-foreground block truncate text-xs">
-                {folder.documentCount} {folder.documentCount === 1 ? "document" : "documents"}
-              </span>
+              <span className="text-muted-foreground block truncate text-xs">{folderSummary(folder)}</span>
             </span>
           </Link>
         </li>
@@ -404,7 +468,8 @@ function GridView({
       {documents.map((doc) => {
         const review = vaultReview(doc.reviewKey, doc.undecidedProposals);
         return (
-          <li key={doc.id} className="min-w-0">
+          <li key={doc.id} className="group/row relative min-w-0">
+            <SelectBox doc={doc} selection={selection} className="absolute top-2 left-2 z-10" />
             <button
               type="button"
               onClick={() => onOpen(doc.id)}
@@ -438,16 +503,42 @@ function GridView({
   );
 }
 
+/** Every folder with its full path, for the Move menu: "Taxes / 2025". */
+function folderPaths(folders: VaultFolder[]): Array<{ id: string; path: string }> {
+  const byId = new Map(folders.map((f) => [f.id, f]));
+  const pathOf = (folder: VaultFolder): string => {
+    const names = [folder.name];
+    let parent = folder.parentId ? byId.get(folder.parentId) : undefined;
+    for (let depth = 0; parent && depth < 32; depth += 1) {
+      names.unshift(parent.name);
+      parent = parent.parentId ? byId.get(parent.parentId) : undefined;
+    }
+    return names.join(" / ");
+  };
+  return folders
+    .map((f) => ({ id: f.id, path: pathOf(f) }))
+    .sort((a, b) => a.path.localeCompare(b.path, "en", { sensitivity: "base" }));
+}
+
+type FolderDialog = { mode: "new" } | { mode: "rename"; folder: VaultFolder } | null;
+
 export function DocumentVault({
   folders,
   documents,
   currentFolderId,
   breadcrumb,
+  zettelJobs,
+  zettelProviderReady,
+  zettelProviderReason,
 }: {
   folders: VaultFolder[];
   documents: VaultDocument[];
   currentFolderId: string | null;
   breadcrumb: { name: string; href: string | null }[];
+  /** Zettelize jobs still waiting or failed when the page rendered. */
+  zettelJobs: GenerationJobView[];
+  zettelProviderReady: boolean;
+  zettelProviderReason: string;
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
@@ -458,7 +549,12 @@ export function DocumentVault({
   const [plusOpen, setPlusOpen] = useState(false);
   const [createdFolder, setCreatedFolder] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [newFolderOpen, setNewFolderOpen] = useState(false);
+  const [folderDialog, setFolderDialog] = useState<FolderDialog>(null);
+  const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
+  const [moving, setMoving] = useState(false);
+  const [bulkError, setBulkError] = useState<string | null>(null);
+  const zettel = useZettelize();
+  const zettelSurface = useZettelJobs(zettelJobs);
   const [folderName, setFolderName] = useState("");
   const [folderBusy, setFolderBusy] = useState(false);
   const [folderError, setFolderError] = useState<string | null>(null);
@@ -491,6 +587,7 @@ export function DocumentVault({
   }, [documents, query, sort]);
 
   const selected = visibleDocuments.find((d) => d.id === selectedId) ?? null;
+  const currentFolder = currentFolderId ? (folders.find((f) => f.id === currentFolderId) ?? null) : null;
   const currentName = currentFolderId ? (breadcrumb[breadcrumb.length - 1]?.name ?? "this folder") : "the vault";
   const filtering = query.trim().length > 0;
   const emptyVault = folders.length === 0 && documents.length === 0 && uploads.length === 0;
@@ -505,11 +602,18 @@ export function DocumentVault({
     setPlusOpen(false);
     setFolderName("");
     setFolderError(null);
-    setNewFolderOpen(true);
+    setFolderDialog({ mode: "new" });
   };
 
-  async function submitNewFolder() {
+  const openRenameFolder = (folder: VaultFolder) => {
+    setFolderName(folder.name);
+    setFolderError(null);
+    setFolderDialog({ mode: "rename", folder });
+  };
+
+  async function submitFolderDialog() {
     const name = folderName.trim();
+    if (!folderDialog) return;
     if (!name) {
       setFolderError("A folder needs a name.");
       return;
@@ -517,23 +621,91 @@ export function DocumentVault({
     setFolderBusy(true);
     setFolderError(null);
     try {
+      if (folderDialog.mode === "rename") {
+        const result = await renameVaultFolder({
+          folderId: folderDialog.folder.id,
+          name,
+          expectedVersion: folderDialog.folder.version,
+        });
+        if (!result.ok) {
+          setFolderError(result.error);
+          return;
+        }
+        setFolderDialog(null);
+        router.refresh();
+        return;
+      }
       const result = await createVaultFolder(name, currentFolderId);
       if (!result.ok) {
         setFolderError(result.error);
         return;
       }
-      setNewFolderOpen(false);
+      setFolderDialog(null);
       setFolderName("");
       // A new folder is only useful if it is visible: drop any search that
       // would hide it, then let the server list pick it up.
       setQuery("");
       setCreatedFolder(result.name);
     } catch {
-      setFolderError("The folder could not be created. Try again.");
+      setFolderError(
+        folderDialog.mode === "rename"
+          ? "The folder could not be renamed. Try again."
+          : "The folder could not be created. Try again.",
+      );
     } finally {
       setFolderBusy(false);
     }
   }
+
+  const selection: Selection = {
+    ids: picked,
+    active: picked.size > 0,
+    toggle: (id) =>
+      setPicked((current) => {
+        const next = new Set(current);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      }),
+  };
+  const pickedDocuments = documents.filter((doc) => picked.has(doc.id));
+  const moveTargets = folderPaths(folders);
+
+  function moveSelection(target: string) {
+    const folderId = target === "root" ? null : target;
+    setBulkError(null);
+    setMoving(true);
+    moveVaultDocuments({
+      documents: pickedDocuments.map((doc) => ({ id: doc.id, version: doc.version })),
+      folderId,
+    })
+      .then((result) => {
+        if (!result.ok) {
+          setBulkError(result.error);
+          return;
+        }
+        setPicked(new Set());
+      })
+      .catch(() => setBulkError("The move did not reach Polymath. Try again."))
+      .finally(() => {
+        setMoving(false);
+        router.refresh();
+      });
+  }
+
+  function zettelizeSelection() {
+    setBulkError(null);
+    zettel.zettelize(
+      pickedDocuments.map((doc) => ({ kind: "document" as const, id: doc.id })),
+      () => setPicked(new Set()),
+    );
+  }
+
+  // A document's own zettelize job, for the viewer's verb.
+  const zettelBusyFor = (documentId: string) => {
+    const subject = zettelJobSubject({ kind: "document", id: documentId });
+    return zettelSurface.jobs.some((job) => job.subject === subject && !isSettled(job.status));
+  };
 
   const showEverything = () => {
     setQuery("");
@@ -845,6 +1017,15 @@ export function DocumentVault({
               ) : (
                 <span className="truncate font-medium">{crumb.name}</span>
               )}
+              {!crumb.href && currentFolder ? (
+                <IconButton
+                  size="icon-sm"
+                  label={`Rename ${currentFolder.name}`}
+                  icon={<Pencil aria-hidden />}
+                  onClick={() => openRenameFolder(currentFolder)}
+                  className="size-6"
+                />
+              ) : null}
             </span>
           ))}
         </nav>
@@ -986,6 +1167,12 @@ export function DocumentVault({
         ) : null}
       </AnimatePresence>
 
+      {zettelSurface.jobs.length > 0 ? (
+        <section aria-label="Zettelize" className="border-border rounded-md border px-3 py-2.5 text-body-dense">
+          <GenerationJobRows surface={zettelSurface} />
+        </section>
+      ) : null}
+
       {emptyVault ? (
         <button
           type="button"
@@ -1016,13 +1203,101 @@ export function DocumentVault({
           ) : null}
         </div>
       ) : view === "grid" ? (
-        <GridView folders={visibleFolders} documents={visibleDocuments} onOpen={openViewer} />
+        <GridView
+          folders={visibleFolders}
+          documents={visibleDocuments}
+          onOpen={openViewer}
+          selection={selection}
+          onRenameFolder={openRenameFolder}
+        />
       ) : (
-        <ListView folders={visibleFolders} documents={visibleDocuments} onOpen={openViewer} />
+        <ListView
+          folders={visibleFolders}
+          documents={visibleDocuments}
+          onOpen={openViewer}
+          selection={selection}
+          onRenameFolder={openRenameFolder}
+        />
       )}
 
+      {picked.size > 0 || bulkError || zettel.error ? (
+        <div
+          role="toolbar"
+          aria-label="Selected documents"
+          className="border-border bg-card sticky bottom-3 z-20 flex flex-wrap items-center gap-2 rounded-lg border p-2 shadow-[var(--shadow)]"
+        >
+          <span className="readout pl-1 text-body-dense">{picked.size} selected</span>
+          <div className="ml-auto flex flex-wrap items-center gap-1.5">
+            <Select
+              aria-label="Move the selected documents to a folder"
+              value=""
+              disabled={moving || picked.size === 0}
+              onChange={(event) => {
+                if (event.target.value) moveSelection(event.target.value);
+              }}
+              className="w-48"
+            >
+              <option value="" disabled>
+                {moving ? "Moving…" : "Move to folder"}
+              </option>
+              {currentFolderId ? <option value="root">Vault (top level)</option> : null}
+              {moveTargets
+                .filter((target) => target.id !== currentFolderId)
+                .map((target) => (
+                  <option key={target.id} value={target.id}>
+                    {target.path}
+                  </option>
+                ))}
+            </Select>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={
+                zettel.pending || picked.size === 0 || !zettelProviderReady || picked.size > MAX_ZETTELIZE_SOURCES
+              }
+              title={
+                !zettelProviderReady
+                  ? zettelProviderReason
+                  : picked.size > MAX_ZETTELIZE_SOURCES
+                    ? `Zettelize up to ${MAX_ZETTELIZE_SOURCES} at a time.`
+                    : "Makes ideas from each selected document in the background. They land in Ideas."
+              }
+              onClick={zettelizeSelection}
+            >
+              <Lightbulb aria-hidden /> Zettelize
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setPicked(new Set());
+                setBulkError(null);
+              }}
+            >
+              Clear
+            </Button>
+          </div>
+          {bulkError || zettel.error ? (
+            <p role="alert" className="text-destructive w-full pl-1 text-xs">
+              {bulkError ?? zettel.error}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
       <AnimatePresence>
-        {selected ? <Viewer doc={selected} onClose={() => setSelectedId(null)} /> : null}
+        {selected ? (
+          <Viewer
+            doc={selected}
+            onClose={() => setSelectedId(null)}
+            zettelize={{
+              busy: zettel.pending || zettelBusyFor(selected.id),
+              ready: zettelProviderReady,
+              reason: zettelProviderReason,
+              start: () => zettel.zettelize([{ kind: "document", id: selected.id }]),
+            }}
+          />
+        ) : null}
       </AnimatePresence>
 
       <input
@@ -1053,24 +1328,30 @@ export function DocumentVault({
       />
 
       <Dialog
-        open={newFolderOpen}
+        open={folderDialog !== null}
         onOpenChange={(open) => {
-          setNewFolderOpen(open);
-          if (!open) setFolderError(null);
+          if (!open) {
+            setFolderDialog(null);
+            setFolderError(null);
+          }
         }}
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>New folder</DialogTitle>
+            <DialogTitle>{folderDialog?.mode === "rename" ? "Rename folder" : "New folder"}</DialogTitle>
             <DialogDescription>
-              {currentFolderId ? `Inside ${currentName}.` : "At the top of the vault."}
+              {folderDialog?.mode === "rename"
+                ? `Now called ${folderDialog.folder.name}.`
+                : currentFolderId
+                  ? `Inside ${currentName}.`
+                  : "At the top of the vault."}
             </DialogDescription>
           </DialogHeader>
           <form
             className="flex flex-col gap-3"
             onSubmit={(event) => {
               event.preventDefault();
-              void submitNewFolder();
+              void submitFolderDialog();
             }}
           >
             <Input
@@ -1088,11 +1369,17 @@ export function DocumentVault({
               </p>
             ) : null}
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setNewFolderOpen(false)}>
+              <Button type="button" variant="outline" onClick={() => setFolderDialog(null)}>
                 Cancel
               </Button>
               <Button type="submit" disabled={folderBusy || !folderName.trim()}>
-                {folderBusy ? "Creating…" : "Create"}
+                {folderDialog?.mode === "rename"
+                  ? folderBusy
+                    ? "Renaming…"
+                    : "Rename"
+                  : folderBusy
+                    ? "Creating…"
+                    : "Create"}
               </Button>
             </DialogFooter>
           </form>
@@ -1109,7 +1396,15 @@ export function DocumentVault({
  * so retry either runs the provider or returns the stored text, never a
  * duplicate.
  */
-function Viewer({ doc, onClose }: { doc: VaultDocument; onClose: () => void }) {
+function Viewer({
+  doc,
+  onClose,
+  zettelize,
+}: {
+  doc: VaultDocument;
+  onClose: () => void;
+  zettelize: { busy: boolean; ready: boolean; reason: string; start: () => void };
+}) {
   const [text, setText] = useState<string | null>(null);
   const [textState, setTextState] = useState<"idle" | "loading" | "ready" | "empty" | "error">("idle");
   const [retrying, setRetrying] = useState(false);
@@ -1240,6 +1535,14 @@ function Viewer({ doc, onClose }: { doc: VaultDocument; onClose: () => void }) {
           <Link href={doc.href} className="shrink-0 text-xs font-medium underline-offset-4 hover:underline">
             Review fields
           </Link>
+          <IconButton
+            size="icon-sm"
+            label="Zettelize into Ideas"
+            icon={<Lightbulb aria-hidden />}
+            disabled={zettelize.busy || !zettelize.ready}
+            disabledReason={!zettelize.ready ? zettelize.reason : "Making ideas from this document now."}
+            onClick={zettelize.start}
+          />
           {textState === "ready" && wordCount > 0 ? (
             <div className="flex shrink-0 items-center gap-0.5">
               {copyable ? (

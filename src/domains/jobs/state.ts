@@ -62,8 +62,6 @@ export type GenerationJobView = {
   error: string | null;
   /** The latest step while it runs; null once it is settled or before it starts. */
   progress: GenerationJobProgress | null;
-  /** Paid provider spend so far, in US dollars. */
-  costUsd: number;
   /** ISO time the job was accepted. Lists order by it, newest first. */
   createdAt: string;
   /** ISO time of the last status change, by the database's clock. */
@@ -80,7 +78,6 @@ export type GenerationJobFacts = {
   result: { href: string; notice: string | null } | null;
   error: string | null;
   progress: GenerationJobProgress | null;
-  costMicroUsd: number;
   createdAt: Date;
   updatedAt: Date;
   /** Running with a heartbeat older than STALLED_AFTER_MS, judged by the database's clock. */
@@ -101,7 +98,6 @@ export function toJobView(job: GenerationJobFacts): GenerationJobView {
     notice: job.status === "ready" ? (job.result?.notice ?? null) : null,
     error: stalled ? STALLED_COPY : job.status === "failed" ? job.error : null,
     progress: job.status === "running" && !stalled ? job.progress : null,
-    costUsd: job.costMicroUsd / 1_000_000,
     createdAt: job.createdAt.toISOString(),
     updatedAt: job.updatedAt.toISOString(),
   };

@@ -59,8 +59,6 @@ export const generationJobs = pgTable(
     progress: jsonb("progress").$type<GenerationJobProgress>(),
     /** Moves with `progress`, so a stream sees a step change as well as a status change. */
     progressAt: timestamp("progress_at", { withTimezone: true }),
-    /** Paid provider spend across every attempt, in millionths of a US dollar. */
-    costMicroUsd: integer("cost_micro_usd").notNull().default(0),
     createdBy: uuid("created_by")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -76,6 +74,5 @@ export const generationJobs = pgTable(
     check("generation_jobs_result_check", sql`(status = 'ready') = (result is not null)`),
     check("generation_jobs_error_check", sql`(status = 'failed') = (error is not null)`),
     check("generation_jobs_attempt_check", sql`attempt >= 1`),
-    check("generation_jobs_cost_check", sql`cost_micro_usd >= 0`),
   ],
 );

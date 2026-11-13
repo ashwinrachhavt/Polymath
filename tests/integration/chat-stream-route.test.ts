@@ -127,12 +127,44 @@ beforeEach(() => {
 });
 
 suite("chat stream route (real Postgres)", () => {
+  it("rewinds to the start when a replacement session holds fewer events than the client's cursor", async () => {
+    const runId = await makeRun(a.workspaceId, "running", "wrun_replaced");
+    const streamed: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const body = eveBody([
+          { type: "message.received", data: { message: "Still there?" } },
+          { type: "message.completed", data: { message: "Yes.", turnId: "t2", stepIndex: 0, finishReason: "stop" } },
+          { type: "session.completed" },
+        ]);
+        if (url.includes("follow=false"))
+          return new Response(body, { headers: { "content-type": "application/x-ndjson" } });
+        streamed.push(url);
+        return new Response(body, { headers: { "content-type": "application/x-ndjson" } });
+      }),
+    );
+
+    // The client still holds cursor 9 from the run's old session; the new one has 3 events.
+    const out = await frames(await streamOf(runId, 9));
+
+    expect(streamed).toHaveLength(1);
+    expect(streamed[0]).not.toContain("startIndex=9");
+    expect(out[0]).toMatchObject({ type: "run", runId });
+    // The snapshot clears the client's accumulator before the replayed turn.
+    expect(out[1]).toMatchObject({ type: "snapshot", runId, cursor: 0 });
+    expect(out.find((frame) => frame.type === "message")).toMatchObject({ text: "Still there?", cursor: 0 });
+  });
+
   it("re-frames Eve's events into chat frames and stops at the terminal event", async () => {
     const runId = await makeRun(a.workspaceId, "running", "wrun_abc");
     const calls: Array<{ url: string; init: RequestInit }> = [];
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string, init: RequestInit) => {
+        // The event-count probe for a resumed cursor: an unknown count means
+        // no rewind, so the stream opens at the client's cursor.
+        if (url.includes("follow=false")) return new Response("not found", { status: 404 });
         calls.push({ url, init });
         return new Response(
           eveBody([

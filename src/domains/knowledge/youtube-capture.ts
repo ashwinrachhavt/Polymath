@@ -68,7 +68,8 @@ export async function queueYouTubeCapture(
   };
   const { started } = await submitOrRetryGenerationJob(auth, {
     kind: YOUTUBE_ABSORB_KIND,
-    subject: `document:${filed.id}`,
+    // A captured video shows on its capture's row; a notebook's on its source row.
+    subject: input.captureId ? `capture:${input.captureId}` : `document:${filed.id}`,
     idempotencyKey: input.captureId ? `youtube:${filed.id}:capture:${input.captureId}` : `youtube:${filed.id}`,
     title: "Absorbing a YouTube video",
     input: jobInput,

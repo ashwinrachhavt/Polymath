@@ -66,7 +66,9 @@ export const memberships = pgTable(
     unique("memberships_workspace_id_id_key").on(t.workspaceId, t.id),
     // Serves the per-request authorization query (resolve.ts), which filters
     // by user_id + status; the workspace-leading unique index cannot.
-    index("memberships_user_active_idx").on(t.userId).where(sql`status = 'active'`),
+    index("memberships_user_active_idx")
+      .on(t.userId)
+      .where(sql`status = 'active'`),
   ],
 );
 
@@ -212,7 +214,9 @@ export const membershipRoleAssignments = pgTable(
     uniqueIndex("membership_role_assignments_active_key")
       .on(t.workspaceId, t.membershipId, t.roleDefinitionId)
       .where(sql`revoked_at is null`),
-    index("membership_role_assignments_role_idx").on(t.workspaceId, t.roleDefinitionId).where(sql`revoked_at is null`),
+    index("membership_role_assignments_role_idx")
+      .on(t.workspaceId, t.roleDefinitionId)
+      .where(sql`revoked_at is null`),
   ],
 );
 
@@ -230,6 +234,8 @@ export const userPreferences = pgTable(
     appearance: appearance("appearance").notNull().default("system"),
     motion: motionPreference("motion").notNull().default("full"),
     interfaceMode: interfaceMode("interface_mode").notNull().default("auto"),
+    /** Accent swatch (lib/appearance ACCENTS); text so the palette can change without an enum migration. */
+    accent: text("accent").notNull().default("graphite"),
     /** Per-category notification policy: decision_needed, deadline, conflict, blocked, unknown_action, output_ready. */
     notificationPolicy: jsonb("notification_policy"),
     modelDefaults: jsonb("model_defaults"),
@@ -270,7 +276,9 @@ export const apiClients = pgTable(
     index("api_clients_workspace_status_idx").on(t.workspaceId, t.status),
     // The per-request key-id lookup; partial so legacy null key ids do not
     // collide with each other.
-    uniqueIndex("api_clients_key_id_key").on(t.keyId).where(sql`key_id is not null`),
+    uniqueIndex("api_clients_key_id_key")
+      .on(t.keyId)
+      .where(sql`key_id is not null`),
   ],
 );
 
@@ -398,18 +406,9 @@ export const partyEmployment = pgTable(
  * Classification only: nothing here grants authorization. Authorization lives
  * in memberships, api_clients, and action policy, never in a relationship row.
  */
-export const partyRelationshipKind = pgEnum("party_relationship_kind", [
-  "customer",
-  "prospect",
-  "vendor",
-  "partner",
-]);
+export const partyRelationshipKind = pgEnum("party_relationship_kind", ["customer", "prospect", "vendor", "partner"]);
 
-export const partyRelationshipStatus = pgEnum("party_relationship_status", [
-  "active",
-  "ended",
-]);
-
+export const partyRelationshipStatus = pgEnum("party_relationship_status", ["active", "ended"]);
 
 /*
  * Emails, phones, and urls attached to a person or an organization. A value
@@ -439,14 +438,12 @@ export const contactPoints = pgTable(
       name: "contact_points_person_fk",
       columns: [t.workspaceId, t.personId],
       foreignColumns: [people.workspaceId, people.id],
-    })
-      .onDelete("cascade"),
+    }).onDelete("cascade"),
     foreignKey({
       name: "contact_points_organization_fk",
       columns: [t.workspaceId, t.organizationId],
       foreignColumns: [organizations.workspaceId, organizations.id],
-    })
-      .onDelete("cascade"),
+    }).onDelete("cascade"),
     // Exactly one primary per party per kind. Two indexes, not one over both
     // sides: the one-side check leaves the other column NULL, and Postgres
     // btree treats NULLs as distinct — a combined index would never fire.
@@ -490,8 +487,7 @@ export const accountPersonLinks = pgTable(
       name: "account_person_links_person_fk",
       columns: [t.workspaceId, t.personId],
       foreignColumns: [people.workspaceId, people.id],
-    })
-      .onDelete("cascade"),
+    }).onDelete("cascade"),
     // One person per account per workspace: a second link for the same
     // account must name a different person or be an edit, not a duplicate.
     uniqueIndex("account_person_links_account_key").on(t.workspaceId, t.accountId),

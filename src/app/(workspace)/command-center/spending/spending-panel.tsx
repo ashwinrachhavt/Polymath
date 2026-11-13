@@ -51,15 +51,11 @@ export async function SpendingPanel() {
           {
             label: "Unpriced",
             value: ledger.unpricedRuns > 0 ? ledger.unpricedRuns : "—",
-            hint: "Unpriced work shows as unpriced, never as zero.",
           },
         ]}
       />
 
-      <Panel
-        title="Ledger"
-        description={`Recorded agent usage for the last ${WINDOW_DAYS} days. A step can report usage without a price, so unpriced work is named, and these are recorded figures, not a guaranteed complete bill.`}
-      >
+      <Panel title="Ledger" description={`Last ${WINDOW_DAYS} days.`}>
         {ledger.rows.length === 0 ? (
           <Empty
             title="No recorded usage"

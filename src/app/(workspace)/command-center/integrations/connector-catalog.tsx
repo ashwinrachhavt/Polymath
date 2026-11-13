@@ -351,12 +351,9 @@ export function ConnectorCatalog({
                   ) : null}
 
                   {isInstantConnector(connector) ? (
-                    <div className="border-t border-border pt-3">
-                      <p className="text-body-dense font-medium">No connection needed</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Agents can use this instantly; calls bill the workspace&apos;s tool budget.
-                      </p>
-                    </div>
+                    <p className="border-t border-border pt-3 text-xs text-muted-foreground">
+                      No connection needed. Calls bill the tool budget.
+                    </p>
                   ) : null}
                 </article>
               );

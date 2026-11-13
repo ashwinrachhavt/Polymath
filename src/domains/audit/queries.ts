@@ -87,6 +87,7 @@ export const SAFE_SUMMARY_ACTIONS = new Set([
   "capture.restored",
   "capture.converted",
   "capture.zettels_created",
+  "document.zettels_created",
   "capture.transcribed",
   // Workspace-level lifecycle and proposals.
   "inventory.imported",

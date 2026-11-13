@@ -63,11 +63,11 @@ test("create, autosave, recover and checkpoint a note, saved in the workspace", 
   await expect(page.getByText("Unsaved changes", { exact: true })).toHaveCount(0);
 
   // Checkpoint mints the next immutable version, listed in History.
-  await page.getByRole("button", { name: "Save checkpoint" }).click();
-  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "History" }).click();
+  await page.getByRole("button", { name: "Save checkpoint" }).click();
   await expect(page.getByText("Version 2", { exact: true })).toBeVisible();
   await page.keyboard.press("Escape");
+  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
 
   // After a reload the committed text is the note — no draft banner.
   await page.reload();
@@ -113,11 +113,13 @@ test("a [[wiki link]] becomes an edge both notes can see", async ({ page }) => {
   await page.getByLabel("Markdown source").fill(`see [[${targetTitle}]]`);
   await expect(page.getByText("Saved", { exact: true })).toBeVisible();
 
-  // The target reads the reverse edge inline under the body; the source's own
-  // inspector still carries the forward reference.
+  // The target reads the reverse edge inline under the body; a backlink opens
+  // beside it, and the source's own inspector still carries the forward reference.
   await page.goto(targetUrl);
   await expect(page.getByRole("heading", { name: /^Backlinks/ })).toBeVisible();
   await page.getByRole("link", { name: sourceTitle, exact: true }).click();
+  await expect(page.getByRole("article", { name: sourceTitle })).toBeVisible();
+  await page.getByRole("link", { name: `Write in ${sourceTitle}` }).click();
   await expect(page.getByLabel("Note title")).toHaveValue(sourceTitle);
   await openDetails(page);
   await expect(page.getByText("References", { exact: true })).toBeVisible();
