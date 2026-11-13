@@ -971,6 +971,13 @@
       "when": 1794490000000,
       "tag": "0320_user_preferences_accent",
       "breakpoints": true
+    },
+    {
+      "idx": 340,
+      "version": "7",
+      "when": 1794556039077,
+      "tag": "0340_bug_signals",
+      "breakpoints": true
     }
   ]
 }
