@@ -1,7 +1,8 @@
+import { resolveEmbedding } from "@/domains/billing/resolver";
 import { and, asc, desc, eq, gte, inArray, isNull, lte, or, sql, type SQL } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
-import { embeddingProvider, type EmbeddingProvider } from "@/integrations/embeddings/provider";
+import type { EmbeddingProvider } from "@/integrations/embeddings/provider";
 import { EMBEDDING_OWNER_TYPE, vectorLiteral } from "./embedding";
 import { chunkText } from "./chunking";
 import { deriveCoverage, type EmbeddingCoverage } from "./coverage";
@@ -211,7 +212,10 @@ async function coverageFor(
       and(
         eq(embeddings.workspaceId, workspaceId),
         eq(embeddings.ownerType, EMBEDDING_OWNER_TYPE),
-        inArray(embeddings.ownerId, unique.map((e) => e.id)),
+        inArray(
+          embeddings.ownerId,
+          unique.map((e) => e.id),
+        ),
       ),
     )
     .groupBy(embeddings.ownerId, embeddings.model);
@@ -261,7 +265,7 @@ export async function searchChunks(
   if (!query) return [];
   // An empty boundary (a dossier with no documents) matches nothing, never everything.
   if (input.documentIds && input.documentIds.length === 0) return [];
-  const provider = input.provider ?? embeddingProvider();
+  const provider = input.provider ?? (await resolveEmbedding(auth.workspaceId));
   const [vector] = await provider.embed([query]);
   const limit = Math.min(Math.max(input.limit ?? 8, 1), 50);
   const distance = sql<number>`${embeddings.embedding} <=> ${vectorLiteral(vector)}::vector`;

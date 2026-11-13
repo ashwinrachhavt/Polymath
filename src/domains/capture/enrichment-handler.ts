@@ -13,8 +13,9 @@ import {
 import {
   GenerationRequestError,
   GenerationUnconfiguredError,
-  generationProvider,
+  type GenerationProvider,
 } from "@/integrations/generation/provider";
+import { resolveGeneration } from "@/domains/billing/resolver";
 import { JevRequestError, JevUnconfiguredError, type JevAnswer } from "@/integrations/jev/client";
 import { JevDisabledError, jevClassifier, type ClassifyJudger } from "@/integrations/jev/provider";
 import { providerEntry } from "@/integrations/providers/registry";
@@ -277,9 +278,9 @@ async function enrichLeased(
   // redelivery that reaches Jev clears it, like every other settled reason.
   const paidTierSkipped = jev.skipped;
 
-  let provider: ReturnType<typeof generationProvider>;
+  let provider: GenerationProvider;
   try {
-    provider = generationProvider(process.env);
+    provider = await resolveGeneration(event.workspaceId, "generation");
   } catch (cause) {
     if (cause instanceof GenerationUnconfiguredError) {
       // No key, no model: keep the deterministic tiers' work, mark enriched.

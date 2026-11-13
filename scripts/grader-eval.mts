@@ -1,4 +1,5 @@
-import { defaultExplainItGenerator } from "@/integrations/learning/explain-it";
+import { generationProvider } from "@/integrations/generation/provider";
+import { explainItGenerator } from "@/integrations/learning/explain-it";
 import { GRADER_EVAL_CASES, GRADER_EVAL_SOURCE, validateCases, type Grade } from "@/domains/learning/grader-eval-cases";
 
 /*
@@ -34,7 +35,9 @@ const delayMs = Number(process.env.EVAL_DELAY_MS ?? "400");
 
 console.log(`Grader eval: ${cases.length} answers, provider ${provider}\n`);
 
-const engine = defaultExplainItGenerator(undefined);
+// An offline eval has no workspace, key store or ledger: it grades through the house chain directly.
+const house = generationProvider(process.env);
+const engine = explainItGenerator(house, (input) => house.generate({ ...input, json: true }));
 const results: Array<{
   id: string;
   expected: Grade;

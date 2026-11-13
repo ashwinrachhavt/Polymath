@@ -1,3 +1,4 @@
+import { resolveGeneration } from "@/domains/billing/resolver";
 import { and, eq } from "drizzle-orm";
 import { untrustedDataClause } from "@/lib/prompts";
 import { recordAudit } from "@/domains/audit/record";
@@ -119,17 +120,57 @@ export function planResearch(input: CompanyResearchInput): ResearchPlanStep[] {
   if (mode === "dossier-only") {
     if (!input.dossierId) throw new CompanyResearchError("Dossier-only research needs a dossierId.");
     return [
-      { key: "dossier", purpose: "Read only the pinned dossier sources; nothing is fetched from the web.", queries: [] },
+      {
+        key: "dossier",
+        purpose: "Read only the pinned dossier sources; nothing is fetched from the web.",
+        queries: [],
+      },
     ];
   }
   const cutoff = input.asOfDate ? ` (before ${input.asOfDate})` : "";
   const pool: ResearchPlanStep[] = [
-    { key: "identity", purpose: "Legal identity, ticker or domain, parent boundary", queries: [`"${money(name)}" investor relations OR annual report${cutoff}`] },
-    { key: "model", purpose: "Customer problem, products, revenue model", queries: [`"${money(name)}" business model revenue segments${cutoff}`, `"${money(name)}" 10-K business section${cutoff}`] },
-    { key: "timeline", purpose: "Turning points and strategic choices", queries: [`"${money(name)}" history strategy shift${cutoff}`, `"${money(name)}" earnings call strategy${cutoff}`] },
-    { key: "financials", purpose: "Period-aligned financials and KPIs", queries: [`"${money(name)}" revenue operating income free cash flow annual${cutoff}`, `"${money(name)}" quarterly results debt cash${cutoff}`] },
-    { key: "competition", purpose: "Competitive position and risks", queries: [`"${money(name)}" competitors market share${cutoff}`, `"${money(name)}" risk factors customer concentration${cutoff}`] },
-    { key: "scenarios", purpose: "Bull/base/bear inputs and counterarguments", queries: [`"${money(name)}" analyst bull bear case${cutoff}`, `"${money(name)}" criticism downside risk${cutoff}`] },
+    {
+      key: "identity",
+      purpose: "Legal identity, ticker or domain, parent boundary",
+      queries: [`"${money(name)}" investor relations OR annual report${cutoff}`],
+    },
+    {
+      key: "model",
+      purpose: "Customer problem, products, revenue model",
+      queries: [
+        `"${money(name)}" business model revenue segments${cutoff}`,
+        `"${money(name)}" 10-K business section${cutoff}`,
+      ],
+    },
+    {
+      key: "timeline",
+      purpose: "Turning points and strategic choices",
+      queries: [`"${money(name)}" history strategy shift${cutoff}`, `"${money(name)}" earnings call strategy${cutoff}`],
+    },
+    {
+      key: "financials",
+      purpose: "Period-aligned financials and KPIs",
+      queries: [
+        `"${money(name)}" revenue operating income free cash flow annual${cutoff}`,
+        `"${money(name)}" quarterly results debt cash${cutoff}`,
+      ],
+    },
+    {
+      key: "competition",
+      purpose: "Competitive position and risks",
+      queries: [
+        `"${money(name)}" competitors market share${cutoff}`,
+        `"${money(name)}" risk factors customer concentration${cutoff}`,
+      ],
+    },
+    {
+      key: "scenarios",
+      purpose: "Bull/base/bear inputs and counterarguments",
+      queries: [
+        `"${money(name)}" analyst bull bear case${cutoff}`,
+        `"${money(name)}" criticism downside risk${cutoff}`,
+      ],
+    },
   ];
   if (peers.length) {
     const competition = pool[4];
@@ -145,7 +186,12 @@ export function planResearch(input: CompanyResearchInput): ResearchPlanStep[] {
       pool[0],
       pool[1],
       pool[2],
-      { key: "financials", purpose: "Financials are usually undisclosed for a private company; record what is public and mark the rest missing.", queries: pool[3].queries.slice(0, 1) },
+      {
+        key: "financials",
+        purpose:
+          "Financials are usually undisclosed for a private company; record what is public and mark the rest missing.",
+        queries: pool[3].queries.slice(0, 1),
+      },
       pool[4],
     ].map((step) => ({ ...step, queries: step.queries }));
   }
@@ -198,12 +244,24 @@ export function sectionOrPlaceholder(section: string, body: string, manifestSize
   return `> [!NOTE] Insufficient evidence\n> The research pass could not ground "${section}" in the source manifest. This is a recorded gap, not a summary.`;
 }
 
-async function loadDossierManifest(tx: TxDrizzle, auth: AuthContext, dossierId: string): Promise<SourceManifestEntry[]> {
+async function loadDossierManifest(
+  tx: TxDrizzle,
+  auth: AuthContext,
+  dossierId: string,
+): Promise<SourceManifestEntry[]> {
   // Dossiers pin sources rows; a source is a URL or a workspace document
   // (sources.fileId). Document entries cite their document id as the locator -
   // no URL is fabricated for a record that has none.
   const rows = await tx
-    .select({ sourceId: sources.id, title: sources.title, url: sources.url, fileId: sources.fileId, documentTitle: documents.title, documentId: documents.id, note: notebookSources.note })
+    .select({
+      sourceId: sources.id,
+      title: sources.title,
+      url: sources.url,
+      fileId: sources.fileId,
+      documentTitle: documents.title,
+      documentId: documents.id,
+      note: notebookSources.note,
+    })
     .from(notebookSources)
     .innerJoin(sources, eq(sources.id, notebookSources.sourceId))
     .leftJoin(documents, and(eq(documents.fileId, sources.fileId), eq(documents.workspaceId, auth.workspaceId)))
@@ -232,13 +290,11 @@ function defaultAdapters(auth: AuthContext): ResearchAdapters {
       }));
     },
     async complete(section, prompt) {
-      return openRouterSection(section, prompt);
+      return writeSection(auth.workspaceId, section, prompt);
     },
   };
 }
 
-const COMPLETE_URL = "https://openrouter.ai/api/v1/chat/completions";
-const COMPLETE_MODEL = () => process.env.RESEARCH_MODEL || "openai/gpt-4o-mini";
 const MAX_PROMPT_CHARS = 24_000;
 
 export const SECTION_SYSTEM = `You write one section of an evidence-grounded business case study.
@@ -253,38 +309,42 @@ Before writing, check the manifest for passages supporting the section. If the s
 
 ${untrustedDataClause("brief")}`;
 
-/** Default section writer: one OpenRouter chat completion, mirroring the wiki summarizer's plumbing. */
-async function openRouterSection(section: string, prompt: string, fetchImpl: typeof fetch = fetch): Promise<string> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) return "";
-  const res = await fetchImpl(COMPLETE_URL, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: COMPLETE_MODEL(),
+/**
+ * Default section writer: one call on the workspace's generation route. An
+ * unusable route or a failed call is an empty section (a recorded gap), never a
+ * failed case study.
+ */
+async function writeSection(workspaceId: string, section: string, prompt: string): Promise<string> {
+  try {
+    const provider = await resolveGeneration(workspaceId, "generation");
+    const out = await provider.generate({
+      system: SECTION_SYSTEM,
+      prompt: `Section: ${section}\n\n${prompt.slice(0, MAX_PROMPT_CHARS)}`,
       temperature: 0,
-      messages: [
-        { role: "system", content: SECTION_SYSTEM },
-        { role: "user", content: `Section: ${section}\n\n${prompt.slice(0, MAX_PROMPT_CHARS)}` },
-      ],
-    }),
-  });
-  if (!res.ok) return "";
-  const json = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-  return json.choices?.[0]?.message?.content?.trim() ?? "";
+    });
+    return out.text.trim();
+  } catch {
+    return "";
+  }
 }
 
 function buildSectionPrompt(input: CompanyResearchInput, section: string, manifest: SourceManifestEntry[]): string {
-  const lines = manifest.map((m) => `[${m.ref}] ${m.title} - ${m.url}${m.publishedAt ? ` (published ${m.publishedAt})` : " (undated)"}`);
+  const lines = manifest.map(
+    (m) => `[${m.ref}] ${m.title} - ${m.url}${m.publishedAt ? ` (published ${m.publishedAt})` : " (undated)"}`,
+  );
   return [
     `Write the "${section}" section of an evidence-grounded business case study on ${input.companyName.trim()}.`,
     input.question ? `Central question: ${input.question}` : "",
     input.audience ? `Audience: ${input.audience}.` : "",
-    normalizePeers(input.peers).length ? `Peer companies for the competitive comparison: ${normalizePeers(input.peers).join(", ")}.` : "",
+    normalizePeers(input.peers).length
+      ? `Peer companies for the competitive comparison: ${normalizePeers(input.peers).join(", ")}.`
+      : "",
     `Cite sources inline as [S#] exactly matching this manifest. Use only these sources; invent nothing. If the sources cannot support the section, say so in one sentence instead of writing around the gap. Scenarios are hypotheses, never predictions or investment advice.`,
     "",
     ...lines,
-  ].filter(Boolean).join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 export type CompanyResearchResult = {
@@ -369,7 +429,11 @@ export async function runCompanyResearch(
           body = rows.length ? renderKpiTable(rows, dropped) : sectionOrPlaceholder(section, "", manifest.length);
         }
       } else {
-        body = sectionOrPlaceholder(section, await io.complete(section, buildSectionPrompt(input, section, manifest)), manifest.length);
+        body = sectionOrPlaceholder(
+          section,
+          await io.complete(section, buildSectionPrompt(input, section, manifest)),
+          manifest.length,
+        );
       }
       if (body.startsWith("> [!NOTE]")) gaps += 1;
       else grounded += 1;
@@ -382,9 +446,13 @@ export async function runCompanyResearch(
   return withTransaction(async (tx) => {
     // 4. The manifest renders as its own section; the report stands alone.
     const manifestLines = manifest.length
-      ? manifest.map((m) => `- [${m.ref}] ${m.title} - ${m.url}${m.publishedAt ? ` (published ${m.publishedAt})` : " (undated)"} (retrieved ${m.retrievedAt.slice(0, 10)})`)
+      ? manifest.map(
+          (m) =>
+            `- [${m.ref}] ${m.title} - ${m.url}${m.publishedAt ? ` (published ${m.publishedAt})` : " (undated)"} (retrieved ${m.retrievedAt.slice(0, 10)})`,
+        )
       : ["- No sources were gathered for this report."];
-    if (mode === "dossier-only") manifestLines.unshift("- Dossier-only mode: no web search was run; only pinned dossier sources appear below.");
+    if (mode === "dossier-only")
+      manifestLines.unshift("- Dossier-only mode: no web search was run; only pinned dossier sources appear below.");
     if (cutoff) manifestLines.unshift(`- Historical mode: sources published after ${input.asOfDate} were excluded.`);
     const markdown = [
       `# ${input.companyName.trim()}: a business case study`,
@@ -400,43 +468,75 @@ export async function runCompanyResearch(
 
     // 5. Persist: artifact + immutable version + source rows + audit + outbox.
     const title = `${input.companyName.trim()} case study`;
-    const { value, replayed } = await withReceipt(tx, auth, input.idempotencyKey, { op: "runCompanyResearch", ...input }, async () => {
-      const [artifact] = await tx
-        .insert(artifacts)
-        .values({ workspaceId: auth.workspaceId, kind: "report", status: "generated", title, createdBy: auth.userId, updatedBy: auth.userId })
-        .returning({ id: artifacts.id });
-      const [version] = await tx
-        .insert(artifactVersions)
-        .values({
+    const { value, replayed } = await withReceipt(
+      tx,
+      auth,
+      input.idempotencyKey,
+      { op: "runCompanyResearch", ...input },
+      async () => {
+        const [artifact] = await tx
+          .insert(artifacts)
+          .values({
+            workspaceId: auth.workspaceId,
+            kind: "report",
+            status: "generated",
+            title,
+            createdBy: auth.userId,
+            updatedBy: auth.userId,
+          })
+          .returning({ id: artifacts.id });
+        const [version] = await tx
+          .insert(artifactVersions)
+          .values({
+            workspaceId: auth.workspaceId,
+            artifactId: artifact.id,
+            versionNumber: 1,
+            content: { text: markdown },
+            plainText: markdown,
+            reason: "created",
+            createdBy: auth.userId,
+          })
+          .returning({ id: artifactVersions.id });
+        await tx
+          .update(artifacts)
+          .set({ currentVersionId: version.id, embedError: null })
+          .where(eq(artifacts.id, artifact.id));
+        for (const m of manifest) {
+          await tx.insert(sources).values({
+            workspaceId: auth.workspaceId,
+            kind: "company-research",
+            title: m.title,
+            url: m.url,
+            metadata: { query: m.query, publishedAt: m.publishedAt, artifactId: artifact.id },
+            createdBy: auth.userId,
+            updatedBy: auth.userId,
+          });
+        }
+        await recordAudit(
+          auth,
+          {
+            action: "research.company.completed",
+            subjectType: "artifact",
+            subjectId: artifact.id,
+            summary: `Company research on "${input.companyName.trim()}" (${mode}, ${manifest.length} sources, ${grounded} grounded / ${gaps} gap sections)`,
+            metadata: {
+              mode,
+              manifestSize: manifest.length,
+              groundedSections: grounded,
+              gapSections: gaps,
+              asOfDate: input.asOfDate ?? null,
+            },
+          },
+          tx,
+        );
+        await tx.insert(outboxEvents).values({
           workspaceId: auth.workspaceId,
-          artifactId: artifact.id,
-          versionNumber: 1,
-          content: { text: markdown },
-          plainText: markdown,
-          reason: "created",
-          createdBy: auth.userId,
-        })
-        .returning({ id: artifactVersions.id });
-      await tx.update(artifacts).set({ currentVersionId: version.id, embedError: null }).where(eq(artifacts.id, artifact.id));
-      for (const m of manifest) {
-        await tx.insert(sources).values({
-          workspaceId: auth.workspaceId,
-          kind: "company-research",
-          title: m.title,
-          url: m.url,
-          metadata: { query: m.query, publishedAt: m.publishedAt, artifactId: artifact.id },
-          createdBy: auth.userId,
-          updatedBy: auth.userId,
+          topic: "research.company.completed",
+          payload: { artifactId: artifact.id, mode, manifestSize: manifest.length },
         });
-      }
-      await recordAudit(
-        auth,
-        { action: "research.company.completed", subjectType: "artifact", subjectId: artifact.id, summary: `Company research on "${input.companyName.trim()}" (${mode}, ${manifest.length} sources, ${grounded} grounded / ${gaps} gap sections)`, metadata: { mode, manifestSize: manifest.length, groundedSections: grounded, gapSections: gaps, asOfDate: input.asOfDate ?? null } },
-        tx,
-      );
-      await tx.insert(outboxEvents).values({ workspaceId: auth.workspaceId, topic: "research.company.completed", payload: { artifactId: artifact.id, mode, manifestSize: manifest.length } });
-      return { artifactId: artifact.id, versionId: version.id };
-    });
+        return { artifactId: artifact.id, versionId: version.id };
+      },
+    );
     return { ...value, title, manifestSize: manifest.length, groundedSections: grounded, gapSections: gaps, replayed };
   });
 }

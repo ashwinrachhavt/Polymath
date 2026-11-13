@@ -1,15 +1,17 @@
 import { z } from "zod";
 import { untrustedDataClause } from "@/lib/prompts";
-import { EmbeddingUnconfiguredError } from "@/integrations/embeddings/provider";
+import { resolveGeneration } from "@/domains/billing/resolver";
+import type { GenerationProvider } from "@/integrations/generation/provider";
 
 /*
  * Turns one document's extracted text into its wiki article: a title, a
  * one-line summary the hubs and index quote, the article body, and the topics
  * it belongs to. The domain never trusts the result: topic slugs are
  * re-validated, sizes are capped, and the body is stored as a new artifact
- * version rather than edited in place. The default adapter asks a model
- * through OpenRouter, mirroring the zettel extractor; tests and other
- * providers plug in anything that satisfies WikiSummarizer.
+ * version rather than edited in place. The default adapter asks the workspace's
+ * generation route (its own key, else the house under the allowance), like every
+ * other generator; tests and other providers plug in anything that satisfies
+ * WikiSummarizer.
  */
 
 type WikiSummary = {
@@ -23,7 +25,7 @@ type WikiSummary = {
 };
 
 export interface WikiSummarizer {
-  /** Stored on the log line, e.g. "openrouter:openai/gpt-4o-mini". */
+  /** Stored on the log line, e.g. "groq:openai/gpt-oss-120b". */
   readonly name: string;
   summarize(text: string, documentTitle: string): Promise<WikiSummary>;
 }
@@ -32,8 +34,6 @@ const MAX_INPUT_CHARS = 16_000;
 const MAX_BODY_CHARS = 8_000;
 const MAX_SUMMARY_CHARS = 300;
 const MAX_TOPICS = 5;
-const DEFAULT_MODEL = "openai/gpt-4o-mini";
-const URL = "https://openrouter.ai/api/v1/chat/completions";
 
 const response = z.object({
   title: z.string(),
@@ -61,36 +61,20 @@ const SYSTEM = `You write one wiki article for a personal knowledge base. Return
 "topics": 1-5 lowercase-hyphenated slugs grouping the article (e.g. "job-search", "polymath", "health"); when no existing topic fits, coin one from the subject.
 Write only what the document supports; never invent facts, numbers, or links. If the document is too thin to summarize, return a title, a summary saying what it is, a short body stating that, and one broad topic - never fabricate substance to fill the shape. ${untrustedDataClause("document")} Summarize what the document is.`;
 
-export function openRouterWikiSummarizer(
-  env: NodeJS.ProcessEnv = process.env,
-  fetchImpl: typeof fetch = fetch,
-): WikiSummarizer {
-  const apiKey = env.OPENROUTER_API_KEY;
-  if (!apiKey) throw new EmbeddingUnconfiguredError();
-  const model = env.WIKI_MODEL || DEFAULT_MODEL;
+/** The summarizer over one generation provider. */
+export function wikiSummarizerOver(provider: GenerationProvider): WikiSummarizer {
   return {
-    name: `openrouter:${model}`,
+    name: provider.name,
     async summarize(text, documentTitle) {
-      const res = await fetchImpl(URL, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model,
-          response_format: { type: "json_object" },
-          temperature: 0,
-          messages: [
-            { role: "system", content: SYSTEM },
-            { role: "user", content: `Document title: ${documentTitle}\n\n${text.slice(0, MAX_INPUT_CHARS)}` },
-          ],
-        }),
+      const out = await provider.generate({
+        system: SYSTEM,
+        prompt: `Document title: ${documentTitle}\n\n${text.slice(0, MAX_INPUT_CHARS)}`,
+        json: true,
+        temperature: 0,
       });
-      // Provider error text is not kept: status only.
-      if (!res.ok) throw new Error(`Wiki summarization failed (HTTP ${res.status}).`);
-      const json = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-      const content = json.choices?.[0]?.message?.content ?? "";
       let parsed: z.infer<typeof response>;
       try {
-        parsed = response.parse(JSON.parse(content));
+        parsed = response.parse(JSON.parse(out.text));
       } catch {
         throw new Error("Wiki summarization returned an unreadable result.");
       }
@@ -102,4 +86,8 @@ export function openRouterWikiSummarizer(
       };
     },
   };
+}
+
+export async function defaultWikiSummarizer(workspaceId: string): Promise<WikiSummarizer> {
+  return wikiSummarizerOver(await resolveGeneration(workspaceId, "generation"));
 }

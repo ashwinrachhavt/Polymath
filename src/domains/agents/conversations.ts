@@ -20,7 +20,7 @@
  * would have.
  */
 import { and, eq } from "drizzle-orm";
-import { resolveRunModel } from "./models";
+import { resolveRunModelFor } from "@/domains/billing/resolver";
 import { recordRoundEvent } from "./event-bridge";
 import { captureProfileRevision } from "./runtime-persistence";
 import { agentProfiles, agentRuns } from "./schema";
@@ -47,7 +47,7 @@ export async function createConversationRun(input: {
   // Same discipline as engine.start: the revision is captured at creation so
   // the row reads consistently even though no session will consume it.
   const revision = await captureProfileRevision({ workspaceId: input.auth.workspaceId, profileId: profile.id });
-  const model = resolveRunModel(profile.modelPolicy)?.id ?? null;
+  const model = await resolveRunModelFor(input.auth.workspaceId, profile.modelPolicy);
 
   const [run] = await db
     .insert(agentRuns)

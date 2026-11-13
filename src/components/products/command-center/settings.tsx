@@ -7,6 +7,9 @@ import dynamic from "next/dynamic";
 const CandidateFacts = dynamic(() => import("./candidate-facts"), {
   loading: () => <p role="status">Loading candidate fact controls…</p>,
 });
+const AiAccessPanel = dynamic(() => import("./ai-access-panel"), {
+  loading: () => <p role="status">Loading AI access…</p>,
+});
 const ApiKeysPanel = dynamic(() => import("./api-keys-panel"), {
   loading: () => <p role="status">Loading API keys…</p>,
 });
@@ -59,6 +62,7 @@ const SECTION_GROUPS = [
       { id: "assistant", label: "Your assistant" },
       { id: "memory", label: "Memory" },
       { id: "execution-safety", label: "Execution safety" },
+      { id: "ai-access", label: "AI access" },
       { id: "model-policy", label: "Model and tools" },
       { id: "connectors", label: "Connectors" },
       { id: "documents", label: "Documents" },
@@ -712,6 +716,17 @@ export default function Settings({
               </p>
             </Panel>
           </Section>
+
+          {browserPreview ? null : (
+            <Section id="ai-access">
+              <Panel
+                title="AI access"
+                description="Polymath's model for a small weekly allowance, or your own key with no limit."
+              >
+                <AiAccessPanel />
+              </Panel>
+            </Section>
+          )}
 
           <Section id="model-policy">
             <Panel

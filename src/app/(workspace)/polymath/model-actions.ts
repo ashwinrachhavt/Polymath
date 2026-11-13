@@ -7,7 +7,8 @@ import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
 import { ensureProfile } from "@/domains/agents/commands";
 import { agentProfiles } from "@/domains/agents/schema";
-import { availableModels, modelById } from "@/domains/agents/models";
+import { modelById } from "@/domains/agents/models";
+import { selectableModels } from "@/domains/billing/resolver";
 
 /*
  * Choosing the model for the next run.
@@ -22,9 +23,9 @@ export async function setModelAction(input: { modelId: string }): Promise<{ ok: 
   const auth = await getAuthContext();
   requireRole(auth, "member");
 
-  // A model whose provider key is absent would freeze a run that cannot start.
+  // A model no key can serve (the workspace's own, or the house's) would freeze a run that cannot start.
   const entry = modelById(input.modelId);
-  const usable = availableModels().some((model) => model.id === input.modelId);
+  const usable = (await selectableModels(auth.workspaceId)).some((model) => model.id === input.modelId);
   if (!entry || !usable) {
     return { ok: false, error: "That model is not available on this deployment." };
   }

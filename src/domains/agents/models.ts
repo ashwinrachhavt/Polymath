@@ -67,7 +67,7 @@ export type ModelOption = {
   probe: string;
 };
 
-export type ModelPrice = { inputPerMillion: number; outputPerMillion: number };
+type ModelPrice = { inputPerMillion: number; outputPerMillion: number };
 
 export const MODEL_CATALOG: readonly ModelOption[] = [
   {
@@ -401,22 +401,6 @@ export function resolveRunModel(modelPolicy: unknown): ModelOption | null {
   const primary =
     typeof modelPolicy === "object" && modelPolicy !== null ? (modelPolicy as { primary?: unknown }).primary : null;
   return modelById(resolveModelId(primary));
-}
-
-/**
- * A real model instance for a direct AI SDK call — the one pattern a
- * no-run, no-stream server action needs (the onboarding assist; an eve run
- * never enters the picture). Every catalog entry's baseUrl is the
- * OpenAI-compatible chat endpoint, so one provider factory with the entry's
- * own credentials speaks for all of them, exactly as the runtime would on a
- * run's first turn.
- */
-export function chatModel(option: ModelOption, env: Record<string, string | undefined> = process.env): LanguageModel {
-  const apiKey = env[option.keyEnv];
-  if (typeof apiKey !== "string" || apiKey.trim().length === 0) {
-    throw new Error(`${option.keyEnv} is not set, so ${option.label} cannot be called.`);
-  }
-  return createOpenAI({ apiKey, baseURL: option.baseUrl }).chat(option.id);
 }
 
 /*
