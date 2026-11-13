@@ -61,14 +61,11 @@ export type EventDefinition = {
  * an arbitrary string. Each suffix list is the full value space of the
  * emitting variable, verified against its source union:
  * integration.account_${status} - setAccountStatus's "active"|"expired"|"revoked"|"error"
- * (src/domains/integrations/commands.ts); run.feedback.${value} -
- * MessageFeedback "up"|"down" plus the cleared branch
- * (src/domains/agents/feedback.ts, run-reviews.ts); follow_up.${resolution} -
+ * (src/domains/integrations/commands.ts); follow_up.${resolution} -
  * "done"|"cancelled" (src/domains/crm/commands.ts).
  */
 export const DYNAMIC_FAMILIES: Record<string, string[]> = {
   "integration.account_": ["active", "expired", "revoked", "error"],
-  "run.feedback.": ["up", "down", "cleared"],
   "follow_up.": ["done", "cancelled"],
 };
 
@@ -260,7 +257,8 @@ const TIER_1: Tier1Spec[] = [
     verbPhrase: "rated an artifact",
     operation: "step",
   },
-  // Run feedback (dynamic family: the owner's like/dislike on a run's reply).
+  // Run and reply thumbs, written before llm_feedback (0314); nothing emits them now,
+  // and the activity feed still names the rows already recorded.
   { action: "run.feedback.up", category: "agents", verbPhrase: "gave a run positive feedback" },
   { action: "run.feedback.down", category: "agents", verbPhrase: "gave a run negative feedback" },
   { action: "run.feedback.cleared", category: "agents", verbPhrase: "cleared run feedback" },
@@ -376,7 +374,10 @@ const TIER_2_ACTIONS: { action: string; category: EventCategory }[] = [
   { action: "knowledge.design_brief.generated", category: "knowledge" },
   { action: "learning.flashcard_reviewed", category: "knowledge" },
   { action: "learning.flashcards_generated", category: "knowledge" },
+  // Kept for audit rows written before llm_feedback (0314); nothing emits it now.
   { action: "learning.artifact_feedback_recorded", category: "knowledge" },
+  { action: "llm_feedback.rated", category: "agents" },
+  { action: "llm_feedback.cleared", category: "agents" },
   { action: "learning.graph_recall_attempted", category: "knowledge" },
   { action: "learning.challenge_attempted", category: "knowledge" },
   { action: "learning.challenge_started", category: "knowledge" },
@@ -384,6 +385,7 @@ const TIER_2_ACTIONS: { action: string; category: EventCategory }[] = [
   { action: "learning.explain_session_started", category: "knowledge" },
   { action: "learning.quiz_completed", category: "knowledge" },
   { action: "learning.quiz_generated", category: "knowledge" },
+  { action: "understanding.explainer_written", category: "knowledge" },
   { action: "learning.mission_archived", category: "knowledge" },
   { action: "learning.mission_restored", category: "knowledge" },
   { action: "learning.mission_started", category: "knowledge" },

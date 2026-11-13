@@ -8,6 +8,7 @@ import {
   type ChatBlock,
   type ChatCitation,
 } from "@/domains/agents/stream-contract";
+import { mergeStepFacts, type RecordedStep, type StepFacts } from "@/domains/agents/agent-steps";
 import { StreamHttpError, describeStreamFailure } from "./stream-errors";
 
 /*
@@ -40,6 +41,10 @@ export type ChatState = {
     /** The call's arguments (running frame), then the result payload (settled frame). */
     input?: unknown;
     output?: unknown;
+    /** The model turn the call ran in; the step card sits beside that turn's answer. */
+    turnId?: string;
+    /** Query and sources, merged across the running and settled frames. */
+    facts?: StepFacts;
   }[];
   citations: ChatCitation[];
   connection: ChatConnection;
@@ -72,8 +77,11 @@ const BASE_BACKOFF_MS = 400;
 const MAX_ATTEMPTS = 5;
 
 export type UseChatStreamOptions = {
-  /** Frames already rendered before this hook mounted (a server-rendered thread). */
-  initial?: { blocks?: ChatBlock[]; cursor?: number };
+  /**
+   * Frames already rendered before this hook mounted (a server-rendered
+   * thread), and the run's recorded tool calls so a reload keeps its steps.
+   */
+  initial?: { blocks?: ChatBlock[]; steps?: RecordedStep[]; cursor?: number };
   /** Called once per distinct citation batch, so a surface can highlight a source. */
   onCitation?: (citations: ChatState["citations"]) => void;
   /** Disable the connection (for example while a run row is still being created). */
@@ -83,7 +91,7 @@ export type UseChatStreamOptions = {
 export function useChatStream(runId: string | null, options: UseChatStreamOptions = {}) {
   const [state, setState] = useState<ChatState>(() => ({
     blocks: options.initial?.blocks ?? [],
-    tools: [],
+    tools: (options.initial?.steps ?? []).map((step) => ({ ...step })),
     citations: [],
     connection: runId && options.enabled !== false ? "connecting" : "waiting",
     error: null,
@@ -231,6 +239,8 @@ export function useChatStream(runId: string | null, options: UseChatStreamOption
                   status: frame.status,
                   detail: frame.detail,
                   input: frame.input,
+                  turnId: frame.turnId,
+                  facts: frame.facts,
                 }),
               }));
             }
@@ -364,7 +374,15 @@ export function useChatStream(runId: string | null, options: UseChatStreamOption
 
 function mergeTool(
   tools: ChatState["tools"],
-  next: { callId: string; label: string; status: "running" | "ok" | "error"; detail?: string; input?: unknown },
+  next: {
+    callId: string;
+    label: string;
+    status: "running" | "ok" | "error";
+    detail?: string;
+    input?: unknown;
+    turnId?: string;
+    facts?: StepFacts;
+  },
 ): ChatState["tools"] {
   const index = tools.findIndex((tool) => tool.callId === next.callId);
   if (index === -1) {
@@ -378,7 +396,14 @@ function mergeTool(
   // absence) is the outcome, never a leftover from the running frame. The
   // running frame's `input` (the call arguments) is kept: the settled frame's
   // `input` is the result payload and moves to `output`.
+  // A replay of a recorded call (seeded from tool_calls) re-sends its running
+  // frame; the settled outcome already on screen must not regress to running.
+  if (next.status === "running" && prev.status !== "running") return tools;
+  const turnId = next.turnId ?? prev.turnId;
+  const facts = mergeStepFacts(prev.facts, next.facts);
   copy[index] =
-    next.status === "running" ? { ...next } : { ...next, input: prev.input, output: next.input ?? prev.output };
+    next.status === "running"
+      ? { ...next, turnId, facts }
+      : { ...next, turnId, facts, input: prev.input, output: next.input ?? prev.output };
   return copy;
 }

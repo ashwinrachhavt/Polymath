@@ -6,7 +6,7 @@ import dynamic from "next/dynamic";
 import { isDiagramTool, diagramCardStates } from "@/domains/diagrams/card-state";
 import { Button } from "@/components/ui/button";
 import { CitedText } from "./cited-text";
-import { ChainOfThought, type ThoughtStep } from "./chain-of-thought";
+import { AgentSteps, type StepRow } from "./agent-steps";
 import { CitationStrip } from "./citation-strip";
 import { MessageActions } from "./message-actions";
 import { inline } from "@/components/markdown-inline";
@@ -15,8 +15,8 @@ import { AgentPanel, type AgentPanelData } from "./agent-panel";
 import type { PendingMessage } from "./pending-messages";
 import type { ChatConnection, ChatState } from "./use-chat-stream";
 import type { ChatCitation } from "@/domains/agents/stream-contract";
-import { toolLabel } from "@/domains/agents/tool-labels";
-import { collectRecords } from "./record-links";
+import { reasoningStepRow, toolStepRow } from "./step-rows";
+import type { ChatRating, RatedOutput, Rating } from "@/domains/feedback/ratings";
 
 // The diagram card is a heavy island: ssr:false keeps its chrome out of the
 // server bundle, matching the canvas.tsx convention. The card itself carries
@@ -28,48 +28,49 @@ const DiagramCard = dynamic(() => import("./diagram-card"), {
   loading: () => <div className="panel h-24 rounded-xl" aria-hidden />,
 });
 
-/*
- * The chain of thought for the current turn: every reasoning block and tool
- * call in arrival order, as one collapsible. The answer stays the thing being
- * read; the working is one press away.
- *
- * Tools are keyed by callId and reasoning blocks by their own id, so the list
- * is stable across a reconnect (a replayed frame updates a step in place
- * rather than appending a second copy).
- */
-function thoughtSteps(blocks: ChatState["blocks"], tools: ChatState["tools"]): ThoughtStep[] {
-  return [
-    ...blocks
-      .filter((block) => block.kind === "reasoning" && block.text.trim() !== "")
-      .map((block): ThoughtStep => ({
-        id: block.id,
-        kind: "reasoning",
-        label: block.done ? "Reasoned through the question" : "Reasoning",
-        text: block.text,
-        status: block.done ? "complete" : "running",
-      })),
-    ...tools
-      .filter((tool) => !isDiagramTool(tool))
-      .map((tool): ThoughtStep => ({
-        id: `tool:${tool.callId}`,
-        kind: "tool",
-        label: toolLabel(tool.label),
-        ...(tool.detail ? { detail: tool.detail } : {}),
-        status: tool.status === "running" ? "running" : tool.status === "ok" ? "complete" : "error",
-        tool: tool.label,
-        ...(tool.status !== "running" ? { records: collectRecords(tool.output) } : {}),
-      })),
-  ];
+/** The model turn a block belongs to: `assistant:<turnId>:<step>` / `reasoning:<turnId>:<step>` (stream-contract blockIdFor). */
+function turnOfBlock(block: ChatState["blocks"][number]): string | null {
+  if (block.kind === "user") return null;
+  const [, turnId] = block.id.split(":");
+  return turnId && turnId !== "stored" && turnId !== "t" ? turnId : null;
 }
 
-/**
- * A live assistant block's id is `assistant:{turnId}:{stepIndex}` (see
- * blockIdFor in stream-contract.ts); the run_event it lands in carries the
- * same turnId, so feedback addresses the row through it.
+type TurnCard = { turnId: string | null; steps: StepRow[] };
+
+/*
+ * The step cards, one per model turn: the turn's visible reasoning, then its
+ * tool calls in arrival order. Diagram calls are left out — they render as
+ * cards of their own. Steps are keyed by callId and reasoning by block id, so
+ * a replayed frame updates a row in place instead of appending a copy.
  */
-function turnIdOf(blockId: string): string {
-  const parts = blockId.split(":");
-  return parts.length >= 2 ? parts[1] : blockId;
+function turnCards(blocks: ChatState["blocks"], tools: ChatState["tools"]): TurnCard[] {
+  const cards = new Map<string | null, StepRow[]>();
+  const add = (turnId: string | null, row: StepRow) => cards.set(turnId, [...(cards.get(turnId) ?? []), row]);
+  for (const block of blocks) {
+    if (block.kind !== "reasoning" || block.text.trim() === "") continue;
+    add(turnOfBlock(block), reasoningStepRow(block.id, block.text, block.done));
+  }
+  for (const tool of tools) {
+    if (isDiagramTool(tool)) continue;
+    add(tool.turnId ?? null, toolStepRow(tool));
+  }
+  return [...cards].map(([turnId, steps]) => ({ turnId, steps }));
+}
+
+/** Where a block's rating is addressed: a stored reply by sequence, a streamed one by its turn. */
+function ratedReply(runId: string, blockId: string): RatedOutput {
+  const [, second, third] = blockId.split(":");
+  if (second === "stored") return { surface: "chat", runId, sequence: Number(third) };
+  return { surface: "chat", runId, turnId: second ?? blockId };
+}
+
+function ratingFor(ratings: ChatRating[], output: RatedOutput): Rating | null {
+  if (output.surface !== "chat") return null;
+  const match =
+    output.sequence !== undefined
+      ? ratings.find((rating) => rating.sequence === output.sequence)
+      : ratings.find((rating) => rating.turnId === output.turnId);
+  return match ? { score: match.score, comment: match.comment } : null;
 }
 
 /**
@@ -80,6 +81,7 @@ export function ChatTranscript({
   agent,
   blocks,
   tools,
+  ratings = [],
   citations,
   shownCitations,
   runId,
@@ -101,8 +103,10 @@ export function ChatTranscript({
   agent?: AgentPanelData;
   /** Stored and streamed blocks in arrival order. */
   blocks: ChatState["blocks"];
-  /** Tool calls streamed this turn; they feed the chain of thought. */
+  /** Tool calls streamed or recorded; each turn's feed its step card. */
   tools: ChatState["tools"];
+  /** The viewer's own ratings of this run's replies. */
+  ratings?: ChatRating[];
   /** Every citation the stream produced; the strip shows the cited ones. */
   citations: ChatCitation[];
   /** The citations the answer actually references, already filtered by the caller. */
@@ -133,8 +137,43 @@ export function ChatTranscript({
    */
   onRefineDiagram?: (prefill: string) => void;
 }) {
-  const steps = useMemo(() => thoughtSteps(blocks, tools), [blocks, tools]);
+  const cards = useMemo(() => turnCards(blocks, tools), [blocks, tools]);
   const diagramCards = useMemo(() => diagramCardStates(tools), [tools]);
+  // A turn's card renders above the first block of that turn; a turn with no
+  // block yet (the agent is still searching) and steps with no turn render at
+  // the end, where the next answer will appear.
+  // Each turn's anchor is the id of its first block.
+  const anchorOfTurn = new Map<string, string>();
+  for (const block of blocks) {
+    const turnId = turnOfBlock(block);
+    if (turnId !== null && !anchorOfTurn.has(turnId)) anchorOfTurn.set(turnId, block.id);
+  }
+  const cardByTurn = new Map(cards.filter((card) => card.turnId !== null).map((card) => [card.turnId, card]));
+  const trailingCards = cards.filter((card) => card.turnId === null || !anchorOfTurn.has(card.turnId));
+  const lastTurn = blocks.length > 0 ? turnOfBlock(blocks[blocks.length - 1]) : null;
+  // A turn can stream several answer blocks, and a rating addresses the turn's
+  // latest reply, so only that last block carries the rating control.
+  const lastAnswerOfTurn = new Map<string, string>();
+  for (const block of blocks) {
+    const turnId = block.kind === "assistant" ? turnOfBlock(block) : null;
+    if (turnId !== null) lastAnswerOfTurn.set(turnId, block.id);
+  }
+  const ratesBlock = (block: ChatState["blocks"][number]) => {
+    const turnId = turnOfBlock(block);
+    return turnId === null || lastAnswerOfTurn.get(turnId) === block.id;
+  };
+  const cardBefore = (block: ChatState["blocks"][number]) => {
+    const turnId = turnOfBlock(block);
+    if (turnId === null || anchorOfTurn.get(turnId) !== block.id) return null;
+    const card = cardByTurn.get(turnId);
+    return card ? (
+      <AgentSteps
+        key={`steps:${turnId}`}
+        steps={card.steps}
+        active={busy && trailingCards.length === 0 && turnId === lastTurn}
+      />
+    ) : null;
+  };
 
   return (
     <div className="mt-auto flex min-h-full flex-col justify-end gap-4">
@@ -146,7 +185,8 @@ export function ChatTranscript({
         </p>
       ) : (
         <div className="w-full space-y-4">
-          {blocks.map((block) =>
+          {blocks.map((block) => [
+            cardBefore(block),
             block.kind === "user" ? (
               <div
                 key={block.id}
@@ -169,14 +209,16 @@ export function ChatTranscript({
                 {block.kind === "assistant" && block.done ? (
                   <MessageActions
                     runId={runId}
-                    turnId={turnIdOf(block.id)}
+                    {...(ratesBlock(block)
+                      ? { rated: ratedReply(runId, block.id), rating: ratingFor(ratings, ratedReply(runId, block.id)) }
+                      : {})}
                     text={block.text}
                     messageId={block.messageId ?? null}
                   />
                 ) : null}
               </div>
             ),
-          )}
+          ])}
           {optimistic ? (
             <div className="bg-muted/60 ml-auto w-fit max-w-[75%] rounded-md px-2.5 py-1 text-body leading-6">
               {optimistic}
@@ -190,10 +232,9 @@ export function ChatTranscript({
               {inline(entry.text)}
             </div>
           ))}
-          {/* The working, after the turn's answer: reasoning and tool calls
-            as one block rather than a pill per step. Diagram calls are
-            excluded from the pills — they render as cards instead. */}
-          <ChainOfThought steps={steps} streaming={busy} />
+          {trailingCards.map((card) => (
+            <AgentSteps key={`steps:${card.turnId ?? "unplaced"}`} steps={card.steps} active={busy} />
+          ))}
           {diagramCards.map(({ callId, card }) => (
             <DiagramCard key={callId} card={card} onRefine={onRefineDiagram} />
           ))}

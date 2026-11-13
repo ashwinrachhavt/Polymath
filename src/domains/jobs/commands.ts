@@ -1,6 +1,7 @@
 import { and, eq, inArray, or, sql, type SQL } from "drizzle-orm";
 import { enqueueOutbox, type OutboxHandler } from "@/domains/audit/outbox";
 import type { AuthContext } from "@/domains/identity/resolve";
+import { AllowanceExhaustedError } from "@/domains/billing/resolver";
 import { memberships } from "@/domains/identity/schema";
 import { db } from "@/lib/db";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
@@ -234,11 +235,10 @@ export async function runGenerationJob(
     if (cause instanceof GenerationJobCancelled || cancelled.signal.aborted) {
       outcome = null;
     } else {
-      if (!(cause instanceof GenerationJobFailure)) console.error("[generation-job] run failed", ref.jobId, cause);
-      outcome = {
-        status: "failed",
-        error: cause instanceof GenerationJobFailure ? cause.message.slice(0, 500) : UNEXPECTED_FAILURE_COPY,
-      };
+      // An exhausted allowance is the expected stop, and its message says what to do; no runner has to map it.
+      const readable = cause instanceof GenerationJobFailure || cause instanceof AllowanceExhaustedError;
+      if (!readable) console.error("[generation-job] run failed", ref.jobId, cause);
+      outcome = { status: "failed", error: readable ? cause.message.slice(0, 500) : UNEXPECTED_FAILURE_COPY };
     }
   } finally {
     clearInterval(heartbeat);

@@ -221,6 +221,51 @@ suite("the weekly allowance", () => {
   });
 });
 
+suite("house-only hosted calls (Mercury Decisions)", () => {
+  const decision = { model: "mercury-decide", usage: { inputTokens: 40, outputTokens: 2 } };
+  const meter = { provider: "mercury", model: (r: typeof decision) => r.model, usage: (r: typeof decision) => r.usage };
+
+  it("runs, counts against the allowance, and records a house row", async () => {
+    const { workspaceId } = await workspace("decide");
+    await expect(resolver.withHouseCall(workspaceId, "grading", meter, async () => decision)).resolves.toBe(decision);
+    const [row] = await db.select().from(modelUsageLedger).where(eq(modelUsageLedger.workspaceId, workspaceId));
+    expect(row).toMatchObject({
+      purpose: "grading",
+      provider: "mercury",
+      model: "mercury-decide",
+      keySource: "house",
+      inputTokens: 40,
+      outputTokens: 2,
+    });
+    expect(await ledger.houseCallsThisWeek(workspaceId)).toBe(1);
+  });
+
+  it("does not run the call once the allowance is gone", async () => {
+    const { workspaceId } = await workspace("decidecap");
+    await fillHouseWeek(workspaceId, plans.FREE_WEEKLY_AI_CALLS);
+    let ran = false;
+    await expect(
+      resolver.withHouseCall(workspaceId, "grading", meter, async () => {
+        ran = true;
+        return decision;
+      }),
+    ).rejects.toBeInstanceOf(resolver.AllowanceExhaustedError);
+    expect(ran).toBe(false);
+  });
+
+  it("stops for a workspace on its own key, which has no house allowance", async () => {
+    const { workspaceId, auth } = await workspace("decideown");
+    await keys.saveWorkspaceKey(
+      auth,
+      { provider: "openai", apiKey: "user-openai-key-7777" },
+      { fetchImpl: ok, env: ENV },
+    );
+    await expect(resolver.withHouseCall(workspaceId, "grading", meter, async () => decision)).rejects.toBeInstanceOf(
+      resolver.AllowanceExhaustedError,
+    );
+  });
+});
+
 suite("keys: redaction, validation, plan", () => {
   it("stores the key sealed, shows only the last four, and never returns it", async () => {
     const { workspaceId, auth } = await workspace("redact");

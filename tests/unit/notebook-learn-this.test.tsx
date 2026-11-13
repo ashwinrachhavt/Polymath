@@ -44,9 +44,7 @@ vi.mock("@/app/(workspace)/projects/[projectId]/notebook/explain-actions", () =>
   startNotebookExplainItAction: actions.explain,
   answerNotebookExplainItAction: vi.fn(),
 }));
-vi.mock("@/app/(workspace)/artifacts/[artifactId]/artifact-feedback", () => ({
-  ArtifactFeedback: () => null,
-}));
+vi.mock("@/components/feedback/rate-output-action", () => ({ rateOutputAction: vi.fn() }));
 vi.mock("@/app/(workspace)/learn/actions", () => ({ completeQuizAttemptAction: vi.fn() }));
 
 const { LearningStudio } = await import("@/app/(workspace)/projects/[projectId]/notebook/learning-studio");

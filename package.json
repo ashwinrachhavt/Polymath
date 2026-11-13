@@ -27,6 +27,7 @@
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm check:registry && pnpm build",
     "prepare": "git config core.hooksPath scripts/hooks 2>/dev/null || true",
     "seed:taxonomy": "tsx --env-file=.env scripts/seed-taxonomy.ts",
+    "polymath-mcp": "node plugins/polymath/mcp/server.mjs",
     "knip": "DATABASE_URL='postgresql://knip:unused@127.0.0.1:9/knip_never_connects' knip",
     "test:ci": "sh scripts/reset-test-db.sh && vitest run"
   },

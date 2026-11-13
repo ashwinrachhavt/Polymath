@@ -21,22 +21,14 @@ export type ThreadEntry = {
   kind: "user" | "assistant" | "reasoning" | "cancelled" | "status";
   text: string;
   at: Date;
-  /** The model turn an assistant message belongs to; absent on user messages. */
+  /** The model turn an assistant message or reasoning block belongs to; absent on user messages. */
   turnId?: string | null;
-  /** The owner's like/dislike on an assistant message; null when not given. */
-  feedback?: "up" | "down" | null;
 };
 
 const TERMINAL = ["succeeded", "failed", "cancelled"] as const;
 export const isFinished = (state: string) => (TERMINAL as readonly string[]).includes(state);
 
-function toEntry(row: {
-  sequence: number;
-  type: string;
-  data: unknown;
-  createdAt: Date;
-  feedback?: string | null;
-}): ThreadEntry | null {
+function toEntry(row: { sequence: number; type: string; data: unknown; createdAt: Date }): ThreadEntry | null {
   const data = (row.data ?? {}) as {
     role?: string;
     content?: unknown;
@@ -56,7 +48,6 @@ function toEntry(row: {
       text: data.content,
       at: row.createdAt,
       turnId: typeof data.turnId === "string" ? data.turnId : null,
-      feedback: data.role === "assistant" ? ((row.feedback as "up" | "down" | null) ?? null) : undefined,
     };
   }
   // The superagent reply lane's result: the reply sender (wiring.ts
@@ -74,13 +65,18 @@ function toEntry(row: {
       text: data.message,
       at: row.createdAt,
       turnId: typeof data.turnId === "string" ? data.turnId : null,
-      feedback: (row.feedback as "up" | "down" | null) ?? null,
     };
   }
   // The model's visible rationale, persisted by the bridge so a reload keeps
   // what the live stream already showed.
   if (row.type === "reasoning" && typeof data.text === "string" && data.text.trim() !== "") {
-    return { sequence: row.sequence, kind: "reasoning", text: data.text, at: row.createdAt };
+    return {
+      sequence: row.sequence,
+      kind: "reasoning",
+      text: data.text,
+      at: row.createdAt,
+      turnId: typeof data.turnId === "string" ? data.turnId : null,
+    };
   }
   if (row.type === "cancelled")
     return { sequence: row.sequence, kind: "cancelled", text: "Cancelled", at: row.createdAt };
@@ -109,7 +105,6 @@ export async function listThreads(workspaceId: string, runIds: string[]): Promis
       type: runEvents.type,
       data: runEvents.data,
       createdAt: runEvents.createdAt,
-      feedback: runEvents.feedback,
     })
     .from(runEvents)
     .where(and(eq(runEvents.workspaceId, workspaceId), inArray(runEvents.runId, runIds)))

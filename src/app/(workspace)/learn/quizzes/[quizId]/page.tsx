@@ -3,7 +3,7 @@ import { io } from "next/cache";
 import { Suspense } from "react";
 import { z } from "zod";
 import { Screen } from "@/components/workspace/ui";
-import { getArtifactFeedback } from "@/domains/knowledge/artifact-feedback";
+import { ratingOf } from "@/domains/feedback/ratings";
 import { getQuizForSitting } from "@/domains/learning/queries";
 import { sourcesLine } from "@/domains/learning/source-labels";
 import { getAuthContext } from "@/lib/auth";
@@ -34,7 +34,7 @@ async function QuizSitting({ params }: { params: Promise<{ quizId: string }> }) 
   const auth = await getAuthContext();
   const quiz = await getQuizForSitting(auth, quizId);
   if (!quiz) notFound();
-  const rating = await getArtifactFeedback(auth, { kind: "quiz", id: quiz.id });
+  const rating = await ratingOf(auth, { surface: "quiz", id: quiz.id });
   const asked = quiz.sources.filter((source) => !source.skipped).map((source) => source.label);
   const skipped = quiz.sources.filter((source) => source.skipped).map((source) => source.label);
   // A one-source quiz is titled after its source; naming it again says nothing.

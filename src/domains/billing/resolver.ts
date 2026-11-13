@@ -292,6 +292,37 @@ export async function resolveGeneration(
   );
 }
 
+/**
+ * A hosted model call that is not a catalog chat model (Mercury Decisions) and
+ * cannot be served by a workspace's key: house-only, so it is held to the same
+ * weekly allowance and recorded like any house call. A workspace on its own key
+ * has no house allowance, so these calls stop for it; their callers degrade.
+ */
+export async function withHouseCall<T>(
+  workspaceId: string,
+  purpose: "generation" | "grading",
+  call: {
+    provider: string;
+    model: (result: T) => string;
+    usage: (result: T) => { inputTokens: number; outputTokens: number };
+  },
+  run: () => Promise<T>,
+): Promise<T> {
+  await assertHouseAllowance(workspaceId, purpose);
+  const result = await run();
+  const usage = call.usage(result);
+  await recordModelCall({
+    workspaceId,
+    purpose,
+    provider: call.provider,
+    model: call.model(result),
+    keySource: "house",
+    inputTokens: usage.inputTokens,
+    outputTokens: usage.outputTokens,
+  });
+  return result;
+}
+
 /** text-embedding-3-small list price; the one embedding model the product uses. */
 const EMBEDDING_USD_PER_MILLION_TOKENS = 0.02;
 

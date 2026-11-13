@@ -16,6 +16,7 @@
  * lost, and the expiry path is the backstop) instead of deciding from stale
  * memory.
  */
+import { withHouseCall } from "@/domains/billing/resolver";
 import type { AuthContext } from "@/domains/identity/resolve";
 import type { Engine } from "../core/engine";
 import { said, type Reason } from "../core/reasons";
@@ -166,7 +167,13 @@ export function createSuperagentAssessor(host: AssessorHost): SuperagentAssessor
     const client = host.decide;
     if (!client) return null;
     try {
-      const result = await client.decide(decideRequest(bounded));
+      // A house-only hosted call: held to the workspace's weekly allowance and recorded in the usage ledger.
+      const result = await withHouseCall(
+        workspaceId,
+        "grading",
+        { provider: "mercury", model: (r) => r.model, usage: (r) => r.usage },
+        () => client.decide(decideRequest(bounded)),
+      );
       return { admitProbability: admitProbabilityOf(result), question: DECIDE_ADMIT_QUESTION, model: result.model };
     } catch (cause) {
       // A Decide failure never hard-stops admission: Eve decides, and the

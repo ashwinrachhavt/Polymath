@@ -37,6 +37,12 @@ const config = {
     // The grader eval is run by hand against a provider; it writes its numbers
     // to stdout for the owner to set the bar against.
     "scripts/grader-eval.mts",
+    // Run by hand inside the Oracle VM's web container (deploy/oracle/README.md).
+    "deploy/oracle/check-env.ts",
+
+    // Claude Code launches the Polymath plugin's hook script as a process from
+    // hooks.json; nothing imports it. The MCP server is the polymath-mcp script.
+    "plugins/polymath/hooks/understanding-hook.mjs",
 
     // The eve agent trees are compiled by the eve runner against root src —
     // through relative paths and the root tsconfig's @/ alias — so their

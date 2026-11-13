@@ -144,6 +144,7 @@ export async function startExplainItSession(
         generationKey: input.idempotencyKey,
         status: "active",
         questionLimit: 5,
+        promptVersion: EXPLAIN_IT_PROMPT_VERSION,
         createdBy: auth.userId,
         updatedBy: auth.userId,
       })

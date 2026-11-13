@@ -5,8 +5,8 @@ import { ArrowLeft } from "lucide-react";
 import { IconButton } from "@/components/ui/icon-button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getAuthContext } from "@/lib/auth";
-import { getArtifactFeedback } from "@/domains/knowledge/artifact-feedback";
-import { ArtifactFeedback } from "./artifact-feedback";
+import { ratingOf } from "@/domains/feedback/ratings";
+import { OutputRating } from "@/components/feedback/output-rating";
 import { getArtifactDetail } from "@/domains/knowledge/artifact-gallery";
 import { getWikiPageText } from "@/domains/knowledge/wiki";
 import { extractToc, type TocEntry } from "@/domains/knowledge/artifact-toc";
@@ -40,7 +40,7 @@ export async function ArtifactSurface({ artifactId }: { artifactId: string }) {
   await connection();
   const auth = await getAuthContext();
   const [artifact, wiki] = await Promise.all([getArtifactDetail(auth, artifactId), getWikiPageText(auth, artifactId)]);
-  const feedback = artifact ? await getArtifactFeedback(auth, { kind: "artifact", id: artifactId }) : null;
+  const feedback = artifact ? await ratingOf(auth, { surface: "artifact", id: artifactId }) : null;
   if (!artifact) {
     return <div className="page-content text-body-dense text-muted-foreground">This artifact does not exist.</div>;
   }
@@ -150,7 +150,13 @@ export async function ArtifactSurface({ artifactId }: { artifactId: string }) {
               </ul>
             </section>
           ) : null}
-          <ArtifactFeedback target={{ kind: "artifact", id: artifactId }} rating={feedback} />
+          <OutputRating
+            output={{ surface: "artifact", id: artifactId }}
+            initial={feedback}
+            label="Rate this artifact"
+            prompt="Was this useful?"
+            className="border-border mt-8 border-t pt-4"
+          />
         </article>
       </div>
     </>

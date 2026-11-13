@@ -1,5 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { allowedEmails, hasAllowedEmail, isClerkUserAllowed, resetAllowlistCache } from "@/lib/access-allowlist";
+import {
+  allowedEmails,
+  hasAllowedEmail,
+  isClerkUserAllowed,
+  lookupClerkEmails,
+  resetAllowlistCache,
+} from "@/lib/access-allowlist";
+
+const createClerkClient = vi.hoisted(() =>
+  vi.fn((_options: { secretKey?: string }) => ({
+    users: { getUser: vi.fn(async () => ({ emailAddresses: [{ emailAddress: "a@b.c", verification: null }] })) },
+  })),
+);
+vi.mock("@clerk/nextjs/server", () => ({ createClerkClient }));
 
 const verified = (emailAddress: string) => ({ emailAddress, verification: { status: "verified" } });
 const unverified = (emailAddress: string) => ({ emailAddress, verification: { status: "unverified" } });
@@ -69,5 +82,14 @@ describe("isClerkUserAllowed", () => {
     expect(lookup).toHaveBeenCalledTimes(1);
     await isClerkUserAllowed("user_stranger", { allowed, lookup, now: 61_000 });
     expect(lookup).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("lookupClerkEmails", () => {
+  it("hands the Backend API client the secret key, which it does not read from the env itself", async () => {
+    vi.stubEnv("CLERK_SECRET_KEY", "sk_test_from_env");
+    await lookupClerkEmails("user_owner");
+    expect(createClerkClient).toHaveBeenCalledWith({ secretKey: "sk_test_from_env" });
+    vi.unstubAllEnvs();
   });
 });
