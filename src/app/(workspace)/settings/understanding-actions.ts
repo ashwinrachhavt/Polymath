@@ -22,6 +22,7 @@ type Loaded = UnderstandingPreferences & { version: number };
 export async function loadUnderstandingPreferencesAction(): Promise<Result<{ preferences: Loaded }>> {
   try {
     const auth = await getAuthContext();
+    requireRole(auth, "viewer");
     return { ok: true, preferences: await getUnderstandingPreferences(auth) };
   } catch (error) {
     return { ok: false, error: actionError(error, "Could not load these preferences.") };

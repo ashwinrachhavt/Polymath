@@ -1,6 +1,9 @@
 {
   "name": "polymath",
-  "owner": { "name": "Polymath" },
+  "description": "Plugins that help you understand what your coding agent builds.",
+  "owner": {
+    "name": "Polymath"
+  },
   "plugins": [
     {
       "name": "polymath",

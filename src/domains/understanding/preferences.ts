@@ -20,7 +20,7 @@ export type UnderstandingPreferences = {
   difficulty: (typeof DIFFICULTIES)[number];
 };
 
-export const DEFAULT_UNDERSTANDING_PREFERENCES: UnderstandingPreferences = {
+const DEFAULT_UNDERSTANDING_PREFERENCES: UnderstandingPreferences = {
   autoSuggest: false,
   pushWarning: false,
   questionCount: 5,
