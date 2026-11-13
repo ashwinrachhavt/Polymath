@@ -9,6 +9,7 @@ import {
   GitHubTriageError,
   proposeGitHubTriage,
 } from "../../../../src/domains/integrations/github-triage";
+import { runSessionRef } from "../lib/run-session";
 
 /*
  * ASH-284: propose triage for a GitHub issue - labels, assignees, or a close
@@ -28,7 +29,6 @@ import {
  * issue is a new proposal, never a silent edit of one the owner is reading.
  */
 export default defineTool({
-  deferred: true,
   description:
     "Propose labels, assignees, or a close reason for one GitHub issue, for the owner to approve in the review queue. Use after reading open issues with the GitHub tools when the owner asks for triage suggestions. Nothing is applied to GitHub - the proposal records the suggested triage and the owner applies or dismisses it. Label and assignee validity against the repository is not checked here: the proposal records the suggestion exactly as made, so say when you have not verified that a label or login exists. Pass the issue's coordinates and a stable dedupeId so a retry proposes once; proposing different changes for the same issue creates a fresh proposal instead of altering the old one.",
   inputSchema: z.object({
@@ -58,7 +58,7 @@ export default defineTool({
     if (typeof workspaceId !== "string" || !current?.principalId) {
       return { ok: false as const, error: "no workspace in session" };
     }
-    const run = await getRunBySessionRef(ctx.session.id, workspaceId);
+    const run = await getRunBySessionRef(runSessionRef(ctx.session), workspaceId);
     if (!run || run.state !== "running") {
       return { ok: false as const, error: "no active Polymath run bound to this session" };
     }
@@ -83,7 +83,7 @@ export default defineTool({
           // Caller-owned identity:
           // the session id comes from the authenticated session, so a
           // model-chosen dedupeId can only collide inside its own thread.
-          dedupeKey: `${ctx.session.id}:${input.dedupeId}`,
+          dedupeKey: `${runSessionRef(ctx.session)}:${input.dedupeId}`,
           runId: run.id,
         },
       );

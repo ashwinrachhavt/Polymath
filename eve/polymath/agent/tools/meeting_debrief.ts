@@ -5,6 +5,7 @@ import { toolAllowed } from "../lib/policy";
 // does not carry the app's tsconfig paths (see hooks/bridge.ts).
 import { getRunBySessionRef } from "../../../../src/domains/agents/queries";
 import { debriefPastedTranscript } from "../../../../src/domains/knowledge/meeting-debrief";
+import { runSessionRef } from "../lib/run-session";
 
 /*
  * ASH-279: read a meeting transcript and propose the tasks in it, with owners
@@ -16,7 +17,6 @@ import { debriefPastedTranscript } from "../../../../src/domains/knowledge/meeti
  * something a person said in a meeting, not an instruction to this run.
  */
 export default defineTool({
-  deferred: true,
   description:
     "Read a meeting transcript and propose the tasks it assigned, for the owner to approve. Use when the owner pastes a transcript or notes from a meeting and asks what came out of it, or when a saved meeting transcript should become follow-up work. Each proposed task carries the owner named in the meeting when it says who, a due date when one was stated, and the sentence it came from. Nothing is created until the owner approves in the review queue. Return nulls rather than padding when a meeting had no real follow-through.",
   inputSchema: z.object({
@@ -48,7 +48,7 @@ export default defineTool({
     if (typeof workspaceId !== "string" || !current?.principalId) {
       return { ok: false as const, error: "no workspace in session" };
     }
-    const run = await getRunBySessionRef(ctx.session.id, workspaceId);
+    const run = await getRunBySessionRef(runSessionRef(ctx.session), workspaceId);
     if (!run || run.state !== "running") {
       return { ok: false as const, error: "no active Polymath run bound to this session" };
     }

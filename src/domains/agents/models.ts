@@ -304,6 +304,19 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
 export const DEFAULT_MODEL_ID = "zai-org/glm-5.3-flash";
 
 /**
+ * The small model: turn routing when Jev is unsure, quick replies (greetings,
+ * thanks), and conversation summaries (owner decision 2026-11-13: a small model
+ * for routing, summaries and grading; the run's model only for answers).
+ * POLYMATH_SMALL_MODEL overrides it with another catalog id.
+ */
+const SMALL_MODEL_ID = "gemini-3.5-flash-lite";
+
+export function smallModelId(env: Record<string, string | undefined> = process.env): string {
+  const wanted = env.POLYMATH_SMALL_MODEL?.trim();
+  return wanted && modelById(wanted) ? wanted : SMALL_MODEL_ID;
+}
+
+/**
  * The assessor profile's designed-in default (superagent spec §9, owner
  * directive 2026-11-02): Mercury 3 on the 100M-token grant. Settings-resolvable
  * like any run model — a profile's `model_policy.primary` overrides it — so

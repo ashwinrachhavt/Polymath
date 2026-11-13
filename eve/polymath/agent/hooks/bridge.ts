@@ -13,7 +13,9 @@ import {
   recordUsageEvent,
 } from "../../../../src/domains/agents/event-bridge";
 import { getRunBySessionRef } from "../../../../src/domains/agents/queries";
+import { isSessionReplay } from "../../../../src/domains/agents/stream-contract";
 import { enqueueCompletionObservation } from "../../../../src/domains/superagent/store/observe";
+import { runSessionRef } from "../lib/run-session";
 
 /*
  * The Polymath side of eve: this is the only file that imports eve, and its only
@@ -43,6 +45,18 @@ async function runIdOf(ctx: HookContext): Promise<string | null> {
   const workspaceId = workspaceIdOf(ctx);
   if (!workspaceId) return null;
   const run = await getRunBySessionRef(ctx.session.id, workspaceId);
+  return run?.id ?? null;
+}
+
+/**
+ * The run a session's spend and tool calls count against: a specialist copy's
+ * are its root conversation's. Messages and lifecycle use `runIdOf`, so a
+ * copy's reply to its parent never enters the person's thread.
+ */
+async function billedRunIdOf(ctx: HookContext): Promise<string | null> {
+  const workspaceId = workspaceIdOf(ctx);
+  if (!workspaceId) return null;
+  const run = await getRunBySessionRef(runSessionRef(ctx.session), workspaceId);
   return run?.id ?? null;
 }
 
@@ -103,7 +117,7 @@ export default defineHook({
 
     async "step.completed"(event, ctx) {
       const workspaceId = workspaceIdOf(ctx);
-      const runId = await runIdOf(ctx);
+      const runId = await billedRunIdOf(ctx);
       if (!workspaceId || !runId) return;
       // Usage is what settlement sums; the step's coordinates are the dedupe key.
       if (event.data.usage) {
@@ -112,7 +126,13 @@ export default defineHook({
             runId,
             workspaceId,
             usage: event.data.usage as Record<string, unknown>,
-            source: { turnId: event.data.turnId, stepIndex: event.data.stepIndex },
+            // A specialist copy's steps share the root's run but not its turn
+            // numbering, so its session id keeps the coordinates distinct.
+            source: {
+              turnId: event.data.turnId,
+              stepIndex: event.data.stepIndex,
+              ...(ctx.session.parent ? { sessionId: ctx.session.id } : {}),
+            },
           }),
         );
       }
@@ -147,7 +167,7 @@ export default defineHook({
 
     async "action.result"(event, ctx) {
       const workspaceId = workspaceIdOf(ctx);
-      const runId = await runIdOf(ctx);
+      const runId = await billedRunIdOf(ctx);
       if (!workspaceId || !runId) return;
       // Only authored tool calls carry a tool name; framework controls do not.
       const result = event.data.result;
@@ -195,6 +215,9 @@ export default defineHook({
     },
 
     async "message.received"(event, ctx) {
+      // A replacement session's replayed transcript is not something the
+      // person said: their messages are already stored as their own rows.
+      if (isSessionReplay(event.data.message)) return;
       const workspaceId = workspaceIdOf(ctx);
       const runId = await runIdOf(ctx);
       if (!workspaceId || !runId) return;

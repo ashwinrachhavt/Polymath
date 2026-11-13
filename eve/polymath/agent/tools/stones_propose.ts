@@ -6,6 +6,7 @@ import { toolAllowed } from "../lib/policy";
 import { getRunBySessionRef } from "../../../../src/domains/agents/queries";
 import { FOUNDRY_CAPABILITY, proposeStone } from "../../../../src/domains/gamification/proposals";
 import { stoneRecipeSchema } from "../../../../src/domains/gamification/recipe";
+import { runSessionRef } from "../lib/run-session";
 
 /*
  * Turns a designed stone into a reviewable foundry proposal. The agent tool
@@ -18,7 +19,6 @@ import { stoneRecipeSchema } from "../../../../src/domains/gamification/recipe";
  * policy must allow stones.foundry.create.
  */
 export default defineTool({
-  deferred: true,
   description:
     "Propose an ML-designed stone recipe for the owner to review. Call when the run has designed a stone worth adding to the collection - a name, rarity, theme, palette, and SVG on a 200x200 canvas. Do not propose stones the collection already covers. Nothing is created until the owner approves it; the approval writes the stone's definition into the gen- namespace. Pass a stable dedupeId so a retry resolves the same proposal.",
   inputSchema: stoneRecipeSchema.extend({
@@ -34,7 +34,7 @@ export default defineTool({
     if (typeof workspaceId !== "string" || !current?.principalId) {
       return { ok: false as const, error: "no workspace in session" };
     }
-    const run = await getRunBySessionRef(ctx.session.id, workspaceId);
+    const run = await getRunBySessionRef(runSessionRef(ctx.session), workspaceId);
     if (!run || run.state !== "running") {
       return { ok: false as const, error: "no active Polymath run bound to this session" };
     }

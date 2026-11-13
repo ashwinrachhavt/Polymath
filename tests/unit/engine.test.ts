@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ownerBackground } from "@/domains/agents/owner-brief";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { releaseSpend, reserveSpend } from "@/domains/spending/commands";
 import { createEngine } from "@/domains/agents/engine";
@@ -158,7 +159,7 @@ describe("engine", () => {
       expect.objectContaining({
         sessionId: RUN.id,
         auth,
-        instructions: "Be brief.",
+        instructions: ownerBackground("Be brief."),
         policy: expect.objectContaining({ profileId: "prof_1", model: "gemini-3.5-flash-lite" }),
       }),
     );

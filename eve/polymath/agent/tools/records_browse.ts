@@ -6,6 +6,7 @@ import { toolAllowed } from "../lib/policy";
 import { getRunBySessionRef } from "../../../../src/domains/agents/queries";
 import { listRecentlyCompletedTasks, listOpenTasks, searchTasksForLink } from "../../../../src/domains/work/queries";
 import { listNotes } from "../../../../src/domains/knowledge/notes";
+import { runSessionRef } from "../lib/run-session";
 
 /*
  * ASH-306: conversational navigation. "Show me my open tasks" and "open the
@@ -18,7 +19,6 @@ import { listNotes } from "../../../../src/domains/knowledge/notes";
  * domain's own query does the work, and nothing here writes.
  */
 export default defineTool({
-  deferred: true,
   description:
     "Find records the owner asked to see: their open or completed tasks, or their notes. Use when they say show me, open, find, or list something — a navigation request, not a question about content. Returns the records themselves with their ids and kinds, which the interface renders as openable cards. For a question about what something SAYS, use documents_search instead; this lists what exists, it does not read it.",
   inputSchema: z.object({
@@ -36,7 +36,7 @@ export default defineTool({
     if (typeof workspaceId !== "string" || !current?.principalId) {
       return { ok: false as const, error: "no workspace in session" };
     }
-    const run = await getRunBySessionRef(ctx.session.id, workspaceId);
+    const run = await getRunBySessionRef(runSessionRef(ctx.session), workspaceId);
     if (!run || run.state !== "running") {
       return { ok: false as const, error: "no active Polymath run bound to this session" };
     }

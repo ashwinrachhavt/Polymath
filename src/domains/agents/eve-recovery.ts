@@ -3,6 +3,7 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { bridgeHeaders, eveMount } from "./eve-driver";
 import { agentRuns, runEvents } from "./schema";
+import { SESSION_REPLAY_PREFIX } from "./stream-contract";
 
 /*
  * Recovery for a stranded eve session. When the dev process that owned a
@@ -77,7 +78,12 @@ export async function eveSessionEventCount(input: {
  * The run's stored conversation, bounded for use as replacement context. The
  * most recent turns matter most, so the cap trims from the front.
  */
-export async function replayContextForRun(runId: string, workspaceId: string): Promise<string> {
+export async function replayContextForRun(
+  runId: string,
+  workspaceId: string,
+  /** The message the replacement session is being started for. */
+  newMessage?: string,
+): Promise<string> {
   const rows = await db
     .select({ sequence: runEvents.sequence, type: runEvents.type, data: runEvents.data })
     .from(runEvents)
@@ -104,11 +110,15 @@ export async function replayContextForRun(runId: string, workspaceId: string): P
     if (typeof text !== "string" || text.trim() === "") continue;
     lines.push(`${speaker}: ${text}`);
   }
+  // The follow-up that found the session stranded was stored before the
+  // replacement started, so it is the replay's last row; it travels once, as
+  // the new message, not twice.
+  if (newMessage !== undefined && lines.at(-1) === `User: ${newMessage}`) lines.pop();
   if (lines.length === 0) return "";
   const body = lines.join("\n\n");
   const tail = body.length > REPLAY_MAX_CHARS ? body.slice(-REPLAY_MAX_CHARS) : body;
   const trimmed = tail.length < body.length ? tail.slice(tail.indexOf("\n") + 1) : tail;
-  return `Earlier in this conversation, before the live agent session was replaced:\n\n${trimmed}`;
+  return `${SESSION_REPLAY_PREFIX}\n\n${trimmed}`;
 }
 
 /**
@@ -132,7 +142,7 @@ export async function startReplacementSession(input: {
     .limit(1);
   if (!run) return { ok: false, reason: "no such run" };
 
-  const transcript = await replayContextForRun(input.runId, input.auth.workspaceId);
+  const transcript = await replayContextForRun(input.runId, input.auth.workspaceId, input.message);
   const headers = bridgeHeaders(input.auth, {
     runId: input.runId,
     ...(input.skillId ? { skillId: input.skillId } : {}),

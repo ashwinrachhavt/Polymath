@@ -137,7 +137,6 @@ export async function completeOnboarding(
     `The user is ${role}.`,
     `They work in: ${tools.join(", ") || "no connected tools yet"}.`,
     `What matters most to them: ${priorities.join("; ") || "not stated yet"}.`,
-    "You are their own agent — their representation, not a generic assistant. Aim every answer at what matters to them.",
   ].join("\n");
 
   return withTransaction(async (tx) => {

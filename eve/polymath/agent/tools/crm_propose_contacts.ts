@@ -5,6 +5,7 @@ import { toolAllowed } from "../lib/policy";
 // does not carry the app's tsconfig paths (see hooks/bridge.ts).
 import { getRunBySessionRef } from "../../../../src/domains/agents/queries";
 import { proposeContactsFromSenders } from "../../../../src/domains/crm/propose-from-senders";
+import { runSessionRef } from "../lib/run-session";
 
 /*
  * Turns email senders the run just read into reviewable CRM proposals. Call it
@@ -13,7 +14,6 @@ import { proposeContactsFromSenders } from "../../../../src/domains/crm/propose-
  * created until the owner approves each proposal in the review queue.
  */
 export default defineTool({
-  deferred: true,
   description:
     "Propose CRM contacts (and their company) for people who emailed the owner and are not in the CRM yet. Pass the messages you read with gmail_search: message id, thread id, From header, subject, date. Each new human sender becomes one proposal in the review queue linking the email thread; nothing is created until the owner approves it. Automated senders, the owner's own addresses and existing contacts are skipped and reported back.",
   inputSchema: z.object({
@@ -40,7 +40,7 @@ export default defineTool({
     if (typeof workspaceId !== "string" || !current?.principalId) {
       return { ok: false as const, error: "no workspace in session" };
     }
-    const run = await getRunBySessionRef(ctx.session.id, workspaceId);
+    const run = await getRunBySessionRef(runSessionRef(ctx.session), workspaceId);
     if (!run || run.state !== "running") {
       return { ok: false as const, error: "no active Polymath run bound to this session" };
     }

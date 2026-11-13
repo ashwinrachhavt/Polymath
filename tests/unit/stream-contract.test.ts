@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  SESSION_REPLAY_PREFIX,
   ChatAccumulator,
   decodeDiagramToolOutput,
   decodeFrame,
@@ -228,6 +229,11 @@ describe("frameOf", () => {
     // says assistant is not the person speaking.
     const frames = frameOf(RUN, { type: "message", data: { role: "assistant", content: "Here is the answer." } }, 4);
     expect(frames).toEqual([]);
+  });
+
+  it("does not render a replacement session's replayed transcript as something the person said", () => {
+    const replay = `${SESSION_REPLAY_PREFIX}\n\nUser: Research Intangible\n\nNew message from the user:\n\nName three players`;
+    expect(frameOf(RUN, { type: "message.received", data: { message: replay } }, 0)).toEqual([]);
   });
 
   it("drops an empty received message", () => {
