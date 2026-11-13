@@ -4,7 +4,7 @@ import { routeTurn, type TurnRoute } from "../../../../src/domains/agents/turn-r
 import { smallModelId } from "../../../../src/domains/agents/models";
 import { httpJevClient } from "../../../../src/integrations/jev/client";
 import { jevClassifier, type ClassifyJudger } from "../../../../src/integrations/jev/provider";
-import { catalogModel } from "./model";
+import { routedModel } from "./model";
 
 /*
  * One routing decision per turn, shared by every model call in it.
@@ -69,9 +69,10 @@ function judgeFor(workspaceId: string | null): ClassifyJudger | undefined {
   };
 }
 
-function smallModel() {
+/** The small model for the low-confidence fallback, through the resolver; none when it cannot be served. */
+async function smallModel(workspaceId: string | null) {
   try {
-    return catalogModel(smallModelId());
+    return await routedModel(workspaceId, smallModelId());
   } catch {
     return undefined;
   }
@@ -90,6 +91,8 @@ async function logRoute(sessionId: string, workspaceId: string, route: TurnRoute
 
 export function routeForTurn(input: {
   sessionId: string;
+  /** eve's id for the turn; the lane is decided once per turn. */
+  turnId: string;
   /** Set inside a sub-agent: the session that delegated to it. */
   parentSessionId?: string;
   workspaceId: string | null;
@@ -101,14 +104,18 @@ export function routeForTurn(input: {
   if (inherited) return inherited;
 
   const text = latestUserText(input.messages);
-  const key = `${input.sessionId}\u0000${text}`;
+  const key = `${input.sessionId}\u0000${input.turnId}`;
   const known = memo.get(key);
   if (known) {
     remember(latestBySession, input.sessionId, known);
     return known;
   }
 
-  const decided = routeTurn({ text, judge: judgeFor(input.workspaceId), smallModel: smallModel() });
+  const decided = routeTurn({
+    text,
+    judge: judgeFor(input.workspaceId),
+    smallModel: () => smallModel(input.workspaceId),
+  });
   remember(memo, key, decided);
   remember(latestBySession, input.sessionId, decided);
   if (input.workspaceId) {

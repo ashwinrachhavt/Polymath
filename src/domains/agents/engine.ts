@@ -7,7 +7,7 @@ import { withTransaction } from "@/lib/db-transaction";
 import { recordRoundEvent, redactText } from "./event-bridge";
 import { loadMemoryIndex } from "./memory";
 import { ownerBackground } from "./owner-brief";
-import { resolveRunModel } from "./models";
+import { resolveRunModelFor } from "@/domains/billing/resolver";
 import { captureProfileRevision } from "./runtime-persistence";
 import { agentProfiles, agentRuns } from "./schema";
 import { SessionNotActiveError } from "./eve-driver";
@@ -211,7 +211,7 @@ export function createEngine(
        * can never disagree. Anything else in the policy stays in the frozen
        * snapshot untouched.
        */
-      const model = resolveRunModel(profile.modelPolicy)?.id ?? null;
+      const model = await resolveRunModelFor(input.auth.workspaceId, profile.modelPolicy);
       // The run keeps this revision even if the profile is edited afterwards.
       const revision = await captureProfileRevision({ workspaceId: input.auth.workspaceId, profileId: profile.id });
       const policy: PolicySnapshot = {

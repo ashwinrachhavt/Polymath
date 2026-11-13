@@ -135,7 +135,7 @@ export async function refineOnboardingDraftAction(input: FreeformDraft): Promise
     };
   }
   const policy = await readOnboardingModelPolicy(auth.workspaceId);
-  const gate = interviewModelGate(policy);
+  const gate = await interviewModelGate(auth.workspaceId, policy);
   if (!gate.ok) return { ok: false, error: gate.message };
   const model = resolveRunModel(policy);
   if (!model) {

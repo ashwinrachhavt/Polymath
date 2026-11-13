@@ -1,0 +1,4 @@
+[mcp_servers.polymath]
+command = "node"
+args = ["/absolute/path/to/polymath/plugins/polymath/mcp/server.mjs"]
+env_vars = ["POLYMATH_API_KEY", "POLYMATH_URL"]

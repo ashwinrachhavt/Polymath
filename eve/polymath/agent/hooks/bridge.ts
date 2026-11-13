@@ -184,6 +184,8 @@ export default defineHook({
           workspaceId,
           runId,
           toolName,
+          turnId: event.data.turnId,
+          callId: callId ?? undefined,
           ok: event.data.status === "completed",
           // A HITL "rejected" is a policy denial, not a runtime failure: it
           // never executed. Distinguish it from a real error code.

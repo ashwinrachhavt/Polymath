@@ -1,0 +1,60 @@
+diff --git a/src/lib/retry.ts b/src/lib/retry.ts
+new file mode 100644
+index 0000000..3f1c2a9
+--- /dev/null
++++ b/src/lib/retry.ts
+@@ -0,0 +1,18 @@
++export async function withRetry<T>(
++  attempt: () => Promise<T>,
++  { retries = 3, baseDelayMs = 200 }: { retries?: number; baseDelayMs?: number } = {},
++): Promise<T> {
++  let lastError: unknown;
++  for (let n = 0; n <= retries; n += 1) {
++    try {
++      return await attempt();
++    } catch (error) {
++      lastError = error;
++      if (n === retries) break;
++      const jitter = Math.random() * baseDelayMs;
++      await new Promise((resolve) => setTimeout(resolve, baseDelayMs * 2 ** n + jitter));
++    }
++  }
++  throw lastError;
++}
+diff --git a/src/services/mailer.ts b/src/services/mailer.ts
+index 8c0d1e4..b72f9d0 100644
+--- a/src/services/mailer.ts
++++ b/src/services/mailer.ts
+@@ -1,9 +1,11 @@
+ import { transport } from "./transport";
++import { withRetry } from "../lib/retry";
+
+ export async function sendWelcome(to: string) {
+-  return transport.send({ to, template: "welcome" });
++  return withRetry(() => transport.send({ to, template: "welcome" }), { retries: 2 });
+ }
+
+ export async function sendReset(to: string, token: string) {
+-  return transport.send({ to, template: "reset", token });
++  return withRetry(() => transport.send({ to, template: "reset", token }));
+ }
+diff --git a/tests/retry.test.ts b/tests/retry.test.ts
+new file mode 100644
+index 0000000..a41be07
+--- /dev/null
++++ b/tests/retry.test.ts
+@@ -0,0 +1,14 @@
++import { expect, it, vi } from "vitest";
++import { withRetry } from "../src/lib/retry";
++
++it("returns the first success without retrying", async () => {
++  const attempt = vi.fn().mockResolvedValue("ok");
++  await expect(withRetry(attempt)).resolves.toBe("ok");
++  expect(attempt).toHaveBeenCalledTimes(1);
++});
++
++it("throws the last error once retries are spent", async () => {
++  const attempt = vi.fn().mockRejectedValue(new Error("down"));
++  await expect(withRetry(attempt, { retries: 1, baseDelayMs: 1 })).rejects.toThrow("down");
++  expect(attempt).toHaveBeenCalledTimes(2);
++});

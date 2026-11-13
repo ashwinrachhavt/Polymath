@@ -8,9 +8,9 @@ import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace"
  * ASH-304 against real Postgres: a succeeded run's close enqueues exactly one
  * critique request; the critique pass stores one capped proposal with the
  * run's provenance and its audit row, fails without a partial row, and skips
- * silently when no provider is configured; the operator's verdict is one row
- * per run across set, switch and clear, with an audit row per flip; a run
- * from another workspace answers not-found.
+ * silently when no provider is configured; a run from another workspace has
+ * no critique to read or dismiss. (The operator's verdict is a `run` rating:
+ * see llm-feedback.test.ts.)
  *
  * Import discipline mirrors the other suites: anything reaching @/lib/db is
  * lazy-imported after makeTestDb points DATABASE_URL at the scratch database.
@@ -58,11 +58,14 @@ afterAll(async () => {
 beforeEach(() => {
   generate.mockReset();
   vi.mocked(providerModule.generationProvider).mockReset();
-  vi.mocked(providerModule.generationProvider).mockImplementation(() => ({
-    name: "test:model",
-    registryId: "test",
-    generate: (...args: unknown[]) => generate(...(args as [])),
-  }) as never);
+  vi.mocked(providerModule.generationProvider).mockImplementation(
+    () =>
+      ({
+        name: "test:model",
+        registryId: "test",
+        generate: (...args: unknown[]) => generate(...(args as [])),
+      }) as never,
+  );
 });
 
 function fakeDriver() {
@@ -148,7 +151,12 @@ suite("run reviews", () => {
     const seeded = await seedWorkspace(db, `rr-failed-${Date.now()}`);
     const auth = ownerAuth(seeded.userId, seeded.workspaceId);
     const started = await onboarding.startOnboardingRun(auth, fakeDriver());
-    await eventBridge.closeRun({ workspaceId: seeded.workspaceId, runId: started.runId, state: "failed", error: "boom" });
+    await eventBridge.closeRun({
+      workspaceId: seeded.workspaceId,
+      runId: started.runId,
+      state: "failed",
+      error: "boom",
+    });
     const failedEvents = await db
       .select()
       .from(outboxEvents)
@@ -168,7 +176,10 @@ suite("run reviews", () => {
 
     await runCritiqueEvent(workspaceId, runId);
 
-    const rows = await db.select().from(runReviews).where(and(eq(runReviews.runId, runId), eq(runReviews.kind, "critique")));
+    const rows = await db
+      .select()
+      .from(runReviews)
+      .where(and(eq(runReviews.runId, runId), eq(runReviews.kind, "critique")));
     expect(rows).toHaveLength(1);
     expect(rows[0].gotWrong).toContain("two examples");
     expect(rows[0].wasThin).toContain("no sources");
@@ -183,7 +194,10 @@ suite("run reviews", () => {
 
     // Redelivery is a no-op: one critique per run, enforced by the index.
     await runCritiqueEvent(workspaceId, runId);
-    const after = await db.select().from(runReviews).where(and(eq(runReviews.runId, runId), eq(runReviews.kind, "critique")));
+    const after = await db
+      .select()
+      .from(runReviews)
+      .where(and(eq(runReviews.runId, runId), eq(runReviews.kind, "critique")));
     expect(after).toHaveLength(1);
   });
 
@@ -224,55 +238,20 @@ suite("run reviews", () => {
     expect(after).toHaveLength(1);
   });
 
-  it("one feedback row per run across set, switch and clear, with an audit row per flip", async () => {
-    const { workspaceId, runId, auth } = await succeededRun("feedback");
-
-    const up = await reviews.setRunFeedback(auth, { runId, verdict: "up" });
-    expect(up).toEqual({ ok: true, verdict: "up" });
-    const down = await reviews.setRunFeedback(auth, {
-      runId,
-      verdict: "down",
-      reasons: ["wrong", "messy"],
-      note: "Cited the wrong competitor.",
-    });
-    expect(down).toEqual({ ok: true, verdict: "down" });
-    const cleared = await reviews.setRunFeedback(auth, { runId, verdict: "clear" });
-    expect(cleared).toEqual({ ok: true, verdict: null });
-
-    const rows = await db.select().from(runReviews).where(and(eq(runReviews.runId, runId), eq(runReviews.kind, "user_feedback")));
-    expect(rows).toHaveLength(1);
-    expect(rows[0].verdict).toBeNull();
-    expect(rows[0].reasons).toEqual([]);
-    expect(rows[0].note).toBeNull();
-
-    const actions = await auditActions(workspaceId);
-    expect(actions).toContain("run.feedback.up");
-    expect(actions).toContain("run.feedback.down");
-    expect(actions).toContain("run.feedback.cleared");
-  });
-
-  it("a reason outside the slug set is rejected before the write", async () => {
-    const { runId, auth } = await succeededRun("bad-reason");
-    await expect(
-      reviews.setRunFeedback(auth, { runId, verdict: "down", reasons: ["rude"] as never }),
-    ).rejects.toThrow();
-    const rows = await db.select().from(runReviews).where(eq(runReviews.runId, runId));
-    expect(rows).toHaveLength(0);
-  });
-
-  it("feedback on another workspace's run answers not-found and writes nothing", async () => {
+  it("another workspace's run has no critique to read or dismiss", async () => {
     const target = await succeededRun("tenancy-a");
+    generate.mockResolvedValue({ text: JSON.stringify({ gotWrong: "x", wasThin: null, wouldDoDifferently: null }) });
+    await runCritiqueEvent(target.workspaceId, target.runId);
     const intruder = await seedWorkspace(db, `rr-tenancy-b-${Date.now()}`);
     const intruderAuth = ownerAuth(intruder.userId, intruder.workspaceId);
 
-    const result = await reviews.setRunFeedback(intruderAuth, { runId: target.runId, verdict: "up" });
-    expect(result).toEqual({ ok: false, verdict: null });
-    const rows = await db.select().from(runReviews).where(eq(runReviews.runId, target.runId));
-    expect(rows).toHaveLength(0);
-
-    // The critique dismissal is scoped the same way.
+    expect(await reviews.getRunCritique(intruder.workspaceId, target.runId)).toBeNull();
     const dismissed = await reviews.dismissRunCritique(intruderAuth, { runId: target.runId });
     expect(dismissed.ok).toBe(false);
+    expect(await reviews.getRunCritique(target.workspaceId, target.runId)).toMatchObject({
+      gotWrong: "x",
+      dismissedAt: null,
+    });
   });
 
   it("dismissing the critique stamps it once and writes the audit row", async () => {

@@ -1,9 +1,9 @@
 import { defineAgent, defineDynamic } from "eve";
 // Relative, not "@/...": eve bundles from its own package root (see hooks/bridge.ts).
-import { DEFAULT_MODEL_ID, smallModelId } from "../../../src/domains/agents/models";
+import { smallModelId } from "../../../src/domains/agents/models";
 import { TURN_INPUT_TOKEN_CAP } from "../../../src/domains/agents/lane-policy";
 import { withLane } from "./lib/lane-model";
-import { catalogModel, lazyCatalogModel } from "./lib/model";
+import { routedModel } from "./lib/model";
 import { routeForTurn } from "./lib/route";
 
 /*
@@ -48,34 +48,32 @@ export default defineAgent({
       // channel publishes as a session attribute; eve has no per-run config
       // channel before the first step. The env var is the fallback for evals
       // and the TUI, which have no run row.
-      "step.started": async (_event, ctx) => {
+      "step.started": async (event, ctx) => {
         const attributes = ctx.session.auth.current?.attributes;
         const fromSession = attributes?.model;
+        // The run's frozen model; the resolver falls back to the catalog default.
         const runModel =
           (typeof fromSession === "string" ? fromSession : process.env.AXIOM_RUN_MODEL) ??
-          process.env.GEMINI_AGENT_MODEL ??
-          DEFAULT_MODEL_ID;
+          process.env.GEMINI_AGENT_MODEL;
         const workspaceId = typeof attributes?.workspaceId === "string" ? attributes.workspaceId : null;
         // eve's resolver type omits the lineage a sub-agent session carries at runtime.
         const parent = (ctx.session as { parent?: { rootSessionId?: string } }).parent;
         const route = await routeForTurn({
           sessionId: ctx.session.id,
+          turnId: String((event as { data?: { turnId?: unknown } }).data?.turnId ?? ""),
           parentSessionId: parent?.rootSessionId,
           workspaceId,
           messages: ctx.messages,
         });
-        const model = catalogModel(route.lane === "quick" ? smallModelId() : runModel);
+        const model = await routedModel(workspaceId, route.lane === "quick" ? smallModelId() : runModel);
         return { model: withLane(model, route), modelContextWindowTokens: CONTEXT_WINDOW_TOKENS };
       },
     },
   }),
   /*
    * Summarize at about 30k tokens instead of eve's default 90% of the window
-   * (115k), and on the small model: a summary is not an answer.
+   * (115k). The summary runs on the turn's model, so it goes through the same
+   * resolver and allowance as every other call.
    */
-  compaction: {
-    thresholdPercent: TURN_INPUT_TOKEN_CAP / CONTEXT_WINDOW_TOKENS,
-    model: lazyCatalogModel(smallModelId()),
-    modelContextWindowTokens: CONTEXT_WINDOW_TOKENS,
-  },
+  compaction: { thresholdPercent: TURN_INPUT_TOKEN_CAP / CONTEXT_WINDOW_TOKENS },
 });

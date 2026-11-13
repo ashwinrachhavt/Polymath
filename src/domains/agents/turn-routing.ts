@@ -198,8 +198,8 @@ export async function routeTurn(input: {
   text: string;
   /** Jev, gated and metered; absent when Jev is unavailable for this caller. */
   judge?: ClassifyJudger;
-  /** The small model for the low-confidence fallback. */
-  smallModel?: LanguageModel;
+  /** The small model for the low-confidence fallback; a function so it is resolved (and metered) only when needed. */
+  smallModel?: LanguageModel | (() => Promise<LanguageModel | undefined>);
   timeoutMs?: number;
 }): Promise<TurnRoute> {
   const text = personsRequest(input.text);
@@ -219,7 +219,8 @@ export async function routeTurn(input: {
 
   if (input.smallModel) {
     try {
-      const llm = await routeBySmallModel(text, input.smallModel, timeoutMs * 2);
+      const small = typeof input.smallModel === "function" ? await input.smallModel() : input.smallModel;
+      const llm = small ? await routeBySmallModel(text, small, timeoutMs * 2) : null;
       if (llm) return llm;
     } catch {
       // Fall through to the low-confidence Jev answer or the generalist lane.

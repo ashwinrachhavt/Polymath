@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { IconButton } from "@/components/ui/icon-button";
-import type { ArtifactRating } from "@/domains/knowledge/artifact-feedback";
+import type { Rating } from "@/domains/feedback/ratings";
 import type { QuizForSitting } from "@/domains/learning/queries";
 import { QuizRunner } from "../../../learn/[documentId]/quiz-runner";
 import { ExplainItSession } from "./explain-session";
@@ -28,7 +28,7 @@ export type LearningResultsData = {
     questionCount: number;
     note: string | null;
     quiz: QuizForSitting;
-    rating: ArtifactRating | null;
+    rating: Rating | null;
   } | null;
   deck: {
     id: string;
@@ -37,9 +37,15 @@ export type LearningResultsData = {
     cardCount: number;
     note: string | null;
     dueCards: DeckCards;
-    rating: ArtifactRating | null;
+    rating: Rating | null;
   } | null;
-  explain: { id: string; title: string; ago: string; session: ExplainSession } | null;
+  explain: {
+    id: string;
+    title: string;
+    ago: string;
+    session: ExplainSession;
+    ratings: React.ComponentProps<typeof ExplainItSession>["ratings"];
+  } | null;
 };
 
 function plural(count: number, one: string, many: string): string {
@@ -153,7 +159,12 @@ export function LearningResults({
               open={open === "explain"}
               onToggle={() => toggle("explain")}
             >
-              <ExplainItSession key={explain.id} projectId={projectId} session={explain.session} />
+              <ExplainItSession
+                key={explain.id}
+                projectId={projectId}
+                session={explain.session}
+                ratings={explain.ratings}
+              />
             </ResultCard>
           ) : null}
         </div>

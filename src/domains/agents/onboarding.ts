@@ -318,17 +318,19 @@ export async function refineOnboardingDraft(
   model: ModelOption,
   input: FreeformDraft,
 ): Promise<OnboardingBrief> {
-  const { object } = await generateObject({
-    model: chatModel(model),
+  const resolved = await resolveLanguageModel(auth.workspaceId, model.id, "generation");
+  const { object, usage } = await generateObject({
+    model: resolved.model,
     schema: onboardingBriefSchema,
     system: ONBOARDING_ASSIST_SYSTEM,
     prompt: composeAssistPrompt(input),
   });
+  await resolved.record(usage);
   await recordAudit(auth, {
     action: "onboarding.assisted",
     subjectType: "workspace",
     subjectId: auth.workspaceId,
-    summary: `Composed the onboarding brief with ${model.label}; the agent is named ${object.agentName}`,
+    summary: `Composed the onboarding brief with ${resolved.option.label}; the agent is named ${object.agentName}`,
   });
   return object;
 }
@@ -375,7 +377,8 @@ import { desc, inArray } from "drizzle-orm";
 import { generateObject } from "ai";
 import { createEngine, type SessionDriver } from "./engine";
 import { createEveDriver, eveAgentForProfile } from "./eve-driver";
-import { chatModel, type ModelOption } from "./models";
+import { resolveLanguageModel } from "@/domains/billing/resolver";
+import type { ModelOption } from "./models";
 import { listThreads, type ThreadEntry } from "./thread";
 import {
   composeAssistPrompt,

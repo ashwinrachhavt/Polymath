@@ -2,6 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 import { defaultZettelExtractor, openRouterZettelExtractor } from "@/integrations/zettels/extractor";
 import { EmbeddingUnconfiguredError } from "@/integrations/embeddings/provider";
 
+vi.mock("@/domains/billing/resolver", async () =>
+  (await import("../helpers/house-generation-resolver")).houseGenerationResolver(),
+);
+
 const env = { OPENROUTER_API_KEY: "k" } as unknown as NodeJS.ProcessEnv;
 const reply = (content: string, status = 200) =>
   vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status }));
@@ -58,8 +62,8 @@ describe("the content contract (LLM-chosen length, verbatim quote)", () => {
 });
 
 describe("defaultZettelExtractor", () => {
-  it("resolves through the generation seam with OpenRouter as the status quo", () => {
-    const x = defaultZettelExtractor(undefined, { OPENROUTER_API_KEY: "k" } as unknown as NodeJS.ProcessEnv);
+  it("resolves through the generation seam with OpenRouter as the status quo", async () => {
+    const x = await defaultZettelExtractor("w1", { OPENROUTER_API_KEY: "k" } as unknown as NodeJS.ProcessEnv);
     expect(x.name).toBe("openrouter:openai/gpt-4o-mini");
   });
 
@@ -93,7 +97,7 @@ describe("defaultZettelExtractor", () => {
           }),
         ),
     );
-    const x = defaultZettelExtractor(
+    const x = await defaultZettelExtractor(
       "w1",
       { GENERATION_PROVIDER: "gemini", GEMINI_API_KEY: "g" } as unknown as NodeJS.ProcessEnv,
       f as unknown as typeof fetch,

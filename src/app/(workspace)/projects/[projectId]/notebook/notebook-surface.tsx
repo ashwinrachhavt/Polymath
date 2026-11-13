@@ -14,6 +14,9 @@ import { displayTitle } from "@/lib/display-text";
 import { stripMentionContext } from "@/components/chat/mention-context";
 import { Unavailable } from "@/components/workspace/ui";
 import { ChatSurface } from "@/components/chat/chat-surface";
+import { OutputRating } from "@/components/feedback/output-rating";
+import type { RecordedStep } from "@/domains/agents/agent-steps";
+import type { ChatRating } from "@/domains/feedback/ratings";
 import { DeckView, InfographicView, type CitationSource } from "@/components/products/polymath/artifact-views";
 import type { DocumentCitation } from "@/domains/knowledge/agent-search";
 import type { DeckContent, InfographicContent } from "@/domains/knowledge/artifact-content";
@@ -74,7 +77,11 @@ export type NotebookChatRow = { runId: string; state: string; label: string; ago
 export type ActiveChat = {
   runId: string;
   live: boolean;
-  thread: Array<{ kind: string; text: string; ago: string }>;
+  thread: Array<{ kind: string; text: string; ago: string; sequence: number }>;
+  /** Recorded tool calls, so a reloaded live chat keeps each turn's step card. */
+  steps: RecordedStep[];
+  /** The viewer's ratings of this chat's answers. */
+  ratings: ChatRating[];
 };
 
 /** The readiness vocabulary the pane shows; one label per state of the existing field. */
@@ -346,6 +353,9 @@ export default function NotebookSurface({
           {liveRunId ? (
             <ChatSurface
               runId={liveRunId}
+              {...(activeChat?.runId === liveRunId
+                ? { initialSteps: activeChat.steps, ratings: activeChat.ratings }
+                : {})}
               subject={{ type: "project", id: notebook.projectId }}
               title={notebook.title}
               placeholder="Ask about these sources"
@@ -379,6 +389,14 @@ export default function NotebookSurface({
                           className="prose-reading max-w-[var(--measure-prose)] font-[family-name:var(--font-reading)]"
                         >
                           <Markdown text={entry.text} />
+                          <OutputRating
+                            output={{ surface: "chat", runId: activeChat.runId, sequence: entry.sequence }}
+                            initial={(() => {
+                              const rating = activeChat.ratings.find((r) => r.sequence === entry.sequence);
+                              return rating ? { score: rating.score, comment: rating.comment } : null;
+                            })()}
+                            className="mt-1"
+                          />
                         </div>
                       ),
                     )}

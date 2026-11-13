@@ -4,7 +4,8 @@ import { recordAudit } from "@/domains/audit/record";
 import { enqueueOutbox, type OutboxHandler } from "@/domains/audit/outbox";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { workspaces } from "@/domains/identity/tables";
-import { EmbeddingUnconfiguredError, embeddingProvider } from "@/integrations/embeddings/provider";
+import { resolveEmbedding } from "@/domains/billing/resolver";
+import { EmbeddingUnconfiguredError } from "@/integrations/embeddings/provider";
 import { defaultZettelExtractor, type IdeaComparator } from "@/integrations/zettels/extractor";
 import { db } from "@/lib/db";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
@@ -249,10 +250,10 @@ const UNLINKED_AFTER_DAYS = 7;
 /** What pair review needs: the embedding model whose vectors are compared, and the verdict call. */
 export type PairJudge = { embeddingModel: string; compare: IdeaComparator };
 
-function defaultPairJudge(auth: AuthContext): PairJudge | null {
+async function defaultPairJudge(auth: AuthContext): Promise<PairJudge | null> {
   try {
-    const embeddingModel = embeddingProvider().model;
-    const compare = defaultZettelExtractor(auth.workspaceId).compareIdeas;
+    const embeddingModel = (await resolveEmbedding(auth.workspaceId)).model;
+    const compare = (await defaultZettelExtractor(auth.workspaceId)).compareIdeas;
     return compare ? { embeddingModel, compare } : null;
   } catch (cause) {
     if (cause instanceof EmbeddingUnconfiguredError) return null;
@@ -294,7 +295,7 @@ export async function runTidyPass(
   options: { judge?: PairJudge | null } = {},
 ): Promise<TidyPassSummary> {
   const derived = await reconcileDerivedFindings(auth);
-  const judge = options.judge === undefined ? defaultPairJudge(auth) : options.judge;
+  const judge = options.judge === undefined ? await defaultPairJudge(auth) : options.judge;
   const pairReview: TidyPassSummary["pairReview"] = judge
     ? await reviewPairs(auth, judge)
     : { status: "skipped", reason: "no_model" };

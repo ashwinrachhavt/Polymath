@@ -44,6 +44,7 @@ import {
 } from "@/domains/jobs/commands";
 import { listRecentGenerationJobs, listUnfinishedGenerationJobs, tailGenerationJobs } from "@/domains/jobs/queries";
 import type { GenerationJobRunner } from "@/domains/jobs/runners";
+import { AllowanceExhaustedError } from "@/domains/billing/resolver";
 import { GenerationJobFailure, STALLED_COPY, UNEXPECTED_FAILURE_COPY } from "@/domains/jobs/state";
 
 beforeAll(() => {
@@ -178,6 +179,23 @@ describe("generation jobs", () => {
     );
     quiet.mockRestore();
     expect(await stored(job.id)).toMatchObject({ status: "failed", error: UNEXPECTED_FAILURE_COPY });
+  });
+
+  it("shows an exhausted weekly allowance as its own readable message, not the generic one", async () => {
+    const auth = await signIn("allowance");
+    const { job } = await submit(auth);
+    await runGenerationJob(
+      { jobId: job.id, attempt: 1 },
+      {
+        [KIND]: async () => {
+          throw new AllowanceExhaustedError("free", 100);
+        },
+      },
+    );
+    expect(await stored(job.id)).toMatchObject({
+      status: "failed",
+      error: expect.stringContaining("Add your own key in Settings, or upgrade to Pro"),
+    });
   });
 
   it("fails a job whose kind has no runner instead of leaving it running", async () => {

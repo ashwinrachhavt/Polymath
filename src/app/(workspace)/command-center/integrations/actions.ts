@@ -15,7 +15,10 @@ import { resolveRequestOrigin } from "@/domains/integrations/origin";
 import { createHostedConnectLink } from "@/domains/integrations/composio";
 import { syncGoogleCalendarAccount } from "@/domains/calendar/google-sync";
 import { setSenderProposals } from "@/domains/crm/sender-sync";
-import { syncNotionAccount } from "@/domains/integrations/notion";
+import { parseNotionPageId } from "@/domains/integrations/notion";
+import { notionSyncJob } from "@/domains/integrations/notion-job";
+import { submitGenerationJob } from "@/domains/jobs/commands";
+import { kickGenerationJob } from "@/domains/jobs/kick";
 import { setSenderAliasGrant } from "@/domains/actions/policy";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
@@ -235,20 +238,35 @@ export async function syncGoogleCalendarAction(input: {
   }
 }
 
-/* Read-only pull of shared Notion pages into knowledge documents. Nothing is written to Notion. */
+/*
+ * Read-only pull of Notion pages into knowledge documents; nothing is written
+ * to Notion. With a page link it reads that page and everything under it. The
+ * sync is a background job (it takes minutes for a tree), so this only starts
+ * it: progress and the result sentence show in the jobs panel.
+ */
 export async function syncNotionAction(input: {
   accountId: string;
+  rootUrl?: string;
 }): Promise<{ ok: true; summary: string } | { ok: false; error: string }> {
   const auth = await authorize();
+  const rootPageId = input.rootUrl?.trim() || undefined;
+  if (rootPageId && !parseNotionPageId(rootPageId)) {
+    return { ok: false, error: "That does not look like a Notion page link." };
+  }
   try {
-    const r = await syncNotionAccount(auth, { externalAccountId: input.accountId });
-    revalidate();
+    const { job, created } = await submitGenerationJob(
+      auth,
+      notionSyncJob({ externalAccountId: input.accountId, rootPageId }),
+    );
+    if (created) kickGenerationJob({ jobId: job.id, attempt: job.attempt });
     return {
       ok: true,
-      summary: `${r.created} new, ${r.updated} updated, ${r.unchanged} unchanged, ${r.failed} failed`,
+      summary: created
+        ? "Started. Follow it in the jobs panel at the top of the page; the result lands there when it is done."
+        : "That sync is already started. Follow it in the jobs panel at the top of the page.",
     };
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "The Notion sync failed." };
+    return { ok: false, error: error instanceof Error ? error.message : "The Notion sync could not start." };
   }
 }
 

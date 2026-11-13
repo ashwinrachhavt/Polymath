@@ -1,6 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { defaultFlashcardGenerator } from "@/integrations/learning/flashcard-generator";
 import { defaultQuizGenerator } from "@/integrations/learning/quiz-generator";
+
+vi.mock("@/domains/billing/resolver", async () =>
+  (await import("../helpers/house-generation-resolver")).houseGenerationResolver(),
+);
 
 /*
  * A long source is read through a different window on each batch, so a large
@@ -29,7 +33,7 @@ describe("learning generator windows", () => {
     const { fetchImpl, sent } = recordingFetch({
       cards: [{ prompt: "What holds?", answer: "Fact 0.", quote: "Fact 0 holds.", sourceIndex: 0 }],
     });
-    const generator = defaultFlashcardGenerator(undefined, env, fetchImpl);
+    const generator = await defaultFlashcardGenerator("w1", env, fetchImpl);
     for (const part of [0, 1]) {
       await generator.generateFromSources([{ title: "Facts", text }], { cardCount: 25, part });
     }
@@ -56,7 +60,7 @@ describe("learning generator windows", () => {
         },
       ],
     });
-    const generator = defaultQuizGenerator(undefined, env, fetchImpl);
+    const generator = await defaultQuizGenerator("w1", env, fetchImpl);
     await generator.generate(text, { questionCount: 25, part: 0 });
     await generator.generate(text, { questionCount: 25, part: 1 });
     expect(sent[0].user).toBe(text.slice(0, 12000));

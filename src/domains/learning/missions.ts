@@ -242,7 +242,7 @@ export async function prepareMissionConcepts(
     .limit(60);
 
   const sources = await missionSources(auth, mission.sourceManifest);
-  const engine = generator ?? defaultMissionConceptGenerator(auth.workspaceId);
+  const engine = generator ?? (await defaultMissionConceptGenerator(auth.workspaceId));
   let proposed: ProposedMissionConcept[];
   try {
     proposed = (

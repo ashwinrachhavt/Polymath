@@ -6,8 +6,9 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import {
   GenerationRequestError,
   GenerationUnconfiguredError,
-  generationProvider,
+  type GenerationProvider,
 } from "@/integrations/generation/provider";
+import { resolveGeneration } from "@/domains/billing/resolver";
 import { untrustedDataClauseJsonSafe } from "@/lib/prompts";
 import { db } from "@/lib/db";
 import { agentRuns, runEvents, runReviews } from "./schema";
@@ -52,100 +53,100 @@ export function runCritiqueRequestedHandler(
   ownerAuth: (workspaceId: string) => Promise<AuthContext | null>,
 ): OutboxHandler {
   return async (event: ClaimedOutboxEvent) => {
-  const raw = event.payload ?? {};
-  const runId = typeof (raw as { runId?: unknown }).runId === "string" ? (raw as { runId: string }).runId : null;
-  if (!runId) throw new Error(`${RUN_CRITIQUE_TOPIC} is missing runId`);
+    const raw = event.payload ?? {};
+    const runId = typeof (raw as { runId?: unknown }).runId === "string" ? (raw as { runId: string }).runId : null;
+    if (!runId) throw new Error(`${RUN_CRITIQUE_TOPIC} is missing runId`);
 
-  const [run] = await db
-    .select({
-      id: agentRuns.id,
-      workspaceId: agentRuns.workspaceId,
-      state: agentRuns.state,
-      objective: agentRuns.objective,
-      summary: agentRuns.summary,
-      policySnapshot: agentRuns.policySnapshot,
-      profileRevisionId: agentRuns.profileRevisionId,
-      model: agentRuns.model,
-    })
-    .from(agentRuns)
-    .where(and(eq(agentRuns.id, runId), eq(agentRuns.workspaceId, event.workspaceId)))
-    .limit(1);
-  // Only a succeeded run earns a critique; a failed or cancelled run already
-  // says what happened, and a foreign or missing id is not ours to review.
-  if (!run || run.state !== "succeeded") return;
+    const [run] = await db
+      .select({
+        id: agentRuns.id,
+        workspaceId: agentRuns.workspaceId,
+        state: agentRuns.state,
+        objective: agentRuns.objective,
+        summary: agentRuns.summary,
+        policySnapshot: agentRuns.policySnapshot,
+        profileRevisionId: agentRuns.profileRevisionId,
+        model: agentRuns.model,
+      })
+      .from(agentRuns)
+      .where(and(eq(agentRuns.id, runId), eq(agentRuns.workspaceId, event.workspaceId)))
+      .limit(1);
+    // Only a succeeded run earns a critique; a failed or cancelled run already
+    // says what happened, and a foreign or missing id is not ours to review.
+    if (!run || run.state !== "succeeded") return;
 
-  const events = await db
-    .select({ type: runEvents.type, data: runEvents.data })
-    .from(runEvents)
-    .where(and(eq(runEvents.runId, run.id), eq(runEvents.workspaceId, run.workspaceId)))
-    .orderBy(asc(runEvents.sequence))
-    .limit(200);
+    const events = await db
+      .select({ type: runEvents.type, data: runEvents.data })
+      .from(runEvents)
+      .where(and(eq(runEvents.runId, run.id), eq(runEvents.workspaceId, run.workspaceId)))
+      .orderBy(asc(runEvents.sequence))
+      .limit(200);
 
-  const record = {
-    objective: run.objective,
-    summary: run.summary,
-    steps: events
-      .filter((e) => e.type === "step" || e.type === "error" || e.type.startsWith("tool."))
-      .map((e) => ({ type: e.type, data: e.data })),
-  };
+    const record = {
+      objective: run.objective,
+      summary: run.summary,
+      steps: events
+        .filter((e) => e.type === "step" || e.type === "error" || e.type.startsWith("tool."))
+        .map((e) => ({ type: e.type, data: e.data })),
+    };
 
-  let provider: ReturnType<typeof generationProvider>;
-  try {
-    provider = generationProvider(process.env);
-  } catch (cause) {
-    if (cause instanceof GenerationUnconfiguredError) return; // no key, no critique
-    throw cause;
-  }
-
-  let parsed: z.infer<typeof critiqueResponse>;
-  try {
-    const out = await provider.generate({
-      system: SYSTEM,
-      prompt: `<<<BEGIN_RECORD>>>\n${JSON.stringify(record).slice(0, MAX_INPUT_CHARS)}\n<<<END_RECORD>>>`,
-      json: true,
-    });
-    parsed = critiqueResponse.parse(JSON.parse(out.text));
-  } catch (cause) {
-    if (cause instanceof GenerationRequestError || cause instanceof GenerationUnconfiguredError) {
-      throw cause; // redeliverable: quota, provider down, malformed reply
+    let provider: GenerationProvider;
+    try {
+      provider = await resolveGeneration(event.workspaceId, "generation");
+    } catch (cause) {
+      if (cause instanceof GenerationUnconfiguredError) return; // no key, no critique
+      throw cause;
     }
-    // A readable-but-wrong answer is not worth redelivery: store nothing, the
-    // event completes, and the run simply has no critique.
-    return;
-  }
 
-  const gotWrong = parsed.gotWrong?.trim() || null;
-  const wasThin = parsed.wasThin?.trim() || null;
-  const wouldDoDifferently = parsed.wouldDoDifferently?.trim() || null;
-  // An all-empty critique stores nothing: the page renders nothing, which the
-  // spec calls a fine outcome.
-  if (!gotWrong && !wasThin && !wouldDoDifferently) return;
+    let parsed: z.infer<typeof critiqueResponse>;
+    try {
+      const out = await provider.generate({
+        system: SYSTEM,
+        prompt: `<<<BEGIN_RECORD>>>\n${JSON.stringify(record).slice(0, MAX_INPUT_CHARS)}\n<<<END_RECORD>>>`,
+        json: true,
+      });
+      parsed = critiqueResponse.parse(JSON.parse(out.text));
+    } catch (cause) {
+      if (cause instanceof GenerationRequestError || cause instanceof GenerationUnconfiguredError) {
+        throw cause; // redeliverable: quota, provider down, malformed reply
+      }
+      // A readable-but-wrong answer is not worth redelivery: store nothing, the
+      // event completes, and the run simply has no critique.
+      return;
+    }
 
-  const inserted = await db
-    .insert(runReviews)
-    .values({
-      workspaceId: run.workspaceId,
-      runId: run.id,
-      kind: "critique",
-      gotWrong,
-      wasThin,
-      wouldDoDifferently,
-      policySnapshot: run.policySnapshot,
-      profileRevisionId: run.profileRevisionId,
-      model: run.model,
-    })
-    .onConflictDoNothing()
-    .returning({ id: runReviews.id });
-  if (inserted.length === 0) return; // redelivery: the row already exists
+    const gotWrong = parsed.gotWrong?.trim() || null;
+    const wasThin = parsed.wasThin?.trim() || null;
+    const wouldDoDifferently = parsed.wouldDoDifferently?.trim() || null;
+    // An all-empty critique stores nothing: the page renders nothing, which the
+    // spec calls a fine outcome.
+    if (!gotWrong && !wasThin && !wouldDoDifferently) return;
 
-  const auth = await ownerAuth(run.workspaceId);
-  if (auth) {
-    await recordAudit(auth, {
-      action: "run.critique.created",
-      subjectType: "run",
-      subjectId: run.id,
-      summary: "Proposed the run's self-critique",
-    });
-  }
+    const inserted = await db
+      .insert(runReviews)
+      .values({
+        workspaceId: run.workspaceId,
+        runId: run.id,
+        kind: "critique",
+        gotWrong,
+        wasThin,
+        wouldDoDifferently,
+        policySnapshot: run.policySnapshot,
+        profileRevisionId: run.profileRevisionId,
+        model: run.model,
+      })
+      .onConflictDoNothing()
+      .returning({ id: runReviews.id });
+    if (inserted.length === 0) return; // redelivery: the row already exists
+
+    const auth = await ownerAuth(run.workspaceId);
+    if (auth) {
+      await recordAudit(auth, {
+        action: "run.critique.created",
+        subjectType: "run",
+        subjectId: run.id,
+        summary: "Proposed the run's self-critique",
+      });
+    }
   };
 }

@@ -5,11 +5,8 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import { notebooks } from "@/domains/knowledge/schema";
 import { assertPublicUrl } from "@/domains/knowledge/web-fetch";
 import { scrapeToMarkdown } from "@/integrations/firecrawl/client";
-import {
-  GenerationUnconfiguredError,
-  generationProvider,
-  type GenerationProvider,
-} from "@/integrations/generation/provider";
+import { GenerationUnconfiguredError, type GenerationProvider } from "@/integrations/generation/provider";
+import { resolveGeneration } from "@/domains/billing/resolver";
 import { QuotaExhaustedError, drizzleQuotaStore, withQuota } from "@/integrations/providers/quota";
 import { providerEntry } from "@/integrations/providers/registry";
 import { db } from "@/lib/db";
@@ -172,7 +169,7 @@ export async function enrichCapture(
 
   let provider: GenerationProvider;
   try {
-    provider = deps.provider ?? generationProvider(process.env);
+    provider = deps.provider ?? (await resolveGeneration(auth.workspaceId, "generation"));
   } catch (cause) {
     if (cause instanceof GenerationUnconfiguredError) {
       return fail("Summaries are not set up yet: no model is configured for this workspace.");

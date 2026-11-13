@@ -87,7 +87,16 @@ describe("frameOf", () => {
       5,
     );
     expect(frames).toEqual([
-      { type: "tool", runId: RUN, callId: "c1", label: "documents_search", status: "running", cursor: 5 },
+      {
+        type: "tool",
+        runId: RUN,
+        callId: "c1",
+        label: "documents_search",
+        status: "running",
+        input: undefined,
+        facts: { kind: "search", query: null, sources: [], failure: null },
+        cursor: 5,
+      },
     ]);
   });
 

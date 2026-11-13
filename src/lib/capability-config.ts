@@ -1,3 +1,5 @@
+import { objectStoreMode } from "@/integrations/object-store/mode";
+
 /*
  * Every capability that is switched on by an environment variable, named in one
  * place. A missing key used to be indistinguishable from "the answer is none":
@@ -289,17 +291,16 @@ const DEFINITIONS: readonly Definition[] = [
   {
     id: "private-file-storage",
     label: "Private file storage",
-    watches: ["BLOB_READ_WRITE_TOKEN", "BLOB_STORE_ID"],
-    // Mirrors objectStoreMode(): cloud storage needs a credential, but a
-    // development build stores to local disk and works. Production without a
-    // key is the state this entry is for.
-    ready: (env) => has(env, "BLOB_READ_WRITE_TOKEN") || has(env, "BLOB_STORE_ID") || env.NODE_ENV !== "production",
-    missing: (env) =>
-      has(env, "BLOB_READ_WRITE_TOKEN") || has(env, "BLOB_STORE_ID") || env.NODE_ENV !== "production"
-        ? []
-        : ["BLOB_READ_WRITE_TOKEN", "BLOB_STORE_ID"],
+    watches: ["BLOB_READ_WRITE_TOKEN", "BLOB_STORE_ID", "POLYMATH_OBJECT_STORE", "AXIOM_LOCAL_BLOB_DIR"],
+    // The store's own rule (object-store/mode.ts): cloud storage needs a
+    // credential; local disk works in development and in a self-hosted
+    // production that opted in with a volume. Production with neither is the
+    // state this entry is for.
+    ready: (env) => objectStoreMode(env) !== "unconfigured",
+    missing: (env) => (objectStoreMode(env) !== "unconfigured" ? [] : ["BLOB_READ_WRITE_TOKEN", "BLOB_STORE_ID"]),
     subject: "Uploaded originals cannot be stored",
-    action: "set BLOB_READ_WRITE_TOKEN, or BLOB_STORE_ID with Vercel OIDC",
+    action:
+      "set BLOB_READ_WRITE_TOKEN (or BLOB_STORE_ID with Vercel OIDC), or, self-hosted, POLYMATH_OBJECT_STORE=local-disk with AXIOM_LOCAL_BLOB_DIR on a persistent volume",
   },
 ];
 

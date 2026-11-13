@@ -9,7 +9,9 @@
  */
 import { EVAL_TURNS } from "../eve/polymath/evals/turns";
 import { routeTurn, type TurnRoute } from "@/domains/agents/turn-routing";
-import { chatModel, modelById, smallModelId } from "@/domains/agents/models";
+import { createOpenAI } from "@ai-sdk/openai";
+import { smallModelId } from "@/domains/agents/models";
+import { houseRoute } from "@/domains/billing/resolver";
 import { httpJevClient } from "@/integrations/jev/client";
 import type { ClassifyJudger } from "@/integrations/jev/provider";
 
@@ -21,8 +23,8 @@ const judge: ClassifyJudger | undefined = process.env.TYPESAFE_API_KEY
       },
     }
   : undefined;
-const small = modelById(smallModelId());
-const smallModel = small ? chatModel(small) : undefined;
+const small = houseRoute(smallModelId());
+const smallModel = createOpenAI({ apiKey: small.apiKey, baseURL: small.option.baseUrl }).chat(small.option.id);
 
 let laneHits = 0;
 let libraryHits = 0;

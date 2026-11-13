@@ -125,6 +125,33 @@ describe("invite-only (POLYMATH_ALLOWED_EMAILS)", () => {
   });
 });
 
+describe("eve agent routes pass through to eve's own auth", () => {
+  // Under `next start` the app reaches its agents same-origin from the server,
+  // with a bridge token and no Clerk session; eve refuses anything without a
+  // valid token. On Vercel these routes never reach this proxy at all.
+  it.each(["/eve/polymath/v1/session", "/eve/specialist/v1/health", "/eve/polymath/v1/session/abc/stream"])(
+    "lets a session-less request to %s through untouched",
+    async (path) => {
+      expect(await runAs(path, false)).toBeUndefined();
+    },
+  );
+
+  it.each(["/eve", "/evening", "/eve-polymath/v1/session"])("still 404s the look-alike %s", async (path) => {
+    const response = await runAs(path, false);
+    expect(response?.headers.get("x-middleware-rewrite")?.endsWith("/404")).toBe(true);
+  });
+});
+
+describe("the connector OAuth return", () => {
+  it("sends a signed-out browser through sign-in and back, keeping the state token", async () => {
+    const response = await runAs("/api/integrations/callback?state=abc123", false);
+    expect(response?.status).toBe(307);
+    expect(response?.headers.get("location")).toBe(
+      `https://axiom.test/landing?returnTo=${encodeURIComponent("/api/integrations/callback?state=abc123")}`,
+    );
+  });
+});
+
 describe("real routes still gate exactly as before", () => {
   it.each([
     "/onboarding",
