@@ -37,12 +37,14 @@ ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
 # needs both Clerk keys while /sign-in is prerendered — without it the page is
 # baked in as a 404. Next inlines only NEXT_PUBLIC_*, so the secret key stays a
 # runtime read; README "Secrets" has the check that the image holds no value.
-# Everything else (the in-network DATABASE_URL, provider keys) stays out.
+# SENTRY_AUTH_TOKEN/ORG/PROJECT, when set, let the Sentry build plugin upload
+# source maps (it skips the upload without them). Everything else (the
+# in-network DATABASE_URL, provider keys) stays out.
 RUN --mount=type=secret,id=app_env,required=true \
     set -eu; \
     (cd eve/polymath && /app/node_modules/.bin/eve build); \
     (cd eve/specialist && /app/node_modules/.bin/eve build); \
-    grep -E '^(NEXT_PUBLIC_[A-Z0-9_]+|CLERK_SECRET_KEY)=' /run/secrets/app_env | grep -v '^NEXT_PUBLIC_APP_URL=' > /tmp/build.env || true; \
+    grep -E '^(NEXT_PUBLIC_[A-Z0-9_]+|CLERK_SECRET_KEY|SENTRY_AUTH_TOKEN|SENTRY_ORG|SENTRY_PROJECT)=' /run/secrets/app_env | grep -v '^NEXT_PUBLIC_APP_URL=' > /tmp/build.env || true; \
     set -a; . /tmp/build.env; set +a; rm -f /tmp/build.env; \
     pnpm build
 

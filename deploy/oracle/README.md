@@ -78,9 +78,19 @@ To go back to private-only, remove both, run
 `sudo docker compose up -d caddy` in `/opt/docling`, set `ORACLE_PUBLIC_URL`
 to `http://localhost:3300`, then run `make oracle-env` and `make oracle-deploy`.
 
-Clerk is the only gate. The Clerk development instance allows sign-ups, and
-any signed-up account can spend the model keys on the server. In the Clerk
-dashboard, turn sign-ups off or restrict them to your own email.
+## Invite only
+
+Clerk's development instance allows sign-ups, and any account could otherwise
+spend the model keys on the server. `POLYMATH_ALLOWED_EMAILS` (comma-separated)
+restricts the app to listed, verified Clerk addresses. An unlisted account gets
+`/invite-only` (pages) or a 403 (API), and is never provisioned
+(`src/lib/access-allowlist.ts`). The list is the server's own: set it once in
+`/opt/polymath/.env` on the VM. `push-env.sh` keeps it and never copies it from
+the laptop. Then run `make oracle-deploy`.
+
+Close sign-ups in Clerk as well: in the dashboard for this app's Development
+instance, open Configure, then Restrictions, and either switch the sign-up mode
+to Restricted or turn on the Allowlist with your address.
 
 What answers without a session: `/landing`, `/sign-in`, `/sign-up`, the eve
 health routes, and `/api/webhooks`. eve session routes need a signed bridge
@@ -145,9 +155,38 @@ and Next inlines only `NEXT_PUBLIC_*`. Verified on 2026-11-12: no file in the
 image's build output contains the Clerk secret, and `docker history` holds no
 key.
 
-Uploads need `BLOB_READ_WRITE_TOKEN` (Vercel Blob). Production never falls back
-to local disk, and the laptop's value is empty, so file uploads fail on the
-server until one is set. Text and URL captures work.
+## Uploads
+
+Uploaded originals live on the `blobs` volume at `/data/blobs`, mounted on web
+and worker (extraction runs in the worker). `push-env.sh` sets
+`POLYMATH_OBJECT_STORE=local-disk` and `AXIOM_LOCAL_BLOB_DIR=/data/blobs`. The
+files are read only through authenticated routes, never served statically. If
+the env ever carries a Vercel Blob token, Blob wins for new uploads, and older
+local files stay readable.
+
+## Error monitoring (Sentry)
+
+The app reports errors to Sentry when a DSN is set; without one, it is off.
+Put the keys in the laptop's `.env` (`push-env.sh` carries them), then run
+`make oracle-env` and `make oracle-deploy`:
+
+- `NEXT_PUBLIC_SENTRY_DSN` (inlined into the browser bundle at build time) and
+  `SENTRY_DSN`
+- optional: `SENTRY_ENVIRONMENT`, `SENTRY_TRACES_SAMPLE_RATE`
+- optional, for readable stack traces: `SENTRY_AUTH_TOKEN`, `SENTRY_ORG` and
+  `SENTRY_PROJECT`. The build uploads source maps only when all three are set,
+  and reads them from the build secret, never a layer.
+
+## Connectors (Composio)
+
+Nothing to change in the Composio dashboard. Each connect sends Composio a
+return URL built from `APP_ORIGIN` (`/api/integrations/callback`), and the auth
+configs are Composio-managed OAuth, so providers redirect to Composio's own
+callback first. The server carries `COMPOSIO_API_KEY` and the
+`COMPOSIO_AUTH_CONFIG_*` ids from the laptop. Connections made on the laptop
+are Composio accounts, so they work from the server too. Only if you switch a
+toolkit to your own OAuth app do you register a redirect URI, and that one is
+Composio's (shown in its dashboard), not this server's.
 
 ## Back up
 
@@ -155,8 +194,10 @@ server until one is set. Text and URL captures work.
   `pg_dump -Fc` into `/opt/polymath/backups/`, checked with `pg_restore -l`,
   kept for 7 days. The log is `/opt/polymath/backups/backup.log`.
 - Every deploy takes a `-pre-deploy` dump before it migrates.
-- Off-box copy: `make oracle-backup-pull` copies the newest dump to
-  `~/Backups/polymath/oracle/`.
+- The same run archives the uploaded files: `blobs-<stamp>.tar.gz`, checked by
+  listing it back, also kept for 7 days.
+- Off-box copy: `make oracle-backup-pull` copies the newest dump and the newest
+  files archive to `~/Backups/polymath/oracle/`.
 
 ## Restore
 
@@ -179,6 +220,13 @@ sudo docker exec polymath-db-1 psql -U axiom -d postgres -c 'drop database axiom
 sudo current/deploy/oracle/server/restore.sh /opt/polymath/backups/<file>.dump axiom
 c run --rm migrate
 c up -d --wait
+```
+
+To restore the uploaded files from an archive (with web and worker stopped):
+
+```sh
+B=$(sudo docker volume inspect -f '{{.Mountpoint}}' polymath_blobs)
+sudo tar -xzf /opt/polymath/backups/blobs-<stamp>.tar.gz -C "$B"
 ```
 
 ## Firewall and cost

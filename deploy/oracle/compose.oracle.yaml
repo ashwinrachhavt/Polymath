@@ -96,6 +96,9 @@ services:
       # releases so in-flight agent runs survive a deploy.
       - eve-polymath:/app/eve/polymath/.eve/.workflow-data
       - eve-specialist:/app/eve/specialist/.eve/.workflow-data
+      # Uploaded originals (POLYMATH_OBJECT_STORE=local-disk). Served only
+      # through authenticated routes; backed up nightly with the database.
+      - blobs:/data/blobs
     depends_on:
       db:
         condition: service_healthy
@@ -119,6 +122,9 @@ services:
   worker:
     <<: *app
     command: ["pnpm", "exec", "tsx", "scripts/outbox-worker.ts"]
+    # Extraction runs here and reads the uploaded originals.
+    volumes:
+      - blobs:/data/blobs
     depends_on:
       db:
         condition: service_healthy
@@ -336,6 +342,7 @@ volumes:
   firecrawl-pgdata:
   eve-polymath:
   eve-specialist:
+  blobs:
 
 secrets:
   app_env:

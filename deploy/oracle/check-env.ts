@@ -10,6 +10,9 @@
  * catalog), and the in-network docling/searxng/firecrawl services.
  * Exits 1 when a required key is missing or a required check fails.
  */
+import { randomUUID } from "node:crypto";
+import { rm, writeFile } from "node:fs/promises";
+import path from "node:path";
 import postgres from "postgres";
 import { MODEL_CATALOG } from "@/domains/agents/models";
 
@@ -19,7 +22,7 @@ const REQUIRED = [
   "CLERK_SECRET_KEY",
   "EVE_BRIDGE_SECRET",
   "EVE_GATEWAY_SECRET",
-  "BLOB_READ_WRITE_TOKEN",
+  "POLYMATH_ALLOWED_EMAILS",
   "APP_ORIGIN",
   "NEXT_PUBLIC_APP_URL",
   "DOCLING_SERVE_URL",
@@ -45,6 +48,9 @@ const OPTIONAL = [
     "REDUCTO_API_KEY",
     "TYPESAFE_API_KEY",
     "CLOUDFLARE_API_KEY",
+    "NEXT_PUBLIC_SENTRY_DSN",
+    "SENTRY_DSN",
+    "SENTRY_AUTH_TOKEN",
   ]),
 ].filter((key) => !(REQUIRED as readonly string[]).includes(key));
 
@@ -80,6 +86,29 @@ async function main() {
   const devAuth = process.env.POLYMATH_DEV_AUTH !== undefined;
   line(!devAuth, "POLYMATH_DEV_AUTH", devAuth ? "present (must be unset)" : "unset");
   if (devAuth) failed = true;
+
+  // Uploads: Vercel Blob when its token is set, otherwise the blobs volume
+  // (the same rule as src/integrations/object-store, kept inline so this
+  // script runs against any release).
+  const store =
+    env("BLOB_READ_WRITE_TOKEN") || env("BLOB_STORE_ID")
+      ? "vercel-blob"
+      : env("POLYMATH_OBJECT_STORE") === "local-disk" && env("AXIOM_LOCAL_BLOB_DIR")
+        ? "local"
+        : "unconfigured";
+  if (store === "unconfigured") failed = true;
+  line(store !== "unconfigured", "file storage", store);
+  if (store === "local") {
+    const probe = path.join(env("AXIOM_LOCAL_BLOB_DIR"), `.check-env-${randomUUID()}`);
+    try {
+      await writeFile(probe, "ok");
+      await rm(probe);
+      line(true, "file storage directory", "writable");
+    } catch {
+      failed = true;
+      line(false, "file storage directory", "not writable");
+    }
+  }
 
   console.log("optional keys");
   for (const key of OPTIONAL) console.log(`       ${key.padEnd(34)} ${env(key) ? "set" : "missing"}`);

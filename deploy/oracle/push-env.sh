@@ -27,7 +27,7 @@ for f in "$root/.env" "$root/.env.local"; do
   [ -f "$f" ] || { echo "missing $f" >&2; exit 1; }
 done
 
-drop='^(DATABASE_URL|TEST_DATABASE_URL|POLYMATH_DEV_AUTH|NODE_ENV|APP_ORIGIN|NEXT_PUBLIC_APP_URL|DOCLING_SERVE_URL|SEARXNG_URL|FIRECRAWL_API_URL|POLYMATH_GATEWAY_URL|POLYMATH_DB_PASSWORD|EVE_BRIDGE_SECRET|EVE_GATEWAY_SECRET|LANGFUSE_[A-Z0-9_]*|AXIOM_LOCAL_BLOB_DIR)$'
+drop='^(DATABASE_URL|TEST_DATABASE_URL|POLYMATH_DEV_AUTH|NODE_ENV|APP_ORIGIN|NEXT_PUBLIC_APP_URL|DOCLING_SERVE_URL|SEARXNG_URL|FIRECRAWL_API_URL|POLYMATH_GATEWAY_URL|POLYMATH_DB_PASSWORD|EVE_BRIDGE_SECRET|EVE_GATEWAY_SECRET|LANGFUSE_[A-Z0-9_]*|AXIOM_LOCAL_BLOB_DIR|POLYMATH_OBJECT_STORE|POLYMATH_ALLOWED_EMAILS)$'
 
 # Last occurrence of each KEY=value line wins; order of first appearance kept.
 merged="$(cat "$root/.env" "$root/.env.local" | awk -v drop="$drop" '
@@ -61,6 +61,10 @@ own() {
 pw="$(own POLYMATH_DB_PASSWORD 24)"
 bridge="$(own EVE_BRIDGE_SECRET 32)"
 gateway="$(own EVE_GATEWAY_SECRET 32)"
+# The invite list is the server's own (README "Invite only"): set on the VM,
+# kept across pushes, never copied from the laptop, where it stays unset.
+allowed=""
+[ -f "$home/.env" ] && allowed="$(grep -m1 '^POLYMATH_ALLOWED_EMAILS=' "$home/.env" | cut -d= -f2- || true)"
 tmp="$(mktemp "$home/.env.XXXXXX")"
 trap 'rm -f "$tmp"' EXIT
 {
@@ -78,6 +82,11 @@ trap 'rm -f "$tmp"' EXIT
   echo "SEARXNG_URL=http://searxng:8080"
   echo "FIRECRAWL_API_URL=http://firecrawl:3002"
   echo "POLYMATH_GATEWAY_URL=http://web:3000"
+  # Uploads on the blobs volume (compose.oracle.yaml), unless the laptop env
+  # carries a Vercel Blob token, which wins.
+  echo "POLYMATH_OBJECT_STORE=local-disk"
+  echo "AXIOM_LOCAL_BLOB_DIR=/data/blobs"
+  if [ -n "$allowed" ]; then echo "POLYMATH_ALLOWED_EMAILS=$allowed"; fi
 } > "$tmp"
 chmod 600 "$tmp"
 mv "$tmp" "$home/.env"
