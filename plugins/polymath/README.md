@@ -11,14 +11,14 @@ In Polymath, open Settings > API keys and create a key with the scopes `understa
 Install from the marketplace in this repo:
 
 ```
-/plugin marketplace add <owner>/<repo>
+/plugin marketplace add ashwinrachhavt/Polymath
 /plugin install polymath@polymath
 ```
 
 The same from a shell:
 
 ```
-claude plugin marketplace add <owner>/<repo>
+claude plugin marketplace add ashwinrachhavt/Polymath
 claude plugin install polymath@polymath
 ```
 
@@ -54,7 +54,7 @@ Codex has no plugin install, so it uses the MCP server directly.
 | --------------------- | ---------------------------------------------------------------------------- |
 | `explain_change`      | Sends the diff and a session summary, returns the note URL and explainer id. |
 | `check_understanding` | Fetches the questions, then grades your answers and queues review items.     |
-| `what_do_i_know`      | Lists concepts you know, find shaky, or have not been tested on.             |
+| `what_do_i_know`      | Lists concepts that are known, shaky or not yet tested.                      |
 | `capture`             | Saves text or a link to your Polymath inbox.                                 |
 
 ## Preferences
