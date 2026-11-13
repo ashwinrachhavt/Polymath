@@ -37,7 +37,7 @@ import { codeExplainers } from "./schema";
 const inputSchema = z.object({ explainerId: z.uuid(), summary: z.string(), diff: z.string() });
 
 /** The generator the runner uses; tests replace it with a deterministic one. */
-export const explainerEngine: { make: (workspaceId: string) => ExplainerGenerator } = {
+export const explainerEngine: { make: (workspaceId: string) => ExplainerGenerator | Promise<ExplainerGenerator> } = {
   make: (workspaceId) => defaultExplainerGenerator(workspaceId),
 };
 
@@ -65,7 +65,9 @@ const makeExplainer: GenerationJobRunner = async (auth, raw, run) => {
       .map((concept) => concept.term);
     let generated;
     try {
-      generated = await explainerEngine.make(auth.workspaceId).generate({
+      generated = await (
+        await explainerEngine.make(auth.workspaceId)
+      ).generate({
         repo: explainer.repo,
         commit: explainer.commitSha,
         summary: input.summary,

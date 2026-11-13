@@ -1,7 +1,8 @@
 import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
-import { generateText } from "ai";
+import { generateText, type LanguageModel } from "ai";
 import type { ClaimedOutboxEvent, OutboxHandler } from "@/domains/audit/outbox";
-import { chatModel, DEFAULT_MODEL_ID, modelById } from "@/domains/agents/models";
+import { DEFAULT_MODEL_ID } from "@/domains/agents/models";
+import { resolveLanguageModel } from "@/domains/billing/resolver";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
@@ -258,7 +259,7 @@ export type DreamSummary = {
 };
 
 type DreamDeps = {
-  model?: ReturnType<typeof chatModel>;
+  model?: LanguageModel;
   /** The injected-index builder, injected so the summary can report the cap's effect. */
   indexOf?: (owner: { workspaceId: string; userId: string }) => Promise<{ heldBack: number }>;
 };
@@ -366,9 +367,10 @@ export async function runDreamPass(auth: AuthContext, deps: DreamDeps = {}): Pro
   let verdicts: { id: string; verdict: "keep" | "correct" | "drop" | "unknown"; body?: string }[] = [];
   let duplicates: { keepId: string; dropId: string }[] = [];
 
-  const option = modelById(DEFAULT_MODEL_ID);
-  if (!option && !deps.model) throw new Error(`${MEMORY_DREAM_TOPIC}: the default model is no longer in the catalog`);
-  const model = deps.model ?? chatModel(option!);
+  // Resolved per workspace: its own key if it has one, else the house under the free allowance.
+  // An injected model (tests) is outside the ledger.
+  const resolved = deps.model ? null : await resolveLanguageModel(auth.workspaceId, DEFAULT_MODEL_ID, "generation");
+  const model = deps.model ?? resolved!.model;
   const corpus = transcripts.map((t) => `<<<SESSION ${t.runId}>>>\n${t.text}\n<<<END SESSION>>>`).join("\n\n");
 
   const propose = await generateText({
@@ -377,6 +379,7 @@ export async function runDreamPass(auth: AuthContext, deps: DreamDeps = {}): Pro
     prompt: corpus,
     maxOutputTokens: 2_000,
   });
+  await resolved?.record(propose.usage);
   if (propose.finishReason === "content-filter") {
     summary.model.propose = "refused";
   } else {
@@ -401,6 +404,7 @@ export async function runDreamPass(auth: AuthContext, deps: DreamDeps = {}): Pro
       ].join("\n"),
       maxOutputTokens: 2_000,
     });
+    await resolved?.record(check.usage);
     if (check.finishReason === "content-filter") {
       summary.model.check = "refused";
     } else {

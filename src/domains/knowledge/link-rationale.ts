@@ -1,6 +1,7 @@
 import { and, eq, inArray } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
-import { generationProvider, type GenerationProvider } from "@/integrations/generation/provider";
+import { type GenerationProvider } from "@/integrations/generation/provider";
+import { resolveGeneration } from "@/domains/billing/resolver";
 import { db } from "@/lib/db";
 import { untrustedDataClauseJsonSafe } from "@/lib/prompts";
 import { artifactLinks, artifacts, artifactVersions } from "./schema";
@@ -79,7 +80,7 @@ export async function explainLink(
     { title: texts.a.title, claim: texts.a.text },
     { title: texts.b.title, claim: texts.b.text },
   );
-  const provider = input.provider ?? generationProvider(process.env);
+  const provider = input.provider ?? (await resolveGeneration(auth.workspaceId, "generation"));
   const reply = await provider.generate({ system, prompt, temperature: 0.2 });
   const context = reply.text.trim();
   if (!context) throw new Error("Link rationale could not be generated. Try again.");

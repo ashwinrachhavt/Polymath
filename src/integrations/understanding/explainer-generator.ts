@@ -1,10 +1,7 @@
 import { z } from "zod";
 import { untrustedDataClauseJsonSafe } from "@/lib/prompts";
-import {
-  GenerationRequestError,
-  generationProvider,
-  type GenerationProvider,
-} from "@/integrations/generation/provider";
+import { resolveGeneration } from "@/domains/billing/resolver";
+import { GenerationRequestError, type GenerationProvider } from "@/integrations/generation/provider";
 import { providerEntry } from "@/integrations/providers/registry";
 import { drizzleQuotaStore, withQuota, type QuotaStore } from "@/integrations/providers/quota";
 
@@ -95,18 +92,18 @@ function fromGeneration(
   };
 }
 
-/** The default generator: the resolved generation provider, with quota admission when it carries an allowance. */
-export function defaultExplainerGenerator(
-  workspaceId?: string,
+/** The default generator: the workspace's generation route (its own key, else the house under the weekly allowance), with the provider's quota admission when it carries one. */
+export async function defaultExplainerGenerator(
+  workspaceId: string,
   env: NodeJS.ProcessEnv = process.env,
   fetchImpl: typeof fetch = fetch,
   quotaStore?: QuotaStore,
-): ExplainerGenerator {
-  const provider = generationProvider(env, fetchImpl);
+): Promise<ExplainerGenerator> {
+  const provider: GenerationProvider = await resolveGeneration(workspaceId, "generation", { env, fetchImpl });
   const entry = providerEntry(provider.registryId);
   return fromGeneration(provider, (input) => {
     const call = () => provider.generate({ ...input, json: true });
-    if (workspaceId && entry?.quota && entry.enabled) {
+    if (entry?.quota && entry.enabled) {
       return withQuota(quotaStore ?? drizzleQuotaStore(), entry, workspaceId, 1, call);
     }
     return call();

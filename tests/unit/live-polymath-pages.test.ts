@@ -75,6 +75,8 @@ vi.mock("@/domains/agents/onboarding", () => ({
 // The composer's skill picker reads the workspace's enabled skills; static
 // markup has no database, so the read is stubbed like every other one here.
 vi.mock("@/domains/skills/queries", () => ({ listSkills: vi.fn(async () => []) }));
+// The picker reads the workspace's keys from the database; its rule is proven in tests/integration/billing.test.ts.
+vi.mock("@/domains/billing/resolver", () => ({ selectableModels: vi.fn(async () => []) }));
 // Up next is its own domain read (tests/integration/up-next.test.ts); a fresh
 // workspace has nothing due, no quiz and no streak.
 vi.mock("@/domains/learning/up-next", () => ({

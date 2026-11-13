@@ -4,7 +4,7 @@ import { geminiFetch } from "./lib/gemini-openai";
 import { providerErrorGuardFetch } from "./lib/provider-error-guard";
 import { withMaxOutputTokens } from "../../../src/domains/agents/model-output-limit";
 // Relative, not "@/...": eve bundles from its own package root (see hooks/bridge.ts).
-import { DEFAULT_MODEL_ID, modelById } from "../../../src/domains/agents/models";
+import { resolveSessionRoute } from "../../../src/domains/billing/resolver";
 
 /*
  * Polymath: one first-party agent (agents/product.md — not a persona zoo).
@@ -47,32 +47,13 @@ import { DEFAULT_MODEL_ID, modelById } from "../../../src/domains/agents/models"
  * names; `eve eval chat-grounding` drives a real tool call and follow-up turn,
  * so run it before changing the default entry.
  */
-function polymathModel(runModel?: string | null) {
-  const wanted = runModel ?? process.env.GEMINI_AGENT_MODEL ?? DEFAULT_MODEL_ID;
-  // A frozen id that left the catalog (a probe-retired entry) must fail the
-  // run loudly: falling back to the default would record one model on the run
-  // row while another answered — the lie the spend contract forbids.
-  const entry = modelById(wanted);
-  if (!entry) {
-    throw new Error(
-      `Model "${wanted}" is not in the catalog. Choose another model; the run's frozen model is never silently substituted.`,
-    );
-  }
-
-  const apiKey = (process.env[entry.keyEnv] ?? "").trim();
-  if (!apiKey) {
-    // A model whose key vanished from the deployment must not silently fall back
-    // to a different provider: the run's frozen model is a spend and behaviour
-    // contract, and quietly running another one makes the run row a lie.
-    //
-    // The message names the restart case explicitly. A dev server inherits its
-    // environment at boot, so a key added to .env while eve is already running
-    // is invisible here and reads exactly like a missing key - which sent one
-    // person hunting for a credential that was already in place.
-    throw new Error(
-      `${entry.keyEnv} is not set, so ${entry.label} cannot run. Set ${entry.keyEnv} and restart the agent process (a dev server only sees .env as it was at boot), or choose another model.`,
-    );
-  }
+async function polymathModel(workspaceId: string | null, runModel?: string | null) {
+  // The billing resolver owns key choice: the workspace's own key, else the house key under the weekly
+  // allowance. It throws, never substitutes silently, when the frozen model has left the catalog, the
+  // key is missing, or the allowance is used up; the message names the restart case for a missing house key.
+  const route = await resolveSessionRoute(workspaceId, runModel ?? process.env.GEMINI_AGENT_MODEL);
+  const entry = route.option;
+  const apiKey = route.apiKey;
 
   const guarded = providerErrorGuardFetch();
 
@@ -86,7 +67,7 @@ function polymathModel(runModel?: string | null) {
   // OpenRouter's credit check reserves the full max_tokens amount. Its catalog
   // maximum (16k) exceeded the remaining credit in a real chat and caused a
   // silent-looking turn failure; cap the request while retaining streaming.
-  return entry.provider === "openrouter-free" ? withMaxOutputTokens(model, 12_000) : model;
+  return entry.provider === "openrouter" ? withMaxOutputTokens(model, 12_000) : model;
 }
 
 export default defineAgent({
@@ -108,11 +89,13 @@ export default defineAgent({
       // channel publishes as a session attribute; eve has no per-run config
       // channel before the first step. The env var is the fallback for evals
       // and the TUI, which have no run row.
-      "step.started": (_event, ctx) => {
-        const fromSession = ctx.session.auth.current?.attributes?.model;
+      "step.started": async (_event, ctx) => {
+        const attributes = ctx.session.auth.current?.attributes;
+        const fromSession = attributes?.model;
         const runModel = typeof fromSession === "string" ? fromSession : process.env.AXIOM_RUN_MODEL;
+        const workspaceId = typeof attributes?.workspaceId === "string" ? attributes.workspaceId : null;
         return {
-          model: polymathModel(runModel),
+          model: await polymathModel(workspaceId, runModel),
           modelContextWindowTokens: 128_000,
         };
       },

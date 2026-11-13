@@ -136,7 +136,7 @@ export async function generateFlashcardDeck(
   }
 
   const cardCount = input.cardCount ?? defaultItemCount(sources.reduce((sum, source) => sum + source.text.length, 0));
-  const engine = generator ?? defaultFlashcardGenerator(auth.workspaceId);
+  const engine = generator ?? (await defaultFlashcardGenerator(auth.workspaceId));
   const learningContext = await flashcardGenerationContext(auth, input.documentIds);
   const knownConcepts = await recentConceptNames(auth);
   const title =

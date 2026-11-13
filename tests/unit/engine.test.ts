@@ -47,6 +47,13 @@ const { fakeDb, ops, setCalls, whereCalls } = vi.hoisted(() => ({
   whereCalls: [] as unknown[],
 }));
 
+// The run's frozen model resolves through billing (the workspace's keys, the allowance); that reads the
+// database, which this test fakes op by op. Billing's own rules are proven in tests/integration/billing.test.ts.
+vi.mock("@/domains/billing/resolver", async () => {
+  const { resolveRunModel } = await import("@/domains/agents/models");
+  return { resolveRunModelFor: async (_workspaceId: string, policy: unknown) => resolveRunModel(policy)?.id ?? null };
+});
+
 vi.mock("@/lib/db", () => {
   const current = () => stubResults[(ops.at(-1) ?? "") as string] ?? {};
   const chain = (op: string) => {

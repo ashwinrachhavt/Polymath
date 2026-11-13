@@ -4,9 +4,9 @@ import { EmbeddingUnconfiguredError } from "@/integrations/embeddings/provider";
 import {
   GenerationRequestError,
   GenerationUnconfiguredError,
-  generationProvider,
   type GenerationProvider,
 } from "@/integrations/generation/provider";
+import { AllowanceExhaustedError, resolveGeneration } from "@/domains/billing/resolver";
 import { openRouterProvider } from "@/integrations/generation/openrouter";
 import { providerEntry } from "@/integrations/providers/registry";
 import { drizzleQuotaStore, withQuota, type QuotaStore } from "@/integrations/providers/quota";
@@ -162,7 +162,9 @@ export function openRouterZettelExtractor(
     const provider = openRouterProvider(env, fetchImpl, model);
     return fromGeneration(provider, (input) => provider.generate({ ...input, json: true }));
   } catch (cause) {
-    if (cause instanceof GenerationUnconfiguredError) throw new EmbeddingUnconfiguredError();
+    if (cause instanceof GenerationUnconfiguredError && !(cause instanceof AllowanceExhaustedError)) {
+      throw new EmbeddingUnconfiguredError();
+    }
     throw cause;
   }
 }
@@ -174,23 +176,25 @@ export function openRouterZettelExtractor(
  * an exhausted free allowance stops the run instead of falling back to a
  * paid route.
  */
-export function defaultZettelExtractor(
-  workspaceId?: string,
+export async function defaultZettelExtractor(
+  workspaceId: string,
   env: NodeJS.ProcessEnv = process.env,
   fetchImpl: typeof fetch = fetch,
   quotaStore?: QuotaStore,
-): ZettelExtractor {
+): Promise<ZettelExtractor> {
   let provider: GenerationProvider;
   try {
-    provider = generationProvider(env, fetchImpl);
+    provider = await resolveGeneration(workspaceId, "generation", { env, fetchImpl });
   } catch (cause) {
-    if (cause instanceof GenerationUnconfiguredError) throw new EmbeddingUnconfiguredError();
+    if (cause instanceof GenerationUnconfiguredError && !(cause instanceof AllowanceExhaustedError)) {
+      throw new EmbeddingUnconfiguredError();
+    }
     throw cause;
   }
   const entry = providerEntry(provider.registryId);
   return fromGeneration(provider, (input) => {
     const call = () => provider.generate({ ...input, json: true });
-    if (workspaceId && entry?.quota && entry.enabled) {
+    if (entry?.quota && entry.enabled) {
       return withQuota(quotaStore ?? drizzleQuotaStore(), entry, workspaceId, 1, call);
     }
     return call();

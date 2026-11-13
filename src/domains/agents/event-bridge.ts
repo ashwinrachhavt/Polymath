@@ -1,9 +1,12 @@
 import { outboxEvents } from "@/domains/audit/schema";
 import { queueThreadSync } from "@/domains/knowledge/thread-sync-event";
 import { and, eq, inArray, sql } from "drizzle-orm";
+import { recordModelCall } from "@/domains/billing/ledger";
+import { keySourceFor } from "@/domains/billing/resolver";
 import { settleSpend } from "@/domains/spending/commands";
 import { db } from "@/lib/db";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
+import { modelById, priceCall } from "./models";
 import { agentQuestions, agentRuns, messages, runEvents, threads, toolCalls } from "./schema";
 
 /*
@@ -283,12 +286,50 @@ export async function recordUsageEvent(input: {
   usage: Record<string, unknown>;
   source?: Record<string, unknown>;
 }): Promise<{ sequence: number; deduplicated: boolean }> {
-  return recordRoundEvent({
+  const [run] = await db
+    .select({ model: agentRuns.model })
+    .from(agentRuns)
+    .where(and(eq(agentRuns.id, input.runId), eq(agentRuns.workspaceId, input.workspaceId)))
+    .limit(1);
+  const model = run?.model ? modelById(run.model) : null;
+  const inputTokens = typeof input.usage.inputTokens === "number" ? input.usage.inputTokens : undefined;
+  const outputTokens = typeof input.usage.outputTokens === "number" ? input.usage.outputTokens : undefined;
+
+  // The provider reports tokens but not always a price (TheHive does not), which is how Spending came to say
+  // "unpriced". Price it from the catalog here, once, so the timeline, the run total and the ledger agree.
+  const catalogCost =
+    model && (inputTokens !== undefined || outputTokens !== undefined)
+      ? priceCall(model.id, inputTokens ?? 0, outputTokens ?? 0)
+      : null;
+  const usage =
+    input.usage.costUsd == null && catalogCost !== null ? { ...input.usage, costUsd: catalogCost } : input.usage;
+
+  const event = await recordRoundEvent({
     runId: input.runId,
     workspaceId: input.workspaceId,
     type: "usage",
-    data: input.source ? { ...input.usage, source: input.source } : input.usage,
+    data: input.source ? { ...usage, source: input.source } : usage,
   });
+  // A replayed hook dedupes above; it must not count twice against the allowance either.
+  if (model && !event.deduplicated) {
+    const turnId = input.source?.turnId;
+    const stepIndex = input.source?.stepIndex;
+    await recordModelCall({
+      workspaceId: input.workspaceId,
+      purpose: "chat",
+      provider: model.provider,
+      model: model.id,
+      keySource: await keySourceFor(input.workspaceId),
+      inputTokens,
+      outputTokens,
+      runId: input.runId,
+      sourceRef:
+        turnId !== undefined && stepIndex !== undefined
+          ? `${input.runId}:${String(turnId)}:${String(stepIndex)}`
+          : undefined,
+    });
+  }
+  return event;
 }
 
 /**

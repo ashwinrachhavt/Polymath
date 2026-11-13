@@ -232,7 +232,7 @@ async function prepareMockSession(auth: AuthContext, sessionId: string, generato
   // The Mission's pinned sources: loaded by its manifest, so the questions and
   // the report cite the same text the plan was drawn from.
   const sources = await loadMissionSources(auth, mission.id);
-  const engine = generator ?? defaultExplainItGenerator(auth.workspaceId);
+  const engine = generator ?? (await defaultExplainItGenerator(auth.workspaceId));
 
   const conceptList = mission.concepts;
   const questions: Array<{
@@ -447,7 +447,7 @@ export async function answerMockQuestion(
     throw new MockError("not_current_question", "Answer the question in front of you.");
 
   const sources = await loadMissionSources(auth, session.missionId);
-  const engine = generator ?? defaultExplainItGenerator(auth.workspaceId);
+  const engine = generator ?? (await defaultExplainItGenerator(auth.workspaceId));
   let evaluation: ExplainEvaluation;
   try {
     evaluation = await engine.evaluate({

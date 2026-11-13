@@ -41,7 +41,8 @@ type ModelProviderId =
   | "mercury"
   | "thehive"
   | "radium"
-  | "openrouter-free";
+  | "openrouter"
+  | "anthropic";
 
 export type ModelOption = {
   /** The string stored in `model_policy.primary` and frozen into a run. */
@@ -55,9 +56,18 @@ export type ModelOption = {
   baseUrl: string;
   /** Env var holding the key. A missing key hides the entry. */
   keyEnv: string;
+  /**
+   * USD per million tokens. A free-tier model carries 0, never a missing price:
+   * the usage ledger prices every call from this field, and a model with no
+   * price is how Spending came to say "unpriced". Figures are estimates from
+   * provider pricing pages as of 2026-11-12; correct them here, in one place.
+   */
+  price: ModelPrice;
   /** How this entry was verified, and when. */
   probe: string;
 };
+
+type ModelPrice = { inputPerMillion: number; outputPerMillion: number };
 
 export const MODEL_CATALOG: readonly ModelOption[] = [
   {
@@ -67,6 +77,7 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "Large open model on Groq's fast inference; works with tools.",
     baseUrl: "https://api.groq.com/openai/v1",
     keyEnv: "GROQ_API_KEY",
+    price: { inputPerMillion: 0.15, outputPerMillion: 0.75 },
     probe: "live 2026-11-05 (chat and tool calling verified; default until 2026-11-11)",
   },
   {
@@ -76,6 +87,7 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "Smaller and quicker; good for short turns.",
     baseUrl: "https://api.groq.com/openai/v1",
     keyEnv: "GROQ_API_KEY",
+    price: { inputPerMillion: 0.29, outputPerMillion: 0.59 },
     probe: "live 2026-11-05; tool calling verified 2026-10-21",
   },
   {
@@ -85,6 +97,7 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "Free tier, fast; reserved for narrower roles the owner will pick later.",
     baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai/",
     keyEnv: "GEMINI_API_KEY",
+    price: { inputPerMillion: 0.1, outputPerMillion: 0.4 },
     probe: "live 2026-10-21; former default until the 2026-11-05 Groq-first decision",
   },
   {
@@ -94,6 +107,7 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "Fast small reasoning model on NVIDIA's free developer tier.",
     baseUrl: "https://integrate.api.nvidia.com/v1",
     keyEnv: "NVIDIA_API_KEY",
+    price: { inputPerMillion: 0, outputPerMillion: 0 },
     probe: "live 2026-10-24",
   },
   {
@@ -103,6 +117,7 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "NVIDIA's largest open reasoning model, free developer tier.",
     baseUrl: "https://integrate.api.nvidia.com/v1",
     keyEnv: "NVIDIA_API_KEY",
+    price: { inputPerMillion: 0, outputPerMillion: 0 },
     probe: "live 2026-10-24",
   },
   {
@@ -112,6 +127,7 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "Small open model on NVIDIA's free developer tier.",
     baseUrl: "https://integrate.api.nvidia.com/v1",
     keyEnv: "NVIDIA_API_KEY",
+    price: { inputPerMillion: 0, outputPerMillion: 0 },
     probe: "live 2026-10-24",
   },
   {
@@ -121,6 +137,7 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "DeepSeek on NVIDIA's free developer tier; 40 RPM / 10k RPD.",
     baseUrl: "https://integrate.api.nvidia.com/v1",
     keyEnv: "NVIDIA_API_KEY",
+    price: { inputPerMillion: 0, outputPerMillion: 0 },
     probe: "listing 2026-10-27 (NVIDIA catalogue); chat unprobed — no key on this machine",
   },
   {
@@ -130,6 +147,7 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "Fast Cohere model on the free trial key (1,000 calls/month, non-commercial).",
     baseUrl: "https://api.cohere.com/compatibility/v1",
     keyEnv: "COHERE_API_KEY",
+    price: { inputPerMillion: 0, outputPerMillion: 0 },
     probe: "listing 2026-10-24 (mnfst catalog); OpenAI-compat endpoint",
   },
   {
@@ -139,6 +157,7 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "Cohere's largest reasoning model, same trial key.",
     baseUrl: "https://api.cohere.com/compatibility/v1",
     keyEnv: "COHERE_API_KEY",
+    price: { inputPerMillion: 0, outputPerMillion: 0 },
     probe: "listing 2026-10-24 (mnfst catalog); OpenAI-compat endpoint",
   },
   {
@@ -148,6 +167,7 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "Free mode, no card; prompts may train Mistral models unless opted out.",
     baseUrl: "https://api.mistral.ai/v1",
     keyEnv: "MISTRAL_API_KEY",
+    price: { inputPerMillion: 0, outputPerMillion: 0 },
     probe: "live 2026-10-24 (codestral answered; small is rate-limit-gated ~1 RPS)",
   },
   {
@@ -157,6 +177,7 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "Code-focused model on the same free mode.",
     baseUrl: "https://api.mistral.ai/v1",
     keyEnv: "MISTRAL_API_KEY",
+    price: { inputPerMillion: 0, outputPerMillion: 0 },
     probe: "listing 2026-10-24 (mnfst catalog)",
   },
   {
@@ -166,6 +187,7 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "EU-hosted open model; 2 RPM on the free tier makes it for slow one-offs.",
     baseUrl: "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1",
     keyEnv: "OVH_API_KEY",
+    price: { inputPerMillion: 0, outputPerMillion: 0 },
     probe: "listing 2026-10-24 (mnfst catalog)",
   },
   {
@@ -175,6 +197,7 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "Same EU free tier; 2 RPM per model.",
     baseUrl: "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1",
     keyEnv: "OVH_API_KEY",
+    price: { inputPerMillion: 0, outputPerMillion: 0 },
     probe: "listing 2026-10-24 (mnfst catalog)",
   },
   {
@@ -184,6 +207,7 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "Free reasoning model on Z AI's international endpoint.",
     baseUrl: "https://api.z.ai/api/paas/v4",
     keyEnv: "ZAI_API_KEY",
+    price: { inputPerMillion: 0, outputPerMillion: 0 },
     probe: "live 2026-10-24 (glm-4.5-flash answered; 4.7 intermittent 1305)",
   },
   {
@@ -193,6 +217,7 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "Steadier free fallback on the same Z AI key.",
     baseUrl: "https://api.z.ai/api/paas/v4",
     keyEnv: "ZAI_API_KEY",
+    price: { inputPerMillion: 0, outputPerMillion: 0 },
     probe: "live 2026-10-24",
   },
   {
@@ -202,6 +227,7 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "Diffusion-token model on the 100M free-token grant; 1M context, fast. The assessor profile's designed-in default.",
     baseUrl: "https://api.inceptionlabs.ai/v1",
     keyEnv: "MERCURY_API_KEY",
+    price: { inputPerMillion: 0.25, outputPerMillion: 0.75 },
     probe: "live 2026-10-30 (chat, tool calls with index, tool-result round-trip, SSE streaming verified)",
   },
   {
@@ -211,6 +237,7 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "Voice-tuned chat model for latency-sensitive agent turns; reserved for a later-wave voice surface — not yet served to this account.",
     baseUrl: "https://api.inceptionlabs.ai/v1",
     keyEnv: "MERCURY_API_KEY",
+    price: { inputPerMillion: 0.25, outputPerMillion: 0.75 },
     probe:
       "listing 2026-11-02 (docs.inceptionlabs.ai models page); absent from this account's live GET /v1/models on 2026-11-02 — never a default, remove on first failed probe",
   },
@@ -221,6 +248,7 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "Default. Zhipu's reasoning model on TheHive's hosted inference; paid from the account balance.",
     baseUrl: "https://api-cdn.thehive.ai/api/v3",
     keyEnv: "THEHIVEAI_API_KEY",
+    price: { inputPerMillion: 0.1, outputPerMillion: 0.4 },
     probe:
       "live 2026-11-07 (chat, streaming, json_schema structured output, tool calling verified); chat re-probed 2026-11-11; current default",
   },
@@ -231,6 +259,7 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "DeepSeek's fast reasoning model on TheHive's hosted inference.",
     baseUrl: "https://api-cdn.thehive.ai/api/v3",
     keyEnv: "THEHIVEAI_API_KEY",
+    price: { inputPerMillion: 0.14, outputPerMillion: 0.28 },
     probe: "live 2026-11-07 (chat, streaming, json_schema structured output, tool calling verified)",
   },
   {
@@ -240,6 +269,7 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "Radium's balanced model; the provider documents a 1M-token context.",
     baseUrl: "https://api.radium.cloud/v1",
     keyEnv: "RADIUM_API_KEY",
+    price: { inputPerMillion: 0, outputPerMillion: 0 },
     probe: "live 2026-11-11 (chat, tool calling and SSE streaming verified; context size not probed)",
   },
   {
@@ -249,6 +279,7 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "Radium's reasoning model for harder turns.",
     baseUrl: "https://api.radium.cloud/v1",
     keyEnv: "RADIUM_API_KEY",
+    price: { inputPerMillion: 0, outputPerMillion: 0 },
     probe: "live 2026-11-11 (chat and tool calling verified)",
   },
   {
@@ -258,24 +289,27 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "Radium's fast model for short turns.",
     baseUrl: "https://api.radium.cloud/v1",
     keyEnv: "RADIUM_API_KEY",
+    price: { inputPerMillion: 0, outputPerMillion: 0 },
     probe: "live 2026-11-11 (chat and tool calling verified)",
   },
   {
     id: "deepseek/deepseek-chat",
-    provider: "openrouter-free",
+    provider: "openrouter",
     label: "DeepSeek Chat (OpenRouter)",
     note: "Paid DeepSeek route on the OpenRouter key; tool calling unverified.",
     baseUrl: "https://openrouter.ai/api/v1",
     keyEnv: "OPENROUTER_API_KEY",
+    price: { inputPerMillion: 0.27, outputPerMillion: 1.1 },
     probe: "live 2026-10-27 (arithmetic check returned 51, not an echo)",
   },
   {
     id: "deepseek/deepseek-v3.2",
-    provider: "openrouter-free",
+    provider: "openrouter",
     label: "DeepSeek V3.2 (OpenRouter)",
     note: "Paid DeepSeek route on the OpenRouter key; tool calling unverified.",
     baseUrl: "https://openrouter.ai/api/v1",
     keyEnv: "OPENROUTER_API_KEY",
+    price: { inputPerMillion: 0.28, outputPerMillion: 0.42 },
     probe: "live 2026-10-27 (arithmetic check returned 51, not an echo)",
   },
   {
@@ -285,6 +319,7 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "Paid strong model for hard synthesis and drafting; routed by task difficulty.",
     baseUrl: "https://api.openai.com/v1",
     keyEnv: "OPENAI_API_KEY",
+    price: { inputPerMillion: 2.5, outputPerMillion: 15.0 },
     probe:
       "listing 2026-10-29 (models endpoint answered; chat turn blocked by zero account credits — chat probed in Task 3's live eval run)",
   },
@@ -295,8 +330,31 @@ export const MODEL_CATALOG: readonly ModelOption[] = [
     note: "Cheaper paid route for routine paid work",
     baseUrl: "https://api.openai.com/v1",
     keyEnv: "OPENAI_API_KEY",
+    price: { inputPerMillion: 0.75, outputPerMillion: 4.5 },
     probe:
       "listing 2026-10-29 (models endpoint answered; chat turn blocked by zero account credits — chat probed in Task 3's live eval run)",
+  },
+  {
+    id: "claude-sonnet-5-5",
+    provider: "anthropic",
+    label: "Claude Sonnet 5.5 (Anthropic)",
+    note: "Anthropic's strong general model; reached through its OpenAI-compatible endpoint, on the user's own key.",
+    baseUrl: "https://api.anthropic.com/v1/",
+    keyEnv: "ANTHROPIC_API_KEY",
+    price: { inputPerMillion: 3, outputPerMillion: 15 },
+    probe:
+      "listing 2026-11-12 (Anthropic OpenAI-compatible endpoint documented); chat unprobed — no key on this machine",
+  },
+  {
+    id: "claude-haiku-5-5",
+    provider: "anthropic",
+    label: "Claude Haiku 5.5 (Anthropic)",
+    note: "Anthropic's fast, low-cost model; same endpoint and key.",
+    baseUrl: "https://api.anthropic.com/v1/",
+    keyEnv: "ANTHROPIC_API_KEY",
+    price: { inputPerMillion: 1, outputPerMillion: 5 },
+    probe:
+      "listing 2026-11-12 (Anthropic OpenAI-compatible endpoint documented); chat unprobed — no key on this machine",
   },
 ];
 
@@ -345,18 +403,67 @@ export function resolveRunModel(modelPolicy: unknown): ModelOption | null {
   return modelById(resolveModelId(primary));
 }
 
-/**
- * A real model instance for a direct AI SDK call — the one pattern a
- * no-run, no-stream server action needs (the onboarding assist; an eve run
- * never enters the picture). Every catalog entry's baseUrl is the
- * OpenAI-compatible chat endpoint, so one provider factory with the entry's
- * own credentials speaks for all of them, exactly as the runtime would on a
- * run's first turn.
+/*
+ * Providers, derived from the catalog: a provider is whatever its models share
+ * (endpoint, key variable). A workspace key is held per provider, so adding a
+ * catalog entry for a new provider makes it key-able with no second list.
  */
-export function chatModel(option: ModelOption, env: Record<string, string | undefined> = process.env): LanguageModel {
-  const apiKey = env[option.keyEnv];
-  if (typeof apiKey !== "string" || apiKey.trim().length === 0) {
-    throw new Error(`${option.keyEnv} is not set, so ${option.label} cannot be called.`);
+export type KeyProvider = { id: ModelProviderId; label: string; baseUrl: string; keyEnv: string };
+
+const PROVIDER_LABELS: Record<ModelProviderId, string> = {
+  gemini: "Google Gemini",
+  groq: "Groq",
+  "ai-gateway": "AI Gateway",
+  nvidia: "NVIDIA",
+  openai: "OpenAI",
+  cohere: "Cohere",
+  mistral: "Mistral",
+  ovh: "OVHcloud",
+  zai: "Z AI",
+  mercury: "Inception (Mercury)",
+  thehive: "TheHive",
+  radium: "Radium",
+  openrouter: "OpenRouter",
+  anthropic: "Anthropic",
+};
+
+export function keyProviders(): KeyProvider[] {
+  const seen = new Map<ModelProviderId, KeyProvider>();
+  for (const model of MODEL_CATALOG) {
+    if (!seen.has(model.provider)) {
+      seen.set(model.provider, {
+        id: model.provider,
+        label: PROVIDER_LABELS[model.provider],
+        baseUrl: model.baseUrl,
+        keyEnv: model.keyEnv,
+      });
+    }
   }
+  return [...seen.values()];
+}
+
+export function keyProviderById(id: string): KeyProvider | null {
+  return keyProviders().find((provider) => provider.id === id) ?? null;
+}
+
+/** The provider's cheapest catalog model: what a user's own key serves when the request named another provider's. */
+export function cheapestModelOf(provider: string): ModelOption | null {
+  const cost = (m: ModelOption) => m.price.inputPerMillion + m.price.outputPerMillion;
+  return (
+    MODEL_CATALOG.filter((m) => m.provider === provider).sort(
+      (a, b) => cost(a) - cost(b) || a.id.localeCompare(b.id),
+    )[0] ?? null
+  );
+}
+
+/** The call's cost in USD, or null for a model the catalog does not know (unpriced, never zero). */
+export function priceCall(modelId: string, inputTokens: number, outputTokens: number): number | null {
+  const model = modelById(modelId);
+  if (!model) return null;
+  return (inputTokens * model.price.inputPerMillion + outputTokens * model.price.outputPerMillion) / 1_000_000;
+}
+
+/** A model served by `apiKey` instead of the deployment's env: the one provider factory every direct AI SDK call uses. */
+export function chatModelWithKey(option: ModelOption, apiKey: string): LanguageModel {
   return createOpenAI({ apiKey, baseURL: option.baseUrl }).chat(option.id);
 }

@@ -5,7 +5,7 @@ import { recordAudit } from "@/domains/audit/record";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { currentExtractionIdSubquery } from "./versions";
-import { cleanTopics, openRouterWikiSummarizer, TOPIC_SLUG, type WikiSummarizer } from "@/integrations/wiki/summarizer";
+import { cleanTopics, defaultWikiSummarizer, TOPIC_SLUG, type WikiSummarizer } from "@/integrations/wiki/summarizer";
 import { artifactLinks, artifacts, artifactVersions, documentExtractions, documents, wikiPages } from "./schema";
 
 /*
@@ -309,7 +309,7 @@ export async function ingestDocument(
     throw new WikiError("no_extraction", "This document has no succeeded extraction to read yet.");
   }
 
-  const summarizer = input.summarizer ?? openRouterWikiSummarizer();
+  const summarizer = input.summarizer ?? (await defaultWikiSummarizer(auth.workspaceId));
   const summary = await summarizer.summarize(extraction.text, doc.title);
   // The caller's explicit topics win; otherwise the summarizer's, cleaned either way.
   const topics = cleanTopics(input.topics ?? summary.topics);

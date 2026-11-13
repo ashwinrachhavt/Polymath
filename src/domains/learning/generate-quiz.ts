@@ -420,7 +420,7 @@ export async function generateQuiz(
 
   // Provider setup happens after source validation, so a missing key never
   // creates a failed quiz row for an invalid or unready source selection.
-  const engine = generator ?? defaultQuizGenerator(auth.workspaceId);
+  const engine = generator ?? (await defaultQuizGenerator(auth.workspaceId));
   const learningContext = await quizGenerationContext(auth, selectedIds);
   const knownConcepts = await recentConceptNames(auth);
   if (read.length === 0) {
