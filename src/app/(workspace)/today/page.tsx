@@ -11,6 +11,7 @@ import { CloseTheDay } from "../command-center/day/[date]/close-the-day";
 import { FocusTimer } from "../neuralflow/focus/focus-timer";
 import { listWorkRowsForPage } from "../neuralflow/work/data";
 import { TaskSection } from "../neuralflow/work/neon-tasks";
+import { StudyCard } from "./study-card";
 
 export const metadata = { title: "Today · Polymath" };
 
@@ -87,6 +88,9 @@ export default function TodayPage({ searchParams }: { searchParams: TodayQuery }
         />
       }
     >
+      <Suspense fallback={<Loading label="Loading what to study…" />}>
+        <StudyCard />
+      </Suspense>
       <Suspense fallback={<Loading label="Loading your tasks…" />}>
         <TodayTasks searchParams={searchParams} />
       </Suspense>

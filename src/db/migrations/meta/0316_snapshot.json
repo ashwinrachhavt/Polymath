@@ -1,6 +1,6 @@
 {
-  "id": "e887100f-e5fe-44f0-8877-e43849818832",
-  "prevId": "a7979de1-0321-4227-938e-8c2f149144ae",
+  "id": "76c74aa9-a6da-4e16-ab65-e4213bda45da",
+  "prevId": "e887100f-e5fe-44f0-8877-e43849818832",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -20810,7 +20810,13 @@
           "name": "flashcard_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
+        },
+        "quiz_question_id": {
+          "name": "quiz_question_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
         },
         "user_id": {
           "name": "user_id",
@@ -20920,6 +20926,33 @@
           "method": "btree",
           "with": {}
         },
+        "flashcard_reviews_user_question_key": {
+          "name": "flashcard_reviews_user_question_key",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "quiz_question_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "flashcard_reviews_due_idx": {
           "name": "flashcard_reviews_due_idx",
           "columns": [
@@ -20975,6 +21008,19 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
+        "flashcard_reviews_quiz_question_id_quiz_questions_id_fk": {
+          "name": "flashcard_reviews_quiz_question_id_quiz_questions_id_fk",
+          "tableFrom": "flashcard_reviews",
+          "tableTo": "quiz_questions",
+          "columnsFrom": [
+            "quiz_question_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
         "flashcard_reviews_user_id_users_id_fk": {
           "name": "flashcard_reviews_user_id_users_id_fk",
           "tableFrom": "flashcard_reviews",
@@ -20993,6 +21039,10 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
+        "flashcard_reviews_one_item_check": {
+          "name": "flashcard_reviews_one_item_check",
+          "value": "num_nonnulls(\"flashcard_id\", \"quiz_question_id\") = 1"
+        },
         "flashcard_reviews_schedule_check": {
           "name": "flashcard_reviews_schedule_check",
           "value": "interval_days >= 0 and ease_hundredths between 130 and 350 and repetitions >= 0"

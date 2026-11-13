@@ -218,15 +218,19 @@ export const flashcards = pgTable(
   ],
 );
 
-/** Scheduling is private to each learner; card content is shared. */
+/**
+ * The one spaced-repetition schedule, private to each learner (item content is
+ * shared). A row schedules exactly one item: a flashcard or a quiz question.
+ * The table kept its first name; it is the review model for every item kind,
+ * and `review-schedule.ts` is the one place a rating becomes a due date.
+ */
 export const flashcardReviews = pgTable(
   "flashcard_reviews",
   {
     id: primaryId(),
     workspaceId: tenantId(),
-    flashcardId: uuid("flashcard_id")
-      .notNull()
-      .references(() => flashcards.id, { onDelete: "cascade" }),
+    flashcardId: uuid("flashcard_id").references(() => flashcards.id, { onDelete: "cascade" }),
+    quizQuestionId: uuid("quiz_question_id").references(() => quizQuestions.id, { onDelete: "cascade" }),
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -239,6 +243,8 @@ export const flashcardReviews = pgTable(
   },
   (t) => [
     uniqueIndex("flashcard_reviews_user_card_key").on(t.workspaceId, t.flashcardId, t.userId),
+    uniqueIndex("flashcard_reviews_user_question_key").on(t.workspaceId, t.quizQuestionId, t.userId),
+    check("flashcard_reviews_one_item_check", sql`num_nonnulls("flashcard_id", "quiz_question_id") = 1`),
     index("flashcard_reviews_due_idx").on(t.workspaceId, t.userId, t.dueAt),
     check(
       "flashcard_reviews_schedule_check",
