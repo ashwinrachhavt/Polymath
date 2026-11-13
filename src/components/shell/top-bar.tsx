@@ -8,6 +8,7 @@ import { ModeToggle } from "@/components/shell/mode-toggle";
 import { UserMenu } from "@/components/shell/user-menu";
 import { CommandLayerMount } from "@/components/shell/command-layer-mount";
 import { NotificationsPanel } from "@/components/shell/notifications-panel";
+import { ReportBugButton } from "@/components/shell/report-bug-button";
 import type { TriageFeed } from "@/domains/notifications/triage";
 import type { ShellPreferencePatch, ShellPreferenceSnapshot } from "@/components/shell/shell-preferences";
 
@@ -130,6 +131,7 @@ export function TopBar({
           onSave={savePreference}
         />
         <AppearanceMenu preferences={currentPreferences} disabled={savingPreferences} onSave={savePreference} />
+        <ReportBugButton />
         <AppLauncher />
         <UserMenu configured={clerkConfigured} />
       </div>

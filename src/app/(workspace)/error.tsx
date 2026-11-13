@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import { rememberLastError } from "@/lib/last-error";
 
 /*
  * Workspace-wide error boundary: it catches every destination so a broken
@@ -12,6 +13,8 @@ export default function WorkspaceError({ error, reset }: { error: Error & { dige
   // here or it is swallowed behind the generic copy (ASH-163).
   useEffect(() => {
     console.error("Workspace screen failed", error);
+    // "Report a bug" in the header sends this digest with the report.
+    rememberLastError(error.digest);
   }, [error]);
   return (
     <div role="alert" className="flex flex-1 flex-col justify-center p-6">

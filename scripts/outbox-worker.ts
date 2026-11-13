@@ -3,6 +3,7 @@ import { dispatchPendingOutbox, recoverStrandedOutbox } from "@/domains/audit/ou
 import { outboxHandlers } from "@/domains/audit/outbox-handlers";
 import { runSuperagentDispatch } from "@/domains/superagent/effects";
 import { superagentEffectHandlers, sweepSuperagentWorkspaces } from "@/domains/superagent/wiring";
+import { bugAgentConfig, runBugTriagePass } from "@/domains/bug-triage/pass";
 
 /*
  * The local queue drain (ASH-178).
@@ -85,6 +86,19 @@ async function main(): Promise<void> {
         await runSuperagentDispatch(client, await superagentEffectHandlers(), { workerId });
       } catch (cause) {
         console.error(`[${stamp()}] superagent pass failed:`, cause instanceof Error ? cause.message : cause);
+      }
+      // The bug agent files GitHub issues once a minute at most, and only
+      // while BUG_AGENT_ENABLED=true (the kill switch is read every pass).
+      const bugAgent = bugAgentConfig();
+      if (bugAgent && tick % SWEEP_EVERY_TICKS === 0) {
+        try {
+          const pass = await runBugTriagePass({ config: bugAgent });
+          if (pass.filed + pass.failed > 0) {
+            console.log(`[${stamp()}] bug agent filed ${pass.filed} issue(s), ${pass.failed} failed`);
+          }
+        } catch (cause) {
+          console.error(`[${stamp()}] bug agent pass failed:`, cause instanceof Error ? cause.message : cause);
+        }
       }
     } catch (cause) {
       // A database blip should not kill the loop; the next tick retries.

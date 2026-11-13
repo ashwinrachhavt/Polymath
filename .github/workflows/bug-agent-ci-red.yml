@@ -1,0 +1,50 @@
+# Bug agent input 3 of 3: CI failing on main becomes one GitHub issue.
+#
+# One open issue per workflow: a second red run comments on it instead of
+# filing another, so a broken main produces one issue however many pushes
+# follow. Only job names and the run link are posted, never logs.
+# Kill switch: the repository variable BUG_AGENT_ENABLED must be "true".
+name: Bug agent / CI red on main
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+jobs:
+  file:
+    if: vars.BUG_AGENT_ENABLED == 'true' && github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: File or update the CI-red issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          WORKFLOW: ${{ github.event.workflow_run.name }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          title="CI red on main: $WORKFLOW"
+          failed=$(gh api "repos/$GH_REPO/actions/runs/$RUN_ID/jobs?per_page=100" \
+            --jq '.jobs[] | select(.conclusion == "failure") | "- " + .name' | head -20)
+          existing=$(gh issue list --state open --label ci-red --search "\"$title\" in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            printf 'Still red at %s: %s\n\nFailed jobs:\n%s\n' "${SHA:0:7}" "$RUN_URL" "$failed" | gh issue comment "$existing" --body-file -
+            exit 0
+          fi
+          printf 'CI failed on `main` at %s.\n\nRun: %s\n\nFailed jobs:\n%s\n\n---\n_Filed by the bug agent. Close this issue once main is green._\n' \
+            "${SHA:0:7}" "$RUN_URL" "$failed" > body.md
+          # gh refuses a label that does not exist yet; --force makes this idempotent.
+          gh label create bug-agent --color 5319e7 --description "Filed by the bug agent" --force
+          gh label create ci-red --color b60205 --description "CI failing on main" --force
+          gh label create "sev:high" --color d93f0b --force
+          gh issue create --title "$title" --body-file body.md --label bug-agent --label ci-red --label "sev:high"
