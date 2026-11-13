@@ -10,6 +10,7 @@ import { GENERATION_COPY, QuizGenerationError } from "@/domains/learning/generat
 import { acceptLearningJob } from "@/domains/learning/generation-jobs";
 import { learningJobSubject } from "@/domains/learning/job-names";
 import type { SubmittedAnswer } from "@/domains/learning/schema";
+import { recordCheckOutcome } from "@/domains/understanding/check";
 import { getRewardsOverview, pickRewardAnnouncement } from "@/domains/gamification/queries";
 import { actionError } from "@/lib/action-error";
 import { getAuthContext } from "@/lib/auth";
@@ -78,6 +79,8 @@ export async function completeQuizAttemptAction(input: {
   requireRole(auth, "member");
   try {
     const result = await completeQuizAttempt(auth, input);
+    // A sitting on a plugin explainer's check turns its misses into review items.
+    await recordCheckOutcome(auth, result.attemptId);
     // The announcement is the ledger's own newest-earning rule, run against
     // the row this sitting just wrote - the same rule the collection page
     // renders, and the same coach-mark id, so either surface shows it once.
