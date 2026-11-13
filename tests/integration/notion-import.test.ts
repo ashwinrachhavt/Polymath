@@ -7,7 +7,11 @@ import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
 const handle = makeTestDb();
 const suite = handle ? describe : describe.skip;
 const holder: { db: ReturnType<typeof drizzle> | undefined } = { db: undefined };
-vi.mock("@/lib/db", () => ({ get db() { return holder.db; } }));
+vi.mock("@/lib/db", () => ({
+  get db() {
+    return holder.db;
+  },
+}));
 vi.mock("@/lib/db-transaction", () => ({
   get withTransaction() {
     return (fn: Parameters<typeof import("@/lib/db-transaction").withTransaction>[0]) =>
@@ -19,9 +23,16 @@ import { listNotionAccounts, NotionImportError, syncNotionAccount } from "@/doma
 import { externalAccounts, syncCursors } from "@/domains/integrations/schema";
 import { documents, documentExtractions, files } from "@/domains/knowledge/schema";
 
-beforeAll(() => { holder.db = handle?.db; });
-afterAll(async () => { vi.unstubAllEnvs(); await handle?.client.end(); });
-beforeEach(() => { vi.stubEnv("AXIOM_LOCAL_BLOB_DIR", `/tmp/axiom-blobs-${process.pid}`); });
+beforeAll(() => {
+  holder.db = handle?.db;
+});
+afterAll(async () => {
+  vi.unstubAllEnvs();
+  await handle?.client.end();
+});
+beforeEach(() => {
+  vi.stubEnv("AXIOM_LOCAL_BLOB_DIR", `/tmp/axiom-blobs-${process.pid}`);
+});
 
 function page(id: string, title: string, edited: string, extra?: Partial<NotionSearchHit>): NotionSearchHit {
   return {
@@ -36,16 +47,27 @@ function page(id: string, title: string, edited: string, extra?: Partial<NotionS
   };
 }
 
-function fakeClient(pages: NotionSearchHit[], bodies: Record<string, string>): NotionClient & { markdownCalls: string[] } {
+function fakeClient(
+  pages: NotionSearchHit[],
+  bodies: Record<string, string>,
+): NotionClient & { markdownCalls: string[] } {
   const calls: string[] = [];
   return {
     markdownCalls: calls,
     async searchEditedSince(since) {
       return pages.filter((p) => !since || p.lastEditedTime > since);
     },
-    async getPageMarkdown(pageId) {
+    async getPage(pageId) {
+      const hit = pages.find((p) => p.id === pageId);
+      if (!hit) throw new Error("not found");
+      return hit;
+    },
+    async readPage(pageId) {
       calls.push(pageId);
-      return bodies[pageId] ?? `${pageId} body.\n`;
+      return { markdown: bodies[pageId] ?? `${pageId} body.\n`, childPageIds: [], databaseIds: [], unreadable: [] };
+    },
+    async getPageMarkdown(pageId) {
+      return (await this.readPage(pageId)).markdown;
     },
     async queryDatabaseRows() {
       return [];
@@ -56,7 +78,14 @@ function fakeClient(pages: NotionSearchHit[], bodies: Record<string, string>): N
 async function seedAccount(workspaceId: string, userId: string, provider = "notion") {
   const [account] = await handle!.db
     .insert(externalAccounts)
-    .values({ workspaceId, provider, alias: `notion-${crypto.randomUUID().slice(0, 8)}`, createdBy: userId, updatedBy: userId, status: "active" })
+    .values({
+      workspaceId,
+      provider,
+      alias: `notion-${crypto.randomUUID().slice(0, 8)}`,
+      createdBy: userId,
+      updatedBy: userId,
+      status: "active",
+    })
     .returning();
   return account;
 }
@@ -66,7 +95,10 @@ suite("notion import", { timeout: 30_000 }, () => {
     const a = await seedWorkspace(handle!.db, `notion-basic-${Date.now()}`);
     const auth = { userId: a.userId, workspaceId: a.workspaceId, role: "owner" as const };
     const account = await seedAccount(a.workspaceId, a.userId);
-    const pages = [page("p1", "Reading List", "2026-10-01T10:00:00.000Z"), page("p2", "Goals", "2026-10-02T10:00:00.000Z")];
+    const pages = [
+      page("p1", "Reading List", "2026-10-01T10:00:00.000Z"),
+      page("p2", "Goals", "2026-10-02T10:00:00.000Z"),
+    ];
     const client = fakeClient(pages, { p1: "Books to read.\n", p2: "Quarterly goals.\n" });
 
     const result = await syncNotionAccount(auth, { externalAccountId: account.id, client });
@@ -80,7 +112,10 @@ suite("notion import", { timeout: 30_000 }, () => {
     expect(docs.map((d) => d.sourceUrl).sort()).toEqual(pages.map((p) => p.url).sort());
 
     // Extraction ran on the markdown: a succeeded row per document.
-    const extractions = await db.select().from(documentExtractions).where(eq(documentExtractions.workspaceId, a.workspaceId));
+    const extractions = await db
+      .select()
+      .from(documentExtractions)
+      .where(eq(documentExtractions.workspaceId, a.workspaceId));
     expect(extractions.filter((e) => e.status === "succeeded").length).toBe(2);
     expect(extractions.some((e) => e.text?.includes("Books to read."))).toBe(true);
 
@@ -149,9 +184,9 @@ suite("notion import", { timeout: 30_000 }, () => {
     const base = fakeClient(pages, { p1: "Fine.\n", p2: "Broken.\n" });
     const client: NotionClient = {
       ...base,
-      async getPageMarkdown(pageId) {
+      async readPage(pageId) {
         if (pageId === "p2") throw new Error("notion blew up");
-        return base.getPageMarkdown(pageId);
+        return base.readPage(pageId);
       },
     };
     const result = await syncNotionAccount(auth, { externalAccountId: account.id, client });
@@ -172,7 +207,10 @@ suite("notion import", { timeout: 30_000 }, () => {
     ).rejects.toBeInstanceOf(NotionImportError);
     // Another workspace's account id is simply not found.
     await expect(
-      syncNotionAccount({ userId: b.userId, workspaceId: b.workspaceId, role: "owner" as const }, { externalAccountId: gmailAccount.id, client: fakeClient([], {}) }),
+      syncNotionAccount(
+        { userId: b.userId, workspaceId: b.workspaceId, role: "owner" as const },
+        { externalAccountId: gmailAccount.id, client: fakeClient([], {}) },
+      ),
     ).rejects.toBeInstanceOf(NotionImportError);
   });
 

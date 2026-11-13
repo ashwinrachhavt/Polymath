@@ -1,4 +1,5 @@
 import type { AuthContext } from "@/domains/identity/resolve";
+import { NOTION_SYNC_KIND, notionSyncRunner } from "@/domains/integrations/notion-job";
 import { zettelJobRunners } from "@/domains/capture/zettel-generation";
 import { learningJobRunners } from "@/domains/learning/generation-jobs";
 import { missionJobRunners } from "@/domains/learning/mission-jobs";
@@ -40,5 +41,6 @@ export function generationJobRunners(): Record<string, GenerationJobRunner> {
     ...zettelJobRunners,
     [SITE_CRAWL_KIND]: siteCrawlRunner(),
     [YOUTUBE_ABSORB_KIND]: youtubeAbsorbRunner(),
+    [NOTION_SYNC_KIND]: notionSyncRunner,
   };
 }

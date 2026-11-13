@@ -5,6 +5,7 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { gradeAttempt } from "./grading";
+import { ratingForAnswer, recordReview } from "./review-schedule";
 import { quizAttempts, quizQuestions, quizzes, type SubmittedAnswer } from "./schema";
 
 /*
@@ -144,6 +145,12 @@ export async function completeQuizAttempt(
       };
     }
 
+    // A first sitting schedules every question it graded: a miss comes back
+    // in minutes, a right answer in a day, the same schedule a flashcard has.
+    const now = new Date();
+    for (const result of graded.perQuestion) {
+      await recordReview(tx, auth, { quizQuestionId: result.questionId }, ratingForAnswer(result.correct), now);
+    }
     const stoneEarned = await recordLearningReview(tx, auth, {
       subjectId: attempt.id,
       idempotencyKey: `quiz_attempt:${attempt.id}`,
