@@ -29,6 +29,24 @@ function matches(pathname: string, patterns: string[]) {
   );
 }
 
+/**
+ * A post-sign-in destination is honoured only on this origin. Clerk writes
+ * redirect_url both as a path and as an absolute URL, so both are accepted
+ * and reduced to a path; anything pointing elsewhere is dropped.
+ */
+function sameOriginPath(value: string | null, current: URL): string | null {
+  if (!value) return null;
+  try {
+    const target = new URL(value, current);
+    return target.origin === current.origin ? target.pathname + target.search : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Where a signed-in visitor goes when nothing names a destination. */
+const workspaceHome = "/polymath";
+
 const apiPatterns = ["/api/v1", "/api/v1/(.*)"];
 
 const publicPatterns = [
@@ -84,10 +102,26 @@ export default proxyArmed
         const search = url.search;
         const session = await auth({ acceptsToken: ["session_token"] });
         return session.isAuthenticated
-          ? NextResponse.redirect(new URL(`/polymath${search}`, request.url))
+          ? NextResponse.redirect(new URL(`${workspaceHome}${search}`, request.url))
           : NextResponse.redirect(
-              new URL(`/landing?returnTo=${encodeURIComponent(`/polymath${search}`)}`, request.url),
+              new URL(`/landing?returnTo=${encodeURIComponent(`${workspaceHome}${search}`)}`, request.url),
             );
+      }
+
+      // The sign-in and sign-up entries are the landing page's way into the
+      // app, for everyone: the landing is static, so it cannot know who is
+      // signed in. A signed-out visitor gets the form; a signed-in one is sent
+      // on to where they were going, in one hop. Only the bare entry paths:
+      // Clerk's own steps below them (factor-one, sso-callback, tasks) must
+      // render while a session is being completed.
+      if (pathname === "/sign-in" || pathname === "/sign-up") {
+        const session = await auth({ acceptsToken: ["session_token"] });
+        if (session.isAuthenticated) {
+          return NextResponse.redirect(
+            new URL(sameOriginPath(url.searchParams.get("redirect_url"), url) ?? workspaceHome, request.url),
+          );
+        }
+        return;
       }
 
       if (!matches(pathname, publicPatterns)) {

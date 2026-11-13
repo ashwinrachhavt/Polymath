@@ -1,41 +1,28 @@
-import { Suspense } from "react";
+import { Suspense, type ReactNode } from "react";
 import type { Metadata } from "next";
-import Link from "next/link";
+import { proxyArmed } from "@/lib/clerk";
+import "./landing.css";
 
 /*
- * The one public marketing route (GTM plan, funnel surface) and the page an
- * unauthenticated visitor lands on. Left-aligned hero after the mockup: the
- * highlighted word carries the claim, the features row answers "what is it"
- * in three cards, and every CTA is an app entry.
+ * The public front door: where a signed-out visitor lands (src/proxy.ts) and
+ * the page the marketing link points at. It is static and ships no client
+ * JavaScript of its own; the one interactive piece (the practice question) is
+ * radio buttons and CSS.
  *
- * returnTo: the proxy hands the page the visitor was headed for through
- * /landing?returnTo=...; the Sign in link forwards it to
- * /sign-in?redirect_url=... so sign-in can complete the trip. Validated again
- * here — it must start with a single slash (never "//"), or it is dropped.
+ * Every way in goes through the auth entries, because a static page cannot
+ * know who is reading it: /sign-in and /sign-up show the form to a signed-out
+ * visitor and send a signed-in one straight on (the proxy decides). Without
+ * an armed proxy (keyless dev, the dev bypass) there are no auth pages and
+ * the workspace is open, so the links go there directly.
  */
 export const metadata: Metadata = {
-  title: "Polymath — Understanding is the bottleneck",
+  title: "Polymath: read it, prove it",
   description:
-    "Polymath turns everything entering your world — mail, files, pages, ideas — into an ordered, trustworthy plan.",
+    "Everything you read or watch becomes knowledge you can prove you have. Polymath turns your own captures into a few minutes of practice a day.",
 };
 
-const features = [
-  {
-    n: "01",
-    title: "The library",
-    body: "Sources, notes, claims, cards, links, retrieval. Saved sources with retrieval beat ten tabs. The library is the asset.",
-  },
-  {
-    n: "02",
-    title: "The work",
-    body: "Tasks, sessions, stones, areas. Commit to today, focus once, and let the record remember what earned what.",
-  },
-  {
-    n: "03",
-    title: "The agents",
-    body: "A supervisor with durable runs. Agents propose; policy disposes. Nothing leaves until you approve the exact payload.",
-  },
-];
+type SearchParams = Promise<{ returnTo?: string }>;
+type Entry = "sign-in" | "sign-up";
 
 /** A returnTo is usable only as a same-origin path: one leading slash, no protocol-relative "//". */
 function safeReturnTo(value: string | undefined): string | null {
@@ -43,87 +30,336 @@ function safeReturnTo(value: string | undefined): string | null {
   return value;
 }
 
-async function SignInLink({ searchParams }: { searchParams: Promise<{ returnTo?: string }> }) {
+function entryHref(entry: Entry, returnTo: string | null): string {
+  if (!proxyArmed) return returnTo ?? "/polymath";
+  return returnTo ? `/${entry}?redirect_url=${encodeURIComponent(returnTo)}` : `/${entry}`;
+}
+
+async function ResolvedEntryLink({
+  entry,
+  searchParams,
+  className,
+  children,
+}: {
+  entry: Entry;
+  searchParams: SearchParams;
+  className: string;
+  children: ReactNode;
+}) {
   const returnTo = safeReturnTo((await searchParams).returnTo);
-  const signInHref = returnTo ? `/sign-in?redirect_url=${encodeURIComponent(returnTo)}` : "/sign-in";
   return (
-    <Link
-      href={signInHref}
-      className="rounded-lg border border-border bg-card px-6 py-3 text-body font-medium transition-colors hover:bg-muted"
-    >
-      Sign in
-    </Link>
+    <a href={entryHref(entry, returnTo)} className={className}>
+      {children}
+    </a>
   );
 }
 
-export default function LandingPage({ searchParams }: { searchParams: Promise<{ returnTo?: string }> }) {
+/**
+ * A plain <a>, not next/link: every entry crosses into Clerk or the workspace,
+ * where a full load is what both expect. The static shell carries the default
+ * href; the returnTo a bounced deep link brings streams in right after.
+ */
+function EntryLink(props: { entry: Entry; searchParams: SearchParams; className: string; children: ReactNode }) {
   return (
-    <div className="flex min-h-dvh flex-col bg-background text-foreground">
-      <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-5">
-        <span className="flex items-center gap-2.5">
-          <span aria-hidden className="polymath-mark size-7 text-body">
-            P
-          </span>
-          <span className="text-body font-semibold">Polymath</span>
-        </span>
-        <Link
-          href="/polymath"
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
-        >
+    <Suspense
+      fallback={
+        <a href={entryHref(props.entry, null)} className={props.className}>
+          {props.children}
+        </a>
+      }
+    >
+      <ResolvedEntryLink {...props} />
+    </Suspense>
+  );
+}
+
+const stages = [
+  { id: "capture", when: "One click", text: "First, save a page, a PDF, a video or a note." },
+  {
+    id: "absorb",
+    when: "As long as the read",
+    text: "Then read it with Polymath, which explains it and links it to what you already know.",
+  },
+  {
+    id: "practice",
+    when: "Five minutes a day",
+    text: "Each day, answer a few questions written from your own captures.",
+  },
+  {
+    id: "prove",
+    when: "On the day it counts",
+    text: "Then prove it: a Mission tests you before the date that matters.",
+  },
+];
+
+const report = [
+  { concept: "Consistent hashing", verdict: "Proven" },
+  { concept: "Caching strategies", verdict: "Proven" },
+  { concept: "Rate limiting", verdict: "Partial" },
+  { concept: "Leader election", verdict: "Gap" },
+];
+
+const faqs = [
+  {
+    q: "Who is Polymath for?",
+    a: "Anyone learning something for real: an engineer moving into a new field, someone working alongside AI agents, a student with an exam date. There is nothing technical to set up.",
+  },
+  {
+    q: "What can I save?",
+    a: "Web pages, PDFs, YouTube videos and your own notes. Each one becomes material for questions, with the passage it came from kept beside it.",
+  },
+  {
+    q: "Where do the questions come from?",
+    a: "From what you saved. Polymath writes them from your own sources, shows the passage behind every answer, and brings back the ones you missed until they stick.",
+  },
+  {
+    q: "What is a Mission?",
+    a: "A goal with a date and the sources that cover it. You explain each concept, sit a mock interview, and get a readiness report that says ready only when every concept is proven.",
+  },
+  {
+    q: "Why is it invite only?",
+    a: "We are opening slowly so the hosted models stay affordable and every early user gets a good first week. If your address is on the list, signing up works today.",
+  },
+  {
+    q: "Can I use my own AI key?",
+    a: "Soon. With your own key Polymath stays free and everything is unlocked; you pay your provider directly. Pro, at $10 a month, will be for people who would rather we run the models.",
+  },
+];
+
+export default function LandingPage({ searchParams }: { searchParams: SearchParams }) {
+  return (
+    <div className="lp">
+      <header className="lp-nav lp-frame">
+        <a href="#top" className="lp-wordmark">
+          Polymath
+        </a>
+        <nav aria-label="On this page" className="lp-nav-links">
+          <a href="#how">How it works</a>
+          <a href="#agents">For agent users</a>
+          <a href="#pricing">Pricing</a>
+          <a href="#faq">FAQ</a>
+        </nav>
+        <EntryLink entry="sign-in" searchParams={searchParams} className="lp-button lp-button-small">
           Open the app
-        </Link>
+        </EntryLink>
       </header>
 
-      <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-6">
-        <section className="flex flex-1 flex-col justify-center py-20">
-          <h1 className="max-w-3xl text-[clamp(2.75rem,7vw,4.25rem)] font-bold leading-[1.05] tracking-[-0.02em]">
-            <span className="inline-flex items-center rounded-[0.6em] bg-success-wash px-[0.32em] py-[0.04em] text-foreground">
-              Understanding
+      <main id="top">
+        <section className="lp-hero lp-frame" aria-labelledby="hero-title">
+          <h1 id="hero-title" className="lp-hero-title">
+            <span className="lp-hero-line">
+              Read it.
+              <span className="lp-slot" aria-hidden="true" data-ui>
+                <span className="lp-slot-shutter">
+                  <span className="lp-slot-face lp-slot-saved">
+                    <span className="lp-slot-meta">Saved from arxiv.org</span>
+                    <span className="lp-slot-main">Attention Is All You Need</span>
+                    <span className="lp-slot-meta">12-minute read</span>
+                  </span>
+                  <span className="lp-slot-face lp-slot-asked">
+                    <span className="lp-slot-meta">Today, question 1 of 5</span>
+                    <span className="lp-slot-main">Why does attention get expensive on long inputs?</span>
+                  </span>
+                </span>
+              </span>
             </span>{" "}
-            is the bottleneck.
+            <span className="lp-hero-line">Prove it.</span>
           </h1>
-
-          <p className="mt-8 max-w-xl text-lg leading-relaxed text-muted-foreground">
-            Polymath turns everything entering your world (mail, files, pages, ideas) into an ordered, trustworthy plan.
-          </p>
-
-          <div className="mt-10 flex flex-wrap items-center gap-3">
-            <Link
-              href="/sign-up"
-              className="rounded-lg bg-primary px-6 py-3 text-body font-medium text-primary-foreground transition-opacity hover:opacity-90"
-            >
-              Get early access
-            </Link>
-            <Suspense
-              fallback={
-                <Link
-                  href="/sign-in"
-                  className="rounded-lg border border-border bg-card px-6 py-3 text-body font-medium transition-colors hover:bg-muted"
-                >
-                  Sign in
-                </Link>
-              }
-            >
-              <SignInLink searchParams={searchParams} />
-            </Suspense>
+          <div className="lp-hero-foot">
+            <p className="lp-lead">
+              Everything you read or watch becomes knowledge you can prove you have. Polymath turns your own captures
+              into a few minutes of practice a day.
+            </p>
+            <div className="lp-hero-action">
+              <EntryLink entry="sign-up" searchParams={searchParams} className="lp-button">
+                Get started
+              </EntryLink>
+              <p className="lp-note">Free, and invite only for now.</p>
+            </div>
           </div>
         </section>
 
-        <section aria-label="What Polymath is" className="pb-24">
-          <div className="panel grid overflow-hidden rounded-2xl sm:grid-cols-3">
-            {features.map(({ n, title, body }) => (
-              <article
-                key={n}
-                className="flex flex-col gap-3 border-border p-6 max-sm:border-b sm:max-[640px]:border-b sm:[&:not(:first-child)]:border-l max-sm:[&:not(:first-child)]:border-t"
-              >
-                <span className="text-muted-foreground text-body-dense">{n}</span>
-                <h2 className="text-title font-semibold">{title}</h2>
-                <p className="text-sm leading-relaxed text-muted-foreground">{body}</p>
-              </article>
+        <section id="how" className="lp-section lp-frame" aria-labelledby="how-title">
+          <h2 id="how-title" className="lp-heading lp-rise">
+            How it sticks
+          </h2>
+          <ol className="lp-bar" data-ui>
+            {stages.map((stage) => (
+              <li key={stage.id} className={`lp-stage lp-stage-${stage.id} lp-rise`}>
+                <span className="lp-stage-block">
+                  <span className="lp-stage-when">{stage.when}</span>
+                </span>
+                <span className="lp-stage-text">{stage.text}</span>
+              </li>
+            ))}
+          </ol>
+        </section>
+
+        <section className="lp-section lp-frame lp-split" aria-labelledby="practice-title">
+          <div className="lp-split-text">
+            <h2 id="practice-title" className="lp-heading lp-heading-md lp-rise">
+              Five minutes a day
+            </h2>
+            <p className="lp-body lp-rise">
+              Each morning Polymath asks a few questions written from what you saved, shows the passage behind every
+              answer, and brings back the ones you missed until they stick. Try one.
+            </p>
+          </div>
+          <div className="lp-quiz lp-rise" data-ui>
+            <p className="lp-quiz-meta">From “Attention Is All You Need”, saved yesterday</p>
+            <fieldset>
+              <legend id="quiz-q" className="lp-quiz-q">
+                Why does self-attention get expensive on long inputs?
+              </legend>
+              <label className="lp-option">
+                <input type="radio" name="answer" value="right" />
+                <span>
+                  Every token is compared with every other token, so the work grows with the square of the length.
+                </span>
+              </label>
+              <label className="lp-option">
+                <input type="radio" name="answer" value="wrong-a" />
+                <span>Each token has to wait for the one before it, as in a recurrent network.</span>
+              </label>
+              <label className="lp-option">
+                <input type="radio" name="answer" value="wrong-b" />
+                <span>The vocabulary grows with the length of the input.</span>
+              </label>
+            </fieldset>
+            <p className="lp-feedback lp-feedback-right">
+              Right. Doubling the input quadruples the comparisons. This one comes back in four days.
+            </p>
+            <p className="lp-feedback lp-feedback-wrong">
+              Not quite. Self-attention compares every token with every other one, so doubling the input quadruples the
+              work. This one comes back tomorrow.
+            </p>
+          </div>
+        </section>
+
+        <section id="agents" className="lp-section lp-agents" aria-labelledby="agents-title">
+          <div className="lp-frame lp-agents-top">
+            <h2 id="agents-title" className="lp-heading lp-heading-md lp-rise">
+              Understand what your agent built
+            </h2>
+            <p className="lp-body lp-rise">
+              Claude Code and Codex now write more than anyone can read. The Polymath plugin for Claude Code explains a
+              change in plain words, asks you five questions about it, and turns what you miss into tomorrow’s practice.
+              Coming soon.
+            </p>
+          </div>
+          <div
+            className="lp-specimens"
+            aria-label="Example: the agent wrote 412 lines; you could answer 3 of 5 questions about them"
+          >
+            <figure className="lp-specimen">
+              <span aria-hidden="true">+412</span>
+              <figcaption>Lines your agent wrote today</figcaption>
+            </figure>
+            <figure className="lp-specimen lp-specimen-inverse">
+              <span aria-hidden="true">3/5</span>
+              <figcaption>Questions you could answer about them</figcaption>
+            </figure>
+          </div>
+        </section>
+
+        <section className="lp-section lp-frame lp-split lp-split-mirror" aria-labelledby="missions-title">
+          <div className="lp-report lp-rise" data-ui>
+            <p className="lp-report-head">
+              <span>Mission: systems design interview</span>
+              <span>December 4</span>
+            </p>
+            <ul>
+              {report.map((row) => (
+                <li key={row.concept} className={`lp-report-row lp-verdict-${row.verdict.toLowerCase()}`}>
+                  <span>{row.concept}</span>
+                  <span className="lp-report-verdict">{row.verdict}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="lp-report-overall">
+              Not ready yet. Work on rate limiting and leader election before the date.
+            </p>
+          </div>
+          <div className="lp-split-text">
+            <h2 id="missions-title" className="lp-heading lp-heading-md lp-rise">
+              Know you’re ready before the day
+            </h2>
+            <p className="lp-body lp-rise">
+              A Mission is a goal with a date and the sources that cover it. You explain each concept in your own words,
+              sit a mock interview, and get a readiness report. It says ready only when every concept is proven.
+            </p>
+          </div>
+        </section>
+
+        <section id="pricing" className="lp-pricing" aria-labelledby="pricing-title">
+          <div className="lp-frame">
+            <h2 id="pricing-title" className="lp-heading lp-pricing-title lp-rise">
+              Free, or <span className="lp-price">$10</span> a month.
+            </h2>
+            <div className="lp-pricing-foot">
+              <ul className="lp-plans lp-rise">
+                <li>
+                  <strong>Free</strong>
+                  <span>Open now, by invitation. Everything you see on this page.</span>
+                </li>
+                <li>
+                  <strong>Your own key</strong>
+                  <span>
+                    Coming soon. Bring an AI provider key; everything is unlocked and you pay the provider directly.
+                  </span>
+                </li>
+                <li>
+                  <strong>Pro, $10 a month</strong>
+                  <span>Coming soon. We run the models for you, nothing to set up.</span>
+                </li>
+              </ul>
+              <EntryLink entry="sign-up" searchParams={searchParams} className="lp-button lp-rise">
+                Get started free
+              </EntryLink>
+            </div>
+          </div>
+        </section>
+
+        <section id="faq" className="lp-section lp-frame lp-faq" aria-labelledby="faq-title">
+          <h2 id="faq-title" className="lp-heading lp-rise">
+            Questions, answered
+          </h2>
+          <div className="lp-faq-list">
+            {faqs.map(({ q, a }) => (
+              <details key={q} className="lp-faq-item">
+                <summary>{q}</summary>
+                <p>{a}</p>
+              </details>
             ))}
           </div>
         </section>
       </main>
+
+      <footer className="lp-footer">
+        <div className="lp-frame lp-footer-top">
+          <div>
+            <p className="lp-footer-invite">Start with something you read today.</p>
+            <EntryLink entry="sign-up" searchParams={searchParams} className="lp-button lp-button-inverse">
+              Get started
+            </EntryLink>
+          </div>
+          <nav aria-label="Footer" className="lp-footer-links">
+            <EntryLink entry="sign-in" searchParams={searchParams} className="">
+              Sign in
+            </EntryLink>
+            <a href="#how">How it works</a>
+            <a href="#pricing">Pricing</a>
+            <a href="#faq">FAQ</a>
+          </nav>
+        </div>
+        <p className="lp-frame lp-legal">
+          <span>© 2026 Polymath</span>
+          <span>Invite only during early access</span>
+        </p>
+        <p className="lp-footer-name" aria-hidden="true">
+          Polymath
+        </p>
+      </footer>
     </div>
   );
 }

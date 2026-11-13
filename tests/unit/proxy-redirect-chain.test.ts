@@ -194,3 +194,31 @@ describe("the proxy's route space covers the App Router tree", () => {
     }
   });
 });
+
+describe("the landing page's way in (/sign-in and /sign-up)", () => {
+  it.each(["/sign-in", "/sign-up"])("lets a signed-out visitor see the %s form", async (path) => {
+    expect(await runAs(`${path}?redirect_url=%2Fpolymath`, false)).toBeUndefined();
+  });
+
+  it.each(["/sign-in", "/sign-up"])("sends a signed-in visitor on %s straight to the workspace", async (path) => {
+    const response = await runAs(path, true);
+    expect(response?.status).toBe(307);
+    expect(response?.headers.get("location")).toBe("https://axiom.test/polymath");
+  });
+
+  it("keeps the destination the visitor was headed for, as a path or a same-origin URL", async () => {
+    for (const target of ["/polymath/notes?doc=1", "https://axiom.test/polymath/notes?doc=1"]) {
+      const response = await runAs(`/sign-in?redirect_url=${encodeURIComponent(target)}`, true);
+      expect(response?.headers.get("location")).toBe("https://axiom.test/polymath/notes?doc=1");
+    }
+  });
+
+  it.each(["https://evil.test/polymath", "//evil.test/x"])("never follows %s off the origin", async (target) => {
+    const response = await runAs(`/sign-in?redirect_url=${encodeURIComponent(target)}`, true);
+    expect(response?.headers.get("location")).toBe("https://axiom.test/polymath");
+  });
+
+  it("leaves Clerk's own steps alone while a session is being completed", async () => {
+    expect(await runAs("/sign-in/sso-callback", true)).toBeUndefined();
+  });
+});
