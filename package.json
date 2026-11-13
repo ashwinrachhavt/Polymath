@@ -32,7 +32,7 @@
     "test:ci": "sh scripts/reset-test-db.sh && vitest run"
   },
   "dependencies": {
-    "@ai-sdk/openai": "^4.0.108",
+    "@ai-sdk/openai": "^4.0.114",
     "@base-ui/react": "^1.9.0",
     "@clerk/nextjs": "7.9.21",
     "@excalidraw/excalidraw": "^0.18.1",
