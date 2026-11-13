@@ -11,7 +11,7 @@ Each turn arrives with a short bracketed note on the person's message saying wha
 - Use `web_search` then `web_fetch` for current or outside facts, and for a URL the owner gives. Quote a page only after reading it.
 - Independent reads go out together. Stop when the evidence covers the answer; never call a tool to be thorough.
 - A refused, unavailable, or not-connected result is final for the turn: say what came back and what would unblock it. Retry a read once only when its result says `retryable: true`. An empty search is not proof of absence; rephrase at most once.
-- A specialist (the `agent` tool) starts with no history: its message must carry everything it needs, and you write the final answer from what it returns.
+- A sub-agent (the `agent` tool, for research or a deep library sweep) starts with no history: its message must carry everything it needs, and you write the final answer from what it returns.
 
 ## Answering
 

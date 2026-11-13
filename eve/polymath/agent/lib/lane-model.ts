@@ -11,7 +11,7 @@
  *   them, and is told to answer with what it has;
  * - tool results: trimmed to a budget, harder for earlier turns, so pages read
  *   three turns ago stop costing tokens on every later step;
- * - the lane note rides at the end of the person's latest message, after the
+ * - the lane's skill rides at the end of the person's latest message, after the
  *   cached prefix (system, tools, history), never in the system prompt.
  *
  * Pure: no eve or database import, so specs can drive it with plain prompts.
@@ -102,7 +102,7 @@ export function trimToolResults(prompt: readonly Message[]): Message[] {
   });
 }
 
-/** The lane note appended to the person's latest message (the tail, after the cached prefix). */
+/** The lane's skill appended to the person's latest message (the tail, after the cached prefix). */
 function withNote(prompt: readonly Message[], note: string): Message[] {
   const index = lastUserIndex(prompt);
   if (index < 0) return [...prompt];
@@ -115,8 +115,8 @@ function withNote(prompt: readonly Message[], note: string): Message[] {
 }
 
 export type LaneDecision = {
-  /** True inside a specialist copy (it has no delegation tool of its own). */
-  inSpecialist: boolean;
+  /** True inside a sub-agent (it has no delegation tool of its own). */
+  inSubAgent: boolean;
   steps: number;
   estimatedInputTokens: number;
   /** True when a cap was reached and this call must answer without tools. */
@@ -126,8 +126,8 @@ export type LaneDecision = {
 /** Apply the lane to one model call. Returns the options to send and what was decided. */
 export function applyLane(options: CallOptions, route: TurnRoute): { options: CallOptions; decision: LaneDecision } {
   const tools = options.tools ?? [];
-  const inSpecialist = !tools.some((tool) => tool.name === DELEGATE_TOOL);
-  const policy = policyFor(route, inSpecialist);
+  const inSubAgent = !tools.some((tool) => tool.name === DELEGATE_TOOL);
+  const policy = policyFor(route, inSubAgent);
   const allowed = visibleTools(policy, route);
   const shown = tools.filter((tool) => allowed.has(tool.name));
 
@@ -137,8 +137,8 @@ export function applyLane(options: CallOptions, route: TurnRoute): { options: Ca
     shown.length > 0 && (steps >= policy.maxSteps - 1 || estimatedInputTokens >= policy.maxInputTokens);
 
   const note = forcedAnswer
-    ? `${policy.note} This is the last step for this turn: answer now from what you have, and say in one line what you could not check.`
-    : policy.note;
+    ? `${policy.skill} This is the last step for this turn: answer now from what you have, and say in one line what you could not check.`
+    : policy.skill;
 
   const next: CallOptions = {
     ...options,
@@ -146,7 +146,7 @@ export function applyLane(options: CallOptions, route: TurnRoute): { options: Ca
     tools: shown.length > 0 ? shown : undefined,
     toolChoice: shown.length === 0 ? undefined : forcedAnswer ? { type: "none" } : options.toolChoice,
   };
-  return { options: next, decision: { inSpecialist, steps, estimatedInputTokens, forcedAnswer } };
+  return { options: next, decision: { inSubAgent, steps, estimatedInputTokens, forcedAnswer } };
 }
 
 /**

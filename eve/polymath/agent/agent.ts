@@ -11,8 +11,9 @@ import { routeForTurn } from "./lib/route";
  *
  * Every turn is routed first (lib/route.ts → src/domains/agents/turn-routing.ts)
  * and the lane decides the turn: which model answers, which tools it sees, its
- * step and token caps, and whether a specialist copy does the gathering
- * (src/domains/agents/lane-policy.ts, enforced by lib/lane-model.ts).
+ * step and token caps, and whether a sub-agent (research, deep library
+ * search) does the gathering (src/domains/agents/lane-policy.ts, enforced by
+ * lib/lane-model.ts).
  *
  * The run freezes its model at start (`agent_runs.model`, copied from the
  * profile's `model_policy.primary`), so a conversation cannot change model
@@ -55,7 +56,14 @@ export default defineAgent({
           process.env.GEMINI_AGENT_MODEL ??
           DEFAULT_MODEL_ID;
         const workspaceId = typeof attributes?.workspaceId === "string" ? attributes.workspaceId : null;
-        const route = await routeForTurn({ sessionId: ctx.session.id, workspaceId, messages: ctx.messages });
+        // eve's resolver type omits the lineage a sub-agent session carries at runtime.
+        const parent = (ctx.session as { parent?: { rootSessionId?: string } }).parent;
+        const route = await routeForTurn({
+          sessionId: ctx.session.id,
+          parentSessionId: parent?.rootSessionId,
+          workspaceId,
+          messages: ctx.messages,
+        });
         const model = catalogModel(route.lane === "quick" ? smallModelId() : runModel);
         return { model: withLane(model, route), modelContextWindowTokens: CONTEXT_WINDOW_TOKENS };
       },

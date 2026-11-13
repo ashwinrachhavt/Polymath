@@ -1,5 +1,5 @@
 /*
- * The session a Polymath run is bound to. A specialist copy (started through
+ * The session a Polymath run is bound to. A sub-agent (a copy started through
  * the `agent` tool) runs in its own eve session, but it works for the root
  * session's run: its tool calls are authorized against that run's frozen
  * policy, and its spend and tool calls are recorded there.

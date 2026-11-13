@@ -49,7 +49,7 @@ async function runIdOf(ctx: HookContext): Promise<string | null> {
 }
 
 /**
- * The run a session's spend and tool calls count against: a specialist copy's
+ * The run a session's spend and tool calls count against: a sub-agent's
  * are its root conversation's. Messages and lifecycle use `runIdOf`, so a
  * copy's reply to its parent never enters the person's thread.
  */
@@ -126,7 +126,7 @@ export default defineHook({
             runId,
             workspaceId,
             usage: event.data.usage as Record<string, unknown>,
-            // A specialist copy's steps share the root's run but not its turn
+            // A sub-agent's steps share the root's run but not its turn
             // numbering, so its session id keeps the coordinates distinct.
             source: {
               turnId: event.data.turnId,

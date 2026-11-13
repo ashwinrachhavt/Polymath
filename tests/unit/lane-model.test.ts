@@ -64,12 +64,27 @@ describe("tool visibility", () => {
     expect(names(next)).not.toContain("eve__search");
   });
 
-  it("gives a research turn only the delegation tool, and the specialist copy the gathering tools", () => {
+  it("gives a research turn only the sub-agent tool, and the research sub-agent the web", () => {
     expect(names(applyLane(options([user("research X")]), route("research")).options)).toEqual(["agent"]);
-    const copyTools = ROOT_TOOLS.filter((t) => t.name !== "agent");
-    const { options: copy, decision } = applyLane(options([user("brief")], copyTools), route("research"));
-    expect(decision.inSpecialist).toBe(true);
-    expect(names(copy)).toEqual(["web_search", "web_fetch"]);
+    const subAgentTools = ROOT_TOOLS.filter((t) => t.name !== "agent");
+    const { options: sub, decision } = applyLane(options([user("brief")], subAgentTools), route("research"));
+    expect(decision.inSubAgent).toBe(true);
+    expect(names(sub)).toEqual(["web_search", "web_fetch"]);
+  });
+
+  it("lets a library question delegate a deep sweep to the library sub-agent", () => {
+    expect(names(applyLane(options([user("everything I saved on X")]), route("answer", true)).options)).toContain(
+      "agent",
+    );
+    const subAgentTools = ROOT_TOOLS.filter((t) => t.name !== "agent");
+    const { options: sub } = applyLane(options([user("brief")], subAgentTools), route("answer", true));
+    expect(names(sub)).toEqual(["documents_search", "wiki_read"]);
+  });
+
+  it("keeps tutoring in the one loop: no sub-agent, the lane's own tools", () => {
+    const tools = names(applyLane(options([user("teach me")]), route("tutor")).options);
+    expect(tools).not.toContain("agent");
+    expect(tools).toEqual(["web_search", "web_fetch"]);
   });
 });
 

@@ -18,6 +18,13 @@ import { catalogModel } from "./model";
 
 const MEMO_LIMIT = 500;
 const memo = new Map<string, Promise<TurnRoute>>();
+/** Each session's latest decision, so a sub-agent works in its parent turn's lane. */
+const latestBySession = new Map<string, Promise<TurnRoute>>();
+
+function remember<V>(map: Map<string, V>, key: string, value: V): void {
+  map.set(key, value);
+  if (map.size > MEMO_LIMIT) map.delete(map.keys().next().value as string);
+}
 
 type Message = { role: string; content: unknown };
 
@@ -83,17 +90,27 @@ async function logRoute(sessionId: string, workspaceId: string, route: TurnRoute
 
 export function routeForTurn(input: {
   sessionId: string;
+  /** Set inside a sub-agent: the session that delegated to it. */
+  parentSessionId?: string;
   workspaceId: string | null;
   messages: readonly Message[];
 }): Promise<TurnRoute> {
+  // A sub-agent's message is its parent's brief, not the person's words: it
+  // works in the lane the parent's turn was routed to.
+  const inherited = input.parentSessionId ? latestBySession.get(input.parentSessionId) : undefined;
+  if (inherited) return inherited;
+
   const text = latestUserText(input.messages);
   const key = `${input.sessionId}\u0000${text}`;
   const known = memo.get(key);
-  if (known) return known;
+  if (known) {
+    remember(latestBySession, input.sessionId, known);
+    return known;
+  }
 
   const decided = routeTurn({ text, judge: judgeFor(input.workspaceId), smallModel: smallModel() });
-  memo.set(key, decided);
-  if (memo.size > MEMO_LIMIT) memo.delete(memo.keys().next().value as string);
+  remember(memo, key, decided);
+  remember(latestBySession, input.sessionId, decided);
   if (input.workspaceId) {
     const workspaceId = input.workspaceId;
     void decided.then((route) => logRoute(input.sessionId, workspaceId, route));
