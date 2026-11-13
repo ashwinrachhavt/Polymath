@@ -95,9 +95,9 @@ export async function getCheck(auth: AuthContext, explainerId: string) {
   };
 }
 
-export type CheckAnswer = { questionId: string; value: string | null };
+type CheckAnswer = { questionId: string; value: string | null };
 
-export type CheckResult = {
+type CheckResult = {
   correct: number;
   total: number;
   passed: boolean;

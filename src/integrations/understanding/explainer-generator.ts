@@ -16,7 +16,7 @@ import { drizzleQuotaStore, withQuota, type QuotaStore } from "@/integrations/pr
  * seam with the shared quota ledger, like every other generator.
  */
 
-export type ExplainerInput = {
+type ExplainerInput = {
   repo: string;
   commit: string;
   summary: string;
@@ -40,7 +40,7 @@ const responseSchema = z.object({
   concepts: z.array(z.string().min(1)).min(1).max(12),
 });
 
-export type GeneratedExplainer = z.infer<typeof responseSchema>;
+type GeneratedExplainer = z.infer<typeof responseSchema>;
 
 export interface ExplainerGenerator {
   readonly name: string;

@@ -9,7 +9,7 @@ import { conceptName } from "@/domains/knowledge/concepts";
  * that actually changed.
  */
 
-export type ExplainerPart = {
+type ExplainerPart = {
   title: string;
   story: string;
   refs: Array<{ path: string; line?: number }>;
@@ -24,7 +24,7 @@ export type ExplainerParts = {
   concepts: string[];
 };
 
-export type ExplainerMeta = { repo: string; commit: string; range: string | null };
+type ExplainerMeta = { repo: string; commit: string; range: string | null };
 
 const MAX_CONCEPTS = 8;
 

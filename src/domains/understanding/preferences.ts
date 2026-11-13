@@ -10,8 +10,8 @@ import { understandingPreferences } from "./schema";
  * preference screens, so two tabs cannot silently overwrite each other.
  */
 
-export const QUESTION_COUNTS = [5, 6, 7, 8, 9, 10] as const;
-export const DIFFICULTIES = ["easier", "standard", "harder"] as const;
+const QUESTION_COUNTS = [5, 6, 7, 8, 9, 10] as const;
+const DIFFICULTIES = ["easier", "standard", "harder"] as const;
 
 export type UnderstandingPreferences = {
   autoSuggest: boolean;

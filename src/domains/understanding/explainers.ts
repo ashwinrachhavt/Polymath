@@ -18,7 +18,7 @@ import { codeExplainers } from "./schema";
 /** A sitting passes at four right in five, rounded up. One definition for the answer and the stored check. */
 export const PASS_MARK = 0.8;
 
-export type ExplainerView = {
+type ExplainerView = {
   id: string;
   status: "pending" | "ready" | "failed";
   error: string | null;
@@ -127,7 +127,7 @@ export function ownedExplainer(auth: Pick<AuthContext, "workspaceId" | "userId">
   );
 }
 
-export type ExplainerRequest = {
+type ExplainerRequest = {
   repo: string;
   commit: string;
   range: string | null;

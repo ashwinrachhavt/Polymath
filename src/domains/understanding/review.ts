@@ -20,7 +20,7 @@ import { withTransaction } from "@/lib/db-transaction";
  * recording the same sitting twice adds the cards once.
  */
 
-export type ReviewItem = {
+type ReviewItem = {
   prompt: string;
   answer: string;
   evidence: Omit<FlashcardEvidence, "source">;

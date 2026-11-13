@@ -17,9 +17,9 @@ import { db } from "@/lib/db";
  * shown once and lost on the next try is not understanding to skip over.
  */
 
-export type UnderstandingLevel = "known" | "shaky" | "unassessed";
+type UnderstandingLevel = "known" | "shaky" | "unassessed";
 
-export type KnownConcept = { term: string; level: UnderstandingLevel; correct: number; missed: number };
+type KnownConcept = { term: string; level: UnderstandingLevel; correct: number; missed: number };
 
 type Evidence = { correct: number; missed: number; lastCorrect: boolean | null; unaidedCorrect: number };
 
