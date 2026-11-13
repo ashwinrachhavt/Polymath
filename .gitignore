@@ -106,3 +106,7 @@ evals/retrieval/results/
 # Docs are kept locally, not in the repo.
 docs/
 
+
+# Python bytecode (the stone art script)
+__pycache__/
+*.pyc
