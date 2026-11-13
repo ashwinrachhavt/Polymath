@@ -61,8 +61,9 @@ own() {
 pw="$(own POLYMATH_DB_PASSWORD 24)"
 bridge="$(own EVE_BRIDGE_SECRET 32)"
 gateway="$(own EVE_GATEWAY_SECRET 32)"
-# The invite list is the server's own (README "Invite only"): set on the VM,
-# kept across pushes, never copied from the laptop, where it stays unset.
+# The optional invite list is the server's own (README "Invite only"): kept
+# across pushes when set on the VM, never copied from the laptop. Off unless
+# someone adds it there.
 allowed=""
 [ -f "$home/.env" ] && allowed="$(grep -m1 '^POLYMATH_ALLOWED_EMAILS=' "$home/.env" | cut -d= -f2- || true)"
 tmp="$(mktemp "$home/.env.XXXXXX")"

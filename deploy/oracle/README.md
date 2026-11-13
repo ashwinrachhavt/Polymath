@@ -78,24 +78,19 @@ To go back to private-only, remove both, run
 `sudo docker compose up -d caddy` in `/opt/docling`, set `ORACLE_PUBLIC_URL`
 to `http://localhost:3300`, then run `make oracle-env` and `make oracle-deploy`.
 
-## Invite only
+## Invite only (off)
 
-Clerk's development instance allows sign-ups, and any account could otherwise
-spend the model keys on the server. `POLYMATH_ALLOWED_EMAILS` (comma-separated)
-restricts the app to listed, verified Clerk addresses. An unlisted account gets
-`/invite-only` (pages) or a 403 (API), and is never provisioned
-(`src/lib/access-allowlist.ts`). The list is the server's own: set it once in
-`/opt/polymath/.env` on the VM. `push-env.sh` keeps it and never copies it from
-the laptop. Then run `make oracle-deploy`.
+The app supports an invite list: `POLYMATH_ALLOWED_EMAILS` (comma-separated)
+admits only listed, verified Clerk addresses, sends anyone else to
+`/invite-only`, and never provisions them (`src/lib/access-allowlist.ts`).
+It is **off on this server** at the owner's request, so any Clerk account can
+sign in. Protection against strangers spending the model keys comes from the
+per-account free-allowance limits instead. To turn the list on, add the line
+to `/opt/polymath/.env` on the VM and run `make oracle-deploy`. `push-env.sh`
+keeps it once it is there and never copies it from the laptop.
 
-Close sign-ups in Clerk as well: in the dashboard for this app's Development
-instance, open Configure, then Restrictions, and either switch the sign-up mode
-to Restricted or turn on the Allowlist with your address.
-
-What answers without a session: `/landing`, `/sign-in`, `/sign-up`, the eve
-health routes, and `/api/webhooks`. eve session routes need a signed bridge
-token (401 without one), `/api/v1` and `/api/mcp` answer 401, and the internal
-outbox and cron routes answer 404 (no secret is set).
+Sign-ups can also be closed in Clerk: in the dashboard for this app's
+Development instance, open Configure, then Restrictions.
 
 ## Deploy
 
