@@ -12,7 +12,7 @@ export default function SignUpPage() {
   return (
     <main className="flex flex-1 items-center justify-center p-6">
       <ClerkAuthProvider>
-        <SignUp forceRedirectUrl={afterAuthUrl} />
+        <SignUp fallbackRedirectUrl={afterAuthUrl} signInUrl="/sign-in" />
       </ClerkAuthProvider>
     </main>
   );

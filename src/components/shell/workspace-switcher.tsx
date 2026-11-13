@@ -11,8 +11,8 @@ import { Tooltip } from "@/components/ui/tooltip";
 import type { SwitchableWorkspace } from "@/domains/identity/resolve";
 
 /*
- * The workspace switcher (tenancy activation, spec D2), mounted beside the
- * breadcrumb: the workspace is the root of where-you-are. Radix Popover per
+ * The workspace switcher (tenancy activation, spec D2), mounted at the top of
+ * the rail: the workspace is the root of where-you-are. Radix Popover per
  * the account menu — focus trap, escape, and focus return come from the
  * primitive, not hand-rolled here.
  *
@@ -35,7 +35,7 @@ export type WorkspaceSwitcherData = {
   pendingInvitations: { workspaceId: string; workspaceName: string; role: string }[];
 };
 
-export function WorkspaceSwitcher({ data }: { data: WorkspaceSwitcherData | null }) {
+export function WorkspaceSwitcher({ data, rail = false }: { data: WorkspaceSwitcherData | null; rail?: boolean }) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -75,9 +75,18 @@ export function WorkspaceSwitcher({ data }: { data: WorkspaceSwitcherData | null
             className={cn(
               "hover:bg-muted focus-visible:ring-ring flex h-8 min-w-0 items-center gap-1.5 rounded-md px-2 outline-none",
               "focus-visible:ring-3 data-[state=open]:bg-muted data-[state=open]:text-foreground",
+              // In the rail the trigger fills the row, so its label has the width of the rail.
+              rail && "hover:bg-sidebar-accent data-[state=open]:bg-sidebar-accent flex-1",
             )}
           >
-            <span className="max-w-[140px] truncate text-body-dense font-medium">{label}</span>
+            <span
+              className={cn(
+                "truncate text-body-dense font-medium",
+                rail ? "min-w-0 flex-1 text-left" : "max-w-[140px]",
+              )}
+            >
+              {label}
+            </span>
             <ChevronsUpDown aria-hidden className="text-muted-foreground size-3.5 shrink-0" />
           </button>
         </Popover.Trigger>

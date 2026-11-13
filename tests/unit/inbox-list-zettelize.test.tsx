@@ -81,6 +81,7 @@ function job(id: string, title: string): GenerationJobView {
     href: null,
     notice: null,
     error: null,
+    progress: null,
     createdAt: "2026-11-12T10:00:00.000Z",
     updatedAt: "2026-11-12T10:00:00.000Z",
   };

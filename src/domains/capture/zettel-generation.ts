@@ -153,6 +153,8 @@ export async function requestZettelJobs(
 export type ZettelizeDeps = {
   /** Test seam: a fake extractor keeps the pass free and deterministic. */
   extractor?: ZettelExtractor;
+  /** Says which step the pass is on; the job runner passes run.progress. */
+  progress?: (step: string) => Promise<void>;
 };
 
 /**
@@ -207,11 +209,14 @@ export async function zettelizeSource(
   source: ZettelSource,
   deps: ZettelizeDeps = {},
 ): Promise<ZettelCardsResult & { documentId: string }> {
+  await deps.progress?.("Filing it");
   const documentId = source.kind === "capture" ? await documentForCapture(auth, source.id) : source.id;
 
+  await deps.progress?.("Reading it");
   const extraction = await extractDocument(auth, { documentId });
   if (!extraction.ok) throw new GenerationJobFailure(`The text could not be read: ${extraction.error}`);
 
+  await deps.progress?.("Writing zettels");
   let pass: ZettelCardsResult;
   try {
     pass = await createZettelsFromSource(auth, { documentId, extractor: deps.extractor });
@@ -271,10 +276,10 @@ const jobInput = z.object({
   source: z.object({ kind: z.enum(["capture", "document"]), id: z.uuid() }),
 });
 
-const zettelizeRunner: GenerationJobRunner = async (auth, raw) => {
+const zettelizeRunner: GenerationJobRunner = async (auth, raw, run) => {
   const parsed = jobInput.safeParse(raw);
   if (!parsed.success) throw new Error("malformed zettelize job input");
-  const pass = await zettelizeSource(auth, parsed.data.source);
+  const pass = await zettelizeSource(auth, parsed.data.source, { progress: (step) => run.progress(step) });
   return { href: "/polymath/ideas", notice: zettelJobNotice(pass) };
 };
 
