@@ -1,0 +1,11 @@
+{
+  "name": "polymath",
+  "owner": { "name": "Polymath" },
+  "plugins": [
+    {
+      "name": "polymath",
+      "source": "./plugins/polymath",
+      "description": "Explain a code change in Polymath, then check your understanding in the terminal."
+    }
+  ]
+}
