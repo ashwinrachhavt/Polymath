@@ -12,7 +12,8 @@ LANGFUSE_COMPOSE := docker compose -f compose.langfuse.yaml
 .PHONY: install dev migrate check e2e search-up search-down search-logs \
 	langfuse-up langfuse-down langfuse-logs \
 	queue-up queue-down queue-logs eve-up eve-down eve-logs eve-status eve \
-	local-stack-up local-stack-down up up-prod down logs restart seed-taxonomy
+	local-stack-up local-stack-down up up-prod down logs restart seed-taxonomy \
+	oracle-tunnel oracle-deploy oracle-rollback oracle-status oracle-env oracle-backup-pull
 
 install:
 	pnpm install
@@ -141,6 +142,28 @@ langfuse-down:
 
 langfuse-logs:
 	$(LANGFUSE_COMPOSE) logs -f langfuse-web langfuse-worker
+
+# Private deploy on the Oracle VM (deploy/oracle/README.md). The VM address
+# comes from ~/.config/polymath/oracle.env, never from this repo.
+REF ?= origin/main
+
+oracle-tunnel:
+	deploy/oracle/tunnel.sh
+
+oracle-deploy:
+	deploy/oracle/deploy.sh $(REF)
+
+oracle-rollback:
+	deploy/oracle/deploy.sh --rollback
+
+oracle-status:
+	deploy/oracle/deploy.sh --status
+
+oracle-env:
+	deploy/oracle/push-env.sh
+
+oracle-backup-pull:
+	deploy/oracle/pull-backup.sh
 
 # ASH-272: seed the knowledge taxonomy catalog. Dry run; -- --apply writes.
 seed-taxonomy:

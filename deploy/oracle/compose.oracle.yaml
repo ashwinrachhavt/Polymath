@@ -1,0 +1,351 @@
+# Polymath on the Oracle VM: the laptop stack minus Langfuse and dozzle, with
+# the web app as a production build. Driven by deploy.sh; see README.md.
+#
+# Only `web` is reachable from outside the compose networks: on the VM's
+# loopback (127.0.0.1:3000, for the SSH tunnel and deploy checks) and, for
+# public HTTPS, through the `polymath-edge` network that the existing Caddy in
+# /opt/docling joins (README "Public access"). Nothing here publishes a port
+# on a public interface.
+#
+# Memory and CPU limits are ceilings: memory sums to about 21 GB of the VM's
+# 24 GB, leaving room for the host and the separate Transactwise docling stack
+# in /opt/docling; CPU caps keep one runaway service from starving the rest.
+#
+# Variables (deploy.sh sets them):
+#   POLYMATH_RELEASE   commit sha; the app image is polymath-app:<sha>
+#   POLYMATH_HOME      /opt/polymath — env file, searxng settings, backups
+
+# Docker's json-file logs grow without bound by default; 3 x 10 MB per container.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
+x-app: &app
+  image: polymath-app:${POLYMATH_RELEASE:?set POLYMATH_RELEASE}
+  env_file:
+    - path: ${POLYMATH_HOME:-/opt/polymath}/.env
+      required: true
+  # Every app setting and secret comes from the env file (push-env.sh), which
+  # sets NODE_ENV=production and the in-network service URLs. Nothing secret
+  # is written here, passed as a build arg, or baked into the image.
+  environment: &app-env
+    TZ: ${LOCAL_TZ:-UTC}
+  logging: *logging
+  networks:
+    - default
+    - search
+  restart: unless-stopped
+
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_DB: axiom
+      POSTGRES_USER: axiom
+      POSTGRES_PASSWORD: ${POLYMATH_DB_PASSWORD:?set POLYMATH_DB_PASSWORD in the env file}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U axiom -d axiom"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    mem_limit: 3g
+    cpus: 2
+    logging: *logging
+    shm_size: 256m
+    restart: unless-stopped
+
+  migrate:
+    <<: *app
+    command: ["pnpm", "db:migrate"]
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+    profiles: ["migrate"]
+
+  web:
+    <<: *app
+    build:
+      context: ../..
+      dockerfile: deploy/oracle/Dockerfile
+      # The app's public origin, inlined into the client bundle. Not a secret.
+      args:
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3300}
+        # Version-skew protection (Dockerfile): the release's commit sha.
+        NEXT_DEPLOYMENT_ID: ${POLYMATH_RELEASE}
+      secrets:
+        - app_env
+    # Both eve agents on loopback ports, then `next start` (see start-web.sh).
+    command: ["bash", "deploy/oracle/start-web.sh"]
+    environment:
+      <<: *app-env
+      HOSTNAME: 0.0.0.0
+      PORT: "3000"
+    ports:
+      - "127.0.0.1:3000:3000"
+    networks:
+      default:
+      search:
+      edge:
+        # Caddy reaches the app as polymath-web:3000; nothing else is on edge.
+        aliases: [polymath-web]
+    volumes:
+      # eve's default Workflow world keeps run state here; keep it across
+      # releases so in-flight agent runs survive a deploy.
+      - eve-polymath:/app/eve/polymath/.eve/.workflow-data
+      - eve-specialist:/app/eve/specialist/.eve/.workflow-data
+      # Uploaded originals (POLYMATH_OBJECT_STORE=local-disk). Served only
+      # through authenticated routes; backed up nightly with the database.
+      - blobs:/data/blobs
+    depends_on:
+      db:
+        condition: service_healthy
+      docling:
+        condition: service_started
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "Promise.all(['/landing','/eve/polymath/v1/health','/eve/specialist/v1/health'].map(p=>fetch('http://127.0.0.1:3000'+p).then(r=>{if(!r.ok)throw 0}))).then(()=>process.exit(0),()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+    mem_limit: 4g
+    cpus: 2
+
+  worker:
+    <<: *app
+    command: ["pnpm", "exec", "tsx", "scripts/outbox-worker.ts"]
+    # Extraction runs here and reads the uploaded originals.
+    volumes:
+      - blobs:/data/blobs
+    depends_on:
+      db:
+        condition: service_healthy
+    # The worker has no port; healthy means it can still reach Postgres.
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('net').connect(5432,'db').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    mem_limit: 2g
+    cpus: 1
+
+  # The CPU build is the arm64 one; the same pinned image the Transactwise
+  # docling uses, so the VM stores it once.
+  docling:
+    image: ghcr.io/docling-project/docling-serve-cpu:v1.38.2
+    environment:
+      DOCLING_SERVE_ENABLE_UI: "false"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python3",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5001/health', timeout=5)",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    mem_limit: 4g
+    cpus: 2
+    logging: *logging
+    restart: unless-stopped
+
+  # Private metasearch for the agents' web.search tool and Firecrawl.
+  searxng:
+    image: searxng/searxng:latest
+    environment:
+      SEARXNG_BASE_URL: "http://searxng:8080/"
+    volumes:
+      - ${POLYMATH_HOME:-/opt/polymath}/searxng/settings.yml:/etc/searxng/settings.yml:ro
+    depends_on:
+      redis-search:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    mem_limit: 512m
+    cpus: 0.5
+    logging: *logging
+    restart: unless-stopped
+    networks:
+      - search
+
+  redis-search:
+    image: redis:alpine
+    command: redis-server --bind 0.0.0.0 --save "" --appendonly no --maxmemory 192mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    mem_limit: 256m
+    cpus: 0.25
+    logging: *logging
+    restart: unless-stopped
+    networks:
+      - search
+
+  firecrawl:
+    image: ghcr.io/firecrawl/firecrawl:latest
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "3002"
+      ENV: local
+      REDIS_URL: redis://redis-search:6379
+      REDIS_RATE_LIMIT_URL: redis://redis-search:6379
+      PLAYWRIGHT_MICROSERVICE_URL: http://firecrawl-playwright:3000/scrape
+      POSTGRES_HOST: firecrawl-postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+      USE_DB_AUTHENTICATION: "false"
+      NUQ_RABBITMQ_URL: amqp://firecrawl-rabbitmq:5672
+      SEARXNG_ENDPOINT: http://searxng:8080
+      SEARXNG_ENGINES: duckduckgo,brave
+      SEARXNG_CATEGORIES: general
+      # The image starts an api plus ~10 worker processes; 2 per queue (not
+      # the laptop's 4) and a 4 GB cap keep its boot clear of the OOM killer.
+      NUM_WORKERS_PER_QUEUE: "2"
+      CRAWL_CONCURRENT_REQUESTS: "5"
+      MAX_CONCURRENT_JOBS: "3"
+      BROWSER_POOL_SIZE: "3"
+      LOGGING_LEVEL: info
+    depends_on:
+      redis-search:
+        condition: service_healthy
+      firecrawl-postgres:
+        condition: service_healthy
+      firecrawl-rabbitmq:
+        condition: service_healthy
+      searxng:
+        condition: service_healthy
+      firecrawl-playwright:
+        condition: service_started
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('net').connect(3002,'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    mem_limit: 4g
+    cpus: 1
+    logging: *logging
+    restart: unless-stopped
+    networks:
+      - search
+
+  firecrawl-playwright:
+    image: ghcr.io/firecrawl/playwright-service:latest
+    environment:
+      PORT: "3000"
+      ALLOW_LOCAL_WEBHOOKS: "false"
+      BLOCK_MEDIA: "true"
+      MAX_CONCURRENT_PAGES: "5"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp/.cache:noexec,nosuid,size=512m
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('net').connect(3000,'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    mem_limit: 2g
+    cpus: 1
+    logging: *logging
+    restart: unless-stopped
+    networks:
+      - search
+
+  firecrawl-postgres:
+    image: ghcr.io/firecrawl/nuq-postgres:latest
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    volumes:
+      - firecrawl-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    mem_limit: 1g
+    cpus: 0.5
+    logging: *logging
+    restart: unless-stopped
+    networks:
+      - search
+
+  firecrawl-rabbitmq:
+    image: rabbitmq:3-management
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    mem_limit: 768m
+    cpus: 0.5
+    logging: *logging
+    restart: unless-stopped
+    networks:
+      - search
+
+networks:
+  search:
+    driver: bridge
+  # Shared with the Caddy container in /opt/docling, which terminates HTTPS
+  # on 80/443 and proxies the public name to polymath-web:3000.
+  edge:
+    name: polymath-edge
+    driver: bridge
+
+volumes:
+  pgdata:
+  firecrawl-pgdata:
+  eve-polymath:
+  eve-specialist:
+  blobs:
+
+secrets:
+  app_env:
+    file: ${POLYMATH_HOME:-/opt/polymath}/.env
