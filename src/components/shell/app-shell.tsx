@@ -58,7 +58,7 @@ export function AppShell({
   // snapshot first flashed stale rows before the stored workspace replaced them.
   const waitingForStorage = !hydrated && isBrowserPreviewPath(pathname);
   const headerless = isConversationSurface(pathname);
-  // Notes is a focus surface: no rail, no hover zone, only the opener.
+  // Notes is a focus surface: the sidebar starts closed there and opens from the opener or `[`.
   const focusSurface = isFocusSurface(pathname);
 
   return (
@@ -76,7 +76,7 @@ export function AppShell({
         className={cn("flex flex-1", headerless || focusSurface ? "shell-conversation" : "min-h-dvh")}
         data-interface-mode={interfaceMode}
       >
-        <SideNav focusSurface={focusSurface} />
+        <SideNav focusSurface={focusSurface} workspaceSwitcher={workspaceSwitcher} />
         <div className={cn("flex min-w-0 flex-1 flex-col", headerless && "min-h-0")}>
           {!headerless ? (
             <TopBar
@@ -85,7 +85,6 @@ export function AppShell({
               interfaceMode={interfaceMode}
               notifications={notifications}
               shellPreferences={shellPreferences}
-              workspaceSwitcher={workspaceSwitcher}
             />
           ) : null}
           <main

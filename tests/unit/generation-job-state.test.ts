@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  isSettled,
   jobSignature,
+  progressFraction,
+  progressLabel,
   STALLED_COPY,
   statusesThatMayBecome,
   toJobView,
@@ -26,6 +29,7 @@ const base: GenerationJobFacts = {
   attempt: 1,
   result: null,
   error: null,
+  progress: null,
   createdAt: new Date("2026-11-11T10:00:00Z"),
   updatedAt: new Date("2026-11-11T10:00:05Z"),
   stalled: false,
@@ -36,7 +40,29 @@ describe("generation job state", () => {
     expect(statusesThatMayBecome("running")).toEqual(["queued"]);
     expect(statusesThatMayBecome("ready")).toEqual(["running"]);
     expect(statusesThatMayBecome("failed")).toEqual(["running"]);
-    expect(statusesThatMayBecome("queued")).toEqual(["failed"]);
+    expect(statusesThatMayBecome("queued")).toEqual(["failed", "cancelled"]);
+    expect(statusesThatMayBecome("cancelled")).toEqual(["queued", "running"]);
+  });
+
+  it("treats ready, failed and cancelled as settled, and nothing else", () => {
+    expect(["queued", "running"].map((s) => isSettled(s as never))).toEqual([false, false]);
+    expect(["ready", "failed", "cancelled"].map((s) => isSettled(s as never))).toEqual([true, true, true]);
+  });
+
+  it("shows progress only while the job runs", () => {
+    const progress = { step: "Crawling", done: 12, total: 25 };
+    expect(toJobView({ ...base, progress })).toMatchObject({ progress });
+    expect(toJobView({ ...base, status: "ready", progress, result: { href: "/x", notice: null } }).progress).toBeNull();
+    expect(toJobView({ ...base, progress, stalled: true }).progress).toBeNull();
+  });
+
+  it("labels a step with its counts and turns them into a fraction", () => {
+    expect(progressLabel({ step: "Crawling", done: 12, total: 25 })).toBe("Crawling 12/25");
+    expect(progressLabel({ step: "Reading pages", done: 3, total: null })).toBe("Reading pages 3");
+    expect(progressLabel({ step: "Reading page", done: null, total: null })).toBe("Reading page");
+    expect(progressFraction({ step: "Crawling", done: 5, total: 20 })).toBe(0.25);
+    expect(progressFraction({ step: "Crawling", done: 5, total: null })).toBeNull();
+    expect(progressFraction(null)).toBeNull();
   });
 
   it("shows a running job whose heartbeat stopped as failed with a reason", () => {
@@ -61,7 +87,16 @@ describe("generation job state", () => {
   });
 
   it("gives a retried job a new signature even when its status repeats", () => {
-    expect(jobSignature({ status: "failed", attempt: 1 })).not.toBe(jobSignature({ status: "failed", attempt: 2 }));
+    expect(jobSignature({ status: "failed", attempt: 1, progress: null })).not.toBe(
+      jobSignature({ status: "failed", attempt: 2, progress: null }),
+    );
+  });
+
+  it("gives every progress step its own signature, so the stream sends each one", () => {
+    const at = (done: number) =>
+      jobSignature({ status: "running", attempt: 1, progress: { step: "Crawling", done, total: 25 } });
+    expect(at(3)).not.toBe(at(4));
+    expect(at(4)).toBe(at(4));
   });
 });
 

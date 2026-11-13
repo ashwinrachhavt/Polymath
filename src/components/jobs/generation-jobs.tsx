@@ -9,6 +9,7 @@ import {
   GENERATION_JOB_EVENT,
   isSettled,
   jobSignature,
+  progressLabel,
   SLOW_TO_START_AFTER_MS,
   type GenerationJobView,
 } from "@/domains/jobs/state";
@@ -28,12 +29,13 @@ const viewSchema = z.object({
   id: z.string(),
   kind: z.string(),
   subject: z.string().nullable(),
-  status: z.enum(["queued", "running", "ready", "failed"]),
+  status: z.enum(["queued", "running", "ready", "failed", "cancelled"]),
   title: z.string(),
   attempt: z.number(),
   href: z.string().nullable(),
   notice: z.string().nullable(),
   error: z.string().nullable(),
+  progress: z.object({ step: z.string(), done: z.number().nullable(), total: z.number().nullable() }).nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -86,8 +88,14 @@ export function useGenerationJobs(): Jobs {
 /** A job's state in the shared status-line vocabulary (WorkStatus). */
 export function jobWorkState(job: GenerationJobView): WorkState {
   if (job.status === "failed") return { phase: "failed", label: job.error ?? "This could not be made." };
+  if (job.status === "cancelled") return { phase: "failed", label: "Stopped." };
   if (job.status === "ready") return { phase: "done", label: job.notice ?? "Ready." };
-  if (job.status === "running") return { phase: "working", label: "Being made. You can leave this page." };
+  if (job.status === "running") {
+    return {
+      phase: "working",
+      label: job.progress ? `${progressLabel(job.progress)}…` : "Being made. You can leave this page.",
+    };
+  }
   if (slowToStart.has(jobSignature(job) + job.id)) {
     return { phase: "queued", label: "Taking longer than usual to start. Still trying." };
   }
@@ -137,7 +145,8 @@ export function GenerationJobsMount() {
       const known = jobs.get(job.id);
       if (known && jobSignature(known) === jobSignature(job)) return;
       trackGenerationJob(job);
-      if (!isSettled(job.status)) return;
+      // A stop is the person's own click; it needs no announcement.
+      if (!isSettled(job.status) || job.status === "cancelled") return;
       notify(
         job.status === "ready"
           ? `${job.title} is ready.${job.notice ? ` ${job.notice}` : ""}`
