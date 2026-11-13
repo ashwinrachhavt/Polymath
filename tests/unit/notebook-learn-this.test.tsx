@@ -47,10 +47,28 @@ vi.mock("@/app/(workspace)/projects/[projectId]/notebook/explain-actions", () =>
 vi.mock("@/components/feedback/rate-output-action", () => ({ rateOutputAction: vi.fn() }));
 vi.mock("@/app/(workspace)/learn/actions", () => ({ completeQuizAttemptAction: vi.fn() }));
 
-const { LearningStudio } = await import("@/app/(workspace)/projects/[projectId]/notebook/learning-studio");
+const { LearningStudio: LearningStudioView } =
+  await import("@/app/(workspace)/projects/[projectId]/notebook/learning-studio");
+const { useSurfaceJobs } = await import("@/components/jobs/generation-job-rows");
+const { LEARNING_JOB_KIND_PREFIX, learningJobSubject } = await import("@/domains/learning/job-names");
 const { LearningResults } = await import("@/app/(workspace)/projects/[projectId]/notebook/learning-results");
 
 const PROJECT = "11111111-1111-4111-8111-111111111111";
+
+/** The page owns the jobs hook (so the rail can show a dot while they run); the tests mount it the same way. */
+function LearningStudio({
+  projectId,
+  sources,
+}: {
+  projectId: string;
+  sources: { documentId: string; title: string }[];
+}) {
+  const surface = useSurfaceJobs([], {
+    kindPrefix: LEARNING_JOB_KIND_PREFIX,
+    subject: learningJobSubject.notebook(projectId),
+  });
+  return <LearningStudioView projectId={projectId} sources={sources} surface={surface} />;
+}
 const SOURCES = [
   { documentId: "22222222-2222-4222-8222-222222222222", title: "Chapter one" },
   { documentId: "33333333-3333-4333-8333-333333333333", title: "Chapter two" },
@@ -82,7 +100,7 @@ function openSheet() {
 describe("Learn this", () => {
   it("offers Quiz, Flashcards and Explain It, and the default uses every ready source with no count", async () => {
     actions.make.mockResolvedValue({ ok: true, job: accepted });
-    render(<LearningStudio projectId={PROJECT} sources={SOURCES} initialJobs={[]} />);
+    render(<LearningStudio projectId={PROJECT} sources={SOURCES} />);
 
     const sheet = openSheet();
     expect(within(sheet).getByText("Uses all 2 ready sources.")).toBeTruthy();
@@ -107,7 +125,7 @@ describe("Learn this", () => {
 
   it("Adjust sends exactly the chosen sources and count", async () => {
     actions.make.mockResolvedValue({ ok: true, job: accepted });
-    render(<LearningStudio projectId={PROJECT} sources={SOURCES} initialJobs={[]} />);
+    render(<LearningStudio projectId={PROJECT} sources={SOURCES} />);
 
     const sheet = openSheet();
     fireEvent.click(within(sheet).getByText("Adjust"));
@@ -127,7 +145,7 @@ describe("Learn this", () => {
   });
 
   it("holds Create back, with the reason, for a count outside 5 to 100 or no source", () => {
-    render(<LearningStudio projectId={PROJECT} sources={SOURCES} initialJobs={[]} />);
+    render(<LearningStudio projectId={PROJECT} sources={SOURCES} />);
     const sheet = openSheet();
     fireEvent.click(within(sheet).getByText("Adjust"));
     fireEvent.change(within(sheet).getByRole("spinbutton", { name: /How many questions/ }), {
@@ -144,7 +162,7 @@ describe("Learn this", () => {
   });
 
   it("says why nothing can be made before a source is ready", () => {
-    render(<LearningStudio projectId={PROJECT} sources={[]} initialJobs={[]} />);
+    render(<LearningStudio projectId={PROJECT} sources={[]} />);
     const sheet = openSheet();
     expect(within(sheet).getByText("A source must finish reading before it can be studied.")).toBeTruthy();
     expect((within(sheet).getByRole("button", { name: "Create" }) as HTMLButtonElement).disabled).toBe(true);
@@ -152,7 +170,7 @@ describe("Learn this", () => {
 
   it("shows the server's reason when making fails", async () => {
     actions.explain.mockResolvedValue({ ok: false, error: "Choose sources that belong to this notebook." });
-    render(<LearningStudio projectId={PROJECT} sources={SOURCES} initialJobs={[]} />);
+    render(<LearningStudio projectId={PROJECT} sources={SOURCES} />);
     const sheet = openSheet();
     fireEvent.click(within(sheet).getByRole("radio", { name: /Explain It/ }));
     // Explain It sets its own length: no count to adjust.

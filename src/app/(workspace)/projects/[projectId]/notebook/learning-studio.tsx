@@ -1,15 +1,14 @@
 "use client";
 
-import Link from "next/link";
 import { useRef, useState, useTransition } from "react";
+import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { IconButton } from "@/components/ui/icon-button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { WorkStatus } from "@/components/work-status";
 import { MAX_ITEM_COUNT, MIN_ITEM_COUNT } from "@/domains/learning/item-count";
-import { GenerationJobRows, useSurfaceJobs } from "@/components/jobs/generation-job-rows";
+import { GenerationJobRows, type SurfaceJobs } from "@/components/jobs/generation-job-rows";
 import { trackGenerationJob } from "@/components/jobs/generation-jobs";
-import type { GenerationJobView } from "@/domains/jobs/state";
-import { LEARNING_JOB_KIND_PREFIX, learningJobSubject } from "@/domains/learning/job-names";
 import { makeNotebookLearningAction } from "./learning-actions";
 import { startNotebookExplainItAction } from "./explain-actions";
 import { randomId } from "@/lib/random-id";
@@ -44,17 +43,13 @@ function sourcesLine(chosen: number, ready: number): string {
 export function LearningStudio({
   projectId,
   sources,
-  initialJobs,
+  surface,
 }: {
   projectId: string;
   sources: LearningSource[];
-  /** This Notebook's unfinished quiz and deck jobs when the page rendered. */
-  initialJobs: GenerationJobView[];
+  /** This Notebook's learning jobs. The page owns the hook so the rail can show a dot while they run. */
+  surface: SurfaceJobs;
 }) {
-  const surface = useSurfaceJobs(initialJobs, {
-    kindPrefix: LEARNING_JOB_KIND_PREFIX,
-    subject: learningJobSubject.notebook(projectId),
-  });
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<Kind>("quiz");
   // Only the user's changes are held; everything else follows the ready sources,
@@ -129,16 +124,8 @@ export function LearningStudio({
   }
 
   return (
-    <section aria-labelledby="learning-title" className="panel rounded-xl p-3">
+    <section aria-label="Learn" className="panel rounded-xl p-3">
       <div className="flex items-center justify-between gap-2">
-        <h2 id="learning-title" className="text-body-dense font-medium">
-          Learning
-        </h2>
-        <Link href="/learn" className="text-xs text-muted-foreground underline-offset-4 hover:underline">
-          Up next
-        </Link>
-      </div>
-      <div className="mt-3 flex flex-wrap items-center gap-3">
         <Button
           onClick={() => {
             setError(null);
@@ -147,12 +134,7 @@ export function LearningStudio({
         >
           Learn this
         </Button>
-        <Link
-          href={"/projects/" + projectId + "/notebook/graph"}
-          className="text-xs text-muted-foreground underline-offset-4 hover:underline"
-        >
-          Open idea graph
-        </Link>
+        <IconButton label="Up next in Learn" href="/learn" icon={<ArrowRight aria-hidden />} size="icon-sm" />
       </div>
       {summary ? (
         <p role="status" className="mt-2 text-xs leading-relaxed text-muted-foreground">

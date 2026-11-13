@@ -3,7 +3,6 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { io } from "next/cache";
 import { Skeleton } from "@/components/ui/skeleton";
-import { PageHeader } from "@/components/page-header";
 import { getAuthContext } from "@/lib/auth";
 import { listGeneratedArtifacts } from "@/domains/knowledge/artifacts";
 import {
@@ -196,9 +195,9 @@ async function NotebookData({
 
   return (
     <>
-      <PageHeader title={project.title} />
       <NotebookSurface
         notebook={{ projectId: project.id, title: project.title }}
+        description={project.description?.trim() || null}
         sources={sources}
         artifacts={generated}
         vault={vault.map((doc) => ({ id: doc.id, title: doc.title }))}
@@ -228,56 +227,58 @@ async function NotebookData({
         runs={runs.map((run) => ({ id: run.id, state: run.state, objective: run.objective }))}
         runDrafts={Object.fromEntries(runDrafts)}
         learningJobs={learningJobs}
+        studioSegment={quizId && learning.quiz?.id === quizId ? "learn" : "create"}
+        practiceBusy={challenges.some((challenge) => challenge.status === "preparing")}
+        practice={
+          <PracticePanel
+            projectId={project.id}
+            documentIds={sources
+              .filter((source) => source.readiness === "ready")
+              .slice(0, 8)
+              .map((source) => source.documentId)}
+            items={challenges.map(({ createdAt, ...challenge }) => ({ ...challenge, ago: timeAgo(createdAt) }))}
+          />
+        }
         results={
-          <>
-            <PracticePanel
-              projectId={project.id}
-              documentIds={sources
-                .filter((source) => source.readiness === "ready")
-                .slice(0, 8)
-                .map((source) => source.documentId)}
-              items={challenges.map(({ createdAt, ...challenge }) => ({ ...challenge, ago: timeAgo(createdAt) }))}
-            />
-            <LearningResults
-              projectId={project.id}
-              initiallyOpen={quizId && learning.quiz?.id === quizId ? "quiz" : null}
-              results={{
-                quiz: learning.quiz && {
-                  id: learning.quiz.id,
-                  title: learning.quiz.title,
-                  ago: timeAgo(learning.quiz.createdAt),
-                  questionCount: learning.quiz.questions.length,
-                  note: describeShortfall({
-                    made: learning.quiz.questions.length,
-                    requested: learning.quiz.requested,
-                    stoppedBy: learning.quiz.stoppedBy,
-                  }),
-                  quiz: learning.quiz,
-                  rating: quizFeedback,
-                },
-                deck: learning.deck && {
-                  id: learning.deck.id,
-                  title: learning.deck.title,
-                  ago: timeAgo(learning.deck.createdAt),
-                  cardCount: learning.deck.cardCount,
-                  note: describeShortfall({
-                    made: learning.deck.cardCount,
-                    requested: learning.deck.requested,
-                    stoppedBy: learning.deck.stoppedBy,
-                  }),
-                  dueCards: learning.deck.cards,
-                  rating: deckFeedback,
-                },
-                explain: learning.explain && {
-                  id: learning.explain.id,
-                  title: learning.explain.title,
-                  ago: timeAgo(learning.explain.createdAt),
-                  session: learning.explain,
-                  ratings: Object.fromEntries(explainRatings),
-                },
-              }}
-            />
-          </>
+          <LearningResults
+            projectId={project.id}
+            initiallyOpen={quizId && learning.quiz?.id === quizId ? "quiz" : null}
+            results={{
+              quiz: learning.quiz && {
+                id: learning.quiz.id,
+                title: learning.quiz.title,
+                ago: timeAgo(learning.quiz.createdAt),
+                questionCount: learning.quiz.questions.length,
+                note: describeShortfall({
+                  made: learning.quiz.questions.length,
+                  requested: learning.quiz.requested,
+                  stoppedBy: learning.quiz.stoppedBy,
+                }),
+                quiz: learning.quiz,
+                rating: quizFeedback,
+              },
+              deck: learning.deck && {
+                id: learning.deck.id,
+                title: learning.deck.title,
+                ago: timeAgo(learning.deck.createdAt),
+                cardCount: learning.deck.cardCount,
+                note: describeShortfall({
+                  made: learning.deck.cardCount,
+                  requested: learning.deck.requested,
+                  stoppedBy: learning.deck.stoppedBy,
+                }),
+                dueCards: learning.deck.cards,
+                rating: deckFeedback,
+              },
+              explain: learning.explain && {
+                id: learning.explain.id,
+                title: learning.explain.title,
+                ago: timeAgo(learning.explain.createdAt),
+                session: learning.explain,
+                ratings: Object.fromEntries(explainRatings),
+              },
+            }}
+          />
         }
       />
       {draftDetail && linkable ? (
