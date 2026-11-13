@@ -3,8 +3,8 @@
 import { useState, useTransition } from "react";
 import { rateDeckFlashcardAction } from "@/app/(workspace)/learn/actions";
 import { rateNotebookFlashcardAction } from "./flashcard-actions";
-import { ArtifactFeedback } from "@/app/(workspace)/artifacts/[artifactId]/artifact-feedback";
-import type { ArtifactRating } from "@/domains/knowledge/artifact-feedback";
+import { OutputRating } from "@/components/feedback/output-rating";
+import type { Rating } from "@/domains/feedback/ratings";
 
 type Card = {
   id: string;
@@ -33,7 +33,7 @@ export function FlashcardSession({
   deckId: string;
   title: string;
   initialCards: Card[];
-  rating: ArtifactRating | null;
+  rating: Rating | null;
 }) {
   const [cards] = useState(initialCards);
   const [index, setIndex] = useState(0);
@@ -107,7 +107,13 @@ export function FlashcardSession({
           <p className="mt-2 text-sm text-muted-foreground">
             These cards are scheduled for review. More will appear here when they are due.
           </p>
-          <ArtifactFeedback target={{ kind: "flashcard_deck", id: deckId }} rating={rating} />
+          <OutputRating
+            output={{ surface: "flashcards", id: deckId }}
+            initial={rating}
+            label="Rate this deck"
+            prompt="How are these cards?"
+            className="border-border mt-8 border-t pt-4"
+          />
         </div>
       )}
       {error ? (

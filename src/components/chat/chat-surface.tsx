@@ -8,6 +8,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { DictationButton } from "@/components/speech/dictation-button";
 import type { DocumentCitation } from "@/domains/knowledge/agent-search";
 import type { ChatBlock } from "@/domains/agents/stream-contract";
+import type { RecordedStep } from "@/domains/agents/agent-steps";
+import type { ChatRating } from "@/domains/feedback/ratings";
 import { useChatStream } from "./use-chat-stream";
 import { stageChipLabel, stageChipStatus } from "./stage-chip";
 import { makePending, stillPending, type PendingMessage } from "./pending-messages";
@@ -68,6 +70,10 @@ export type ChatSurfaceProps = {
    * reads as empty until the next event arrives.
    */
   initial?: ChatBlock[];
+  /** The run's recorded tool calls, so a reload shows each turn's steps (agent-steps.ts). */
+  initialSteps?: RecordedStep[];
+  /** The viewer's own ratings of this run's replies. */
+  ratings?: ChatRating[];
   placeholder?: string;
   /** Accessible name for the composer; pages that frame it as a reply pass their own. */
   composerLabel?: string;
@@ -116,6 +122,8 @@ export function ChatSurface({
   subject,
   optimisticMessage,
   initial,
+  initialSteps,
+  ratings,
   placeholder = "Ask about this",
   composerLabel = "Message",
   emptyText,
@@ -235,7 +243,10 @@ export function ChatSurface({
   // Set by a send: the owner's own message always scrolls into view, even when
   // they had scrolled up to reread something.
   const forceScrollRef = useRef(false);
-  const chat = useChatStream(runId, { onCitation, ...(initial?.length ? { initial: { blocks: initial } } : {}) });
+  const chat = useChatStream(runId, {
+    onCitation,
+    ...(initial?.length || initialSteps?.length ? { initial: { blocks: initial, steps: initialSteps } } : {}),
+  });
   // A reconnect pause keeps the run's blocks streaming — a pause, not a loss.
   const busy =
     chat.connection === "connecting" || chat.connection === "streaming" || chat.connection === "reconnecting";
@@ -450,6 +461,7 @@ export function ChatSurface({
           agent={agent}
           blocks={chat.blocks}
           tools={chat.tools}
+          ratings={ratings}
           citations={chat.citations}
           shownCitations={shownCitations}
           runId={runId}

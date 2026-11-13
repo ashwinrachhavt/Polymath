@@ -7,8 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Panel } from "@/components/workspace/ui";
 import { CoachMark } from "@/components/shell/coach-mark";
-import { ArtifactFeedback } from "@/app/(workspace)/artifacts/[artifactId]/artifact-feedback";
-import type { ArtifactRating } from "@/domains/knowledge/artifact-feedback";
+import { OutputRating } from "@/components/feedback/output-rating";
+import type { Rating } from "@/domains/feedback/ratings";
 import type { QuizForSitting } from "@/domains/learning/queries";
 import type { QuizPassage } from "@/domains/learning/quiz-passages";
 import { displayTitle } from "@/lib/display-text";
@@ -120,20 +120,12 @@ type SittingResult = {
  * that resets by remounting with a fresh key - React's documented reset, so
  * a retake needs no manual field-by-field unwind.
  */
-export function QuizRunner({ quiz, rating }: { quiz: QuizForSitting; rating: ArtifactRating | null }) {
+export function QuizRunner({ quiz, rating }: { quiz: QuizForSitting; rating: Rating | null }) {
   const [sitting, setSitting] = useState(0);
   return <Sitting key={sitting} quiz={quiz} rating={rating} onRetake={() => setSitting((s) => s + 1)} />;
 }
 
-function Sitting({
-  quiz,
-  rating,
-  onRetake,
-}: {
-  quiz: QuizForSitting;
-  rating: ArtifactRating | null;
-  onRetake: () => void;
-}) {
+function Sitting({ quiz, rating, onRetake }: { quiz: QuizForSitting; rating: Rating | null; onRetake: () => void }) {
   const hydrated = useHydrated();
   const shuffled = useMemo(
     () => new Map(quiz.questions.map((q) => [q.id, hydrated ? fisherYates(q.choices) : q.choices])),
@@ -284,7 +276,13 @@ function Sitting({
           })}
         </ul>
 
-        <ArtifactFeedback target={{ kind: "quiz", id: quiz.id }} rating={rating} />
+        <OutputRating
+          output={{ surface: "quiz", id: quiz.id }}
+          initial={rating}
+          label="Rate this quiz"
+          prompt="How was this quiz?"
+          className="border-border mt-8 border-t pt-4"
+        />
         <div className="mt-4 flex gap-2">
           <Button type="button" size="sm" variant="outline" onClick={retake}>
             Retake

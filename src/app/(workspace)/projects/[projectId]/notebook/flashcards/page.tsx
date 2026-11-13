@@ -1,6 +1,6 @@
 import { connection } from "next/server";
 import { getAuthContext } from "@/lib/auth";
-import { getArtifactFeedback } from "@/domains/knowledge/artifact-feedback";
+import { ratingOf } from "@/domains/feedback/ratings";
 import { notFound } from "next/navigation";
 import { FlashcardSession } from "../flashcard-session";
 import { getNotebookFlashcardDeckAction } from "../flashcard-actions";
@@ -22,7 +22,7 @@ export default async function NotebookFlashcardsPage({
   const result = await getNotebookFlashcardDeckAction({ projectId, deckId });
   if (!result.ok) notFound();
   const auth = await getAuthContext();
-  const rating = await getArtifactFeedback(auth, { kind: "flashcard_deck", id: deckId });
+  const rating = await ratingOf(auth, { surface: "flashcards", id: deckId });
   return (
     <div className="page-content">
       <div className="mb-5">

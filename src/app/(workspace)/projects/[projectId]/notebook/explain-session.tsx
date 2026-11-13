@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { OutputRating } from "@/components/feedback/output-rating";
+import type { Rating } from "@/domains/feedback/ratings";
 import { answerNotebookExplainItAction } from "./explain-actions";
 
 type Evidence = { quote: string; source: { documentId: string; extractionId: string; title: string } };
@@ -15,7 +17,16 @@ type Turn = {
 };
 type Session = { id: string; status: "active" | "completed"; title: string; turns: Turn[] };
 
-export function ExplainItSession({ projectId, session }: { projectId: string; session: Session }) {
+export function ExplainItSession({
+  projectId,
+  session,
+  ratings,
+}: {
+  projectId: string;
+  session: Session;
+  /** The learner's own ratings of each verdict, keyed by turn id. */
+  ratings: Record<string, Rating>;
+}) {
   const [answer, setAnswer] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -66,6 +77,14 @@ export function ExplainItSession({ projectId, session }: { projectId: string; se
                     The source did not provide enough evidence to verify this answer.
                   </p>
                 )}
+                {turn.feedback ? (
+                  <OutputRating
+                    output={{ surface: "explain", id: turn.id }}
+                    initial={ratings[turn.id] ?? null}
+                    label="Rate this feedback"
+                    className="mt-3"
+                  />
+                ) : null}
               </div>
             ) : null}
           </li>

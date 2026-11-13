@@ -39,6 +39,42 @@ const RETIREMENTS = [
   "src/db/migrations/0287_drop_zettel_proposals.sql",
 ];
 
+/*
+ * 0314 is not a pure drop (it creates llm_feedback and backfills it), so it
+ * cannot be re-applied like the retirements above. This is its retirement half:
+ * what 0266 resurrects that 0314 removed (artifact_feedback, run_events.feedback
+ * and its check, the 'user_feedback' run_review_kind value and the index on it).
+ * Every step is guarded, so it is a no-op on a schema 0266 did not touch.
+ */
+const RETIRE_0314 = `
+  drop table if exists artifact_feedback;
+  alter table run_events drop column if exists feedback;
+  do $$ begin
+    if exists (select 1 from pg_enum e join pg_type t on t.oid = e.enumtypid
+               where t.typname = 'run_review_kind' and e.enumlabel = 'user_feedback') then
+      drop index if exists run_reviews_one_feedback_per_run;
+      drop index if exists run_reviews_one_critique_per_run;
+      delete from run_reviews where kind = 'user_feedback';
+      alter table run_reviews alter column kind type text;
+      drop type run_review_kind;
+      create type run_review_kind as enum ('critique');
+      alter table run_reviews alter column kind type run_review_kind using kind::run_review_kind;
+      create unique index run_reviews_one_critique_per_run on run_reviews using btree (workspace_id, run_id) where kind = 'critique';
+    end if;
+  end $$;
+`;
+
+/**
+ * Replays 0266 as a database that has not yet run 0314 would see it: the
+ * script's run_reviews index is on the 'user_feedback' value 0314 removed, and
+ * a new enum value cannot be used in the transaction that adds it, so it is
+ * added first, on its own.
+ */
+async function replayConverge(script: string): Promise<void> {
+  await handle!.client.unsafe(`alter type run_review_kind add value if not exists 'user_feedback'`);
+  await handle!.client.unsafe(script);
+}
+
 async function schemaSnapshot(sql: postgres.Sql): Promise<string> {
   const columns = await sql`
     select table_name, column_name, data_type, is_nullable, column_default
@@ -69,6 +105,7 @@ async function restoreHeadSchema(): Promise<void> {
   for (const retireFile of RETIREMENTS) {
     await handle!.client.unsafe(readFileSync(retireFile, "utf8"));
   }
+  await handle!.client.unsafe(RETIRE_0314);
 }
 
 afterAll(async () => {
@@ -88,10 +125,10 @@ suite("0266 converge idempotency", () => {
     const script = readFileSync(CONVERGE_FILE, "utf8");
     expect(script).toContain("CREATE TABLE IF NOT EXISTS");
 
-    await handle.client.unsafe(script);
+    await replayConverge(script);
     await restoreHeadSchema();
     const afterFirst = await schemaSnapshot(handle.client);
-    await handle.client.unsafe(script);
+    await replayConverge(script);
     await restoreHeadSchema();
     const afterSecond = await schemaSnapshot(handle.client);
 
