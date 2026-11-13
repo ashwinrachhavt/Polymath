@@ -59,6 +59,7 @@ const makeExplainer: GenerationJobRunner = async (auth, raw, run) => {
   let artifactId = explainer.artifactId;
   let documentId = explainer.documentId;
   if (!artifactId || !documentId) {
+    await run.progress("Writing the explainer");
     const known = (await knownConcepts(auth))
       .filter((concept) => concept.level === "known")
       .map((concept) => concept.term);
@@ -79,6 +80,7 @@ const makeExplainer: GenerationJobRunner = async (auth, raw, run) => {
     ({ artifactId, documentId } = await writeExplainer(auth, explainer, parts, droppedRefs));
   }
 
+  await run.progress("Writing the check");
   const preferences = await getUnderstandingPreferences(auth);
   try {
     const quiz = await generateQuiz(auth, {
