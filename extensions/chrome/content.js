@@ -600,7 +600,79 @@
 
   // ── Message handler for side panel ──────────────────────────────────
 
+  // ── YouTube transcript, read in the person's own session ──────────────
+  //
+  // The popup's "Capture with transcript" asks this page for the video's
+  // transcript. It is read the way the page itself reads it: the caption track
+  // the watch page lists (fetched from youtube.com with the person's own
+  // cookies), else the rows of the page's transcript panel. Nothing here
+  // touches another site or another account, and nothing is read until the
+  // person asks. The decisions live in youtube-transcript-core.js.
+
+  async function transcriptFromCaptionTrack(Core, videoId) {
+    const watch = await fetch(`/watch?v=${videoId}`, { credentials: "same-origin" });
+    if (!watch.ok) return null;
+    const player = Core.playerResponseFromHtml(await watch.text());
+    const track = Core.pickTrack(Core.captionTracksOf(player), document.documentElement.lang);
+    if (!track) return { title: player && player.videoDetails && player.videoDetails.title, cues: [] };
+    const body = await fetch(Core.json3Url(track.baseUrl), { credentials: "same-origin" });
+    return {
+      title: player.videoDetails && player.videoDetails.title,
+      language: track.languageCode || null,
+      generated: track.kind === "asr",
+      cues: body.ok ? Core.cuesFromJson3(await body.text()) : [],
+    };
+  }
+
+  function transcriptPanelRows() {
+    return Array.from(document.querySelectorAll("ytd-transcript-segment-renderer")).map((row) => ({
+      time: (row.querySelector(".segment-timestamp") || {}).textContent,
+      text: (row.querySelector(".segment-text") || {}).textContent,
+    }));
+  }
+
+  async function transcriptFromPanel(Core) {
+    if (transcriptPanelRows().length === 0) {
+      const open = document.querySelector("ytd-video-description-transcript-section-renderer button");
+      if (open) open.click();
+      for (let waited = 0; waited < 3000 && transcriptPanelRows().length === 0; waited += 250) {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+    }
+    return { cues: Core.cuesFromPanelRows(transcriptPanelRows()), language: null, generated: false };
+  }
+
+  async function readYouTubeTranscript() {
+    const Core = window.PolymathYouTubeTranscript;
+    const videoId = Core && Core.videoIdFromUrl(location.href);
+    if (!videoId) return { ok: false, error: "Open a YouTube video first." };
+    let found = null;
+    try {
+      found = await transcriptFromCaptionTrack(Core, videoId);
+    } catch (error) {
+      found = null;
+    }
+    if (!found || found.cues.length === 0) {
+      try {
+        const fromPanel = await transcriptFromPanel(Core);
+        found = { ...fromPanel, title: found && found.title };
+      } catch (error) {
+        found = null;
+      }
+    }
+    const title = (found && found.title) || document.title.replace(/ - YouTube$/, "");
+    const transcript = found && Core.buildTranscript({ ...found, title, videoId });
+    if (!transcript) return { ok: false, error: "This video has no transcript to read." };
+    return { ok: true, transcript, title, url: location.href };
+  }
+
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (msg && msg.type === "AXIOM_READ_YT_TRANSCRIPT") {
+      readYouTubeTranscript().then(sendResponse, (error) =>
+        sendResponse({ ok: false, error: String((error && error.message) || error) }),
+      );
+      return true; // async response
+    }
     if (msg && msg.type === "GET_ARTICLE_TEXT") {
       // Use shared extractor for consistent extraction
       const extracted = window.AlfredExtract

@@ -6,6 +6,7 @@ import { canonicalVideoUrl, parseVideoId } from "@/integrations/youtube/transcri
 import { withTransaction } from "@/lib/db-transaction";
 import { documents } from "./schema";
 import { YOUTUBE_ABSORB_KIND, type YouTubeAbsorbInput } from "./youtube-absorb";
+import type { SuppliedTranscript } from "./youtube-transcript-schema";
 
 /*
  * Starting a YouTube capture. Nothing is fetched here: the transcript and its
@@ -25,7 +26,7 @@ export type QueueVideoResult =
 
 export async function queueYouTubeCapture(
   auth: AuthContext,
-  input: { url: string; captureId?: string },
+  input: { url: string; captureId?: string; transcript?: SuppliedTranscript },
 ): Promise<QueueVideoResult> {
   const videoId = parseVideoId(input.url);
   if (!videoId) return { ok: false, error: "That is not a YouTube video address." };
@@ -61,16 +62,20 @@ export async function queueYouTubeCapture(
   // A video whose text is already filed has nothing to fetch; a capture still gets it as its child.
   if (filed.fileId && !input.captureId) return { ok: true, documentId: filed.id, created: false, enqueued: false };
 
+  // A transcript the browser sent for a video that is not for this address is dropped, not trusted.
+  const transcript = input.transcript?.videoId === videoId ? input.transcript : undefined;
   const jobInput: YouTubeAbsorbInput = {
     documentId: filed.id,
     videoId,
     ...(input.captureId ? { captureId: input.captureId } : {}),
+    ...(transcript ? { transcript } : {}),
   };
   const { started } = await submitOrRetryGenerationJob(auth, {
     kind: YOUTUBE_ABSORB_KIND,
     // A captured video shows on its capture's row; a notebook's on its source row.
     subject: input.captureId ? `capture:${input.captureId}` : `document:${filed.id}`,
-    idempotencyKey: input.captureId ? `youtube:${filed.id}:capture:${input.captureId}` : `youtube:${filed.id}`,
+    // A sent transcript is its own request: it must not collide with an earlier job that fetched (and failed).
+    idempotencyKey: `${input.captureId ? `youtube:${filed.id}:capture:${input.captureId}` : `youtube:${filed.id}`}${transcript ? ":transcript" : ""}`,
     title: "Absorbing a YouTube video",
     input: jobInput,
   });

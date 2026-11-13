@@ -130,6 +130,9 @@
       // still load and deliver.
       raw_markdown: fields.raw_markdown || null,
       quality: fields.quality || null,
+      // A YouTube video's transcript read in the page (youtube-transcript-core.js);
+      // null for every other capture, and for entries saved before this field.
+      youtube_transcript: fields.youtube_transcript || null,
       // Base64 is used only for the bounded clipboard image; this entry remains
       // JSON-safe so it survives worker shutdowns and retries.
       image: fields.image || null,
@@ -160,6 +163,7 @@
     if (entry.mode) body.mode = entry.mode;
     if (entry.raw_markdown) body.raw_markdown = entry.raw_markdown;
     if (entry.quality) body.quality = entry.quality;
+    if (entry.youtube_transcript) body.youtube_transcript = entry.youtube_transcript;
     return body;
   }
 

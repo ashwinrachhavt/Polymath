@@ -132,6 +132,53 @@
     }
   });
 
+  // ── Capture a YouTube video with its transcript ────────────────────
+  //
+  // Offered on a YouTube watch page only. The page (in this person's own
+  // session) is asked for the transcript; the server then files it instead of
+  // trying to fetch one, which YouTube refuses from some hosts.
+
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab && tab.url && PolymathYouTubeTranscript.videoIdFromUrl(tab.url)) {
+      $("#btn-capture-transcript").hidden = false;
+    }
+  } catch {
+    // No tab to inspect: the button stays hidden.
+  }
+
+  $("#btn-capture-transcript").addEventListener("click", async () => {
+    const btn = $("#btn-capture-transcript");
+    btn.disabled = true;
+    btn.textContent = "Reading the transcript...";
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      const page = await chrome.tabs.sendMessage(tab.id, { type: "AXIOM_READ_YT_TRANSCRIPT" });
+      if (!page || !page.ok) {
+        flashStatus($("#quick-actions"), page && page.error ? page.error : "Could not read this video's transcript.", "error");
+        return;
+      }
+      const result = await AlfredAPI.captureVideoWithTranscript({
+        url: page.url,
+        title: page.title,
+        transcript: page.transcript,
+      });
+      flashStatus(
+        $("#quick-actions"),
+        result.delivered
+          ? "Video captured with its transcript."
+          : "Queued on this device. It syncs when Polymath is reachable.",
+        "success",
+      );
+      refreshOutbox();
+    } catch (err) {
+      flashStatus($("#quick-actions"), `Error: ${err.message}`, "error");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Capture with transcript";
+    }
+  });
+
   // ── Open Polymath's inbox ─────────────────────────────────────────────
 
   $("#btn-open-alfred").addEventListener("click", async () => {

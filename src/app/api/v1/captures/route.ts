@@ -6,6 +6,9 @@ import { problemResponse } from "@/lib/problems";
 import { ConflictError, createCapture } from "@/domains/capture/commands";
 import { listCaptures } from "@/domains/capture/queries";
 import { parseCaptureContextLenient } from "@/domains/capture/context";
+import { absorbCapturedVideo } from "@/domains/capture/link-reading";
+import { suppliedTranscriptSchema } from "@/domains/knowledge/youtube-transcript-schema";
+import { parseVideoId } from "@/integrations/youtube/transcript";
 
 /*
  * GET /api/v1/captures — the inbox queue (unprocessed by default).
@@ -20,6 +23,10 @@ import { parseCaptureContextLenient } from "@/domains/capture/context";
  * field: what the server accepts is stored, and anything else is dropped and
  * named in an additive `contextDropped: string[]` member of the 201 body. A
  * bad context is never a 422 - the words are always saved.
+ * A captured YouTube address may carry `youtube_transcript` (read by the
+ * companion in the person's own browser); it is used for the video's document
+ * instead of a server-side fetch, and attached to the existing capture when the
+ * address is already in the inbox.
  * CORS is scoped to the companion's origin; see src/lib/cors.ts.
  */
 
@@ -41,6 +48,10 @@ const captureRequest = z
     // Validated leniently below: a field this server does not accept is
     // dropped and named in the response, and the capture is still saved.
     context: z.unknown().optional(),
+    // A YouTube video's transcript, read by the companion in the person's own
+    // browser (the server cannot always fetch one). Used only for a video
+    // address; see domains/knowledge/youtube-transcript-schema.ts.
+    youtube_transcript: suppliedTranscriptSchema.optional(),
   })
   .refine((value) => Boolean(value.text?.trim() || value.url), {
     message: "Send text, a url, or both.",
@@ -73,7 +84,13 @@ export const POST = authedHandler(async (auth, request) => {
     return withCors(problemResponse(422, "invalid_input", "Send text, a url, or both (max 200k chars)."), origin);
   }
 
-  const { text, url, title, mode, raw_markdown, quality, context } = parsed.data;
+  const { text, url, title, mode, raw_markdown, quality, context, youtube_transcript } = parsed.data;
+  if (youtube_transcript && (!url || parseVideoId(url) !== youtube_transcript.videoId)) {
+    return withCors(
+      problemResponse(422, "invalid_input", "The transcript is for a different video than the address."),
+      origin,
+    );
+  }
   // A page grab arrives as { url, text }; a bare URL or a plain note is text-only.
   const body = text?.trim() || url || "";
   // An address that arrived with no text of its own is the address itself, not
@@ -96,12 +113,20 @@ export const POST = authedHandler(async (auth, request) => {
       quality,
       context: lenient.context,
       source: "companion",
+      youtubeTranscript: youtube_transcript,
       idempotencyKey,
     });
     // Additive member, present only when something was dropped.
     const created = lenient.dropped.length ? { capture, contextDropped: lenient.dropped } : { capture };
     return withCors(Response.json(created, { status: 201 }), origin);
   } catch (cause) {
+    if (cause instanceof ConflictError && cause.existingId && url && youtube_transcript) {
+      // The video is already in the inbox (captured earlier without a transcript,
+      // or after the server could not fetch one): the transcript is what this
+      // request adds, so attach it to that capture rather than answering 409.
+      await absorbCapturedVideo(auth, { captureId: cause.existingId, url, transcript: youtube_transcript });
+      return withCors(Response.json({ capture: { id: cause.existingId }, transcript: "attached" }), origin);
+    }
     if (cause instanceof ConflictError) {
       // Companion contract: type/code/title/status stay byte-exact; the id of
       // the capture that is already there is an additive member.

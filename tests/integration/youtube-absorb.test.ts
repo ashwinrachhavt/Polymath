@@ -135,6 +135,91 @@ describe("YouTube absorption (real Postgres, stubbed providers)", () => {
     });
   });
 
+  it("ends once, with a plain message pointing at the extension, when YouTube blocks the server", async () => {
+    const auth = await signIn("blocked");
+    const videoId = randomVideoId();
+    const fetchCaptions = vi.fn(async () => ({
+      ok: false as const,
+      blocked: true as const,
+      error: "YouTube cannot play this video: Sign in to confirm you\u2019re not a bot",
+    }));
+    const { documentId, job } = await absorb(auth, videoId, { fetchCaptions });
+    const copy =
+      "YouTube blocked the server. Open the video and capture it with the Polymath extension to bring its transcript in.";
+    expect(job).toMatchObject({ status: "failed", error: copy, attempt: 1 });
+    expect(fetchCaptions).toHaveBeenCalledTimes(1);
+    const [note] = await handle.db
+      .select()
+      .from(documentExtractions)
+      .where(eq(documentExtractions.documentId, documentId));
+    expect(note).toMatchObject({ status: "failed", error: copy });
+    // Nothing queues a second try, and the failure is never a task.
+    const { tasks } = await import("@/domains/work/schema");
+    expect(await handle.db.select().from(tasks).where(eq(tasks.workspaceId, auth.workspaceId))).toEqual([]);
+    expect(await handle.db.select().from(videoTranscripts).where(eq(videoTranscripts.videoId, videoId))).toEqual([]);
+  });
+
+  it("files the transcript the browser sent, without fetching, and leaves the shared cache alone", async () => {
+    const { queueYouTubeCapture } = await import("@/domains/knowledge/youtube-capture");
+    const { youtubeAbsorbRunner } = await import("@/domains/knowledge/youtube-absorb");
+    const { runGenerationJob } = await import("@/domains/jobs/commands");
+    const auth = await signIn("sent");
+    const videoId = randomVideoId();
+    // The server was blocked once; then the person captured it from their own browser.
+    const blocked = await absorb(auth, videoId, {
+      fetchCaptions: async () => ({ ok: false, blocked: true, error: "bot check" }),
+    });
+    expect(blocked.job.status).toBe("failed");
+
+    const sent = {
+      videoId,
+      title: "From my browser",
+      language: "en",
+      generated: false,
+      cues: [
+        { start: 0, duration: 2, text: "Sent line one." },
+        { start: 62, duration: 3, text: "Sent line two." },
+      ],
+    };
+    const queued = await queueYouTubeCapture(auth, {
+      url: `https://www.youtube.com/watch?v=${videoId}`,
+      transcript: sent,
+    });
+    if (!queued.ok) throw new Error(queued.error);
+    expect(queued.documentId).toBe(blocked.documentId);
+    const jobs = await handle.db
+      .select()
+      .from(generationJobs)
+      .where(
+        and(
+          eq(generationJobs.workspaceId, auth.workspaceId),
+          eq(generationJobs.subject, `document:${queued.documentId}`),
+        ),
+      );
+    const mine = jobs.find((row) => (row.input as { transcript?: unknown }).transcript);
+    const fetchCaptions = vi.fn();
+    await runGenerationJob(
+      { jobId: mine!.id, attempt: mine!.attempt },
+      { "knowledge.youtube": youtubeAbsorbRunner({ fetchCaptions }) },
+    );
+    expect(fetchCaptions).not.toHaveBeenCalled();
+    const [settled] = await handle.db.select().from(generationJobs).where(eq(generationJobs.id, mine!.id));
+    expect(settled).toMatchObject({
+      status: "ready",
+      result: { notice: "Read from the transcript your browser sent (1 min)." },
+    });
+    const [doc] = await handle.db.select().from(documents).where(eq(documents.id, queued.documentId));
+    expect(doc).toMatchObject({ title: "From my browser" });
+    expect(doc.fileId).not.toBeNull();
+    const [cues] = await handle.db
+      .select()
+      .from(youtubeTranscripts)
+      .where(eq(youtubeTranscripts.documentId, queued.documentId));
+    expect((cues.cues as Array<{ text: string }>).map((cue) => cue.text)).toEqual(["Sent line one.", "Sent line two."]);
+    // A client's transcript is this document's own: other workspaces never read it.
+    expect(await handle.db.select().from(videoTranscripts).where(eq(videoTranscripts.videoId, videoId))).toEqual([]);
+  });
+
   it("tries a failed video again when it is asked for again, and links a captured video to its capture", async () => {
     const { createCapture } = await import("@/domains/capture/commands");
     const auth = await signIn("again");
