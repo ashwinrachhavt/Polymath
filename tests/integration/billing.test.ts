@@ -113,6 +113,19 @@ suite("resolver precedence", () => {
     expect(await resolver.resolveRunModelFor(workspaceId, null, ENV)).toBe("claude-haiku-5-5");
   });
 
+  it("still creates a run on a deployment with no house key, leaving the missing key to the first step", async () => {
+    const { workspaceId } = await workspace("keyless");
+    expect(await resolver.resolveRunModelFor(workspaceId, null, {})).toBe(DEFAULT_MODEL_ID);
+  });
+
+  it("refuses to start a run for a free workspace whose allowance is gone", async () => {
+    const { workspaceId } = await workspace("startcap");
+    await fillHouseWeek(workspaceId, plans.FREE_WEEKLY_AI_CALLS);
+    await expect(resolver.resolveRunModelFor(workspaceId, null, ENV)).rejects.toBeInstanceOf(
+      resolver.AllowanceExhaustedError,
+    );
+  });
+
   it("offers the picker the models its own keys can serve", async () => {
     const { workspaceId, auth } = await workspace("picker");
     const before = (await resolver.selectableModels(workspaceId, {})).map((m) => m.id);

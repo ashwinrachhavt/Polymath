@@ -119,11 +119,21 @@ async function ownKeys(workspaceId: string, env: Env) {
 }
 
 /** Chat steps and direct SDK calls: the route for `requestedId` (a catalog id, or the default). */
-export async function resolveModelRoute(
+export function resolveModelRoute(
   workspaceId: string,
   requestedId: string | null | undefined,
   purpose: UsagePurpose,
   env: Env = process.env,
+): Promise<ModelRoute> {
+  return route(workspaceId, requestedId, purpose, env, true);
+}
+
+async function route(
+  workspaceId: string,
+  requestedId: string | null | undefined,
+  purpose: UsagePurpose,
+  env: Env,
+  requireHouseKey: boolean,
 ): Promise<ModelRoute> {
   const requested = catalogOption(requestedId);
   const own = await ownKeys(workspaceId, env);
@@ -134,7 +144,9 @@ export async function resolveModelRoute(
     if (substitute) return { source: "own", option: substitute, apiKey: own[0].apiKey };
   }
   await assertHouseAllowance(workspaceId, purpose);
-  return houseRoute(requested.id, env);
+  // A run freezes its model before any step runs; a house key missing at that moment is the first
+  // step's error to raise (as it always was), not a reason to refuse the run's creation.
+  return requireHouseKey ? houseRoute(requested.id, env) : { source: "house", option: requested, apiKey: "" };
 }
 
 /** The route for a chat session: a workspace resolves through its keys and allowance; a session with none (evals, the TUI) uses the house env. */
@@ -161,7 +173,7 @@ export async function resolveRunModelFor(
 ): Promise<string | null> {
   const requested = resolveRunModel(modelPolicy);
   if (!requested) return null;
-  return (await resolveModelRoute(workspaceId, requested.id, "chat", env)).option.id;
+  return (await route(workspaceId, requested.id, "chat", env, false)).option.id;
 }
 
 /**
