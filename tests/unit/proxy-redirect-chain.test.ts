@@ -8,6 +8,9 @@ import { nextConfigRedirects } from "../../redirects";
 import proxy from "@/proxy";
 
 vi.mock("@/lib/clerk", () => ({ clerkConfigured: true, devAuthBypass: false, proxyArmed: true }));
+// Everyone is invited unless a test says otherwise (the invite-only cases).
+const isInvited = vi.hoisted(() => vi.fn(async (_clerkUserId: string) => true));
+vi.mock("@/lib/access-allowlist", () => ({ isClerkUserAllowed: isInvited }));
 vi.mock("@clerk/nextjs/server", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@clerk/nextjs/server")>()),
   clerkMiddleware: (handler: unknown) => handler,
@@ -82,6 +85,43 @@ describe("unmatched paths get the real 404 (QA F8)", () => {
   it("leaves a signed-in visitor to the real not-found surface", async () => {
     const response = await runAs("/this-path-does-not-exist-qa-sweep", true);
     expect(response).toBeUndefined();
+  });
+});
+
+describe("invite-only (POLYMATH_ALLOWED_EMAILS)", () => {
+  function runSignedIn(path: string, clerkUserId: string): Promise<Response | void> {
+    const check = vi.fn().mockResolvedValue({ isAuthenticated: true, userId: clerkUserId, tokenType: "session_token" });
+    return runProxy(Object.assign(check, { protect: vi.fn() }), new NextRequest(`https://axiom.test${path}`));
+  }
+
+  it("sends an unlisted account to the invite-only page instead of the workspace", async () => {
+    isInvited.mockImplementation(async (id) => id === "user_owner");
+    const response = await runSignedIn("/polymath", "user_stranger");
+    expect(response?.status).toBe(307);
+    expect(response?.headers.get("location")).toBe("https://axiom.test/invite-only");
+    expect(isInvited).toHaveBeenCalledWith("user_stranger");
+  });
+
+  it("answers an unlisted account's API call with a 403, not data", async () => {
+    isInvited.mockImplementation(async (id) => id === "user_owner");
+    const response = await runSignedIn("/api/v1/runs", "user_stranger");
+    expect(response?.status).toBe(403);
+    expect(await (response as Response).json()).toMatchObject({ code: "invite_only" });
+  });
+
+  it("lets a listed account through untouched", async () => {
+    isInvited.mockImplementation(async (id) => id === "user_owner");
+    expect(await runSignedIn("/polymath", "user_owner")).toBeUndefined();
+    expect(await runSignedIn("/api/v1/runs", "user_owner")).toBeUndefined();
+  });
+
+  it("serves the invite-only page itself without a check, so it cannot loop", async () => {
+    isInvited.mockClear();
+    isInvited.mockImplementation(async () => false);
+    expect(await runSignedIn("/invite-only", "user_stranger")).toBeUndefined();
+    expect(await runAs("/invite-only", false)).toBeUndefined();
+    expect(isInvited).not.toHaveBeenCalled();
+    isInvited.mockImplementation(async () => true);
   });
 });
 

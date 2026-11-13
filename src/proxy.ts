@@ -1,5 +1,6 @@
 import { clerkMiddleware } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+import { isClerkUserAllowed } from "@/lib/access-allowlist";
 import { proxyArmed } from "@/lib/clerk";
 import { isKnownRoute } from "@/lib/proxy-routing";
 
@@ -35,6 +36,8 @@ const publicPatterns = [
   "/landing",
   "/sign-in(.*)",
   "/sign-up(.*)",
+  // Where a signed-in account that is not on POLYMATH_ALLOWED_EMAILS lands.
+  "/invite-only",
   // The real-404 renderer the proxy rewrites unmatched paths to (QA F8).
   "/404",
   "/api/webhooks(.*)",
@@ -100,6 +103,25 @@ export default proxyArmed
           const session = companionBearer
             ? { isAuthenticated: true }
             : await auth({ acceptsToken: ["session_token", "m2m_token", "api_key"] });
+          if (
+            session.isAuthenticated &&
+            "tokenType" in session &&
+            session.tokenType === "session_token" &&
+            !(await isClerkUserAllowed(session.userId))
+          ) {
+            // Invite-only (src/lib/access-allowlist.ts): a human session for an
+            // unlisted account. Machine tokens were issued by a member, so they
+            // pass through to the route's own checks.
+            return NextResponse.json(
+              {
+                type: "https://axiom.dev/problems/forbidden",
+                code: "invite_only",
+                title: "This Polymath is invite-only.",
+                status: 403,
+              },
+              { status: 403, headers: { "content-type": "application/problem+json" } },
+            );
+          }
           if (!session.isAuthenticated) {
             return NextResponse.json(
               {
@@ -133,8 +155,15 @@ export default proxyArmed
             }
             const destination = pathname + url.search;
             const returnTo =
-              pathname.startsWith("/") && !pathname.startsWith("//") ? `?returnTo=${encodeURIComponent(destination)}` : "";
+              pathname.startsWith("/") && !pathname.startsWith("//")
+                ? `?returnTo=${encodeURIComponent(destination)}`
+                : "";
             return NextResponse.redirect(new URL(`/landing${returnTo}`, request.url));
+          }
+          // Invite-only: a real account that is not on the list sees one
+          // polite page and never reaches a route that could provision it.
+          if (!(await isClerkUserAllowed(session.userId))) {
+            return NextResponse.redirect(new URL("/invite-only", request.url));
           }
         }
       }
