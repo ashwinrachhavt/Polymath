@@ -6,6 +6,7 @@ import { toolAllowed } from "../lib/policy";
 import { getRunBySessionRef } from "../../../../src/domains/agents/queries";
 import { getWikiOverview, getWikiPageText } from "../../../../src/domains/knowledge/wiki";
 import { WIKI_READ_CAPABILITY } from "../../../../src/domains/knowledge/wiki-agent";
+import { runSessionRef } from "../lib/run-session";
 
 /*
  * A read over the workspace's wiki: the index, a topic hub, or one article's
@@ -13,7 +14,6 @@ import { WIKI_READ_CAPABILITY } from "../../../../src/domains/knowledge/wiki-age
  * session's verified auth, never from the model's arguments.
  */
 export default defineTool({
-  deferred: true,
   description:
     "Read the workspace wiki: the master index, a topic hub by slug, or one article by artifact id. Use this to answer from the maintained layer before falling back to raw documents — start here for questions the wiki's topics plausibly cover. It will not search raw passages (that is documents_search) and cannot read a document that was never ingested; an unknown slug or artifact id comes back as an empty result, not an error to retry. Read-only; the run's frozen policy must allow wiki.read.",
   inputSchema: z.object({
@@ -31,7 +31,7 @@ export default defineTool({
     if (typeof workspaceId !== "string" || !current?.principalId) {
       return { ok: false as const, error: "no workspace in session" };
     }
-    const run = await getRunBySessionRef(ctx.session.id, workspaceId);
+    const run = await getRunBySessionRef(runSessionRef(ctx.session), workspaceId);
     if (!run || run.state !== "running") {
       return { ok: false as const, error: "no active Polymath run bound to this session" };
     }

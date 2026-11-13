@@ -299,6 +299,8 @@ suite("inbox capture fetch retry", () => {
   it("replays a repeated idempotency key without a second event", async () => {
     const auth = await workspace();
     const capture = await commands.createCapture(auth, { text: `https://example.com/once-${crypto.randomUUID()}` });
+    // The read queued at capture could not reach the page; the person asks again.
+    await holder.db!.update(captures).set({ fetchOutcome: "error-page" }).where(eq(captures.id, capture.id));
     const key = crypto.randomUUID();
     expect(await commands.retryCaptureUrl(auth, { captureId: capture.id, idempotencyKey: key })).toEqual({
       enqueued: true,
@@ -310,6 +312,7 @@ suite("inbox capture fetch retry", () => {
       .db!.select()
       .from(outboxEvents)
       .where(eq(outboxEvents.topic, "capture.url_content_requested"));
-    expect(events.filter((e) => (e.payload as { captureId?: string }).captureId === capture.id)).toHaveLength(1);
+    // The read queued at capture, and one retry however often its key is replayed.
+    expect(events.filter((e) => (e.payload as { captureId?: string }).captureId === capture.id)).toHaveLength(2);
   });
 });

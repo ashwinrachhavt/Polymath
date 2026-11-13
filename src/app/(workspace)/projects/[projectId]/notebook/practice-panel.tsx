@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Bug, Eye } from "lucide-react";
 import { useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import type { ChallengeFormat } from "@/domains/learning/challenge-content";
@@ -25,6 +26,7 @@ export type PracticeItem = {
 };
 
 const FORMATS: ChallengeFormat[] = ["predict", "bug_hunt"];
+const FORMAT_ICON = { predict: Eye, bug_hunt: Bug } as const;
 
 export function PracticePanel({
   projectId,
@@ -57,26 +59,27 @@ export function PracticePanel({
   }
 
   return (
-    <section aria-labelledby="practice-title" className="panel rounded-xl p-3">
-      <h2 id="practice-title" className="text-body-dense font-medium">
-        Practice
-      </h2>
+    <section aria-label="Practice" className="panel rounded-xl p-3">
       {documentIds.length === 0 ? (
-        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+        <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
           A source must finish reading before you can practice on it.
         </p>
       ) : null}
-      <div className="mt-3 flex flex-wrap gap-2">
-        {FORMATS.map((format) => (
-          <Button
-            key={format}
-            variant="outline"
-            disabled={pending || documentIds.length === 0}
-            onClick={() => start(format)}
-          >
-            {PRACTICE_NAMES[format]}
-          </Button>
-        ))}
+      <div className="flex flex-wrap gap-2">
+        {FORMATS.map((format) => {
+          const Icon = FORMAT_ICON[format];
+          return (
+            <Button
+              key={format}
+              variant="outline"
+              disabled={pending || documentIds.length === 0}
+              onClick={() => start(format)}
+            >
+              <Icon aria-hidden />
+              {PRACTICE_NAMES[format]}
+            </Button>
+          );
+        })}
       </div>
       {error ? (
         <p role="alert" className="mt-2 text-xs text-destructive">

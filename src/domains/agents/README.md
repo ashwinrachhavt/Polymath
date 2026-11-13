@@ -48,12 +48,12 @@ as-is: `agent_runs` (state, `policy_snapshot`, `session_ref`), `run_events`,
 
 Added (`runtime-schema.ts`, helpers in `runtime-persistence.ts`):
 
-| Table | Identity (unique) | Immutable | Mutable |
-| --- | --- | --- | --- |
-| `agent_profile_revisions` | (profile, revision), (profile, content_hash) | every column (trigger) | none |
-| `runtime_executions` | (run, generation), (workspace, dispatch_key), (workspace, provider, environment, provider_execution_id) when bound | run, generation, provider, environment, workflow_version, dispatch_key; provider id once bound | dispatch_state, timestamps, redacted_error |
-| `runtime_signals` | (execution, signal_key) | execution, key, payload revision and hash | status, attempts, reconcile fields |
-| `tool_invocations` | (run, invocation_id) | run, invocation id, tool, arguments hash, effect class; terminal state | state, redacted result, timestamps |
+| Table                     | Identity (unique)                                                                                                  | Immutable                                                                                      | Mutable                                    |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| `agent_profile_revisions` | (profile, revision), (profile, content_hash)                                                                       | every column (trigger)                                                                         | none                                       |
+| `runtime_executions`      | (run, generation), (workspace, dispatch_key), (workspace, provider, environment, provider_execution_id) when bound | run, generation, provider, environment, workflow_version, dispatch_key; provider id once bound | dispatch_state, timestamps, redacted_error |
+| `runtime_signals`         | (execution, signal_key)                                                                                            | execution, key, payload revision and hash                                                      | status, attempts, reconcile fields         |
+| `tool_invocations`        | (run, invocation_id)                                                                                               | run, invocation id, tool, arguments hash, effect class; terminal state                         | state, redacted result, timestamps         |
 
 `agent_runs.profile_revision_id` pins the revision at admission (NULL for runs
 that predate it); with `policy_snapshot` and `agent_profile_id` it cannot change
@@ -77,3 +77,11 @@ Retention: all rows cascade with the workspace. Only redacted arguments/results
 are stored (`redactForStorage`); hashes fingerprint the unredacted request.
 No secrets, no chain-of-thought. Historical runs/actions are not backfilled or
 dispatched. Applying this migration to production needs separate authorization.
+
+## Step cards
+
+Each tool call's query and sources (`agent-steps.ts` `stepFacts`) ride the tool
+frame with its Eve `turnId`, so the chat draws one step card per turn above
+that turn's answer. The bridge records the same `turn_id` and `call_id` on
+`tool_calls`; `listRunSteps` rebuilds the cards after a reload through the same
+`stepFacts`. Rows recorded before 0314 have neither id and are not shown.

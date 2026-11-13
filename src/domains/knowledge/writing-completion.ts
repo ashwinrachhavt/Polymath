@@ -1,5 +1,6 @@
 import type { AuthContext } from "@/domains/identity/resolve";
-import { generationProvider, type GenerationProvider } from "@/integrations/generation/provider";
+import { type GenerationProvider } from "@/integrations/generation/provider";
+import { resolveGeneration } from "@/domains/billing/resolver";
 import { providerEntry } from "@/integrations/providers/registry";
 import { drizzleQuotaStore, withQuota, type QuotaStore } from "@/integrations/providers/quota";
 
@@ -127,7 +128,7 @@ export async function completeWriting(
   // Too little to continue from: no call, no spend.
   if (before.trim().length < 3) return { completion: "", answered: true };
 
-  const provider = deps.provider ?? generationProvider(process.env);
+  const provider = deps.provider ?? (await resolveGeneration(auth.workspaceId, "generation"));
   const prompt = completionPrompt({ title: input.title, before, after });
   const deadline = AbortSignal.timeout(DEADLINE_MS);
   const call = () =>

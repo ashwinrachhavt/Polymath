@@ -337,6 +337,9 @@ test("Learn this: one primary action makes flashcards that open in place", async
     await waitSettled(page);
     const content = page.locator("#content").first();
 
+    // Studio is a right rail with four segments; Learn this lives in Learn.
+    await content.getByRole("tab", { name: "Learn" }).click();
+
     // One primary action on the Notebook, and it is Learn this.
     const learnThis = content.getByRole("button", { name: "Learn this", exact: true });
     await expect(learnThis).toBeVisible();

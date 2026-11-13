@@ -39,6 +39,19 @@ const config = {
     "scripts/grader-eval.mts",
     // Prints the stones catalog INSERT for a migration, run by hand (see its header).
     "scripts/stones/catalog-sql.ts",
+    // The agent eval tooling, run by hand with provider keys (their headers
+    // give the commands): the eve eval suite, its report, the routing
+    // accuracy check and the documents_search calibration.
+    "eve/polymath/evals/**",
+    "scripts/agent-eval-report.mts",
+    "scripts/agent-route-eval.mts",
+    "scripts/calibrate-agent-search.mts",
+    // Run by hand inside the Oracle VM's web container (deploy/oracle/README.md).
+    "deploy/oracle/check-env.ts",
+
+    // Claude Code launches the Polymath plugin's hook script as a process from
+    // hooks.json; nothing imports it. The MCP server is the polymath-mcp script.
+    "plugins/polymath/hooks/understanding-hook.mjs",
 
     // The eve agent trees are compiled by the eve runner against root src —
     // through relative paths and the root tsconfig's @/ alias — so their

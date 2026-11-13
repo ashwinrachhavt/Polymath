@@ -8,11 +8,8 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { untrustedDataClauseJsonSafe } from "@/lib/prompts";
-import {
-  GenerationUnconfiguredError,
-  generationProvider,
-  type GenerationProvider,
-} from "@/integrations/generation/provider";
+import { GenerationUnconfiguredError, type GenerationProvider } from "@/integrations/generation/provider";
+import { resolveGeneration } from "@/domains/billing/resolver";
 
 /*
  * Design brief (ASH-286): one pass over a research artifact produces a
@@ -161,21 +158,28 @@ export async function designBriefFromArtifact(
   deps?: { provider?: GenerationProvider },
 ): Promise<DesignBriefResult> {
   const [row] = await db
-    .select({ title: artifacts.title, kind: artifacts.kind, plainText: artifactVersions.plainText, versionId: artifacts.currentVersionId })
+    .select({
+      title: artifacts.title,
+      kind: artifacts.kind,
+      plainText: artifactVersions.plainText,
+      versionId: artifacts.currentVersionId,
+    })
     .from(artifacts)
     .leftJoin(artifactVersions, eq(artifactVersions.id, artifacts.currentVersionId))
     .where(and(eq(artifacts.id, artifactId), eq(artifacts.workspaceId, auth.workspaceId)))
     .limit(1);
   if (!row) throw new DesignBriefNotAllowedError("That artifact does not exist in this workspace.");
   if (!(BRIEFABLE_KINDS as readonly string[]).includes(row.kind)) {
-    throw new DesignBriefNotAllowedError(`A ${row.kind} artifact cannot become a design brief; start from a research report, memo, document, note, or card.`);
+    throw new DesignBriefNotAllowedError(
+      `A ${row.kind} artifact cannot become a design brief; start from a research report, memo, document, note, or card.`,
+    );
   }
   const source = (row.plainText ?? "").trim();
   if (!source || !row.versionId) throw new DesignBriefNotAllowedError("This artifact has no text to brief from.");
 
   let provider: GenerationProvider;
   try {
-    provider = deps?.provider ?? generationProvider(process.env);
+    provider = deps?.provider ?? (await resolveGeneration(auth.workspaceId, "generation"));
   } catch (error) {
     // No key configured is a clear refusal, not a failure: the owner sees why
     // the brief cannot run, and nothing is written.
@@ -226,7 +230,14 @@ export async function designBriefFromArtifact(
     const { value, replayed } = await withReceipt(tx, auth, key, receiptRequest, async () => {
       const [artifact] = await tx
         .insert(artifacts)
-        .values({ workspaceId: auth.workspaceId, kind: "memo", status: "generated", title, createdBy: auth.userId, updatedBy: auth.userId })
+        .values({
+          workspaceId: auth.workspaceId,
+          kind: "memo",
+          status: "generated",
+          title,
+          createdBy: auth.userId,
+          updatedBy: auth.userId,
+        })
         .returning({ id: artifacts.id });
       const [version] = await tx
         .insert(artifactVersions)
@@ -240,7 +251,10 @@ export async function designBriefFromArtifact(
           createdBy: auth.userId,
         })
         .returning({ id: artifactVersions.id });
-      await tx.update(artifacts).set({ currentVersionId: version.id, embedError: null }).where(eq(artifacts.id, artifact.id));
+      await tx
+        .update(artifacts)
+        .set({ currentVersionId: version.id, embedError: null })
+        .where(eq(artifacts.id, artifact.id));
       await recordAudit(
         auth,
         {
@@ -248,7 +262,12 @@ export async function designBriefFromArtifact(
           subjectType: "artifact",
           subjectId: artifact.id,
           summary: `Drafted design brief "${brief.title}" from "${row.title}".`,
-          metadata: { sourceArtifactId: artifactId, sourceVersionId: row.versionId, format: brief.format, proposer: provider.name },
+          metadata: {
+            sourceArtifactId: artifactId,
+            sourceVersionId: row.versionId,
+            format: brief.format,
+            proposer: provider.name,
+          },
         },
         tx,
       );

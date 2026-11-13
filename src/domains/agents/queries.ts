@@ -6,6 +6,8 @@ import { escapeLike } from "@/lib/list-params";
 // cycle-free (nothing in onboarding's graph reads this module).
 import { ONBOARDING_OBJECTIVE_PREFIX } from "./onboarding";
 import { agentPrincipals, agentProfiles, agentRuns, messages, runEvents, toolCalls } from "./schema";
+import { stepFacts, type RecordedStep } from "./agent-steps";
+import { summaryFromToolOutput } from "./stream-contract";
 
 /*
  * The eve side resolves its run through the session reference, not the run id:
@@ -295,6 +297,47 @@ export async function getProfileNameForRun(workspaceId: string, runId: string) {
     .where(and(eq(agentRuns.id, runId), eq(agentRuns.workspaceId, workspaceId)))
     .limit(1);
   return row?.name ?? null;
+}
+
+/** The most steps a reload seeds; a run past this keeps its earliest turns' cards. */
+const MAX_RECORDED_STEPS = 300;
+
+/**
+ * The run's settled tool calls as step-card entries, oldest first, so a reload
+ * shows the same steps the stream showed. Only calls recorded with their turn
+ * and call id (0314 on) can be placed beside an answer; older rows are left
+ * out rather than guessed into a turn.
+ */
+export async function listRunSteps(workspaceId: string, runId: string): Promise<RecordedStep[]> {
+  const rows = await db
+    .select({
+      callId: toolCalls.callId,
+      turnId: toolCalls.turnId,
+      toolName: toolCalls.toolName,
+      ok: toolCalls.ok,
+      errorCode: toolCalls.errorCode,
+      args: toolCalls.arguments,
+      result: toolCalls.result,
+    })
+    .from(toolCalls)
+    .where(
+      and(
+        eq(toolCalls.workspaceId, workspaceId),
+        eq(toolCalls.runId, runId),
+        sql`${toolCalls.turnId} is not null`,
+        sql`${toolCalls.callId} is not null`,
+      ),
+    )
+    .orderBy(asc(toolCalls.createdAt), asc(toolCalls.id))
+    .limit(MAX_RECORDED_STEPS);
+  return rows.map((row) => ({
+    callId: row.callId as string,
+    turnId: row.turnId as string,
+    label: row.toolName,
+    status: row.ok ? "ok" : "error",
+    detail: row.ok ? summaryFromToolOutput(row.result) : (row.errorCode ?? "failed"),
+    facts: stepFacts(row.toolName, row.args, row.ok ? row.result : undefined),
+  }));
 }
 
 /** Tool names a documents search is recorded under (the capability and the tool file name). */

@@ -5,6 +5,7 @@ import { toolAllowed } from "../lib/policy";
 // does not carry the app's tsconfig paths (see hooks/bridge.ts).
 import { getRunBySessionRef } from "../../../../src/domains/agents/queries";
 import { listRecentlyCompletedTasks } from "../../../../src/domains/work/queries";
+import { runSessionRef } from "../lib/run-session";
 
 /*
  * A read capability over finished work. listOpenTasks answers "what remains";
@@ -14,7 +15,6 @@ import { listRecentlyCompletedTasks } from "../../../../src/domains/work/queries
  * model's arguments.
  */
 export default defineTool({
-  deferred: true,
   description:
     "List the workspace's tasks completed in the last N days (default 7), newest first. Use for progress and review questions ('how did my week go', 'what did I finish'); it will not show open or upcoming work. Read-only; the run's frozen policy must allow the tasks.read capability.",
   inputSchema: z.object({
@@ -25,7 +25,7 @@ export default defineTool({
     const workspaceId = ctx.session.auth.current?.attributes?.workspaceId;
     if (typeof workspaceId !== "string") return { ok: false as const, error: "no workspace in session" };
 
-    const run = await getRunBySessionRef(ctx.session.id, workspaceId);
+    const run = await getRunBySessionRef(runSessionRef(ctx.session), workspaceId);
     if (!run || run.state !== "running") {
       return { ok: false as const, error: "no active Polymath run bound to this session" };
     }

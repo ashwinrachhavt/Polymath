@@ -34,4 +34,4 @@ An award that would pass the day's ceiling pays only what is left. Days are the 
 
 ## What replaced what
 
-Migration 0315 dropped the old reward system (`reward_definitions`, `reward_ledger`, `user_progress`). Each person's old points became coins 1:1 in one `legacy_rewards` row. Focus sessions no longer pay.
+Migration 0321 dropped the old reward system (`reward_definitions`, `reward_ledger`, `user_progress`). Each person's old points became coins 1:1 in one `legacy_rewards` row. Focus sessions no longer pay.

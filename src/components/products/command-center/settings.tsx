@@ -7,8 +7,14 @@ import dynamic from "next/dynamic";
 const CandidateFacts = dynamic(() => import("./candidate-facts"), {
   loading: () => <p role="status">Loading candidate fact controls…</p>,
 });
+const AiAccessPanel = dynamic(() => import("./ai-access-panel"), {
+  loading: () => <p role="status">Loading AI access…</p>,
+});
 const ApiKeysPanel = dynamic(() => import("./api-keys-panel"), {
   loading: () => <p role="status">Loading API keys…</p>,
+});
+const UnderstandingPanel = dynamic(() => import("./understanding-panel"), {
+  loading: () => <p role="status">Loading preferences…</p>,
 });
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -59,9 +65,11 @@ const SECTION_GROUPS = [
       { id: "assistant", label: "Your assistant" },
       { id: "memory", label: "Memory" },
       { id: "execution-safety", label: "Execution safety" },
+      { id: "ai-access", label: "AI access" },
       { id: "model-policy", label: "Model and tools" },
       { id: "connectors", label: "Connectors" },
       { id: "documents", label: "Documents" },
+      { id: "coding-agents", label: "Coding agents" },
       { id: "account", label: "Account and clients" },
     ],
   },
@@ -713,6 +721,17 @@ export default function Settings({
             </Panel>
           </Section>
 
+          {browserPreview ? null : (
+            <Section id="ai-access">
+              <Panel
+                title="AI access"
+                description="Polymath's model for a small weekly allowance, or your own key with no limit."
+              >
+                <AiAccessPanel />
+              </Panel>
+            </Section>
+          )}
+
           <Section id="model-policy">
             <Panel
               title="Model and tool policy"
@@ -725,6 +744,7 @@ export default function Settings({
               <div className="mt-4 flex flex-wrap gap-2">
                 <Destination href="/reviews">External action reviews</Destination>
                 <Destination href="/command-center/spending">Spending policy</Destination>
+                <Destination href="/settings/feedback">Answer ratings</Destination>
               </div>
             </Panel>
           </Section>
@@ -757,6 +777,15 @@ export default function Settings({
               <div className="mt-4">
                 <Destination href="/polymath/knowledge">Classify manually</Destination>
               </div>
+            </Panel>
+          </Section>
+
+          <Section id="coding-agents">
+            <Panel
+              title="Understand what your agent builds"
+              description="The Polymath plugin for Claude Code and Codex explains a change, then checks that you followed it. It only runs when you ask. These decide what else it may do."
+            >
+              <UnderstandingPanel />
             </Panel>
           </Section>
 

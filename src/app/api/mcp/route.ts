@@ -4,6 +4,7 @@ import { getRunForGateway } from "@/domains/agents/queries";
 import { gatewaySecret, verifyGatewayToken } from "@/domains/agents/gateway-token";
 import { activeMembershipRole } from "@/domains/identity/resolve";
 import { toolManifest } from "@/domains/integrations/tool-manifest";
+import { connectedProviders } from "@/domains/integrations/queries";
 import { createGateway } from "@/domains/agents/gateway";
 import { composioTransport } from "@/domains/integrations/transport";
 
@@ -122,7 +123,7 @@ export async function POST(request: Request) {
     case "notifications/initialized":
       return new Response(null, { status: 204 });
     case "tools/list":
-      return rpcResult(id, { tools: toolManifest() });
+      return rpcResult(id, { tools: toolManifest(await connectedProviders(claims.workspaceId)) });
     case "tools/call": {
       const call = callSchema.safeParse(parsed.data.params);
       if (!call.success) return rpcError(id, -32602, "Invalid params.");

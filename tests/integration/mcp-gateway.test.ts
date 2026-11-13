@@ -2,7 +2,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { agentAuthorizationDecisions, agentProfiles, agentRuns, runEvents, toolCalls } from "@/domains/agents/schema";
-import { CONNECTOR_WRITES } from "@/domains/integrations/connector-action-catalog";
+import { CAPABILITIES, PROVIDER_TOOLS } from "@/domains/integrations/capabilities";
 import { actionProposals, actionRevisions } from "@/domains/actions/schema";
 import { issueDelegationGrant } from "@/domains/agents/delegation";
 import { registerAgentPrincipal } from "@/domains/agents/principals";
@@ -191,46 +191,30 @@ suite("POST /api/mcp bindings (real Postgres)", () => {
     expect(notified.status).toBe(204);
   });
 
-  it("returns the provider tool manifest for a running owned run", async () => {
+  it("lists only the tools of providers the workspace has connected", async () => {
     const seed = await seedRun();
-    const response = await post(listTools, { token: tokenFor(seed) });
-    expect(response.status).toBe(200);
-    const body = (await response.json()) as { result: { tools: Array<{ name: string; inputSchema: unknown }> } };
-    expect(body.result.tools.map((tool) => tool.name).sort()).toEqual(
-      [
-        ...Object.values(CONNECTOR_WRITES).map((spec) => spec.tool),
-        "airtable_list_records",
-        "asana_list_tasks",
-        "calendly_list_events",
-        "canva_list_designs",
-        "discord_list_channels",
-        "github_read_issue",
-        "github_search",
-        "gmail_read_thread",
-        "gmail_search",
-        "gmail_send",
-        "googlecalendar_list_events",
-        "googledocs_search_files",
-        "googledrive_search_files",
-        "googlesheets_list_spreadsheets",
-        "hubspot_list_contacts",
-        "instagram_get_profile",
-        "instagram_list_media",
-        "linear_read_issue",
-        "linear_search_issues",
-        "linkedin_get_profile",
-        "notion_read_page",
-        "notion_search",
-        "slack_list_channels",
-        "slack_read_channel",
-        "stripe_list_payments",
-        "trello_list_cards",
-        "writer_draft_follow_up",
-        "writer_draft_reply",
-        "zoom_list_meetings",
-      ].sort(),
+    const names = async () => {
+      const response = await post(listTools, { token: tokenFor(seed) });
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as { result: { tools: Array<{ name: string; inputSchema: unknown }> } };
+      expect(body.result.tools.every((tool) => typeof tool.inputSchema === "object")).toBe(true);
+      return body.result.tools.map((tool) => tool.name).sort();
+    };
+
+    // Nothing connected: nothing a model could call successfully is listed.
+    expect(await names()).toEqual([]);
+
+    await seedAccount(seed, { alias: "work-gmail" });
+    await seedAccount(seed, { alias: "repo", provider: "github" });
+    await seedAccount(seed, { alias: "old-slack", provider: "slack", status: "revoked" });
+    const listed = await names();
+    const providersOf = new Set(
+      listed.map((name) => CAPABILITIES[PROVIDER_TOOLS[name as keyof typeof PROVIDER_TOOLS]].provider),
     );
-    expect(body.result.tools.every((tool) => typeof tool.inputSchema === "object")).toBe(true);
+    expect([...providersOf].sort()).toEqual(["github", "gmail"]);
+    expect(listed).toEqual(
+      expect.arrayContaining(["gmail_search", "gmail_send", "github_search", "github_read_issue"]),
+    );
   });
 
   it("401s without a token, with a forged token, with an expired token, and with the bridge token", async () => {

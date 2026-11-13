@@ -1,0 +1,865 @@
+/*
+ * The landing page (src/app/landing/page.tsx). Every class is prefixed lp- so
+ * nothing here reaches the app. Colours come from the app's own roles
+ * (globals.css), so light, dark and the chosen accent all carry over.
+ *
+ * One idea runs the page: the headline is a sentence with the product inside
+ * it. Later sections repeat that grammar smaller: a statement, then its proof.
+ */
+
+.lp {
+  --lp-m: clamp(16px, 3.2vw, 48px);
+  --lp-gap: clamp(112px, 14vw, 200px);
+  --lp-radius: 14px;
+  --lp-ease: cubic-bezier(0.2, 0.7, 0.1, 1);
+
+  /* Five type steps. */
+  --lp-display: clamp(64px, 13vw, 210px);
+  --lp-h2: clamp(44px, 6.4vw, 104px);
+  --lp-h3: clamp(32px, 3.6vw, 56px);
+  --lp-body: clamp(17px, 1.25vw, 20px);
+  --lp-small: 15px;
+
+  /* Surfaces a step from the page in either theme (the app's --muted is
+     darker than the page in dark mode, so it disappears there). */
+  --lp-tone: color-mix(in oklch, var(--foreground) 6%, var(--background));
+  --lp-tone-2: color-mix(in oklch, var(--foreground) 13%, var(--background));
+
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-system);
+  font-size: var(--lp-body);
+  line-height: 1.55;
+  overflow-x: clip;
+}
+
+.lp-frame {
+  width: 100%;
+  margin-inline: auto;
+  padding-inline: var(--lp-m);
+}
+
+.lp a {
+  color: inherit;
+  text-underline-offset: 0.2em;
+}
+
+.lp :focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* Buttons: one shape (fully round), one fill, decided once. */
+.lp-button {
+  display: inline-flex;
+  min-height: 52px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 28px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--primary-foreground) !important;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    transform 160ms var(--lp-ease),
+    opacity 160ms var(--lp-ease);
+}
+.lp-button:hover {
+  transform: translateY(-2px);
+}
+.lp-button:active {
+  transform: translateY(0) scale(0.97);
+  opacity: 0.85;
+}
+.lp-button-small {
+  min-height: 44px;
+  padding: 0 20px;
+  font-size: var(--lp-small);
+}
+.lp-button-inverse {
+  background: var(--background);
+  color: var(--foreground) !important;
+}
+
+/* Navigation: a plain bar, wordmark left, links, one action. */
+.lp-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding-block: 20px;
+}
+.lp-wordmark {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  text-decoration: none;
+}
+.lp-nav-links {
+  display: flex;
+  gap: clamp(20px, 3vw, 44px);
+  margin-left: auto;
+  font-size: var(--lp-small);
+}
+.lp-nav-links a {
+  text-decoration: none;
+  transition: opacity 160ms;
+}
+.lp-nav-links a:hover {
+  opacity: 0.6;
+}
+
+/* Hero: the sentence is the layout. */
+.lp-hero {
+  display: flex;
+  min-height: calc(100svh - 84px);
+  flex-direction: column;
+  justify-content: space-between;
+  padding-block: clamp(48px, 10vh, 120px) 40px;
+}
+.lp-hero-title {
+  display: flex;
+  flex-direction: column;
+  margin: auto 0;
+  font-size: var(--lp-display);
+  font-weight: 700;
+  letter-spacing: -0.045em;
+  line-height: 0.95;
+}
+.lp-hero-line {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.22em;
+}
+
+/* The product in place of a word: one cap-height tall, set in em so it
+   scales with the letters, resting on the baseline. */
+.lp-slot {
+  position: relative;
+  display: inline-block;
+  width: 2.7em;
+  height: 0.72em;
+  overflow: hidden;
+  border-radius: var(--lp-radius);
+  background: var(--foreground);
+  color: var(--background);
+  font-size: 1em;
+  letter-spacing: normal;
+  line-height: 1.3;
+}
+.lp-slot-shutter {
+  position: absolute;
+  inset: 0;
+}
+.lp-slot-face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 clamp(14px, 0.16em, 26px);
+  font-size: clamp(13px, 0.105em, 18px);
+}
+.lp-slot-meta {
+  opacity: 0.72;
+}
+.lp-slot-main {
+  font-size: 1.32em;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+.lp-slot-saved {
+  opacity: 0;
+}
+
+.lp-hero-foot {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  align-items: end;
+  gap: 24px;
+}
+.lp-lead {
+  grid-column: 1 / span 6;
+  max-width: 34ch;
+  margin: 0;
+  font-size: clamp(20px, 1.7vw, 26px);
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+}
+.lp-hero-action {
+  grid-column: 9 / span 4;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 12px;
+}
+.lp-note {
+  margin: 0;
+  font-size: var(--lp-small);
+  color: var(--muted-foreground);
+}
+
+/* Sections. */
+.lp-section {
+  padding-top: var(--lp-gap);
+}
+.lp-heading {
+  margin: 0;
+  max-width: 14ch;
+  font-size: var(--lp-h2);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 0.98;
+}
+.lp-heading-md {
+  font-size: var(--lp-h3);
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+}
+.lp-body {
+  max-width: 46ch;
+  margin: 24px 0 0;
+}
+
+/* How it sticks: the loop as one bar, widths from how long each stage takes. */
+.lp-bar {
+  display: flex;
+  gap: 6px;
+  margin: 64px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.lp-stage {
+  display: flex;
+  min-width: 12%;
+  flex-direction: column;
+  gap: 16px;
+}
+.lp-stage-capture {
+  flex: 1;
+}
+.lp-stage-absorb {
+  flex: 2.4;
+}
+.lp-stage-practice {
+  flex: 3.6;
+}
+.lp-stage-prove {
+  flex: 2.4;
+}
+.lp-stage-block {
+  display: block;
+  height: 22vh;
+  min-height: 150px;
+  padding: 20px;
+  border-radius: var(--lp-radius);
+  font-size: clamp(20px, 1.9vw, 30px);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+.lp-stage-capture .lp-stage-block {
+  background: var(--lp-tone);
+}
+.lp-stage-absorb .lp-stage-block {
+  background: var(--lp-tone-2);
+}
+.lp-stage-practice .lp-stage-block {
+  background: var(--success-wash);
+}
+.lp-stage-prove .lp-stage-block {
+  background: var(--foreground);
+  color: var(--background);
+}
+.lp-stage-text {
+  max-width: 24ch;
+  font-size: 17px;
+  line-height: 1.45;
+}
+
+/* Statement on one side, its proof on the other. */
+.lp-split {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  align-items: center;
+  gap: 24px;
+}
+.lp-split > .lp-split-text {
+  grid-column: 1 / span 5;
+}
+.lp-split > :not(.lp-split-text) {
+  grid-column: 7 / span 6;
+}
+.lp-split-mirror > .lp-split-text {
+  grid-column: 8 / span 5;
+  grid-row: 1;
+}
+.lp-split-mirror > :not(.lp-split-text) {
+  grid-column: 1 / span 6;
+  grid-row: 1;
+}
+
+/* The practice question: real radios, the answer shown by CSS alone. */
+.lp-quiz {
+  padding: clamp(24px, 3vw, 40px);
+  border-radius: var(--lp-radius);
+  background: var(--lp-tone);
+}
+.lp-quiz fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.lp-quiz-meta {
+  margin: 0 0 12px;
+  font-size: var(--lp-small);
+  color: var(--muted-foreground);
+}
+.lp-quiz-q {
+  margin-bottom: 20px;
+  padding: 0;
+  font-size: clamp(22px, 1.9vw, 28px);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+.lp-option {
+  display: flex;
+  min-height: 56px;
+  align-items: center;
+  gap: 14px;
+  margin-top: 8px;
+  padding: 14px 18px;
+  border-radius: 12px;
+  background: var(--background);
+  cursor: pointer;
+  line-height: 1.4;
+  transition:
+    transform 160ms var(--lp-ease),
+    background-color 160ms;
+}
+.lp-option:hover {
+  transform: translateX(4px);
+}
+.lp-option:active {
+  transform: scale(0.99);
+}
+.lp-option input {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  margin: 0;
+  accent-color: var(--foreground);
+}
+.lp-option:has(input:focus-visible) {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.lp-option:has(input:checked) {
+  background: var(--foreground);
+  color: var(--background);
+}
+.lp-option:has(input:checked) input {
+  accent-color: var(--background);
+}
+.lp-feedback {
+  display: none;
+  margin: 20px 0 0;
+  font-weight: 500;
+}
+.lp-quiz:has(input[value="right"]:checked) .lp-feedback-right,
+.lp-quiz:has(input[value^="wrong"]:checked) .lp-feedback-wrong {
+  display: block;
+  animation: lp-rise 360ms var(--lp-ease) both;
+}
+
+/* For agent users: two figures compared, cut by the section's edge. */
+.lp-agents-top {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 24px;
+  align-items: start;
+}
+.lp-agents-top > h2 {
+  grid-column: 1 / span 5;
+}
+.lp-agents-top > p {
+  grid-column: 7 / span 6;
+  margin: 0;
+}
+.lp-specimens {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 12vh;
+  padding-inline: var(--lp-m);
+}
+.lp-specimen {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 24px;
+  margin: 0;
+  overflow: hidden;
+  padding: 28px 28px 24px;
+  border-radius: var(--lp-radius);
+  background: var(--lp-tone);
+}
+.lp-specimen figcaption {
+  font-size: var(--lp-small);
+}
+.lp-specimen span {
+  display: block;
+  font-size: clamp(110px, 16vw, 260px);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.06em;
+  line-height: 0.8;
+}
+.lp-specimen-inverse {
+  background: var(--foreground);
+  color: var(--background);
+}
+
+/* Missions: a real readiness report. */
+.lp-report {
+  padding: clamp(24px, 3vw, 40px);
+  border-radius: var(--lp-radius);
+  background: var(--lp-tone);
+}
+.lp-report-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 20px;
+  font-weight: 600;
+}
+.lp-report-head span:last-child {
+  font-weight: 400;
+  color: var(--muted-foreground);
+}
+.lp-report ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.lp-report-row {
+  display: flex;
+  min-height: 52px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 6px;
+  padding: 0 18px;
+  border-radius: 10px;
+  background: var(--background);
+}
+.lp-report-verdict {
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: var(--lp-small);
+  font-weight: 600;
+}
+.lp-verdict-proven .lp-report-verdict {
+  background: var(--success-wash);
+}
+.lp-verdict-partial .lp-report-verdict {
+  background: var(--lp-tone-2);
+}
+.lp-verdict-gap .lp-report-verdict {
+  background: var(--foreground);
+  color: var(--background);
+}
+.lp-report-overall {
+  margin: 20px 0 0;
+  font-weight: 600;
+}
+
+/* Pricing: one flat field, the offer as a sentence with the price as an object. */
+.lp-pricing {
+  margin-top: var(--lp-gap);
+  padding-block: clamp(80px, 10vw, 140px);
+  background: var(--lp-tone);
+}
+.lp-pricing-title {
+  max-width: 17ch;
+}
+.lp-price {
+  display: inline-block;
+  padding: 0 0.15em;
+  border-radius: 0.12em;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  line-height: 1;
+}
+.lp-pricing-foot {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  align-items: end;
+  gap: 24px;
+  margin-top: 64px;
+}
+.lp-plans {
+  grid-column: 1 / span 8;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.lp-plans li {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  line-height: 1.45;
+}
+.lp-pricing-foot > .lp-button {
+  grid-column: 10 / span 3;
+  justify-self: end;
+}
+
+/* FAQ: a wide heading, the questions indented beneath it. */
+.lp-faq-list {
+  margin: 80px 0 0 calc((100% - 11 * 24px) / 12 * 4 + 4 * 24px);
+}
+.lp-faq-item {
+  margin: 0 -24px 12px;
+  padding: 0 24px;
+  border-radius: var(--lp-radius);
+  transition: background-color 200ms;
+}
+.lp-faq-item[open] {
+  background: var(--lp-tone);
+  padding-bottom: 24px;
+}
+.lp-faq-item summary {
+  display: flex;
+  min-height: 64px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  cursor: pointer;
+  list-style: none;
+  font-size: clamp(19px, 1.6vw, 24px);
+  letter-spacing: -0.01em;
+}
+.lp-faq-item summary::-webkit-details-marker {
+  display: none;
+}
+.lp-faq-item summary::after {
+  content: "";
+  width: 10px;
+  height: 10px;
+  flex: none;
+  margin-right: 4px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(-3px) rotate(45deg);
+  transition: transform 200ms var(--lp-ease);
+}
+.lp-faq-item[open] summary::after {
+  transform: translateY(2px) rotate(225deg);
+}
+.lp-faq-item summary:hover {
+  opacity: 0.7;
+}
+.lp-faq-item p {
+  max-width: 52ch;
+  margin: 0;
+}
+
+/* Footer: the close, in the inverse field, with the name cropped by the edge. */
+.lp-footer {
+  margin-top: var(--lp-gap);
+  overflow: hidden;
+  padding-top: clamp(80px, 10vw, 140px);
+  background: var(--foreground);
+  color: var(--background);
+}
+.lp-footer-top {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 24px;
+}
+.lp-footer-top > div {
+  grid-column: 1 / span 7;
+}
+.lp-footer-invite {
+  max-width: 14ch;
+  margin: 0 0 32px;
+  font-size: var(--lp-h3);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+}
+.lp-footer-links {
+  grid-column: 10 / span 3;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.lp-footer-links a {
+  text-decoration: none;
+}
+.lp-footer-links a:hover {
+  text-decoration: underline;
+}
+.lp-legal {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin: clamp(80px, 12vw, 160px) 0 0;
+  font-size: var(--lp-small);
+}
+.lp-footer-name {
+  margin: 0;
+  padding-inline: var(--lp-m);
+  font-size: 27vw;
+  font-weight: 800;
+  letter-spacing: -0.06em;
+  line-height: 1;
+  white-space: nowrap;
+  transform: translateY(28%);
+  margin-top: -0.12em;
+}
+
+/* Motion. Transform and opacity only; content is never hidden without it. */
+@keyframes lp-rise {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+}
+@keyframes lp-enter {
+  from {
+    transform: translateY(40px);
+  }
+}
+@keyframes lp-shutter {
+  from {
+    clip-path: inset(0 100% 0 0 round var(--lp-radius));
+    transform: scale(1.12);
+  }
+  to {
+    clip-path: inset(0 0 0 0 round var(--lp-radius));
+    transform: scale(1);
+  }
+}
+/* The slot turns a saved page into a question, and back. */
+@keyframes lp-saved {
+  0%,
+  42% {
+    opacity: 1;
+    transform: none;
+  }
+  50%,
+  92% {
+    opacity: 0;
+    transform: translateY(-16px);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes lp-asked {
+  0%,
+  42% {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  50%,
+  92% {
+    opacity: 1;
+    transform: none;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .lp-slot-shutter {
+    animation: lp-shutter 1.1s var(--lp-ease) 200ms both;
+  }
+  .lp-slot-saved {
+    animation: lp-saved 9s var(--lp-ease) 1.3s infinite both;
+  }
+  .lp-slot-asked {
+    animation: lp-asked 9s var(--lp-ease) 1.3s infinite both;
+  }
+  .lp-hero-line,
+  .lp-hero-foot > * {
+    animation: lp-rise 700ms var(--lp-ease) both;
+  }
+  .lp-hero-line + .lp-hero-line {
+    animation-delay: 90ms;
+  }
+  .lp-lead {
+    animation-delay: 180ms;
+  }
+  .lp-hero-action {
+    animation-delay: 260ms;
+  }
+
+  /* Section parts rise as they enter, where the browser can tie it to scroll.
+     Without support they are simply there. */
+  @supports (animation-timeline: view()) {
+    .lp-rise,
+    .lp-faq-item {
+      animation: lp-enter linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 60%;
+    }
+    .lp-stage:nth-child(2) {
+      animation-range: entry 6% entry 66%;
+    }
+    .lp-stage:nth-child(3) {
+      animation-range: entry 12% entry 72%;
+    }
+    .lp-stage:nth-child(4) {
+      animation-range: entry 18% entry 78%;
+    }
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lp-slot-saved {
+    display: none;
+  }
+}
+
+/* Tablet. */
+@media (max-width: 960px) {
+  .lp-nav-links {
+    display: none;
+  }
+  .lp-split,
+  .lp-agents-top,
+  .lp-pricing-foot,
+  .lp-footer-top,
+  .lp-hero-foot {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .lp-split > *,
+  .lp-split-mirror > *,
+  .lp-agents-top > *,
+  .lp-pricing-foot > *,
+  .lp-footer-top > *,
+  .lp-hero-foot > * {
+    grid-column: 1 / -1 !important;
+    grid-row: auto !important;
+  }
+  .lp-split-mirror > .lp-split-text {
+    order: -1;
+  }
+  .lp-split {
+    gap: 40px;
+  }
+  .lp-hero-action {
+    align-items: flex-start;
+  }
+  .lp-pricing-foot > .lp-button {
+    justify-self: start;
+  }
+  .lp-faq-list {
+    margin-left: 0;
+  }
+}
+
+/* Phone: the slot leaves the line and sits between the two halves. */
+@media (max-width: 640px) {
+  .lp {
+    --lp-display: 19vw;
+    --lp-h2: 12vw;
+    --lp-h3: 9vw;
+  }
+  .lp-hero {
+    min-height: auto;
+    gap: 48px;
+    padding-top: 32px;
+  }
+  .lp-hero-line {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0;
+  }
+  .lp-slot {
+    order: 1;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 3 / 2;
+    margin: 0.12em 0 0.1em;
+    font-size: var(--lp-display);
+  }
+  .lp-slot {
+    aspect-ratio: 2 / 1;
+  }
+  .lp-slot-face {
+    padding: 20px;
+    font-size: 16px;
+  }
+  .lp-bar {
+    flex-direction: column;
+    margin-top: 40px;
+  }
+  .lp-stage {
+    min-width: 0;
+    gap: 10px;
+  }
+  .lp-stage-block {
+    height: auto;
+    min-height: 72px;
+    font-size: 22px;
+  }
+  .lp-stage-capture .lp-stage-block {
+    min-height: 72px;
+  }
+  .lp-stage-absorb .lp-stage-block,
+  .lp-stage-prove .lp-stage-block {
+    min-height: 120px;
+  }
+  .lp-stage-practice .lp-stage-block {
+    min-height: 170px;
+  }
+  .lp-stage-text {
+    max-width: none;
+    font-size: 16px;
+    margin-bottom: 12px;
+  }
+  .lp-specimens {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .lp-specimen span {
+    font-size: 30vw;
+  }
+  .lp-plans {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .lp-pricing-foot > .lp-button,
+  .lp-footer-top .lp-button {
+    width: 100%;
+  }
+  .lp-faq-item {
+    margin-inline: calc(-1 * var(--lp-m));
+    padding-inline: var(--lp-m);
+    border-radius: 0;
+  }
+  .lp-footer-links {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 8px 20px;
+  }
+  .lp-legal {
+    flex-direction: column;
+  }
+  .lp-footer-name {
+    font-size: 34vw;
+  }
+}

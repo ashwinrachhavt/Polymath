@@ -17,7 +17,7 @@ export const coinReason = pgEnum("coin_reason", [
   "task_completed",
   "mission_mock_completed",
   "stone_purchased",
-  // Points earned under the retired reward system, carried over once by migration 0315.
+  // Points earned under the retired reward system, carried over once by migration 0321.
   "legacy_rewards",
 ]);
 

@@ -19,6 +19,8 @@ vi.mock("@/lib/db-transaction", () => ({
   },
 }));
 vi.mock("@/integrations/extraction/docling-docker", () => ({ createDoclingDockerProvider: () => extractor }));
+// Jobs are accepted here, not run: nothing starts behind the test's back.
+vi.mock("@/domains/jobs/kick", () => ({ kickGenerationJob: vi.fn() }));
 vi.mock("@/integrations/object-store/object-store", () => ({ readBlob: vi.fn(async () => new Uint8Array([37, 80, 68, 70])) }));
 
 import { embedExtraction } from "@/domains/knowledge/embedding";
@@ -122,7 +124,7 @@ suite("projects (real Postgres + pgvector)", () => {
   it("a queued capture binds by address through the real writer path, and landing keeps one source", async () => {
     const a = await workspace();
     // The real queued-capture shape: queueYouTubeCapture writes a documents row
-    // with a canonical sourceUrl and no fileId, and enqueues the transcript
+    // with a canonical sourceUrl and no fileId, and submits the absorption
     // job. No sources row exists until the handler or a notebook attach makes one.
     const videoId = crypto.randomUUID().replace(/-/g, "").slice(0, 11);
     const url = `https://www.youtube.com/watch?v=${videoId}`;

@@ -21,8 +21,8 @@ import {
   setWriteDefaultAction,
   startConnectionAction,
   syncGoogleCalendarAction,
-  syncNotionAction,
 } from "./actions";
+import { NotionSync } from "./notion-sync";
 
 /* Connector card islands over the durable integrations rows. */
 
@@ -82,7 +82,8 @@ export function AccountControls({
           onClick={() => act(setWriteDefaultAction, { accountId, expectedVersion: version })}
         />
       ) : null}
-      {(provider === "google-calendar" || provider === "notion") && status === "active" ? (
+      {provider === "notion" && status === "active" ? <NotionSync accountId={accountId} /> : null}
+      {provider === "google-calendar" && status === "active" ? (
         <IconButton
           label="Sync now"
           size="icon-sm"
@@ -91,7 +92,7 @@ export function AccountControls({
           onClick={() => {
             setError(null);
             startTransition(async () => {
-              const result = await (provider === "notion" ? syncNotionAction : syncGoogleCalendarAction)({ accountId });
+              const result = await syncGoogleCalendarAction({ accountId });
               setError(result.ok ? `Synced: ${result.summary}` : result.error);
             });
           }}

@@ -18,7 +18,8 @@ afterEach(() => {
 
 describe("hardened prompts carry the shared clause", () => {
   it("wiki summarizer includes the clause in its system prompt", async () => {
-    const { openRouterWikiSummarizer } = await import("@/integrations/wiki/summarizer");
+    const { wikiSummarizerOver } = await import("@/integrations/wiki/summarizer");
+    const { openAICompatibleProvider } = await import("@/integrations/generation/openai-compatible");
     let system = "";
     vi.stubGlobal(
       "fetch",
@@ -26,12 +27,20 @@ describe("hardened prompts carry the shared clause", () => {
         const body = JSON.parse(String(init?.body)) as { messages?: Array<{ role: string; content: string }> };
         system = body.messages?.find((m) => m.role === "system")?.content ?? "";
         return new Response(
-          JSON.stringify({ choices: [{ message: { content: JSON.stringify({ title: "t", summary: "s", body: "b", topics: ["x"] }) } }] }),
+          JSON.stringify({
+            choices: [{ message: { content: JSON.stringify({ title: "t", summary: "s", body: "b", topics: ["x"] }) } }],
+          }),
           { status: 200 },
         );
       }),
     );
-    await openRouterWikiSummarizer({ OPENROUTER_API_KEY: "k" } as unknown as NodeJS.ProcessEnv).summarize("text", "doc");
+    const provider = openAICompatibleProvider({
+      baseUrl: "https://example.test/v1",
+      apiKey: "k",
+      model: "m",
+      registryId: "test",
+    });
+    await wikiSummarizerOver(provider).summarize("text", "doc");
     expect(system).toContain(untrustedDataClause("document"));
   });
 
@@ -43,10 +52,9 @@ describe("hardened prompts carry the shared clause", () => {
       vi.fn(async (_url: unknown, init?: RequestInit) => {
         const body = JSON.parse(String(init?.body)) as { messages?: Array<{ role: string; content: string }> };
         system = body.messages?.find((m) => m.role === "system")?.content ?? "";
-        return new Response(
-          JSON.stringify({ choices: [{ message: { content: JSON.stringify({ zettels: [] }) } }] }),
-          { status: 200 },
-        );
+        return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ zettels: [] }) } }] }), {
+          status: 200,
+        });
       }),
     );
     await openRouterZettelExtractor({ OPENROUTER_API_KEY: "k" } as unknown as NodeJS.ProcessEnv).extract("text");

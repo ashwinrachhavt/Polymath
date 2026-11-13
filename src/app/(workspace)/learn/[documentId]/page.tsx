@@ -5,7 +5,7 @@ import { Panel, Screen } from "@/components/workspace/ui";
 import { listUnfinishedGenerationJobs } from "@/domains/jobs/queries";
 import { LEARNING_JOB_KIND_PREFIX, learningJobSubject } from "@/domains/learning/job-names";
 import { getLearnLibrary, getQuizForSitting } from "@/domains/learning/queries";
-import { getArtifactFeedback } from "@/domains/knowledge/artifact-feedback";
+import { ratingOf } from "@/domains/feedback/ratings";
 import { getAuthContext } from "@/lib/auth";
 import { BackToLearn } from "../back-to-learn";
 import { GenerateQuizButton } from "../quiz-action";
@@ -64,7 +64,7 @@ async function QuizShell({ documentId }: { documentId: string }) {
     );
   }
 
-  const rating = await getArtifactFeedback(auth, { kind: "quiz", id: quiz.id });
+  const rating = await ratingOf(auth, { surface: "quiz", id: quiz.id });
   return (
     <Screen
       title={row.title}

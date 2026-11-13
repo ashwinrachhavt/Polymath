@@ -3,7 +3,6 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { io } from "next/cache";
 import { Skeleton } from "@/components/ui/skeleton";
-import { PageHeader } from "@/components/page-header";
 import { getAuthContext } from "@/lib/auth";
 import { listGeneratedArtifacts } from "@/domains/knowledge/artifacts";
 import {
@@ -33,7 +32,8 @@ import { LEARNING_JOB_KIND_PREFIX, learningJobSubject } from "@/domains/learning
 import { getNotebookLearningResults } from "@/domains/learning/notebook-results";
 import { listChallenges } from "@/domains/learning/challenges";
 import { describeShortfall } from "@/domains/learning/item-count";
-import { getArtifactFeedback } from "@/domains/knowledge/artifact-feedback";
+import { chatRatingsForRun, ratingOf, ratingsOf } from "@/domains/feedback/ratings";
+import { listRunSteps } from "@/domains/agents/queries";
 import { LearningResults } from "./learning-results";
 import NotebookSurface, { type GeneratedArtifact } from "./notebook-surface";
 
@@ -100,11 +100,13 @@ async function NotebookData({
       activeChat && !activeChatLive
         ? listThreads(auth.workspaceId, [activeChat.runId]).then((threads) => threads.get(activeChat.runId) ?? [])
         : Promise.resolve([]);
-    const [activeThread, lastAnswer] = await Promise.all([
+    const [activeThread, lastAnswer, activeSteps, activeRatings] = await Promise.all([
       threadPromise,
       activeChat ? lastGroundedAnswer(auth, activeChat.runId) : Promise.resolve(null),
+      activeChatLive ? listRunSteps(auth.workspaceId, activeChat.runId) : Promise.resolve([]),
+      activeChat ? chatRatingsForRun(auth, activeChat.runId) : Promise.resolve([]),
     ]);
-    return { activeChat, activeChatLive, activeThread, lastAnswer };
+    return { activeChat, activeChatLive, activeThread, lastAnswer, activeSteps, activeRatings };
   });
 
   // Artifacts pinned to this notebook's documents, with their stored structure.
@@ -169,11 +171,16 @@ async function NotebookData({
       subject: learningJobSubject.notebook(projectId),
     }),
   ]);
-  const { activeChat, activeChatLive, activeThread, lastAnswer } = chatView;
+  const { activeChat, activeChatLive, activeThread, lastAnswer, activeSteps, activeRatings } = chatView;
   const { draftDetail, linkTitles, linkable } = workbench;
-  const [quizFeedback, deckFeedback] = await Promise.all([
-    learning.quiz ? getArtifactFeedback(auth, { kind: "quiz", id: learning.quiz.id }) : null,
-    learning.deck ? getArtifactFeedback(auth, { kind: "flashcard_deck", id: learning.deck.id }) : null,
+  const [quizFeedback, deckFeedback, explainRatings] = await Promise.all([
+    learning.quiz ? ratingOf(auth, { surface: "quiz", id: learning.quiz.id }) : null,
+    learning.deck ? ratingOf(auth, { surface: "flashcards", id: learning.deck.id }) : null,
+    ratingsOf(
+      auth,
+      "explain",
+      (learning.explain?.turns ?? []).map((turn) => turn.id),
+    ),
   ]);
 
   const generated: GeneratedArtifact[] = generatedRows.map((row) => ({
@@ -188,9 +195,9 @@ async function NotebookData({
 
   return (
     <>
-      <PageHeader title={project.title} />
       <NotebookSurface
         notebook={{ projectId: project.id, title: project.title }}
+        description={project.description?.trim() || null}
         sources={sources}
         artifacts={generated}
         vault={vault.map((doc) => ({ id: doc.id, title: doc.title }))}
@@ -205,7 +212,14 @@ async function NotebookData({
             ? {
                 runId: activeChat.runId,
                 live: activeChatLive,
-                thread: activeThread.map((entry) => ({ kind: entry.kind, text: entry.text, ago: timeAgo(entry.at) })),
+                thread: activeThread.map((entry) => ({
+                  kind: entry.kind,
+                  text: entry.text,
+                  ago: timeAgo(entry.at),
+                  sequence: entry.sequence,
+                })),
+                steps: activeSteps,
+                ratings: activeRatings,
               }
             : null
         }
@@ -213,55 +227,58 @@ async function NotebookData({
         runs={runs.map((run) => ({ id: run.id, state: run.state, objective: run.objective }))}
         runDrafts={Object.fromEntries(runDrafts)}
         learningJobs={learningJobs}
+        studioSegment={quizId && learning.quiz?.id === quizId ? "learn" : "create"}
+        practiceBusy={challenges.some((challenge) => challenge.status === "preparing")}
+        practice={
+          <PracticePanel
+            projectId={project.id}
+            documentIds={sources
+              .filter((source) => source.readiness === "ready")
+              .slice(0, 8)
+              .map((source) => source.documentId)}
+            items={challenges.map(({ createdAt, ...challenge }) => ({ ...challenge, ago: timeAgo(createdAt) }))}
+          />
+        }
         results={
-          <>
-            <PracticePanel
-              projectId={project.id}
-              documentIds={sources
-                .filter((source) => source.readiness === "ready")
-                .slice(0, 8)
-                .map((source) => source.documentId)}
-              items={challenges.map(({ createdAt, ...challenge }) => ({ ...challenge, ago: timeAgo(createdAt) }))}
-            />
-            <LearningResults
-              projectId={project.id}
-              initiallyOpen={quizId && learning.quiz?.id === quizId ? "quiz" : null}
-              results={{
-                quiz: learning.quiz && {
-                  id: learning.quiz.id,
-                  title: learning.quiz.title,
-                  ago: timeAgo(learning.quiz.createdAt),
-                  questionCount: learning.quiz.questions.length,
-                  note: describeShortfall({
-                    made: learning.quiz.questions.length,
-                    requested: learning.quiz.requested,
-                    stoppedBy: learning.quiz.stoppedBy,
-                  }),
-                  quiz: learning.quiz,
-                  rating: quizFeedback,
-                },
-                deck: learning.deck && {
-                  id: learning.deck.id,
-                  title: learning.deck.title,
-                  ago: timeAgo(learning.deck.createdAt),
-                  cardCount: learning.deck.cardCount,
-                  note: describeShortfall({
-                    made: learning.deck.cardCount,
-                    requested: learning.deck.requested,
-                    stoppedBy: learning.deck.stoppedBy,
-                  }),
-                  dueCards: learning.deck.cards,
-                  rating: deckFeedback,
-                },
-                explain: learning.explain && {
-                  id: learning.explain.id,
-                  title: learning.explain.title,
-                  ago: timeAgo(learning.explain.createdAt),
-                  session: learning.explain,
-                },
-              }}
-            />
-          </>
+          <LearningResults
+            projectId={project.id}
+            initiallyOpen={quizId && learning.quiz?.id === quizId ? "quiz" : null}
+            results={{
+              quiz: learning.quiz && {
+                id: learning.quiz.id,
+                title: learning.quiz.title,
+                ago: timeAgo(learning.quiz.createdAt),
+                questionCount: learning.quiz.questions.length,
+                note: describeShortfall({
+                  made: learning.quiz.questions.length,
+                  requested: learning.quiz.requested,
+                  stoppedBy: learning.quiz.stoppedBy,
+                }),
+                quiz: learning.quiz,
+                rating: quizFeedback,
+              },
+              deck: learning.deck && {
+                id: learning.deck.id,
+                title: learning.deck.title,
+                ago: timeAgo(learning.deck.createdAt),
+                cardCount: learning.deck.cardCount,
+                note: describeShortfall({
+                  made: learning.deck.cardCount,
+                  requested: learning.deck.requested,
+                  stoppedBy: learning.deck.stoppedBy,
+                }),
+                dueCards: learning.deck.cards,
+                rating: deckFeedback,
+              },
+              explain: learning.explain && {
+                id: learning.explain.id,
+                title: learning.explain.title,
+                ago: timeAgo(learning.explain.createdAt),
+                session: learning.explain,
+                ratings: Object.fromEntries(explainRatings),
+              },
+            }}
+          />
         }
       />
       {draftDetail && linkable ? (

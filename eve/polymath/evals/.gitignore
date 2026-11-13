@@ -1,0 +1,4 @@
+# Generated per run; the committed baseline/after files are the evidence.
+results/fixtures.json
+results/probe.jsonl
+results/run.jsonl

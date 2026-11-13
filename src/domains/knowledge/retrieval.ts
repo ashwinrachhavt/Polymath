@@ -1,7 +1,8 @@
+import { resolveEmbedding } from "@/domains/billing/resolver";
 import { sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
-import { embeddingProvider, type EmbeddingProvider } from "@/integrations/embeddings/provider";
+import type { EmbeddingProvider } from "@/integrations/embeddings/provider";
 import { vectorLiteral } from "./embedding";
 
 /*
@@ -258,7 +259,7 @@ export async function searchKnowledge(
       : (async () => {
           let provider: EmbeddingProvider;
           try {
-            provider = input.provider ?? embeddingProvider();
+            provider = input.provider ?? (await resolveEmbedding(auth.workspaceId));
           } catch {
             meaningState = "unconfigured";
             return [];

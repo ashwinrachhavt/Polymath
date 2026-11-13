@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { awardCoins } from "@/domains/stones/coins";
@@ -22,6 +22,7 @@ import {
   type FlashcardGenerator,
 } from "@/integrations/learning/flashcard-generator";
 import { flashcardGenerationContext } from "./generation-context";
+import { flashcardIsDue, recordReview, type ReviewRating } from "./review-schedule";
 import {
   defaultItemCount,
   generateInBatches,
@@ -136,7 +137,7 @@ export async function generateFlashcardDeck(
   }
 
   const cardCount = input.cardCount ?? defaultItemCount(sources.reduce((sum, source) => sum + source.text.length, 0));
-  const engine = generator ?? defaultFlashcardGenerator(auth.workspaceId);
+  const engine = generator ?? (await defaultFlashcardGenerator(auth.workspaceId));
   const learningContext = await flashcardGenerationContext(auth, input.documentIds);
   const knownConcepts = await recentConceptNames(auth);
   const title =
@@ -346,7 +347,7 @@ export async function getFlashcardDueQueue(
         eq(flashcardReviews.userId, auth.userId),
       ),
     )
-    .where(and(eq(flashcards.workspaceId, auth.workspaceId), isDue(now)))
+    .where(and(eq(flashcards.workspaceId, auth.workspaceId), flashcardIsDue(now)))
     .orderBy(sql`coalesce(${flashcardReviews.dueAt}, now())`, asc(flashcards.createdAt))
     .limit(Math.max(1, Math.min(limit, 100)));
   return rows.map((row) => ({ ...row, dueAt: row.dueAt ?? now }));
@@ -365,18 +366,13 @@ export async function countDueFlashcards(auth: AuthContext): Promise<number> {
         eq(flashcardReviews.userId, auth.userId),
       ),
     )
-    .where(and(eq(flashcards.workspaceId, auth.workspaceId), isDue(new Date())));
+    .where(and(eq(flashcards.workspaceId, auth.workspaceId), flashcardIsDue(new Date())));
   return row?.count ?? 0;
-}
-
-/** A card is due for its learner once its review time has come, or when they have never rated it. */
-function isDue(now: Date) {
-  return or(isNull(flashcardReviews.id), lte(flashcardReviews.dueAt, now));
 }
 
 export async function rateFlashcard(
   auth: AuthContext,
-  input: { flashcardId: string; rating: "again" | "hard" | "good" | "easy" },
+  input: { flashcardId: string; rating: ReviewRating },
 ): Promise<{ dueAt: Date; coinsEarned: number }> {
   const [card] = await db
     .select({ id: flashcards.id })
@@ -384,75 +380,8 @@ export async function rateFlashcard(
     .where(and(eq(flashcards.id, input.flashcardId), eq(flashcards.workspaceId, auth.workspaceId)))
     .limit(1);
   if (!card) throw new FlashcardError("card_not_found", "That flashcard is not available.");
-  const [previous] = await db
-    .select({
-      intervalDays: flashcardReviews.intervalDays,
-      ease: flashcardReviews.easeHundredths,
-      repetitions: flashcardReviews.repetitions,
-    })
-    .from(flashcardReviews)
-    .where(
-      and(
-        eq(flashcardReviews.workspaceId, auth.workspaceId),
-        eq(flashcardReviews.flashcardId, card.id),
-        eq(flashcardReviews.userId, auth.userId),
-      ),
-    )
-    .limit(1);
-  const ease = previous?.ease ?? 250;
-  let intervalDays = previous?.intervalDays ?? 0;
-  let easeHundredths = ease;
-  let repetitions = previous?.repetitions ?? 0;
-  let delayMs: number;
-
-  if (input.rating === "again") {
-    intervalDays = 0;
-    repetitions = 0;
-    easeHundredths = Math.max(130, ease - 20);
-    delayMs = 10 * 60 * 1000;
-  } else if (input.rating === "hard") {
-    intervalDays = Math.max(1, Math.round(intervalDays * 1.2));
-    repetitions += 1;
-    easeHundredths = Math.max(130, ease - 15);
-    delayMs = intervalDays * 24 * 60 * 60 * 1000;
-  } else if (input.rating === "easy") {
-    intervalDays = repetitions === 0 ? 4 : Math.max(4, Math.round(intervalDays * (ease / 100) * 1.3));
-    repetitions += 1;
-    easeHundredths = Math.min(350, ease + 15);
-    delayMs = intervalDays * 24 * 60 * 60 * 1000;
-  } else {
-    intervalDays = repetitions === 0 ? 1 : repetitions === 1 ? 3 : Math.max(1, Math.round(intervalDays * (ease / 100)));
-    repetitions += 1;
-    delayMs = intervalDays * 24 * 60 * 60 * 1000;
-  }
-  const dueAt = new Date(Date.now() + delayMs);
-  const coinsEarned = await withTransaction(async (tx) => {
-    await tx
-      .insert(flashcardReviews)
-      .values({
-        workspaceId: auth.workspaceId,
-        flashcardId: card.id,
-        userId: auth.userId,
-        dueAt,
-        intervalDays,
-        easeHundredths,
-        repetitions,
-        lastRating: input.rating,
-        createdBy: auth.userId,
-        updatedBy: auth.userId,
-      })
-      .onConflictDoUpdate({
-        target: [flashcardReviews.workspaceId, flashcardReviews.flashcardId, flashcardReviews.userId],
-        set: {
-          dueAt,
-          intervalDays,
-          easeHundredths,
-          repetitions,
-          lastRating: input.rating,
-          updatedBy: auth.userId,
-          updatedAt: new Date(),
-        },
-      });
+  const { dueAt, coinsEarned } = await withTransaction(async (tx) => {
+    const review = await recordReview(tx, auth, { flashcardId: card.id }, input.rating);
     await recordAudit(
       auth,
       {
@@ -460,11 +389,12 @@ export async function rateFlashcard(
         subjectType: "flashcard",
         subjectId: card.id,
         summary: "Rated a flashcard " + input.rating,
-        metadata: { rating: input.rating, intervalDays },
+        metadata: { rating: input.rating, intervalDays: review.intervalDays },
       },
       tx,
     );
-    return awardCoins(tx, auth, { kind: "flashcard", flashcardId: card.id });
+    const coinsEarned = await awardCoins(tx, auth, { kind: "flashcard", flashcardId: card.id });
+    return { dueAt: review.dueAt, coinsEarned };
   });
   return { dueAt, coinsEarned };
 }

@@ -109,7 +109,7 @@ export async function summarizeReading(
   summarizer?: ReadingSummarizer,
 ): Promise<VerifiedReadingSummary & { documentTitle: string }> {
   const extraction = await loadCurrentExtraction(auth, input.documentId);
-  const engine = summarizer ?? defaultReadingSummarizer(auth.workspaceId);
+  const engine = summarizer ?? (await defaultReadingSummarizer(auth.workspaceId));
   const raw = await engine.summarize(extraction.text);
   const verified = verifyReadingSummary(extraction.text, raw);
   if (!verified.summary && verified.keyClaims.length === 0) {

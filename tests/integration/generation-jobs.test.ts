@@ -32,6 +32,7 @@ vi.mock("@/lib/db-transaction", () => ({
 }));
 
 import {
+  cancelGenerationJob,
   dismissGenerationJob,
   GENERATION_JOB_TOPIC,
   GenerationJobConflictError,
@@ -41,8 +42,9 @@ import {
   runGenerationJob,
   submitGenerationJob,
 } from "@/domains/jobs/commands";
-import { listUnfinishedGenerationJobs, tailGenerationJobs } from "@/domains/jobs/queries";
+import { listRecentGenerationJobs, listUnfinishedGenerationJobs, tailGenerationJobs } from "@/domains/jobs/queries";
 import type { GenerationJobRunner } from "@/domains/jobs/runners";
+import { AllowanceExhaustedError } from "@/domains/billing/resolver";
 import { GenerationJobFailure, STALLED_COPY, UNEXPECTED_FAILURE_COPY } from "@/domains/jobs/state";
 
 beforeAll(() => {
@@ -122,7 +124,7 @@ describe("generation jobs", () => {
     await Promise.all([runGenerationJob(ref, { [KIND]: runner }), runGenerationJob(ref, { [KIND]: runner })]);
 
     expect(runner).toHaveBeenCalledTimes(1);
-    expect(runner.mock.calls[0][2]).toEqual({ generationKey: `${job.id}:1` });
+    expect(runner.mock.calls[0][2]).toMatchObject({ generationKey: `${job.id}:1` });
     expect(runner.mock.calls[0][0]).toMatchObject({ userId: auth.userId, workspaceId: auth.workspaceId });
     expect(await stored(job.id)).toMatchObject({ status: "ready", result: READY, error: null });
 
@@ -158,7 +160,7 @@ describe("generation jobs", () => {
     await runGenerationJob({ jobId: job.id, attempt: 1 }, { [KIND]: working });
     expect(working).not.toHaveBeenCalled();
     await runGenerationJob({ jobId: job.id, attempt: 2 }, { [KIND]: working });
-    expect(working.mock.calls[0][2]).toEqual({ generationKey: `${job.id}:2` });
+    expect(working.mock.calls[0][2]).toMatchObject({ generationKey: `${job.id}:2` });
     expect(await stored(job.id)).toMatchObject({ status: "ready", attempt: 2, result: READY });
     expect(await listUnfinishedGenerationJobs(auth, { kindPrefix: "test." })).toEqual([]);
   });
@@ -177,6 +179,23 @@ describe("generation jobs", () => {
     );
     quiet.mockRestore();
     expect(await stored(job.id)).toMatchObject({ status: "failed", error: UNEXPECTED_FAILURE_COPY });
+  });
+
+  it("shows an exhausted weekly allowance as its own readable message, not the generic one", async () => {
+    const auth = await signIn("allowance");
+    const { job } = await submit(auth);
+    await runGenerationJob(
+      { jobId: job.id, attempt: 1 },
+      {
+        [KIND]: async () => {
+          throw new AllowanceExhaustedError("free", 100);
+        },
+      },
+    );
+    expect(await stored(job.id)).toMatchObject({
+      status: "failed",
+      error: expect.stringContaining("Add your own key in Settings, or upgrade to Pro"),
+    });
   });
 
   it("fails a job whose kind has no runner instead of leaving it running", async () => {
@@ -218,6 +237,86 @@ describe("generation jobs", () => {
     expect(await stored(job.id)).toMatchObject({ status: "queued", attempt: 2, result: null });
   });
 
+  it("streams each progress step and clears the step once the job settles", async () => {
+    const auth = await signIn("progress");
+    const { job } = await submit(auth);
+    const before = (await tailGenerationJobs(auth, null)).now;
+    let release: () => void = () => {};
+    const run = runGenerationJob(
+      { jobId: job.id, attempt: 1 },
+      {
+        [KIND]: async (_auth, _input, ctx) => {
+          await ctx.progress("Crawling", { done: 3, total: 25 });
+          await new Promise<void>((resolve) => (release = resolve));
+          return READY;
+        },
+      },
+    );
+    await vi.waitFor(async () =>
+      expect((await stored(job.id)).progress).toEqual({ step: "Crawling", done: 3, total: 25 }),
+    );
+    const tailed = (await tailGenerationJobs(auth, before)).jobs.find((view) => view.id === job.id);
+    expect(tailed).toMatchObject({
+      status: "running",
+      progress: { step: "Crawling", done: 3, total: 25 },
+    });
+    release();
+    await run;
+    expect(await stored(job.id)).toMatchObject({ status: "ready", progress: null });
+  });
+
+  it("cancels a running job at once, stops its runner at the next step, and lets it be tried again", async () => {
+    const auth = await signIn("cancel");
+    const { job } = await submit(auth);
+    let step: () => void = () => {};
+    const after = vi.fn();
+    let aborted = false;
+    const run = runGenerationJob(
+      { jobId: job.id, attempt: 1 },
+      {
+        [KIND]: async (_auth, _input, ctx) => {
+          await new Promise<void>((resolve) => (step = resolve));
+          aborted = ctx.signal.aborted;
+          await ctx.progress("Writing", { done: 1, total: 2 });
+          after();
+          return READY;
+        },
+      },
+    );
+    await vi.waitFor(async () => expect((await stored(job.id)).status).toBe("running"));
+    expect(await cancelGenerationJob(auth, job.id)).toMatchObject({ status: "cancelled", progress: null });
+    step();
+    await run;
+    expect(after).not.toHaveBeenCalled();
+    expect(aborted).toBe(false);
+    expect(await stored(job.id)).toMatchObject({ status: "cancelled", result: null, error: null });
+    // A second cancel, or one on a settled job, changes nothing.
+    expect(await cancelGenerationJob(auth, job.id)).toBeNull();
+    expect(await retryGenerationJob(auth, job.id)).toMatchObject({ status: "queued", attempt: 2 });
+  });
+
+  it("cancels a queued job before it starts, so its run never does the work", async () => {
+    const auth = await signIn("cancel-queued");
+    const { job } = await submit(auth);
+    expect(await cancelGenerationJob(auth, job.id)).toMatchObject({ status: "cancelled" });
+    const runner = vi.fn(async () => READY);
+    await runGenerationJob({ jobId: job.id, attempt: 1 }, { [KIND]: runner });
+    expect(runner).not.toHaveBeenCalled();
+    expect(await dismissGenerationJob(auth, job.id)).toBe(true);
+  });
+
+  it("lists running and recent jobs for the jobs panel, newest first", async () => {
+    const auth = await signIn("recent");
+    const first = await submit(auth);
+    const second = await submit(auth);
+    await runGenerationJob({ jobId: first.job.id, attempt: 1 }, { [KIND]: async () => READY });
+    const listed = await listRecentGenerationJobs(auth);
+    expect(listed.map((view) => [view.id, view.status])).toEqual([
+      [second.job.id, "queued"],
+      [first.job.id, "ready"],
+    ]);
+  });
+
   it("keeps a job to its maker: another member can neither retry, dismiss nor see it", async () => {
     const auth = await signIn("owner");
     const stranger = await signIn("stranger");
@@ -234,6 +333,8 @@ describe("generation jobs", () => {
     expect(await queuedGenerationJobAttempt(stranger, job.id)).toBeNull();
     expect(await retryGenerationJob(stranger, job.id)).toBeNull();
     expect(await dismissGenerationJob(stranger, job.id)).toBe(false);
+    expect(await cancelGenerationJob(stranger, job.id)).toBeNull();
+    expect(await listRecentGenerationJobs(stranger)).toEqual([]);
     expect(await listUnfinishedGenerationJobs(stranger, { kindPrefix: "test." })).toEqual([]);
     expect((await tailGenerationJobs(stranger, new Date(0))).jobs).toEqual([]);
 

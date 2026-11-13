@@ -16,7 +16,9 @@ import {
   draftTitle,
   type DraftTemplate,
 } from "./draft-templates";
-import { withTransaction } from "@/lib/db-transaction";
+import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
+import { kickGenerationJob } from "@/domains/jobs/kick";
+import { absorbCapturedVideo, startLinkCrawl, type LinkScope } from "./link-reading";
 import { db } from "@/lib/db";
 import { displayTitle, titleFromText } from "@/lib/display-text";
 import { inferCaptureMode, contentHash, workingText, type CaptureMode } from "./mode";
@@ -101,6 +103,11 @@ export async function createCapture(
     source?: (typeof captureSource.enumValues)[number];
     /** Where it came from and why it was kept; all optional (see context.ts). */
     context?: CaptureContext;
+    /**
+     * For a captured address: "site" (the default) reads the page and crawls
+     * the site around it into child documents; "page" reads the page alone.
+     */
+    linkScope?: LinkScope;
     idempotencyKey?: string;
   },
 ) {
@@ -115,7 +122,8 @@ export async function createCapture(
   // later, once a fetch runs.
   const working = workingText({ captureMode: mode, text, fetchedText: null });
   const hash = mode === "blob" || working === null ? null : contentHash(working);
-  const result = await withTransaction<typeof captures.$inferSelect | { survivorId: string }>(async (tx) => {
+  type Created = typeof captures.$inferSelect & { crawlJob: { jobId: string; attempt: number } | null };
+  const result = await withTransaction<Created | { survivorId: string }>(async (tx) => {
     const { value } = await withReceipt(tx, auth, input.idempotencyKey, { op: "createCapture", ...input }, async () => {
       const context = await resolveContext(tx, auth, input.context);
       // onConflictDoNothing, not a caught 23505: a unique violation aborts the
@@ -174,7 +182,6 @@ export async function createCapture(
         },
         tx,
       );
-      // Keep the raw capture first. Firecrawl runs only when the owner asks.
       if (capture.text) {
         await enqueueOutbox(tx, auth, {
           topic: CAPTURE_ENRICHMENT_TOPIC,
@@ -182,7 +189,15 @@ export async function createCapture(
           dispatchKey: `capture-enrichment:${capture.id}`,
         });
       }
-      return capture;
+      // A captured address is read at once: its page fills the capture's
+      // text, and by default the site around it is crawled into child
+      // documents (a job the person watches in the jobs panel).
+      if (isUrlReference && url) {
+        await readCapturedPage(tx, auth, { captureId: capture.id, url, version: capture.version });
+        const crawl = await startLinkCrawl(tx, auth, { captureId: capture.id, url, scope: input.linkScope });
+        return { ...capture, fetchOutcome: "pending" as const, crawlJob: crawl };
+      }
+      return { ...capture, crawlJob: null };
     });
     return value;
   });
@@ -190,7 +205,37 @@ export async function createCapture(
   // the 409. The API keeps its four-member body byte-exact (companion
   // contract); the id rides along as an additive member.
   if ("survivorId" in result) throw new ConflictError("That URL is already in the inbox.", result.survivorId);
-  return result;
+  const { crawlJob, ...capture } = result;
+  if (crawlJob) kickGenerationJob(crawlJob);
+  if (isUrlReference && url) await absorbCapturedVideo(auth, { captureId: capture.id, url });
+  return capture;
+}
+
+/**
+ * Queues the read of a captured address's own page: the fetch fills the
+ * capture's text, then enrichment classifies it. `version` names the attempt,
+ * so a retry is a new outbox row and a repeat of the same attempt is not.
+ */
+async function readCapturedPage(
+  tx: TxDrizzle,
+  auth: AuthContext,
+  input: { captureId: string; url: string; version: number },
+): Promise<{ fetchOutcome: "pending"; enqueued: boolean }> {
+  await tx
+    .update(captures)
+    .set({ fetchOutcome: "pending" })
+    .where(and(eq(captures.workspaceId, auth.workspaceId), eq(captures.id, input.captureId)));
+  const read = await enqueueOutbox(tx, auth, {
+    topic: CAPTURE_URL_CONTENT_TOPIC,
+    payload: { captureId: input.captureId, url: input.url },
+    dispatchKey: `capture-url-enrichment:${input.captureId}:v${input.version}`,
+  });
+  await enqueueOutbox(tx, auth, {
+    topic: CAPTURE_ENRICHMENT_TOPIC,
+    payload: { captureId: input.captureId },
+    dispatchKey: `capture-enrichment:${input.captureId}:url-v${input.version}`,
+  });
+  return { fetchOutcome: "pending", enqueued: read.enqueued };
 }
 
 /*
@@ -932,15 +977,10 @@ export async function retryCaptureUrl(
           .where(and(eq(captures.workspaceId, auth.workspaceId), eq(captures.id, capture.id)))
           .returning({ id: captures.id, version: captures.version });
         if (!updated) throw new NotFoundError("That capture no longer exists. Reload the inbox.");
-        const event = await enqueueOutbox(tx, auth, {
-          topic: CAPTURE_URL_CONTENT_TOPIC,
-          payload: { captureId: capture.id, url: capture.url },
-          dispatchKey: `capture-url-enrichment:${capture.id}:v${updated.version}`,
-        });
-        await enqueueOutbox(tx, auth, {
-          topic: CAPTURE_ENRICHMENT_TOPIC,
-          payload: { captureId: capture.id },
-          dispatchKey: `capture-enrichment:${capture.id}:url-v${updated.version}`,
+        const event = await readCapturedPage(tx, auth, {
+          captureId: capture.id,
+          url: capture.url,
+          version: updated.version,
         });
         await recordAudit(
           auth,

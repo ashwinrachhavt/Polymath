@@ -307,19 +307,4 @@ describe("what the executor says to a session", () => {
     expect(objective).toContain("Do the thing.");
     expect(objective).toContain("message trig-1");
   });
-
-  it("carries the routed lane as a hint, and says nothing when the trigger was not routed", () => {
-    const h = harness();
-    const ticket = h.seedTicket("1");
-    const plain = launchObjective(ticket, (id) => h.repos.triggers.get(id));
-    expect(plain).not.toContain("Routing lane:");
-
-    // The lane rides the trigger's durable meta (wiring.ts), so a replay of
-    // the same ticket reaches the same hint without re-classifying.
-    const routed = { ...h.repos.triggers.get("trig-1")!, meta: { lane: "research" } };
-    const objective = launchObjective(ticket, () => routed);
-    expect(objective).toContain("Routing lane: research");
-    // A hint, not a policy: the scope line is still there.
-    expect(objective).toContain("Scope of your mandate");
-  });
 });

@@ -10,6 +10,7 @@ import {
   fetchPageForAgent,
   WEB_FETCH_CAPABILITY,
 } from "../../../../src/domains/knowledge/web-fetch";
+import { runSessionRef } from "../lib/run-session";
 
 /*
  * A read capability over a public URL, backed by the local Firecrawl instance.
@@ -29,12 +30,11 @@ const MAX_FETCHES_PER_TURN = 8;
 
 export default defineTool({
   description:
-    "Read a public web page as markdown, or crawl a site to a bounded depth. A YouTube video URL returns its spoken transcript (captions) with timestamps rather than the page chrome, so use it to summarize a video or answer questions about what was said. Use after web_search when a snippet is not enough, or when the owner names a URL directly and its contents matter. Fetch each URL at most once per turn: if the result is already in the conversation, use it, and if a page fails, do not try mirrors, reader proxies, or alternate front-ends — two failures mean the page is not readable here. It will not log into anything, fetch pages behind authentication, or read the owner's mail and documents — those live elsewhere; and it answers 'not configured' on deployments without a fetch provider rather than falling back. Crawl only when the answer may sit on several pages of the same site; a single page needs no crawl. Read-only; the run's frozen policy must allow web.fetch.",
+    "Read one public web page as markdown (a YouTube URL returns its timestamped transcript). Use after web_search when a snippet is not enough, or for a URL the owner gives. Each URL at most once per turn; if a page fails, do not try mirrors or proxies. `crawl` reads a few pages of one site. Read-only.",
   inputSchema: z.object({
     url: z.string().url().describe("Public http(s) URL to read"),
     crawl: z.boolean().optional().describe("Crawl the site instead of reading one page"),
-    limit: z.number().int().min(1).max(50).optional().describe("Crawl: max pages (default 10)"),
-    maxDepth: z.number().int().min(1).max(3).optional().describe("Crawl: link depth (default 1)"),
+    limit: z.number().int().min(1).max(30).optional().describe("Crawl: max pages (default 25, two links deep)"),
   }),
   async execute(input, ctx) {
     const current = ctx.session.auth.current;
@@ -43,7 +43,7 @@ export default defineTool({
     const userId = current?.principalId;
     if (typeof userId !== "string") return { ok: false as const, error: "no principal in session" };
 
-    const run = await getRunBySessionRef(ctx.session.id, workspaceId);
+    const run = await getRunBySessionRef(runSessionRef(ctx.session), workspaceId);
     if (!run || run.state !== "running") {
       return { ok: false as const, error: "no active Polymath run bound to this session" };
     }
@@ -86,10 +86,7 @@ export default defineTool({
     }
 
     if (input.crawl) {
-      return crawlSiteForAgent(
-        { workspaceId, userId },
-        { url: input.url, limit: input.limit, maxDepth: input.maxDepth },
-      );
+      return crawlSiteForAgent({ workspaceId, userId }, { url: input.url, limit: input.limit });
     }
     return fetchPageForAgent({ workspaceId }, { url: input.url });
   },

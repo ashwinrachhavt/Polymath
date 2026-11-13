@@ -9,6 +9,7 @@ import {
   expandResearchHop,
   type ResearchNode,
 } from "../../../../src/domains/knowledge/research-expansion";
+import { runSessionRef } from "../lib/run-session";
 
 /*
  * ASH-293: "go deeper on X" expands the research graph one hop at a time. The
@@ -21,7 +22,6 @@ import {
  * that the budget stays on screen while the dive is open.
  */
 export default defineTool({
-  deferred: true,
   description:
     "Go one hop deeper in a research graph. Use when the owner says to go deeper on something, or asks what relates to a node. Each call expands one node: it follows connections already in the library first (free), and only searches the web when the library has nothing new. Returns the nodes it reached, any web pages worth reading, and the remaining budget — report the remaining hops to the owner when you stop. Do not call this repeatedly without telling the owner how much budget is left.",
   inputSchema: z.object({
@@ -62,7 +62,7 @@ export default defineTool({
     if (typeof workspaceId !== "string" || !current?.principalId) {
       return { ok: false as const, error: "no workspace in session" };
     }
-    const run = await getRunBySessionRef(ctx.session.id, workspaceId);
+    const run = await getRunBySessionRef(runSessionRef(ctx.session), workspaceId);
     if (!run || run.state !== "running") {
       return { ok: false as const, error: "no active Polymath run bound to this session" };
     }

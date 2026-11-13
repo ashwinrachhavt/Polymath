@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { io } from "next/cache";
 import { resolveAuthContext, type AuthContext } from "@/domains/identity/resolve";
 import { resolveCompanionToken, resolveMachineClient } from "@/domains/identity/machine";
+import { isClerkUserAllowed } from "@/lib/access-allowlist";
 import { clerkConfigured, devAuthBypass } from "@/lib/clerk";
 import { ForbiddenRoleError } from "./auth/guards";
 import { problemResponse } from "./problems";
@@ -90,8 +91,20 @@ export const getAuthContext = cache(async (): Promise<AuthContext> => {
   }
   const { userId } = await auth();
   if (!userId) throw new UnauthorizedError();
+  await assertInvited(userId);
   return resolveAuthContext(userId);
 });
+
+/*
+ * The invite-only list (src/lib/access-allowlist.ts), checked before
+ * resolveAuthContext because that is where a first sign-in provisions a user
+ * and a workspace. The proxy already turned an unlisted session away; this is
+ * the second line, so a stranger never gets a row even if a request arrives
+ * by a path the proxy does not cover.
+ */
+async function assertInvited(clerkUserId: string): Promise<void> {
+  if (!(await isClerkUserAllowed(clerkUserId))) throw new ForbiddenError("This Polymath is invite-only.");
+}
 
 /** Every server action begins withAuth(async (auth, input) => ...). */
 export function withAuth<A extends unknown[]>(fn: (auth: AuthContext, ...args: A) => Promise<unknown>) {
@@ -164,6 +177,7 @@ export const getAnyAuthContext = cache(async (request?: Request): Promise<AuthCo
   const session = await auth({ acceptsToken: ["session_token", "m2m_token", "api_key"] });
   if (session.isAuthenticated) {
     if ("userId" in session && session.userId) {
+      if (session.tokenType === "session_token") await assertInvited(session.userId);
       return resolveAuthContext(session.userId);
     }
     // An m2m/api-key subject: "machineId" for m2m_token, "id" for api_key.
