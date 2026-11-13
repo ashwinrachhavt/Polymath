@@ -45,10 +45,13 @@ const decisions = new Map<string, { allowed: boolean; expiresAt: number }>();
 
 type LookupEmails = (clerkUserId: string) => Promise<readonly ClerkEmail[]>;
 
-const lookupClerkEmails: LookupEmails = async (clerkUserId) => {
-  // The Backend API client takes env-configured options and the user id
-  // explicitly, so it works in the proxy as well as in server code.
-  const user = await createClerkClient({}).users.getUser(clerkUserId);
+export const lookupClerkEmails: LookupEmails = async (clerkUserId) => {
+  // The Backend API client takes the user id explicitly, so it works in the
+  // proxy as well as in server code. The secret key is passed on purpose:
+  // createClerkClient({}) does not read it from the environment, so every
+  // lookup threw "Missing Clerk Secret Key" and, failing closed, shut out the
+  // owner too.
+  const user = await createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY }).users.getUser(clerkUserId);
   return user.emailAddresses;
 };
 
