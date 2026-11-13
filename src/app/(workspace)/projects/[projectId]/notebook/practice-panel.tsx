@@ -5,7 +5,7 @@ import { useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import type { ChallengeFormat } from "@/domains/learning/challenge-content";
 import { startPracticeAction } from "./practice-actions";
-import { PRACTICE_NAMES, useRefreshWhile } from "./practice-session";
+import { PRACTICE_NAMES, useRefreshWhenPrepared } from "./practice-session";
 import { randomId } from "@/lib/random-id";
 
 /*
@@ -40,7 +40,10 @@ export function PracticePanel({
   const [pending, startTransition] = useTransition();
   // A resend after a failed request replays its key; a successful start clears it.
   const request = useRef<{ format: ChallengeFormat; key: string } | null>(null);
-  useRefreshWhile(items.some((item) => item.status === "preparing"));
+  useRefreshWhenPrepared(
+    projectId,
+    items.filter((item) => item.status === "preparing").map((item) => item.id),
+  );
 
   function start(format: ChallengeFormat) {
     setError(null);

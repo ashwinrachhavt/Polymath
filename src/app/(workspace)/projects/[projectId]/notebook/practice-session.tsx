@@ -1,10 +1,11 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
+import { useWorkPoll } from "@/components/work-status";
 import type { ChallengeAttemptView, ChallengeView } from "@/domains/learning/challenges";
-import { showPracticeHintAction, submitPracticeAnswerAction } from "./practice-actions";
+import { practiceStatusAction, showPracticeHintAction, submitPracticeAnswerAction } from "./practice-actions";
 import { randomId } from "@/lib/random-id";
 
 /*
@@ -38,14 +39,37 @@ function helpNote(attempt: ChallengeAttemptView): string {
   return "";
 }
 
-/** Re-reads the page while the exercise is still being written. */
-export function useRefreshWhile(waiting: boolean) {
+const PREPARING_GIVE_UP_MS = 3 * 60_000;
+const PREPARING_GIVE_UP_LABEL = "Still writing the exercise. Reopen this page in a moment.";
+
+/**
+ * Brings the page up to date once the exercises being written are done. While
+ * they are not, it reads one status row (never the whole route) and only while
+ * the tab is visible; it refreshes the page a single time when the last one
+ * settles.
+ */
+export function useRefreshWhenPrepared(projectId: string, preparingIds: string[]) {
   const router = useRouter();
+  const key = preparingIds.join(",");
+  const ids = useMemo(() => (key ? key.split(",") : []), [key]);
+  const read = useCallback(
+    async (polled: string[]) => {
+      const result = await practiceStatusAction({ projectId, challengeIds: polled });
+      if (!result.ok) throw new Error(result.error);
+      return result.states;
+    },
+    [projectId],
+  );
+  const { states } = useWorkPoll({
+    ids,
+    read,
+    giveUpMs: PREPARING_GIVE_UP_MS,
+    giveUpLabel: PREPARING_GIVE_UP_LABEL,
+  });
+  const settled = ids.length > 0 && ids.every((id) => states[id]?.phase === "done" || states[id]?.phase === "failed");
   useEffect(() => {
-    if (!waiting) return;
-    const timer = setInterval(() => router.refresh(), 2500);
-    return () => clearInterval(timer);
-  }, [waiting, router]);
+    if (settled) router.refresh();
+  }, [settled, router]);
 }
 
 function Passage({ evidence }: { evidence: ChallengeAttemptView["evidence"] }) {
@@ -69,7 +93,7 @@ export function PracticeSession({ projectId, challenge }: { projectId: string; c
   const [pending, startTransition] = useTransition();
   // A resend of the same answer replays its key; a changed answer gets a new one.
   const submit = useRef<{ signature: string; key: string } | null>(null);
-  useRefreshWhile(challenge.status === "preparing");
+  useRefreshWhenPrepared(projectId, challenge.status === "preparing" ? [challenge.id] : []);
 
   if (challenge.status !== "ready" || !challenge.prompt) {
     return (
