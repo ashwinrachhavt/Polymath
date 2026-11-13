@@ -28,6 +28,12 @@ COPY . .
 ARG NEXT_PUBLIC_APP_URL=http://localhost:3300
 ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
 
+# One id per release (the commit sha). A browser tab left open across a deploy
+# then gets a full reload instead of calling Server Functions by ids the new
+# build no longer has, which failed silently: a Connect button that did nothing.
+ARG NEXT_DEPLOYMENT_ID=dev
+ENV NEXT_DEPLOYMENT_ID=$NEXT_DEPLOYMENT_ID
+
 # eve/next serves each agent from its built .output under `next start`, so the
 # agents are built before Next.
 #

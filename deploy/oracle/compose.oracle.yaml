@@ -75,6 +75,8 @@ services:
       # The app's public origin, inlined into the client bundle. Not a secret.
       args:
         NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3300}
+        # Version-skew protection (Dockerfile): the release's commit sha.
+        NEXT_DEPLOYMENT_ID: ${POLYMATH_RELEASE}
       secrets:
         - app_env
     # Both eve agents on loopback ports, then `next start` (see start-web.sh).
