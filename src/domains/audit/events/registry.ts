@@ -385,6 +385,7 @@ const TIER_2_ACTIONS: { action: string; category: EventCategory }[] = [
   { action: "learning.explain_session_started", category: "knowledge" },
   { action: "learning.quiz_completed", category: "knowledge" },
   { action: "learning.quiz_generated", category: "knowledge" },
+  { action: "learning.quiz_question_reviewed", category: "knowledge" },
   { action: "understanding.explainer_written", category: "knowledge" },
   { action: "learning.mission_archived", category: "knowledge" },
   { action: "learning.mission_restored", category: "knowledge" },

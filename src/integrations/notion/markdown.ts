@@ -132,6 +132,13 @@ export function blocksToMarkdown(
         push(`\n[${block.type}: ${url ?? "attachment"}]`);
         break;
       }
+      case "bookmark":
+      case "embed":
+      case "link_preview": {
+        const payload = block[block.type] as { url?: string } | undefined;
+        if (payload?.url) push(`\n[${block.type === "bookmark" ? "Bookmark" : "Link"}](${payload.url})`);
+        break;
+      }
       default:
         if (text) push(text);
         renderChildren(1);
@@ -151,4 +158,25 @@ export function pageHeader(title: string, properties: Record<string, string>): s
     .filter(([, v]) => v)
     .map(([k, v]) => `- ${k}: ${v}`);
   return [`# ${title}`, "", ...lines, ""].join("\n");
+}
+
+const NOTION_HOSTS = /(^|\.)(notion\.so|notion\.site|notion\.com|notion\.new)$/i;
+
+/**
+ * The outside addresses a page links to, in reading order, once each. Links to
+ * other Notion pages are the tree's business, not captures; a signed file URL
+ * is rendered as `[image: url]` and never matches, since it expires.
+ */
+export function externalLinks(markdown: string): string[] {
+  const found = new Set<string>();
+  for (const match of markdown.matchAll(/\]\((https?:\/\/[^)\s]+)\)/g)) {
+    try {
+      const url = new URL(match[1]!);
+      if (NOTION_HOSTS.test(url.hostname)) continue;
+      found.add(url.toString());
+    } catch {
+      // Not a URL; a reading of the page is no place to fail on it.
+    }
+  }
+  return [...found];
 }
