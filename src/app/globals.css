@@ -1099,7 +1099,11 @@ textarea {
    plain CSS the browser cannot elide. min-height: 0 releases the flex item's
    content minimum so the height actually holds. */
 .shell-conversation {
-  height: 100dvh;
+  /* --vvh is the visible height above the on-screen keyboard (components/shell/
+     viewport-sync.tsx); without a keyboard, or before it is set, it is the
+     dynamic viewport. The composer at the foot of the transcript therefore
+     rides above the keyboard and the page never scrolls to find it. */
+  height: var(--vvh, 100dvh);
   min-height: 0;
   overflow: hidden;
 }
@@ -1145,4 +1149,67 @@ li[data-deep-linked="true"] {
 }
 .activity-title-toggle[open] > summary .title-collapse {
   display: inline;
+}
+
+/*
+ * The phone shell. Fixes and rules that only exist so the app behaves like an
+ * app on a small touch screen:
+ *
+ * - iOS Safari zooms the page when a focused field's text is under 16px, so
+ *   every field is 16px on a phone. Pinch-zoom itself stays available (the
+ *   viewport sets no maximum-scale). Written as plain CSS after the utilities
+ *   so no component's text-xs or text-body-dense can win. Reading prose is
+ *   already 17px and is left alone.
+ * - Taps act at once (no double-tap-zoom delay), no grey flash on tap.
+ * - The page never scrolls sideways or bounces past its ends, and the bottom
+ *   bar steps aside while the keyboard is up (it would sit above the keys and
+ *   cost a quarter of the visible screen).
+ */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+@media (max-width: 767px) {
+  input:not(
+    [type="checkbox"],
+    [type="radio"],
+    [type="range"],
+    [type="color"],
+    [type="file"],
+    [type="button"],
+    [type="submit"],
+    [type="reset"]
+  ),
+  textarea,
+  select,
+  [contenteditable]:not([contenteditable="false"], .prose-reading) {
+    font-size: 16px;
+  }
+  html,
+  body {
+    overscroll-behavior-y: none;
+  }
+  a,
+  button,
+  [role="button"],
+  [role="tab"],
+  summary,
+  label {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+  /* A notch in landscape: keep content out from under it. */
+  body {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+  html[data-keyboard] [data-mobile-nav] {
+    display: none;
+  }
+  /* Thumb-sized controls in the compact top bar (44px, Apple's minimum). */
+  [data-topbar] :is(button, a):not([data-slot="button"][data-size="default"]) {
+    min-width: 44px;
+    min-height: 44px;
+    justify-content: center;
+  }
 }

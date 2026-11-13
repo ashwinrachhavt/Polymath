@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { MotionProvider } from "@/components/motion-config";
@@ -14,6 +14,34 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Polymath",
   description: "Personal command center and knowledge operating system.",
+  // "Add to Home Screen" opens the app standalone, with its own status bar
+  // (app/manifest.ts carries the same name, colours and icons for Android).
+  applicationName: "Polymath",
+  appleWebApp: { capable: true, title: "Polymath", statusBarStyle: "black-translucent" },
+  icons: {
+    icon: [
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
+};
+
+/*
+ * The page fills the screen edge to edge (viewport-fit=cover) and the shell
+ * pads itself by the safe-area insets, so a notch or the home indicator never
+ * covers a control. Pinch-zoom stays available on purpose: a phone input is
+ * kept from zooming by being at least 16px (globals.css), never by capping
+ * the zoom. The bar colour follows the page.
+ */
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#141414" },
+  ],
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

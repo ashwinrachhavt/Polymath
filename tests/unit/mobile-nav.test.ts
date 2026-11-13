@@ -22,7 +22,7 @@ describe("mobile nav", () => {
       .split(",")
       .map((entry) => entry.trim().replace(/^"|"$/g, ""))
       .filter(Boolean);
-    expect(hrefs.length).toBe(4);
+    expect(hrefs).toEqual(["/polymath", "/command-center/inbox", "/today", "/polymath/notes"]);
     for (const href of hrefs) {
       const destination = destinations.find((d) => d.href === href);
       expect(destination, `pinned bar href ${href} names a destination`).toBeTruthy();

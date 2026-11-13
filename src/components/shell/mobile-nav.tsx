@@ -5,22 +5,25 @@ import { destinationForPath, destinations, moreDestination } from "@/lib/navigat
 import { cn } from "cn";
 
 /*
- * The phone bottom bar: Polymath, Inbox, Notebook, Today, and More — the
- * destinations a thumb reaches for most — with the full list behind More.
- * Wired by href, not label, so each tile pins one destination's URL.
+ * The phone bottom bar, the app's tab bar: Polymath (the conversation), Inbox,
+ * Today, Notes and More — the destinations a thumb reaches for most — with the
+ * full list behind More. Wired by href, not label, so each tile pins one
+ * destination's URL, and shown in this order, not the sidebar's.
  * Target size is 44px, above the 24px floor in agents/design.md, because a
- * thumb is not a cursor.
+ * thumb is not a cursor. It clears the home indicator (safe-area inset) and
+ * steps aside while the keyboard is up (globals.css, data-keyboard).
  */
-const barHrefs = ["/polymath", "/command-center/inbox", "/today", "/projects"];
+const barHrefs = ["/polymath", "/command-center/inbox", "/today", "/polymath/notes"];
 
 export function MobileNav() {
   const pathname = usePathname();
   const activeHref = destinationForPath(pathname)?.href;
-  const items = [...destinations.filter((d) => barHrefs.includes(d.href)), moreDestination];
+  const items = [...barHrefs.flatMap((href) => destinations.filter((d) => d.href === href)), moreDestination];
 
   return (
     <nav
       aria-label="Destinations"
+      data-mobile-nav
       className="border-border bg-background sticky bottom-0 z-20 flex shrink-0 border-t pb-[env(safe-area-inset-bottom)] md:hidden"
     >
       {items.map(({ href, label, icon: Icon }) => {
@@ -33,7 +36,7 @@ export function MobileNav() {
             aria-label={label}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "flex min-h-11 flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-data outline-none",
+              "flex min-h-12 flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-data outline-none",
               "focus-visible:ring-ring focus-visible:ring-3",
               active ? "text-app-accent font-medium" : "text-muted-foreground",
             )}
