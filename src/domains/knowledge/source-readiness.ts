@@ -103,7 +103,13 @@ export async function listSources(auth: AuthContext, input: { limit?: number; do
       sourceUrl: row.sourceUrl,
       kind: isVideo ? "video" : "document",
       readiness,
-      detail: isFetchFailure ? `Couldn't fetch ${row.title}. ${extraction?.error ?? ""}`.trim() : detail,
+      // A video's failure is already a short sentence ("No captions — skipped."); the title is on the row.
+      detail:
+        isFetchFailure && extraction?.extractor === "youtube-transcript"
+          ? (extraction.error ?? "Couldn't fetch the video.")
+          : isFetchFailure
+            ? `Couldn't fetch ${row.title}. ${extraction?.error ?? ""}`.trim()
+            : detail,
       hasTranscript: videoIds.has(row.id),
       createdAt: row.createdAt,
       queuedForMs,

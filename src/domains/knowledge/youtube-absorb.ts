@@ -40,7 +40,7 @@ import { recordSource } from "./sources";
 export const YOUTUBE_ABSORB_KIND = "knowledge.youtube";
 
 /** What a skipped video says, on the job and on its document. */
-const NO_CAPTIONS_COPY = "No captions, so this video was skipped.";
+const NO_CAPTIONS_COPY = "No captions — skipped.";
 
 const inputSchema = z.object({
   documentId: z.uuid(),
@@ -80,7 +80,14 @@ export const youtubeAbsorbRunner =
 
     let notice: string | null = null;
     if (!doc.fileId) {
-      const transcript = await videoTranscript(input.videoId, run.progress, deps);
+      let transcript: Transcript | null;
+      try {
+        transcript = await videoTranscript(input.videoId, run.progress, deps);
+      } catch (cause) {
+        // The source list shows why the video has no text, with a retry.
+        if (cause instanceof GenerationJobFailure) await recordTranscriptFailure(auth, doc.id, cause.message);
+        throw cause;
+      }
       if (!transcript) {
         await recordTranscriptFailure(auth, doc.id, NO_CAPTIONS_COPY);
         return result(NO_CAPTIONS_COPY);

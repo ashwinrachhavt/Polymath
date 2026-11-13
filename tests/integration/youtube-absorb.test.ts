@@ -3,6 +3,7 @@ import { afterAll, describe, expect, it, vi } from "vitest";
 import { outboxEvents } from "@/domains/audit/schema";
 import { captureDocuments } from "@/domains/capture/schema";
 import { generationJobs } from "@/domains/jobs/schema";
+import { tasks } from "@/domains/work/schema";
 import { documentExtractions, documents, videoTranscripts, youtubeTranscripts } from "@/domains/knowledge/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
@@ -114,7 +115,7 @@ describe("YouTube absorption (real Postgres, stubbed providers)", () => {
     const { documentId, job } = await absorb(auth, videoId, { fetchCaptions: noCaptions });
     expect(job).toMatchObject({
       status: "ready",
-      result: { href: `/polymath/knowledge?doc=${documentId}`, notice: "No captions, so this video was skipped." },
+      result: { href: `/polymath/knowledge?doc=${documentId}`, notice: "No captions — skipped." },
     });
     const [note] = await handle.db
       .select()
@@ -123,9 +124,15 @@ describe("YouTube absorption (real Postgres, stubbed providers)", () => {
     expect(note).toMatchObject({
       status: "failed",
       extractor: "youtube-transcript",
-      error: "No captions, so this video was skipped.",
+      error: "No captions — skipped.",
     });
     expect(await handle.db.select().from(videoTranscripts).where(eq(videoTranscripts.videoId, videoId))).toEqual([]);
+    // The notebook's source row reads it plainly, not as "Couldn't fetch <title>. …".
+    const { sourceReadiness } = await import("@/domains/knowledge/source-readiness");
+    expect(await sourceReadiness(auth, documentId)).toMatchObject({
+      readiness: "failed",
+      detail: "No captions — skipped.",
+    });
   });
 
   it("tries a failed video again when it is asked for again, and links a captured video to its capture", async () => {
@@ -136,6 +143,13 @@ describe("YouTube absorption (real Postgres, stubbed providers)", () => {
       fetchCaptions: async () => ({ ok: false, error: "YouTube could not be reached." }),
     });
     expect(first.job.status).toBe("failed");
+    const [reason] = await handle.db
+      .select()
+      .from(documentExtractions)
+      .where(eq(documentExtractions.documentId, first.documentId));
+    expect(reason).toMatchObject({ status: "failed", error: "YouTube could not be reached." });
+    // A failure lives on the job and the source row; it never becomes a task.
+    expect(await handle.db.select().from(tasks).where(eq(tasks.workspaceId, auth.workspaceId))).toEqual([]);
     const again = await absorb(auth, videoId, { fetchCaptions: captions(videoId) });
     expect(again.job).toMatchObject({ id: first.job.id, attempt: 2, status: "ready" });
 
