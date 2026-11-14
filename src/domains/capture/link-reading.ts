@@ -4,6 +4,7 @@ import type { GenerationJobView } from "@/domains/jobs/state";
 import { submitGenerationJob, submitOrRetryGenerationJob } from "@/domains/jobs/commands";
 import { siteCrawlJob } from "@/domains/knowledge/site-crawl";
 import { queueYouTubeCapture } from "@/domains/knowledge/youtube-capture";
+import type { SuppliedTranscript } from "@/domains/knowledge/youtube-transcript-schema";
 import { assertPublicUrl } from "@/domains/knowledge/web-fetch";
 import { parseVideoId } from "@/integrations/youtube/transcript";
 import { db } from "@/lib/db";
@@ -64,14 +65,22 @@ export async function crawlCaptureSite(
 
 /**
  * A captured video address: its absorption job files the transcript as a
- * library document, linked to the capture as its child. Runs after the
+ * library document, linked to the capture as its child. A transcript the
+ * companion read in the person's browser is used instead of fetching one. Runs after the
  * capture commits; a failure to queue leaves the capture as it is (its own
  * page read still runs) and is logged, never thrown at the person.
  */
-export async function absorbCapturedVideo(auth: AuthContext, input: { captureId: string; url: string }): Promise<void> {
+export async function absorbCapturedVideo(
+  auth: AuthContext,
+  input: { captureId: string; url: string; transcript?: SuppliedTranscript },
+): Promise<void> {
   if (!parseVideoId(input.url)) return;
   try {
-    const queued = await queueYouTubeCapture(auth, { url: input.url, captureId: input.captureId });
+    const queued = await queueYouTubeCapture(auth, {
+      url: input.url,
+      captureId: input.captureId,
+      transcript: input.transcript,
+    });
     if (!queued.ok) console.warn("[capture] video not queued", input.captureId, queued.error);
   } catch (cause) {
     console.error("[capture] video could not be queued", input.captureId, cause instanceof Error ? cause.name : cause);

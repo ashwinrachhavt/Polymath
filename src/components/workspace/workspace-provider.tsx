@@ -168,7 +168,6 @@ const schema = z.object({
       completed: z.number().int().nonnegative(),
     })
     .nullable(),
-  rewards: z.array(z.object({ id: z.string(), title: z.string(), earnedAt: z.string(), sessionId: z.string() })),
   // `scheduler` carries a default so a workspace saved before this field
   // existed still loads instead of being rejected as an incompatible format.
   preferences: z.object({
@@ -749,13 +748,6 @@ export function createPreviewWorkspace(scope = "anonymous", storage?: Pick<Stora
       ? record
       : undefined;
   }
-  function awardReward(reward: Omit<WorkspaceState["rewards"][number], "id">) {
-    if (getSnapshot().rewards.some((r) => r.sessionId === reward.sessionId)) return { ok: false, persisted: false };
-    return commit(
-      { ...snapshot, rewards: [...snapshot.rewards, { ...reward, id: randomId() }] },
-      "Preview reward earned",
-    );
-  }
   function resetPreview() {
     const result = commit(emptyWorkspaceState, "Browser preview cleared");
     // A refused reset wrote nothing, so the notice must not claim the previous
@@ -800,7 +792,6 @@ export function createPreviewWorkspace(scope = "anonymous", storage?: Pick<Stora
     deleteEvent,
     cancelOccurrence,
     addProject,
-    awardReward,
     resetPreview,
     notify,
   };

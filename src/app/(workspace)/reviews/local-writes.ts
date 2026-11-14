@@ -3,7 +3,6 @@ import { approveArtifactRevision } from "@/domains/knowledge/revision-proposals"
 import { approveNoteProposal } from "@/domains/knowledge/note-proposals";
 import { approveTaskProposal } from "@/domains/work/proposals";
 import { approveContactProposal } from "@/domains/crm/propose-from-senders";
-import { approveStoneProposal } from "@/domains/gamification/proposals";
 
 /*
  * The single classification of an approval's local effect. A capability whose
@@ -26,7 +25,4 @@ export const LOCAL_WRITERS: Record<
   // A sender-to-contact proposal: approval creates the contact, company and
   // thread record in one idempotent transaction (ASH-287).
   "crm.contact.create": { apply: approveContactProposal, failure: "The approved contact was not created." },
-  // A foundry stone: approval writes the reward definition from the approved
-  // recipe, idempotent on the definitions' unique (workspace, key) pair.
-  "stones.foundry.create": { apply: approveStoneProposal, failure: "The approved stone was not created." },
 };

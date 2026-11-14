@@ -3,7 +3,7 @@ import { recordAudit } from "@/domains/audit/record";
 import { withReceipt } from "@/domains/audit/receipt";
 import { outboxEvents } from "@/domains/audit/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
-import { recordDailyQuartz } from "@/domains/gamification/commands";
+import { awardCoins } from "@/domains/stones/coins";
 import { organizations, people } from "@/domains/identity/schema";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { rankBetween } from "./rank";
@@ -158,7 +158,7 @@ export async function updateTask(
         throw exists ? new VersionConflictError() : new TaskNotFoundError();
       }
 
-      if (finishing) await recordDailyQuartz(tx, auth, row.id);
+      if (finishing) await awardCoins(tx, auth, { kind: "task", taskId: row.id });
       // A real terminal transition records exactly which edges it settled,
       // so a later reopen undoes by identity rather than by guesswork. The
       // settle call itself still runs for any done/cancelled patch (its
@@ -178,7 +178,11 @@ export async function updateTask(
           subjectType: "task",
           subjectId: row.id,
           summary: `Updated task "${row.title}" (${changed.join(", ")})`,
-          metadata: { fields: changed, version: row.version, ...(terminalizing ? { settledEdges: settledEdgeIds } : {}) },
+          metadata: {
+            fields: changed,
+            version: row.version,
+            ...(terminalizing ? { settledEdges: settledEdgeIds } : {}),
+          },
         },
         tx,
       );
@@ -491,26 +495,32 @@ export async function removeDependency(
   input: Keyed & { dependencyId: string },
 ): Promise<{ removed: boolean }> {
   return withTransaction(async (tx) => {
-    const { value } = await withReceipt(tx, auth, input.idempotencyKey, { op: "removeDependency", ...input }, async () => {
-      const [row] = await tx
-        .delete(taskDependencies)
-        .where(and(eq(taskDependencies.id, input.dependencyId), eq(taskDependencies.workspaceId, auth.workspaceId)))
-        .returning({ id: taskDependencies.id, taskId: taskDependencies.taskId });
-      if (!row) return { removed: false };
-      await recordAudit(
-        auth,
-        {
-          action: "task.dependency_removed",
-          subjectType: "task",
-          subjectId: row.taskId,
-          summary: "Removed a task dependency",
-          metadata: { dependencyId: row.id },
-        },
-        tx,
-      );
-      await emit(tx, auth, "task.updated", { taskId: row.taskId, fields: ["dependencies"] });
-      return { removed: true };
-    });
+    const { value } = await withReceipt(
+      tx,
+      auth,
+      input.idempotencyKey,
+      { op: "removeDependency", ...input },
+      async () => {
+        const [row] = await tx
+          .delete(taskDependencies)
+          .where(and(eq(taskDependencies.id, input.dependencyId), eq(taskDependencies.workspaceId, auth.workspaceId)))
+          .returning({ id: taskDependencies.id, taskId: taskDependencies.taskId });
+        if (!row) return { removed: false };
+        await recordAudit(
+          auth,
+          {
+            action: "task.dependency_removed",
+            subjectType: "task",
+            subjectId: row.taskId,
+            summary: "Removed a task dependency",
+            metadata: { dependencyId: row.id },
+          },
+          tx,
+        );
+        await emit(tx, auth, "task.updated", { taskId: row.taskId, fields: ["dependencies"] });
+        return { removed: true };
+      },
+    );
     return value;
   });
 }

@@ -1,12 +1,9 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { useReducedMotion } from "motion/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field } from "@/components/workspace/ui";
-import { FormingStone, StoneStage } from "@/components/products/neuralflow/stone-art";
-import { formingProgress, stoneForReward } from "@/components/products/neuralflow/stones";
 import {
   confirmAbandonSessionAction,
   finishSessionAction,
@@ -55,8 +52,6 @@ const tierLabels: Record<LiveSessionData["strictness"], string> = {
   deep: "Deep",
 };
 
-const clarityStone = stoneForReward("Clarity stone");
-
 export function LiveSession({
   session,
   handoff,
@@ -68,8 +63,6 @@ export function LiveSession({
 }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  // The OS-level motion preference; the stage's sheen honours it like the preview screens do.
-  const reduceMotion = useReducedMotion() ?? false;
   // Display-only drift counter: the server remains the clock of record and
   // every action re-derives elapsed time in Postgres.
   const [extraSeconds, setExtraSeconds] = useState(0);
@@ -81,7 +74,6 @@ export function LiveSession({
   }, [session.state]);
 
   const displaySeconds = session.elapsedSeconds + extraSeconds;
-  const plannedSeconds = session.plannedMinutes != null ? session.plannedMinutes * 60 : 25 * 60;
   const hasTask = Boolean(session.taskId);
   const deep = session.strictness === "deep";
 
@@ -141,25 +133,16 @@ export function LiveSession({
         </p>
       ) : null}
       <div className="grid gap-4">
-        <StoneStage
-          caption={session.state === "running" ? "Focusing" : "Paused"}
-          sub={
-            <span
-              role="timer"
-              aria-label={`${Math.floor(displaySeconds / 60)} minutes ${displaySeconds % 60} seconds elapsed`}
-            >
-              {formatClock(displaySeconds)}
-            </span>
-          }
-        >
-          {clarityStone ? (
-            <FormingStone
-              stone={clarityStone}
-              progress={formingProgress(displaySeconds, plannedSeconds)}
-              reduceMotion={reduceMotion}
-            />
-          ) : null}
-        </StoneStage>
+        <div className="flex flex-col items-center gap-1 rounded-lg border border-border py-8">
+          <p className="text-sm text-muted-foreground">{session.state === "running" ? "Focusing" : "Paused"}</p>
+          <span
+            role="timer"
+            className="readout text-4xl tabular-nums"
+            aria-label={`${Math.floor(displaySeconds / 60)} minutes ${displaySeconds % 60} seconds elapsed`}
+          >
+            {formatClock(displaySeconds)}
+          </span>
+        </div>
         <div className="flex flex-wrap gap-2">
           {session.state === "running" ? (
             deep ? null : (

@@ -37,7 +37,12 @@ export type TranscriptResult =
       language: string | null;
       generated: boolean;
     }
-  | { ok: false; error: string };
+  /**
+   * `blocked` is set when YouTube refused this server itself (a bot check, or a
+   * 4xx other than not-found): another try from the same place cannot help, and
+   * the caller should say so instead of retrying.
+   */
+  | { ok: false; error: string; blocked?: true };
 
 export type FetchLike = (
   input: string,
@@ -294,7 +299,7 @@ export async function fetchTranscript(
       timeoutMs,
     );
     if (!response.ok) {
-      return { ok: false, error: `YouTube returned ${response.status} for this video.` };
+      return { ok: false, error: `YouTube returned ${response.status} for this video.`, ...refused(response.status) };
     }
     playerBody = await response.text();
   } catch (cause) {
@@ -314,6 +319,7 @@ export async function fetchTranscript(
       error: playability.reason
         ? `YouTube cannot play this video: ${playability.reason}`
         : "This video is not available.",
+      ...(isBotCheck(playability) ? { blocked: true as const } : {}),
     };
   }
 
@@ -332,7 +338,11 @@ export async function fetchTranscript(
       timeoutMs,
     );
     if (!response.ok) {
-      return { ok: false, error: `YouTube returned ${response.status} for this video's captions.` };
+      return {
+        ok: false,
+        error: `YouTube returned ${response.status} for this video's captions.`,
+        ...refused(response.status),
+      };
     }
     body = await response.text();
   } catch (cause) {
@@ -358,6 +368,16 @@ export async function fetchTranscript(
     language: typeof track.languageCode === "string" ? track.languageCode : language,
     generated: track.kind === "asr",
   };
+}
+
+/** A 4xx that is about this server rather than the video: not-found is the video's own answer. */
+function refused(status: number): { blocked?: true } {
+  return status >= 400 && status < 500 && status !== 404 ? { blocked: true } : {};
+}
+
+/** The "Sign in to confirm you're not a bot" wall (and its login-required cousins). */
+function isBotCheck(playability: { status?: string; reason?: string }): boolean {
+  return playability.status === "LOGIN_REQUIRED" || /not a bot|sign in to confirm/i.test(playability.reason ?? "");
 }
 
 async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {

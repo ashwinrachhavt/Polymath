@@ -41,7 +41,9 @@ const answerSchema = z.object({
 
 export async function answerMockQuestionAction(
   input: z.input<typeof answerSchema>,
-): Promise<{ ok: true; status: "asking" | "complete"; grade: string } | { ok: false; error: string }> {
+): Promise<
+  { ok: true; status: "asking" | "complete"; grade: string; coinsEarned: number } | { ok: false; error: string }
+> {
   const parsed = answerSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Write an answer before submitting." };
   try {

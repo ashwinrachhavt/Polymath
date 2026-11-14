@@ -53,7 +53,7 @@ test("every Work view reads the same canonical Neon task", async ({ page }) => {
     .getByRole("navigation", { name: "Related tools", exact: true })
     .getByRole("link", { name: "Stone collection" })
     .click();
-  await expect(page).toHaveURL(/\/neuralflow\/rewards$/);
+  await expect(page).toHaveURL(/\/learn\/stones$/);
 });
 
 test("a canonical task deep link opens its detail and starts a focus session from Work", async ({ page }) => {
@@ -94,30 +94,19 @@ test("a non-canonical task parameter opens nothing and the canonical list still 
   await expect(page.getByRole("link", { name: "Start a focus session" })).toHaveCount(0);
 });
 
-test("the stone collection is the durable catalog: definitions are saved, and defining one changes no balance", async ({
+test("the stone wall shows all 200 stones, a stone's card, and refuses a purchase the balance cannot cover", async ({
   page,
 }) => {
-  await page.goto("/neuralflow/rewards");
+  await page.goto("/learn/stones");
   await waitSettled(page);
-  await expect(page.getByRole("heading", { name: "Stone collection", exact: true })).toBeVisible();
-  // The Field wrapper labels the kind <select> by its whole contents, so
-  // label-text lookups for the inputs go through the textbox role instead.
-  // The balance is read as a before/after delta, not a pristine "Nothing
-  // earned yet": every spec shares one dev workspace under fullyParallel,
-  // so sibling suites' awards may already sit in the append-only ledger.
-  // What the define action must not do is change the balance it found —
-  // an empty ledger is nobody else's guarantee to give.
-  const points = page.locator("p", { hasText: "Points earned" }).locator("+ .readout");
-  const before = await points.innerText();
-  // The key is unique per run: a fixed "quartz" collides with the row a
-  // previous run or sibling spec left on the shared workspace —
-  // reward_definitions (workspace_id, key) is unique and the define action
-  // is a plain insert, so a rerun after any award fails on a fixed key.
-  const key = `quartz-${Date.now().toString(36)}`;
-  await page.getByRole("textbox", { name: "Key", exact: true }).fill(key);
-  await page.getByRole("textbox", { name: "Label", exact: true }).fill("Quartz");
-  await page.getByRole("textbox", { name: "Points", exact: true }).fill("10");
-  await page.getByRole("button", { name: "Define reward", exact: true }).click();
-  await expect(page.getByText(`Quartz (${key})`, { exact: true })).toBeVisible();
-  await expect(points).toHaveText(before);
+  const content = page.locator("#content").first();
+  await expect(content.getByRole("heading", { name: "Stones", level: 1 })).toBeVisible();
+  await expect(content.getByRole("progressbar", { name: "Stones collected" })).toHaveAttribute("aria-valuemax", "200");
+  // Diamond is the top of the set; no shared dev workspace earns its price in a test run.
+  await content.getByRole("button", { name: /^Diamond/ }).click();
+  const card = page.getByRole("dialog");
+  await expect(card.getByRole("heading", { name: "Diamond" })).toBeVisible();
+  await expect(card.getByText("10 on the Mohs scale")).toBeVisible();
+  await expect(card.getByText("Folklore")).toBeVisible();
+  await expect(card.getByRole("button", { name: /Buy for 1,500/ })).toBeDisabled();
 });

@@ -89,7 +89,8 @@ mockups/
 # exception to the new snapshot, `git add -f` it, and `git rm --cached`
 # the old one.
 src/db/migrations/meta/*_snapshot.json
-!src/db/migrations/meta/0317_snapshot.json
+
+!src/db/migrations/meta/0321_snapshot.json
 
 # graphify knowledge graph (local build artifacts)
 graphify-out/
@@ -106,3 +107,9 @@ evals/retrieval/results/
 # Docs are kept locally, not in the repo.
 docs/
 
+
+# Python bytecode (the stone art script)
+__pycache__/
+*.pyc
+# Local spend log of the stone art script; the script creates it on first run
+scripts/stones/art-spend.json

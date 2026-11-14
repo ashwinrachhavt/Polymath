@@ -108,7 +108,7 @@ export function ServerWeek() {
     >
       <p className="text-body-dense">
         {review.totals.completedTasks} tasks completed, {review.totals.focusMinutes} focus minutes in{" "}
-        {review.totals.focusSessions} sessions, active-day streak {review.streak}.
+        {review.totals.focusSessions} sessions.
       </p>
       <table className="mt-3 w-full text-body-dense">
         <thead>
@@ -133,8 +133,8 @@ export function ServerWeek() {
 }
 
 /*
- * ASH-280: the week in your own words. Composed from recorded outcomes and
- * stones, not written by a model. Keep saves it as a note; "Hide for now" is
+ * ASH-280: the week in your own words. Composed from recorded outcomes,
+ * not written by a model. Keep saves it as a note; "Hide for now" is
  * transient - it hides the panel locally, writes nothing, and the write-up
  * reappears on the next visit (no dismissal store exists yet).
  * An empty week shows no narrative.
@@ -177,13 +177,12 @@ export function OutcomeNarrativePanel() {
       </p>
     );
   if (discarded) return null;
-  const description =
-    "Built from the outcomes you wrote and the stones you earned this week. Nothing is inferred and no model wrote it.";
+  const description = "Built from the outcomes you wrote this week. Nothing is inferred and no model wrote it.";
   if (!narrative) {
     return (
       <Panel title="This week in your words" description={description}>
         <p className="text-body-dense text-muted-foreground">
-          No finished sessions or stones this week yet. Nothing to write up, and an empty week is fine.
+          No finished sessions this week yet. Nothing to write up, and an empty week is fine.
         </p>
       </Panel>
     );

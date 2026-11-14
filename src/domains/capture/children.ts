@@ -1,6 +1,8 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
+import { blobObjects } from "@/domains/audit/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
-import { documents } from "@/domains/knowledge/schema";
+import { documentExtractions, documents, files } from "@/domains/knowledge/schema";
+import { readBlob } from "@/integrations/object-store/object-store";
 import { db } from "@/lib/db";
 import { captureDocuments, captures } from "./schema";
 
@@ -58,4 +60,80 @@ export async function listCaptureDocuments(auth: Workspace, captureId: string): 
     .where(and(eq(captureDocuments.workspaceId, auth.workspaceId), eq(captureDocuments.captureId, captureId)))
     .orderBy(asc(captureDocuments.position), asc(documents.title))
     .limit(100);
+}
+
+export type CaptureChildPage = {
+  documentId: string;
+  title: string;
+  sourceUrl: string | null;
+  /** The page's text as filed, or null when it cannot be read yet. */
+  text: string | null;
+  /** True when the text was cut for display. */
+  shortened: boolean;
+};
+
+/** A page is shown to be read, not to be edited or exported whole: a very long one is cut. */
+const MAX_READER_CHARS = 200_000;
+
+/**
+ * One child page of a capture, with its text, for the inbox reader. Null when
+ * the document is not a child of this capture in this workspace. The text is
+ * the current extraction's when there is one; a page whose extraction has not
+ * run yet is read from its stored file instead (a crawled page is filed as
+ * markdown), so the reader never waits on the extraction queue.
+ */
+export async function getCaptureChildPage(
+  auth: Workspace,
+  input: { captureId: string; documentId: string },
+): Promise<CaptureChildPage | null> {
+  const [doc] = await db
+    .select({
+      documentId: documents.id,
+      title: documents.title,
+      sourceUrl: documents.sourceUrl,
+      storageKey: blobObjects.storageKey,
+    })
+    .from(captureDocuments)
+    .innerJoin(
+      documents,
+      and(eq(documents.id, captureDocuments.documentId), eq(documents.workspaceId, captureDocuments.workspaceId)),
+    )
+    .leftJoin(files, eq(files.id, documents.fileId))
+    .leftJoin(blobObjects, eq(blobObjects.id, files.blobId))
+    .where(
+      and(
+        eq(captureDocuments.workspaceId, auth.workspaceId),
+        eq(captureDocuments.captureId, input.captureId),
+        eq(captureDocuments.documentId, input.documentId),
+      ),
+    )
+    .limit(1);
+  if (!doc) return null;
+
+  const [extraction] = await db
+    .select({ text: documentExtractions.text })
+    .from(documentExtractions)
+    .where(
+      and(
+        eq(documentExtractions.workspaceId, auth.workspaceId),
+        eq(documentExtractions.documentId, doc.documentId),
+        eq(documentExtractions.status, "succeeded"),
+      ),
+    )
+    .orderBy(desc(documentExtractions.createdAt))
+    .limit(1);
+  let text = extraction?.text ?? null;
+  if (text === null && doc.storageKey) {
+    text = await readBlob(doc.storageKey)
+      .then((bytes) => new TextDecoder().decode(bytes))
+      .catch(() => null);
+  }
+  const trimmed = text?.trim() || null;
+  return {
+    documentId: doc.documentId,
+    title: doc.title,
+    sourceUrl: doc.sourceUrl,
+    text: trimmed === null ? null : trimmed.slice(0, MAX_READER_CHARS),
+    shortened: trimmed !== null && trimmed.length > MAX_READER_CHARS,
+  };
 }

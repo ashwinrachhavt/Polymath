@@ -14,7 +14,7 @@ function db(): postgres.Sql | null {
   return process.env.DATABASE_URL ? postgres(process.env.DATABASE_URL, { max: 1 }) : null;
 }
 
-test("a focus session starts from the task's Focus action on Work, and no stone is earned without a completed task: the Quartz rule fires on task completion, not focus", async ({
+test("a focus session starts from the task's Focus action on Work, and no coins are paid without a completed task: focus sessions do not pay", async ({
   page,
 }) => {
   // Focus Mode is its own screen: the task detail's Focus action starts a
@@ -74,37 +74,17 @@ test("a focus session starts from the task's Focus action on Work, and no stone 
   await page.getByRole("link", { name: title, exact: true }).click();
   await expect(page).toHaveURL(/task=[0-9a-f-]{36}/);
   await expect(page.getByText("No focus sessions against this task yet.", { exact: true })).toBeHidden();
-  // The session finished, the task is still open: the Quartz rule awarded
-  // nothing. The assertion is session-scoped (ASH-333), not the global
-  // balance: the dev database's ledger is shared with the parallel suite, so
-  // any worker finishing a task between a before-read and an after-read
-  // moved the global number without this flow doing anything - the flake a
-  // whole-balance equality baked in. Read the Quartz rule's own subject
-  // instead: this flow's task must hold no task-completion award row.
+  // The session finished, the task is still open: no coins. Read this flow's
+  // own rows (the dev ledger is shared with the parallel suite): neither the
+  // task nor the session may hold a coin row.
   try {
-    // Both ids are proven present before the zero-row read, so an empty
-    // result is the rule holding, not a lookup that found nothing to check:
-    // the task came from the detail URL, and the session row must exist.
-    // The subjects match the award writes exactly (gamification/commands.ts:
-    // quartz rows carry subjectType "task" + the task id, focus rows carry
-    // subjectType "focus_session" + the session id).
     const [session] = await client!<{ id: string }[]>`
       select id from focus_sessions where task_id = ${taskId} order by started_at desc limit 1`;
     expect(session, "the finished focus session is recorded against the task").toBeTruthy();
-    // Only the task-completion (Quartz) write is under test: its row carries
-    // subjectType "task" + the task id (gamification/commands.ts). The
-    // session's own focus_completed points row (subjectType "focus_session")
-    // is legitimate pay for banked seconds and must NOT fail this test -
-    // whether a fast run banks a whole second is exactly the remaining flake
-    // the subject pair baked in (CI run 42174835562 attempt 1 vs retry).
     const awarded = await client!<{ id: string }[]>`
-      select id from reward_ledger
-      where subject_type = 'task' and subject_id = ${taskId}`;
-    expect(awarded, "a focus session with an open task earns no task-completion award").toHaveLength(0);
+      select id from coin_ledger where subject_id in (${taskId}, ${session.id})`;
+    expect(awarded, "a focus session pays no coins, and an open task pays none").toHaveLength(0);
   } finally {
     await client!.end();
   }
-  // The rewards surface still renders the readout this flow left untouched.
-  await page.goto("/neuralflow/rewards");
-  await expect(page.locator("p", { hasText: "Points earned" }).locator("+ .readout")).toBeVisible();
 });
