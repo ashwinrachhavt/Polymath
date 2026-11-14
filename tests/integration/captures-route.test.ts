@@ -230,3 +230,68 @@ suite("POST /api/v1/captures extension extraction metadata", () => {
     });
   });
 });
+
+suite("POST /api/v1/captures with a YouTube transcript", () => {
+  const VIDEO = "dQw4w9WgXcQ";
+  const url = `https://www.youtube.com/watch?v=${VIDEO}`;
+  const transcript = (videoId = VIDEO) => ({
+    videoId,
+    title: "A talk",
+    language: "en",
+    generated: false,
+    cues: [{ start: 0, duration: 2, text: "Hello there." }],
+  });
+
+  async function jobsOf(workspaceId: string) {
+    const { generationJobs } = await import("@/domains/jobs/schema");
+    return holder.db!.select().from(generationJobs).where(eq(generationJobs.workspaceId, workspaceId));
+  }
+
+  beforeAll(() => {
+    if (handle) holder.db = handle.db;
+  });
+
+  it("starts the video's job with the transcript the browser read, instead of one to fetch", async () => {
+    const { userId, workspaceId } = await seedWorkspace(handle!.db, `capture-route-yt-${Date.now()}`);
+    holder.auth = { userId, workspaceId, role: "owner" };
+    const res = await POST(captureRequest({ url, mode: "url-reference", youtube_transcript: transcript() }), undefined);
+    expect(res.status).toBe(201);
+    const [job] = (await jobsOf(workspaceId)).filter((row) => row.kind === "knowledge.youtube");
+    expect(job.input).toMatchObject({ videoId: VIDEO, transcript: { cues: [{ text: "Hello there." }] } });
+    expect(job.idempotencyKey).toMatch(/:transcript$/);
+  });
+
+  it("attaches the transcript to a capture already in the inbox instead of answering 409", async () => {
+    const { userId, workspaceId } = await seedWorkspace(handle!.db, `capture-route-yt-dupe-${Date.now()}`);
+    holder.auth = { userId, workspaceId, role: "owner" };
+    const first = await POST(captureRequest({ url, mode: "url-reference" }), undefined);
+    const { capture } = await first.json();
+    const second = await POST(
+      captureRequest({ url, mode: "url-reference", youtube_transcript: transcript() }),
+      undefined,
+    );
+    expect(second.status).toBe(200);
+    expect(await second.json()).toEqual({ capture: { id: capture.id }, transcript: "attached" });
+    const withTranscript = (await jobsOf(workspaceId)).filter(
+      (row) => (row.input as { transcript?: unknown }).transcript,
+    );
+    expect(withTranscript).toHaveLength(1);
+    expect(withTranscript[0].subject).toBe(`capture:${capture.id}`);
+  });
+
+  it("refuses a transcript for another video, or one that is too long", async () => {
+    const { userId, workspaceId } = await seedWorkspace(handle!.db, `capture-route-yt-bad-${Date.now()}`);
+    holder.auth = { userId, workspaceId, role: "owner" };
+    const other = await POST(
+      captureRequest({ url, mode: "url-reference", youtube_transcript: transcript("aaaaaaaaaaa") }),
+      undefined,
+    );
+    expect(other.status).toBe(422);
+    const huge = {
+      ...transcript(),
+      cues: Array.from({ length: 21_000 }, (_, i) => ({ start: i, duration: 1, text: "x" })),
+    };
+    expect((await POST(captureRequest({ url, youtube_transcript: huge }), undefined)).status).toBe(422);
+    expect(await jobsOf(workspaceId)).toEqual([]);
+  });
+});

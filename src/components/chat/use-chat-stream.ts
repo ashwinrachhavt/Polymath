@@ -9,6 +9,7 @@ import {
   type ChatCitation,
 } from "@/domains/agents/stream-contract";
 import { mergeStepFacts, type RecordedStep, type StepFacts } from "@/domains/agents/agent-steps";
+import { stripMentionContext } from "./mention-context";
 import { StreamHttpError, describeStreamFailure } from "./stream-errors";
 
 /*
@@ -106,7 +107,7 @@ export function useChatStream(runId: string | null, options: UseChatStreamOption
   const retry = useCallback(() => setRetryKey((key) => key + 1), []);
 
   const cursorRef = useRef(options.initial?.cursor ?? 0);
-  const accRef = useRef(new ChatAccumulator());
+  const accRef = useRef(new ChatAccumulator({ normalizeUser: stripMentionContext }));
   // Seed the accumulator with the server-rendered thread. Without this the
   // first frame's flush() replaces state.blocks with the accumulator's own
   // (empty) contents and the initial transcript disappears.

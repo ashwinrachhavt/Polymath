@@ -18,6 +18,7 @@ import {
 } from "./draft-templates";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { kickGenerationJob } from "@/domains/jobs/kick";
+import type { SuppliedTranscript } from "@/domains/knowledge/youtube-transcript-schema";
 import { absorbCapturedVideo, startLinkCrawl, type LinkScope } from "./link-reading";
 import { db } from "@/lib/db";
 import { displayTitle, titleFromText } from "@/lib/display-text";
@@ -108,6 +109,8 @@ export async function createCapture(
      * the site around it into child documents; "page" reads the page alone.
      */
     linkScope?: LinkScope;
+    /** For a captured video address: the transcript the person's browser read (see youtube-transcript-schema.ts). */
+    youtubeTranscript?: SuppliedTranscript;
     idempotencyKey?: string;
   },
 ) {
@@ -207,7 +210,9 @@ export async function createCapture(
   if ("survivorId" in result) throw new ConflictError("That URL is already in the inbox.", result.survivorId);
   const { crawlJob, ...capture } = result;
   if (crawlJob) kickGenerationJob(crawlJob);
-  if (isUrlReference && url) await absorbCapturedVideo(auth, { captureId: capture.id, url });
+  if (isUrlReference && url) {
+    await absorbCapturedVideo(auth, { captureId: capture.id, url, transcript: input.youtubeTranscript });
+  }
   return capture;
 }
 

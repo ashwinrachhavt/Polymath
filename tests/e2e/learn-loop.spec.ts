@@ -4,12 +4,13 @@ import { waitSettled } from "./helpers/settled";
 
 /*
  * The learning loop (ASH-303): the /learn library, its honest states, and a
- * full quiz sitting with instant feedback ending in exactly one stone. The
+ * full quiz sitting with instant feedback paying coins exactly once. The
  * quiz is seeded - no model is in this journey anywhere - so the e2e proves
  * the surface and the reward wiring, not generation quality.
  */
 
 const DOC_TITLE = "Polymath learning notes";
+const QUIZ_TITLE = "Review queue fundamentals";
 const STILL_READING_TITLE = "Polymath learning notes (still reading)";
 
 const DOC_TEXT =
@@ -98,7 +99,7 @@ async function seedLearnFixture(): Promise<{ quizId: string; workspaceId: string
       values (
         ${owner.workspace_id}, ${doc.id},
         (select id from document_extractions where document_id = ${doc.id}),
-        'Review queue fundamentals', 'ready', ${QUESTIONS.length}, 'e2e-seed', 'e2e@1'
+        ${QUIZ_TITLE}, 'ready', ${QUESTIONS.length}, 'e2e-seed', 'e2e@1'
       )
       returning id`;
     let ordinal = 0;
@@ -115,7 +116,7 @@ async function seedLearnFixture(): Promise<{ quizId: string; workspaceId: string
         returning id`;
       questionIds.push(row.id);
     }
-    // One prior attempt gives the library its "Best score" state.
+    // One prior attempt gives the quiz history its scores.
     await client`
       insert into quiz_attempts (workspace_id, quiz_id, user_id, answers, correct_count, total_count, idempotency_key)
       values (
@@ -139,10 +140,10 @@ async function removeSeeded(client: postgres.Sql): Promise<void> {
   // The ledger is append-only and not FK-cascaded: clear the rows this
   // journey's attempts earned before the cascading deletes take the ids.
   await client`
-    delete from reward_ledger
-    where subject_type = 'quiz_attempt'
+    delete from coin_ledger
+    where reason = 'quiz_completed'
       and subject_id in (
-        select a.id from quiz_attempts a
+        select a.id::text from quiz_attempts a
         join quizzes q on q.id = a.quiz_id
         where q.document_id in (select id from documents where title in (${DOC_TITLE}, ${STILL_READING_TITLE}))
       )`;
@@ -159,10 +160,10 @@ test.afterAll(async () => {
   }
 });
 
-/** The balance the gamification domain derives from the ledger. */
+/** The balance the stones domain derives from the ledger. */
 async function ledgerTotal(client: postgres.Sql, workspaceId: string): Promise<number> {
   const [row] = await client<{ total: number }[]>`
-    select coalesce(sum(points), 0)::int as total from reward_ledger where workspace_id = ${workspaceId}`;
+    select coalesce(sum(amount), 0)::int as total from coin_ledger where workspace_id = ${workspaceId}`;
   return row.total;
 }
 
@@ -171,7 +172,7 @@ async function openLearn(page: Page): Promise<void> {
   await waitSettled(page);
 }
 
-test("the learning loop: library states, a sitting with instant feedback, and one stone", async ({ page }) => {
+test("the learning loop: library states, a sitting with instant feedback, and coins paid once", async ({ page }) => {
   test.setTimeout(120_000);
   const fixture = await seedLearnFixture();
   test.skip(!fixture, "DATABASE_URL not configured (server and test).");
@@ -181,23 +182,23 @@ test("the learning loop: library states, a sitting with instant feedback, and on
   // first #content (the pattern the other specs use).
   const content = page.locator("#content").first();
 
-  // The Learn queue (PR #557): quizzes with their best score and a
-  // Continue link. A document still being read has no quiz, so it is not
-  // queued; its honest state lives on its own quiz page.
+  // Learn's history: one row per quiz with its latest and best score and a
+  // Retake link. A document still being read has no quiz, so it has no row;
+  // its honest state lives on its own quiz page.
   await expect(content.getByRole("heading", { name: "Learn", level: 1 })).toBeVisible();
   const quizzes = content.getByRole("region", { name: "Quizzes" });
-  const docRow = quizzes.getByRole("listitem").filter({ has: page.getByText(DOC_TITLE, { exact: true }) });
-  await expect(docRow).toContainText("Best score 1/3");
-  await expect(docRow.getByRole("link", { name: "Continue" })).toBeVisible();
+  const docRow = quizzes.getByRole("listitem").filter({ has: page.getByText(QUIZ_TITLE, { exact: true }) });
+  await expect(docRow).toContainText("Latest 1/3 · best 1/3 · 1 attempt");
+  await expect(docRow.getByRole("link", { name: "Retake" })).toBeVisible();
   await expect(quizzes.getByText(STILL_READING_TITLE, { exact: true })).toHaveCount(0);
 
   const client = db();
   if (!client) throw new Error("DATABASE_URL disappeared mid-journey");
-  const stonesBefore = await ledgerTotal(client, fixture!.workspaceId);
+  const coinsBefore = await ledgerTotal(client, fixture!.workspaceId);
 
   // Open the quiz: read first. The seeded text is short, so all three
   // questions share one passage, the source's own words, shown before them.
-  await docRow.getByRole("link", { name: "Continue" }).click();
+  await docRow.getByRole("link", { name: "Retake" }).click();
   await expect(content.getByText("Passage 1 of 1")).toBeVisible();
   await expect(content.getByRole("heading", { name: "Read this first" })).toBeVisible();
   await expect(content.getByText(DOC_TEXT)).toBeVisible();
@@ -225,20 +226,17 @@ test("the learning loop: library states, a sitting with instant feedback, and on
   await expect(content.getByText("Kept as an honest gap.")).toBeVisible();
   await content.getByRole("button", { name: "Finish" }).click();
 
-  // The sitting is recorded, but 1 of 3 is under the learning gate (two
-  // thirds correct, gamification rules spec §6), so it pays nothing.
+  // The sitting is recorded and pays by its score: 10 + 40 x 1/3.
   await expect(content.getByText("1 of 3")).toBeVisible();
-  await expect(content.getByText("No stone for this sitting.")).toBeVisible();
-  const ledgerRows = () => client<{ idempotency_key: string; points: number }[]>`
-    select idempotency_key, points
-    from reward_ledger
-    where subject_type = 'quiz_attempt'
-      and subject_id in (select id from quiz_attempts where quiz_id = ${fixture!.quizId})
-    order by created_at desc`;
-  expect(await ledgerRows()).toHaveLength(0);
+  await expect(content.getByText("+23 coins")).toBeVisible();
+  const ledgerRows = () => client<{ amount: number }[]>`
+    select amount
+    from coin_ledger
+    where reason = 'quiz_completed'
+      and subject_id in (select id::text from quiz_attempts where quiz_id = ${fixture!.quizId})`;
+  expect((await ledgerRows()).map((row) => row.amount)).toEqual([23]);
 
-  // A retake that clears the gate (2 of 3, the gap still honest) earns the
-  // stone; one ledger row, exactly once.
+  // A retake the same day is recorded but pays nothing: a quiz pays once a day.
   await content.getByRole("button", { name: "Retake" }).click();
   await content.getByRole("button", { name: "Continue" }).click();
   await expect(content.getByText("Question 1 of 3")).toBeVisible();
@@ -252,22 +250,17 @@ test("the learning loop: library states, a sitting with instant feedback, and on
   await content.getByRole("button", { name: "I don't know" }).click();
   await content.getByRole("button", { name: "Finish" }).click();
   await expect(content.getByText("2 of 3")).toBeVisible();
-  await expect(content.getByText("+10 stones for finishing this quiz.")).toBeVisible();
-  const rows = await ledgerRows();
-  expect(rows).toHaveLength(1);
-  expect(rows[0].points).toBe(10);
-  expect(rows[0].idempotency_key).toMatch(/^quiz_attempt:/);
+  await expect(content.getByText(/No coins this time/)).toBeVisible();
+  expect(await ledgerRows()).toHaveLength(1);
   await client.end();
 
-  // The balance the surface derives from that ledger: the rewards page
-  // shows it through the gamification domain's queries.
-  const earned = Number(stonesBefore) + 10;
-  await page.goto("/neuralflow/rewards");
+  // The balance the surface derives from that ledger, on the stone wall.
+  await page.goto("/learn/stones");
   await waitSettled(page);
-  await expect(page.locator("#content").first().getByText("Points earned")).toBeVisible();
-  await expect(page.getByText(String(earned)).first()).toBeVisible();
+  await expect(page.locator("#content").first().getByRole("heading", { name: "Stones", level: 1 })).toBeVisible();
+  await expect(page.getByLabel(`${coinsBefore + 23} coins`).first()).toBeVisible();
   await openLearn(page);
-  await expect(page.locator("#content").first().getByText("Best score 2/3")).toBeVisible();
+  await expect(page.locator("#content").first().getByText("best 2/3")).toBeVisible();
 });
 
 /*
@@ -288,7 +281,7 @@ const NOTEBOOK_SOURCE_TEXT = [
   "Agent surfaces cite each used library passage by its title.",
   "A notebook pins the source versions it was built from.",
   "Flashcards are scheduled per learner after each recall rating.",
-  "A quiz sitting earns a stone only when two thirds are correct.",
+  "A quiz sitting pays coins by its score, once a day.",
 ].join(" ");
 
 async function seedNotebookWithReadySource(): Promise<string | null> {

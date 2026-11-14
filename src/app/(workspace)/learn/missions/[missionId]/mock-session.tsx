@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import { CoinsEarned } from "@/components/stones/coins-earned";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { WorkStatus } from "@/components/work-status";
@@ -28,6 +29,7 @@ export function MockInterviewSession({ mission, session }: { mission: MissionVie
   const [answer, setAnswer] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [coinsEarned, setCoinsEarned] = useState(0);
 
   if (session.status === "preparing") {
     return (
@@ -54,6 +56,7 @@ export function MockInterviewSession({ mission, session }: { mission: MissionVie
         return;
       }
       setAnswer("");
+      setCoinsEarned(result.coinsEarned);
       router.refresh();
     });
   }
@@ -105,9 +108,12 @@ export function MockInterviewSession({ mission, session }: { mission: MissionVie
           </Button>
         </div>
       ) : (
-        <p role="status" className="text-sm text-muted-foreground">
-          Every question is answered. Your report is shown below.
-        </p>
+        <div className="flex flex-col gap-2">
+          <p role="status" className="text-sm text-muted-foreground">
+            Every question is answered. Your report is shown below.
+          </p>
+          {coinsEarned > 0 ? <CoinsEarned coins={coinsEarned} /> : null}
+        </div>
       )}
     </div>
   );

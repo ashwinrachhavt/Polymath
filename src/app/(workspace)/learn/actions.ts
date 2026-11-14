@@ -11,7 +11,6 @@ import { acceptLearningJob } from "@/domains/learning/generation-jobs";
 import { learningJobSubject } from "@/domains/learning/job-names";
 import type { SubmittedAnswer } from "@/domains/learning/schema";
 import { recordCheckOutcome } from "@/domains/understanding/check";
-import { getRewardsOverview, pickRewardAnnouncement } from "@/domains/gamification/queries";
 import { actionError } from "@/lib/action-error";
 import { getAuthContext } from "@/lib/auth";
 import { requireRole } from "@/lib/auth/guards";
@@ -22,9 +21,7 @@ import { requireRole } from "@/lib/auth/guards";
  * error codes onto authored copy - the code that reaches the screen is a
  * sentence, never a class name or a driver message. The copy map lives in
  * the domain next to the codes, so the verb and the failed row's stored
- * reason are the same sentences. The completion action also computes the
- * "Stone earned" announcement from the fresh ledger, so the runner can
- * surface it with the same coach mark the collection uses.
+ * reason are the same sentences.
  */
 
 const ATTEMPT_COPY: Record<QuizAttemptError["code"], string> = {
@@ -32,14 +29,6 @@ const ATTEMPT_COPY: Record<QuizAttemptError["code"], string> = {
   quiz_not_ready: "This quiz is not ready to be taken.",
   invalid_answers: "This sitting does not match the quiz - start it again.",
   attempt_conflict: "This sitting was already recorded.",
-};
-
-export type StoneAnnouncement = {
-  id: string;
-  label: string;
-  points: number;
-  reason: string;
-  milestone: boolean;
 };
 
 const generateSchema = z.object({ documentId: z.uuid(), idempotencyKey: z.uuid() });
@@ -72,31 +61,15 @@ export async function completeQuizAttemptAction(input: {
   quizId: string;
   answers: SubmittedAnswer[];
   idempotencyKey: string;
-}): Promise<
-  { ok: true; result: CompleteQuizAttemptResult; announcement: StoneAnnouncement | null } | { ok: false; error: string }
-> {
+}): Promise<{ ok: true; result: CompleteQuizAttemptResult } | { ok: false; error: string }> {
   const auth = await getAuthContext();
   requireRole(auth, "member");
   try {
     const result = await completeQuizAttempt(auth, input);
     // A sitting on a plugin explainer's check turns its misses into review items.
     await recordCheckOutcome(auth, result.attemptId);
-    // The announcement is the ledger's own newest-earning rule, run against
-    // the row this sitting just wrote - the same rule the collection page
-    // renders, and the same coach-mark id, so either surface shows it once.
-    const overview = await getRewardsOverview(auth);
-    const picked = pickRewardAnnouncement(overview.ledger, new Date());
-    const announcement: StoneAnnouncement | null = picked
-      ? {
-          id: picked.id,
-          label: picked.definitionLabel,
-          points: picked.points,
-          reason: picked.reason,
-          milestone: picked.milestone,
-        }
-      : null;
     revalidatePath("/learn");
-    return { ok: true, result, announcement };
+    return { ok: true, result };
   } catch (error) {
     if (error instanceof QuizAttemptError) return { ok: false, error: ATTEMPT_COPY[error.code] };
     return { ok: false, error: actionError(error, "Could not record this sitting.") };
@@ -112,7 +85,7 @@ const rateSchema = z.object({
 /** Rate a card in a deck made outside a Notebook; a Notebook deck is rated through its Notebook. */
 export async function rateDeckFlashcardAction(
   input: z.input<typeof rateSchema>,
-): Promise<{ ok: true; dueAt: string } | { ok: false; error: string }> {
+): Promise<{ ok: true; dueAt: string; coinsEarned: number } | { ok: false; error: string }> {
   const parsed = rateSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Choose a valid flashcard rating." };
   const auth = await getAuthContext();
@@ -123,7 +96,7 @@ export async function rateDeckFlashcardAction(
       return { ok: false, error: "That flashcard is not in this deck." };
     }
     const result = await rateFlashcard(auth, parsed.data);
-    return { ok: true, dueAt: result.dueAt.toISOString() };
+    return { ok: true, dueAt: result.dueAt.toISOString(), coinsEarned: result.coinsEarned };
   } catch (error) {
     if (error instanceof FlashcardError) return { ok: false, error: error.message };
     return { ok: false, error: actionError(error, "Could not save this flashcard rating.") };

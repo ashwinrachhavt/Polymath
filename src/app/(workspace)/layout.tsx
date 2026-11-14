@@ -11,6 +11,7 @@ import type { ShellPreferenceSnapshot } from "@/components/shell/shell-preferenc
 import { clerkConfigured, devAuthBypass } from "@/lib/clerk";
 import { getAuthContext, UnauthorizedError } from "@/lib/auth";
 import { cachedOpenInvitationsForEmail, cachedPreferences, cachedSwitchableWorkspaces } from "@/lib/cached-shell-reads";
+import { getCoinStanding, type CoinStanding } from "@/domains/stones/queries";
 import { listTriageFeed, type TriageFeed } from "@/domains/notifications/feed";
 import { resolveInterfaceMode } from "@/domains/identity/preferences";
 import type { AuthContext } from "@/domains/identity/resolve";
@@ -71,6 +72,8 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
   // The workspace switcher is chrome too: the layout is the one place that
   // already resolves auth per request, so its rows ride the same read.
   let workspaceSwitcher: WorkspaceSwitcherData | null = null;
+  // The coin balance and level in the header: one aggregate over the person's own ledger rows.
+  let coinStanding: CoinStanding | null = null;
   // ASH-312: the interface language is an account preference resolved on the
   // server, so every destination renders in the owner's mode on first paint -
   // no client flash, and "auto" settles in the owner's timezone. The public
@@ -91,10 +94,11 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
         .update(`${authContext.userId}:${authContext.workspaceId}`)
         .digest("hex");
       shellPreferences = { scope: preferenceScope, kind: "unavailable", authenticated: true };
-      const [preferences, feed, switcher] = await Promise.all([
+      const [preferences, feed, switcher, standing] = await Promise.all([
         cachedPreferences(authContext),
         listTriageFeed(authContext).catch(() => notifications),
         loadWorkspaceSwitcher(authContext).catch(() => null),
+        getCoinStanding(authContext).catch(() => null),
       ]);
       interfaceMode = resolveInterfaceMode(preferences.interfaceMode, preferences.timezone);
       shellPreferences = {
@@ -106,6 +110,7 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
       };
       notifications = feed;
       workspaceSwitcher = switcher;
+      coinStanding = standing;
     }
   } catch (error) {
     // Default deny, preserved: getAuthContext throws exactly one error when a
@@ -148,6 +153,7 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
         notifications={notifications}
         shellPreferences={shellPreferences}
         workspaceSwitcher={workspaceSwitcher}
+        coinStanding={coinStanding}
       >
         {children}
       </AppShell>
@@ -162,6 +168,7 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
         notifications={notifications}
         shellPreferences={shellPreferences}
         workspaceSwitcher={workspaceSwitcher}
+        coinStanding={coinStanding}
       >
         {children}
       </AppShell>

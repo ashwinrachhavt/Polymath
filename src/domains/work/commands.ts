@@ -1,11 +1,11 @@
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
 import { auditEvents } from "@/domains/audit/schema";
-import { recordDailyQuartz } from "@/domains/gamification/commands";
 import { withReceipt } from "@/domains/audit/receipt";
 import { linkTargetKinds } from "@/db/columns";
 import { organizations, people } from "@/domains/identity/schema";
 import type { AuthContext } from "@/domains/identity/resolve";
+import { awardCoins } from "@/domains/stones/coins";
 import { db } from "@/lib/db";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { taskLinks, tasks } from "./schema";
@@ -90,9 +90,7 @@ export async function createTask(
     // task_links_edge_key is unique on (task, type, target): a repeated entry
     // would abort the whole transaction with a constraint error, so collapse
     // duplicates here where the caller's intent is unambiguous.
-    const unique = new Map(
-      input.links.map((link) => [`${link.targetType}:${link.targetId}`, link]),
-    );
+    const unique = new Map(input.links.map((link) => [`${link.targetType}:${link.targetId}`, link]));
     await tx.insert(taskLinks).values(
       [...unique.values()].map((link) => ({
         workspaceId: auth.workspaceId,
@@ -115,7 +113,8 @@ export async function createOwnerTask(
     priority?: (typeof tasks.$inferSelect)["priority"];
     estimateMinutes?: number;
     tags?: string[];
-    personId?: string; organizationId?: string;
+    personId?: string;
+    organizationId?: string;
     idempotencyKey?: string;
     /** `ready` when the owner adds a task on a surface that means "today". */
     status?: (typeof tasks.$inferSelect)["status"];
@@ -124,63 +123,58 @@ export async function createOwnerTask(
   return withTransaction(async (tx) => {
     const { idempotencyKey, ...request } = input;
     const { value } = await withReceipt(tx, auth, idempotencyKey, { op: "createOwnerTask", ...request }, async () => {
-    // task_links.target_id carries no FK (it is polymorphic), so the link's
-    // tenancy is this check's job. Without it a caller could point a task at
-    // another workspace's person: no row leaks, but the edge would be a lie.
-    const links: TaskLinkInput[] = [];
-    if (input.personId) {
-      const [person] = await tx
-        .select({ id: people.id })
-        .from(people)
-        .where(and(eq(people.id, input.personId), eq(people.workspaceId, auth.workspaceId)))
-        .limit(1);
-      if (!person) throw new Error("person not found in workspace");
-      links.push({ targetType: "person", targetId: person.id, label: "Person" });
-    }
-    if (input.organizationId) {
-      const [org] = await tx
-        .select({ id: organizations.id })
-        .from(organizations)
-        .where(
-          and(
-            eq(organizations.id, input.organizationId),
-            eq(organizations.workspaceId, auth.workspaceId),
-          ),
-        )
-        .limit(1);
-      if (!org) throw new Error("organization not found in workspace");
-      links.push({ targetType: "organization", targetId: org.id, label: "Organization" });
-    }
+      // task_links.target_id carries no FK (it is polymorphic), so the link's
+      // tenancy is this check's job. Without it a caller could point a task at
+      // another workspace's person: no row leaks, but the edge would be a lie.
+      const links: TaskLinkInput[] = [];
+      if (input.personId) {
+        const [person] = await tx
+          .select({ id: people.id })
+          .from(people)
+          .where(and(eq(people.id, input.personId), eq(people.workspaceId, auth.workspaceId)))
+          .limit(1);
+        if (!person) throw new Error("person not found in workspace");
+        links.push({ targetType: "person", targetId: person.id, label: "Person" });
+      }
+      if (input.organizationId) {
+        const [org] = await tx
+          .select({ id: organizations.id })
+          .from(organizations)
+          .where(and(eq(organizations.id, input.organizationId), eq(organizations.workspaceId, auth.workspaceId)))
+          .limit(1);
+        if (!org) throw new Error("organization not found in workspace");
+        links.push({ targetType: "organization", targetId: org.id, label: "Organization" });
+      }
 
-    const task = await createTask(
-      auth,
-      {
-        title: input.title,
-        dueAt: input.dueAt,
-        priority: input.priority,
-        estimateMinutes: input.estimateMinutes,
-        tags: input.tags,
-        status: input.status,
-        links,
-      },
-      tx,
-    );
-
-    await recordAudit(
-      auth,
-      {
-        action: "task.created",
-        subjectType: "task",
-        subjectId: task.id,
-        summary: `Created task "${task.title}"`,
-        metadata: {
-          personId: input.personId ?? null,
-          organizationId: input.organizationId ?? null,
+      const task = await createTask(
+        auth,
+        {
+          title: input.title,
+          dueAt: input.dueAt,
+          priority: input.priority,
+          estimateMinutes: input.estimateMinutes,
+          tags: input.tags,
+          status: input.status,
+          links,
         },
-      },
-      tx,
-    );
-    return { id: task.id };
+        tx,
+      );
+
+      await recordAudit(
+        auth,
+        {
+          action: "task.created",
+          subjectType: "task",
+          subjectId: task.id,
+          summary: `Created task "${task.title}"`,
+          metadata: {
+            personId: input.personId ?? null,
+            organizationId: input.organizationId ?? null,
+          },
+        },
+        tx,
+      );
+      return { id: task.id };
     });
     return value;
   });
@@ -216,7 +210,7 @@ export async function listOpenTasks(auth: AuthContext) {
 export async function completeTask(
   auth: AuthContext,
   input: { taskId: string; sentence?: string },
-): Promise<{ id: string; quartzEarned: boolean } | null> {
+): Promise<{ id: string; coinsEarned: number } | null> {
   // The completion question ("what did you actually do?") is optional to
   // answer; a blank or whitespace-only answer records no sentence. The action
   // caps the length; the domain trims defensively.
@@ -255,18 +249,16 @@ export async function completeTask(
         subjectType: "task",
         subjectId: task.id,
         summary: `Completed task "${task.title}"`,
-        // The sentence is durable even when no stone is earned today: it
-        // rides on the stone when one is awarded, and stays on the
-        // completion's audit row either way. The settled blocker edges ride
-        // alongside so a later reopen undoes by identity.
+        // The sentence is durable on the completion's audit row. The
+        // settled blocker edges ride alongside so a later reopen undoes by
+        // identity.
         metadata: note ? { settledEdges, completionNote: note } : { settledEdges },
       },
       tx,
     );
-    // A10 Quartz rule: first completed task of the day earns the daily
-    // Quartz. Same transaction, skip-silent when the day already has one.
-    const quartzEarned = await recordDailyQuartz(tx, auth, task.id, note);
-    return { id: task.id, quartzEarned };
+    // Same transaction: a committed completion never lacks its coins.
+    const coinsEarned = await awardCoins(tx, auth, { kind: "task", taskId: task.id });
+    return { id: task.id, coinsEarned };
   });
 }
 
@@ -289,10 +281,8 @@ export async function completeTask(
  *
  * Scope of the undo, honestly: the task row, its completedAt, and the
  * blocker edges its own terminalization settled. It does NOT reclaim an
- * earned stone (the ledger is append-only - the daily-stone idempotency key
- * refuses a second award the same day; a re-completion on a later day earns
- * that day's first-completion stone, exactly as completing any other task
- * that day would), does NOT rewrite the audit history (the terminal row
+ * earned coins (the coin ledger is append-only, and a task pays once ever,
+ * so finishing it again pays nothing), does NOT rewrite the audit history (the terminal row
  * stands; the reopen adds its own), and cannot undo an external effect
  * another system already felt.
  */
@@ -314,14 +304,14 @@ export type BulkCompleteOutcome = {
    * what was not attempted.
    */
   unattempted: string[];
-  quartzEarned: boolean;
+  coinsEarned: number;
 };
 
 /**
  * Bulk edit (Product Spec: "bulk edit"), scoped to the operation the Work
  * surface offers: complete. Composes over completeTask one id at a time, so
  * every per-item guard (status, tenant), audit row, settled-edge attribution
- * and Quartz rule applies exactly as if each row's Done was clicked - the
+ * and coin award applies exactly as if each row's Done was clicked - the
  * bulk path bypasses nothing. Each completion is its own transaction: an id
  * that no longer qualifies (already terminal, or not visible in this
  * workspace) lands in `skipped` and neither rolls back nor silently absorbs
@@ -331,7 +321,7 @@ export type BulkCompleteOutcome = {
  * Sequential on purpose: the audit trail's order is the caller's order.
  */
 export async function completeTasks(auth: AuthContext, taskIds: string[]): Promise<BulkCompleteOutcome> {
-  const outcome: BulkCompleteOutcome = { completed: [], skipped: [], unknown: [], unattempted: [], quartzEarned: false };
+  const outcome: BulkCompleteOutcome = { completed: [], skipped: [], unknown: [], unattempted: [], coinsEarned: 0 };
   for (const [index, taskId] of taskIds.entries()) {
     let result: Awaited<ReturnType<typeof completeTask>>;
     try {
@@ -343,7 +333,7 @@ export async function completeTasks(auth: AuthContext, taskIds: string[]): Promi
     }
     if (result) {
       outcome.completed.push(result.id);
-      outcome.quartzEarned ||= result.quartzEarned;
+      outcome.coinsEarned += result.coinsEarned;
     } else {
       outcome.skipped.push(taskId);
     }
@@ -352,10 +342,7 @@ export async function completeTasks(auth: AuthContext, taskIds: string[]): Promi
 }
 
 export type ReopenOutcome =
-  | { id: string; from: "done" | "cancelled"; skippedChangedEdges: number }
-  | "stale"
-  | "not_terminal"
-  | null;
+  { id: string; from: "done" | "cancelled"; skippedChangedEdges: number } | "stale" | "not_terminal" | null;
 
 export async function reopenTask(
   auth: AuthContext,

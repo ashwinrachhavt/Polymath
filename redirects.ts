@@ -42,6 +42,8 @@ export function nextConfigRedirects({
       // route. The app-switcher prefix moved at the same time.
       { source: "/alfred/:path*", destination: "/polymath/:path*", permanent: false },
       { source: "/apps/alfred/:path*", destination: "/apps/polymath/:path*", permanent: false },
+      // 2026-11-12: the old rewards page became the stone collection under Learn.
+      { source: "/neuralflow/rewards", destination: "/learn/stones", permanent: false },
     ]);
   // Static root redirect, kept only while the proxy is a pass-through
   // (proxyArmed false). The former src/app/(workspace)/page.tsx rendered

@@ -505,9 +505,37 @@ export function frameOf(
 export class ChatAccumulator {
   private readonly blocks = new Map<string, ChatBlock>();
   private readonly seen = new Set<string>();
+  /*
+   * Replay reconciliation. A surface seeds the stored transcript as a snapshot
+   * (ids like `user:stored:N`, `assistant:stored:N`), and Eve then replays the
+   * session from the start under its own ids (`user:<cursor>`,
+   * `assistant:<turn>:<step>`). Only a turn's first assistant block shares an
+   * id with its stored twin, so without this every other replayed message
+   * rendered a second time: the person's question and each later step of a
+   * multi-step turn.
+   *
+   * A replayed message or finished block is therefore matched to the stored
+   * block it repeats: same kind, same text, taken in order (`floor` is the
+   * position of the last stored block matched, so a later live reply that
+   * happens to read like an old one is not swallowed). A match leaves the
+   * stored block in place and retires the replay's id so further frames for it
+   * (a coalesced delta replayed twice) are ignored.
+   */
+  private readonly seeded = new Set<string>();
+  private readonly claimed = new Set<string>();
+  private readonly retired = new Set<string>();
+  private floor = -1;
+
+  /**
+   * `normalizeUser` maps a person's message to the text the stored side holds:
+   * the page stores it without the mention context block the model reads, the
+   * stream carries it whole.
+   */
+  constructor(private readonly options: { normalizeUser?: (text: string) => string } = {}) {}
 
   apply(frame: ChatFrame): void {
     if (frame.type === "delta") {
+      if (this.retired.has(frame.blockId)) return;
       // (blockId, cursor) is the idempotency key for a replayed delta.
       const key = `d:${frame.blockId}:${frame.cursor}`;
       if (this.seen.has(key)) return;
@@ -533,7 +561,21 @@ export class ChatAccumulator {
       // carries no message id, but the block id is the identity proof — same
       // id is the same message — so the pair the page seeded survives the
       // replace instead of hiding the comment control after every reconnect.
-      const pairedMessageId = this.blocks.get(frame.blockId)?.messageId ?? null;
+      if (this.retired.has(frame.blockId)) return;
+      const known = this.blocks.get(frame.blockId);
+      if (known && this.seeded.has(frame.blockId)) this.claim(frame.blockId);
+      else {
+        const stored = this.matchSeeded(this.kindOf(frame.blockId), frame.text);
+        if (stored !== null) {
+          // The replay of a stored message under another id: drop whatever its
+          // deltas built and keep the stored block where it was.
+          this.blocks.delete(frame.blockId);
+          this.retired.add(frame.blockId);
+          this.claim(stored);
+          return;
+        }
+      }
+      const pairedMessageId = known?.messageId ?? null;
       this.blocks.set(frame.blockId, {
         id: frame.blockId,
         kind: this.kindOf(frame.blockId),
@@ -547,14 +589,50 @@ export class ChatAccumulator {
       // Keyed by cursor: a replayed turn writes the same id, so the question
       // does not appear twice after a reconnect.
       const id = frame.blockId ?? `user:${frame.cursor}`;
-      if (this.blocks.has(id)) return;
+      if (this.retired.has(id)) return;
+      if (this.blocks.has(id)) {
+        if (this.seeded.has(id)) this.claim(id);
+        return;
+      }
+      const stored = this.matchSeeded("user", frame.text);
+      if (stored !== null) {
+        this.retired.add(id);
+        this.claim(stored);
+        return;
+      }
       this.blocks.set(id, { id, kind: "user", text: frame.text, done: true });
       return;
     }
     if (frame.type === "snapshot") {
       this.blocks.clear();
-      for (const block of frame.blocks) this.blocks.set(block.id, { ...block });
+      this.seeded.clear();
+      this.claimed.clear();
+      this.retired.clear();
+      this.floor = -1;
+      for (const block of frame.blocks) {
+        this.blocks.set(block.id, { ...block });
+        if (block.done && block.kind !== "reasoning") this.seeded.add(block.id);
+      }
     }
+  }
+
+  private claim(id: string): void {
+    this.claimed.add(id);
+    this.floor = Math.max(this.floor, [...this.blocks.keys()].indexOf(id));
+  }
+
+  /** The unclaimed stored block, after the last one matched, that a replayed `kind`/`text` repeats. */
+  private matchSeeded(kind: ChatBlock["kind"], text: string): string | null {
+    if (kind === "reasoning" || this.seeded.size === 0) return null;
+    const same = (value: string) => value.replace(/\s+/g, " ").trim();
+    const wanted = same(kind === "user" ? (this.options.normalizeUser?.(text) ?? text) : text);
+    const ids = [...this.blocks.keys()];
+    for (let at = this.floor + 1; at < ids.length; at += 1) {
+      const block = this.blocks.get(ids[at]);
+      if (!block || block.kind !== kind || !this.seeded.has(block.id) || this.claimed.has(block.id)) continue;
+      if (same(block.text) === wanted) return block.id;
+    }
+    return null;
   }
 
   /** Assistant and reasoning blocks, in insertion order, as the surface renders them. */

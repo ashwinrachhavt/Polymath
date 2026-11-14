@@ -117,15 +117,6 @@ export function Field({ label, children }: { label: string; children: ReactNode 
     </label>
   );
 }
-export function Stat({ label, value, hint }: { label: string; value: ReactNode; hint?: string }) {
-  return (
-    <div className="panel min-w-0 rounded-xl p-4">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <div className="readout mt-2 text-2xl">{value}</div>
-      {hint && <p className="mt-2 text-xs text-muted-foreground">{hint}</p>}
-    </div>
-  );
-}
 /**
  * The mockup's stat strip: one bordered panel of label/value/hint cells.
  * The default cell stacks the label, a large value, and an optional hint

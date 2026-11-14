@@ -181,7 +181,6 @@ const DEFAULT_OUTCOMES: Record<string, Json> = {
   notion_propose_update: PROPOSED,
   artifacts_propose_revision: PROPOSED,
   zettels_propose: PROPOSED,
-  stones_propose: PROPOSED,
 };
 
 /** Case-specific outcomes, keyed by eval turn id, then tool. */

@@ -3,7 +3,7 @@ import postgres from "postgres";
 
 /*
  * Pixels and journey for the weekly outcome narrative (ASH-280) on Reports:
- * a finished session with the owner's sentence and an earned stone become a
+ * a finished session with the owner's sentence becomes a
  * factual narrative; Keep saves it as a note, Discard writes nothing. No
  * model is involved, so there is nothing to mock and nothing to spend.
  */
@@ -15,7 +15,6 @@ const VIEWPORTS = [
 ] as const;
 const OUTCOME = "Outlined the narrative card for the weekly review";
 const TASK_TITLE = "E2E weekly narrative task";
-const STONE_KEY = "e2e-narrative-stone";
 
 function db(): postgres.Sql | null {
   if (!process.env.DATABASE_URL) {
@@ -39,7 +38,6 @@ async function seedWeek(): Promise<boolean> {
     const ws = owner.workspace_id;
     // Idempotent across viewport reruns: clear earlier seeds so the narrative
     // lists exactly one bullet (parallel-safe under the single CI worker).
-    await client`delete from reward_ledger where idempotency_key like ${`${STONE_KEY}-%`}`;
     await client`delete from focus_sessions where outcome = ${OUTCOME}`;
     await client`delete from tasks where title = ${TASK_TITLE}`;
     const [task] = await client<{ id: string }[]>`
@@ -47,13 +45,6 @@ async function seedWeek(): Promise<boolean> {
     await client`
       insert into focus_sessions (workspace_id, task_id, state, started_at, ended_at, accumulated_seconds, outcome)
       values (${ws}, ${task.id}, 'finished', now() - interval '25 minutes', now() - interval '1 minute', 1500, ${OUTCOME})`;
-    const [def] = await client<{ id: string }[]>`
-      insert into reward_definitions (workspace_id, key, kind, label, points)
-      values (${ws}, ${STONE_KEY}, 'collectible', 'Quartz', 10)
-      on conflict (workspace_id, key) do update set label = excluded.label returning id`;
-    await client`
-      insert into reward_ledger (workspace_id, reward_definition_id, reason, points, idempotency_key)
-      values (${ws}, ${def.id}, 'task_completed', 10, ${`${STONE_KEY}-${Date.now()}`})`;
     return true;
   } finally {
     await client.end();
@@ -64,8 +55,6 @@ async function removeSeeded(): Promise<void> {
   const client = db();
   if (!client) return;
   try {
-    await client`delete from reward_ledger where idempotency_key like ${`${STONE_KEY}-%`}`;
-    await client`delete from reward_definitions where key = ${STONE_KEY}`;
     await client`delete from focus_sessions where outcome = ${OUTCOME}`;
     await client`delete from tasks where title = ${TASK_TITLE}`;
     await client`delete from artifacts where kind = 'note' and title like 'Week of %' and id in (
@@ -110,7 +99,7 @@ for (const vp of VIEWPORTS) {
     const panel = page.locator("section", { has: page.getByRole("heading", { name: /This week in your words/ }) });
     await expect(panel).toBeVisible({ timeout: 30_000 });
     await expect(panel.getByText(OUTCOME)).toHaveCount(1);
-    await expect(panel.getByText(/earned \d+ stones?/)).toBeVisible();
+    await expect(panel.getByText(/finished \d+ focus sessions?/)).toBeVisible();
     await expect(panel.getByText(/streak|points|score/i)).toHaveCount(0);
     const before = await narrativeNoteCount();
     await panel.scrollIntoViewIfNeeded();

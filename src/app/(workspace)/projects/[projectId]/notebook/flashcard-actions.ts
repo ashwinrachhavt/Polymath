@@ -59,7 +59,7 @@ export async function rateNotebookFlashcardAction(input: z.input<typeof rateSche
     // No revalidatePath: a rating fires once per card, and the session holds
     // its deck in local state, so a re-render per card was discarded work.
     const result = await rateFlashcard(auth, parsed.data);
-    return { ok: true as const, dueAt: result.dueAt.toISOString() };
+    return { ok: true as const, dueAt: result.dueAt.toISOString(), coinsEarned: result.coinsEarned };
   } catch (error) {
     if (error instanceof FlashcardError) return { ok: false as const, error: error.message };
     return { ok: false as const, error: actionError(error, "Could not save this flashcard rating.") };

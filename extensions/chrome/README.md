@@ -8,6 +8,7 @@ A Chrome extension that captures text, images, selections, full pages, and quick
 - **Selection Toolbar**: Select text on any page to see "Save to Polymath" (lands in the inbox, where the suggestion card proposes what it becomes) and "Summarize" (saves the selection, then opens Polymath's read of it in the inbox).
 - **Keyboard Shortcuts**: Alt+N (toggle dock), Alt+S (save selection/note), Alt+P (capture full page).
 - **Popup**: Quick actions, page capture, and settings accessible from the toolbar icon. Leave Quick Note empty to save copied clipboard text and a PNG, JPEG, or WebP image together.
+- **Capture with transcript** (popup, on a YouTube watch page): reads the video's transcript from the page you have open, in your own browser session, and sends it with the capture. Polymath files it as the video's document instead of fetching one itself, which YouTube refuses from some server hosts. It reads the page's caption track, else the rows of the page's transcript panel; nothing is read until you click.
 - **Dashboard**: Full note management, library browsing, capture history, and settings (opens in a new tab).
 - **Connection Indicator**: Green/red dot showing Alfred backend status.
 

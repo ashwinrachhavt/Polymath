@@ -2,7 +2,13 @@ import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { blobObjects } from "@/domains/audit/schema";
-import { documents, documentExtractions, files } from "@/domains/knowledge/schema";
+import {
+  documentClassificationProposals,
+  documentExtractions,
+  fieldProposals,
+  documents,
+  files,
+} from "@/domains/knowledge/schema";
 import type { ExtractionResult } from "@/integrations/extraction/provider";
 import { makeTestDb, seedWorkspace } from "../helpers/test-workspace";
 
@@ -36,7 +42,11 @@ beforeEach(() => {
   provider.extract.mockResolvedValue({ ok: true, text: "Extracted text", spans: [], pageCount: 1, extractor: "fixture@1" });
 });
 
-async function seed(status?: "failed" | "succeeded" | "pending" | "skipped", mimeType = "application/pdf") {
+async function seed(
+  status?: "failed" | "succeeded" | "pending" | "skipped",
+  mimeType = "application/pdf",
+  sourceUrl: string | null = null,
+) {
   const db = holder.db!;
   const auth = { ...await seedWorkspace(db, `extract-${crypto.randomUUID()}`), role: "owner" as const };
   const [blob] = await db.insert(blobObjects).values({
@@ -47,7 +57,7 @@ async function seed(status?: "failed" | "succeeded" | "pending" | "skipped", mim
     workspaceId: auth.workspaceId, blobId: blob.id, filename: "fixture.pdf",
   }).returning();
   const [doc] = await db.insert(documents).values({
-    workspaceId: auth.workspaceId, title: "Fixture", fileId: file.id, mimeType,
+    workspaceId: auth.workspaceId, title: "Fixture", fileId: file.id, mimeType, sourceUrl,
   }).returning();
   const [extraction] = status ? await db.insert(documentExtractions).values({
     workspaceId: auth.workspaceId, documentId: doc.id, contentHash: blob.contentHash,
@@ -77,6 +87,33 @@ suite("document extraction retry and claim invariants (real Postgres)", () => {
     });
     const [row] = await holder.db!.select().from(documentExtractions).where(eq(documentExtractions.id, extraction.id));
     expect(row).toMatchObject({ status: "failed", text: null });
+  });
+
+  it("reads a page that came from a web address for its text, and proposes no fields or document type for it", async () => {
+    // A crawled page or pasted link is text to read. File-style reading would
+    // label a docs page a résumé or an invoice; an uploaded file with the same
+    // words still gets proposals.
+    const invoice = "INVOICE\nInvoice number: INV-1001\nTotal due: EUR 100\nDue date: 2026-12-01";
+    provider.extract.mockResolvedValue({ ok: true, text: invoice, spans: [], pageCount: 1, extractor: "fixture@1" });
+    const page = await seed("failed", "application/pdf", "https://docs.example/billing");
+    const upload = await seed("failed");
+
+    const read = await extractDocument(page.auth, { documentId: page.doc.id });
+    expect(read).toMatchObject({ ok: true, text: invoice, proposals: "succeeded" });
+    const [row] = await holder.db!.select().from(documentExtractions).where(eq(documentExtractions.documentId, page.doc.id));
+    expect(row).toMatchObject({ status: "succeeded", text: invoice, proposalStatus: "succeeded" });
+    expect(await holder.db!.select().from(fieldProposals).where(eq(fieldProposals.documentId, page.doc.id))).toEqual([]);
+    expect(
+      await holder.db!.select().from(documentClassificationProposals).where(eq(documentClassificationProposals.documentId, page.doc.id)),
+    ).toEqual([]);
+    const [after] = await holder.db!.select().from(documents).where(eq(documents.id, page.doc.id));
+    expect(after.docType).toBeNull();
+
+    await extractDocument(upload.auth, { documentId: upload.doc.id });
+    const proposed =
+      (await holder.db!.select().from(fieldProposals).where(eq(fieldProposals.documentId, upload.doc.id))).length +
+      (await holder.db!.select().from(documentClassificationProposals).where(eq(documentClassificationProposals.documentId, upload.doc.id))).length;
+    expect(proposed).toBeGreaterThan(0);
   });
 
   it("an empty docling payload is a named failure, never a silent empty success", async () => {

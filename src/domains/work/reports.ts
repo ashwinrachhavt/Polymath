@@ -17,8 +17,6 @@ export type WeeklyReview = {
   timezone: string;
   days: Array<{ date: string; completedTasks: number; focusMinutes: number }>;
   totals: { completedTasks: number; focusMinutes: number; focusSessions: number };
-  /** Consecutive days ending at `end` with a completion or focus session. */
-  streak: number;
 };
 
 function addDays(date: string, n: number): string {
@@ -30,15 +28,6 @@ function addDays(date: string, n: number): string {
 export function weekStartFor(today: string, isoWeekStart: number): string {
   const dow = new Date(`${today}T00:00:00Z`).getUTCDay() || 7; // 1..7
   return addDays(today, -((dow - isoWeekStart + 7) % 7));
-}
-
-export function computeStreak(active: Set<string>, end: string, days: number): number {
-  let n = 0;
-  for (let i = 0; i < days; i++) {
-    if (!active.has(addDays(end, -i))) break;
-    n++;
-  }
-  return n;
 }
 
 export async function getWeeklyReview(
@@ -53,9 +42,19 @@ export async function getWeeklyReview(
 
   const [done, focus] = await Promise.all([
     db
-      .select({ day: sql<string>`to_char(${tasks.completedAt} at time zone ${tz}, 'YYYY-MM-DD')`, n: sql<number>`count(*)::int` })
+      .select({
+        day: sql<string>`to_char(${tasks.completedAt} at time zone ${tz}, 'YYYY-MM-DD')`,
+        n: sql<number>`count(*)::int`,
+      })
       .from(tasks)
-      .where(and(eq(tasks.workspaceId, auth.workspaceId), isNotNull(tasks.completedAt), gte(tasks.completedAt, from), lt(tasks.completedAt, to)))
+      .where(
+        and(
+          eq(tasks.workspaceId, auth.workspaceId),
+          isNotNull(tasks.completedAt),
+          gte(tasks.completedAt, from),
+          lt(tasks.completedAt, to),
+        ),
+      )
       .groupBy(sql`1`),
     db
       .select({
@@ -64,16 +63,27 @@ export async function getWeeklyReview(
         n: sql<number>`count(*)::int`,
       })
       .from(focusSessions)
-      .where(and(eq(focusSessions.workspaceId, auth.workspaceId), eq(focusSessions.state, "finished"), isNotNull(focusSessions.endedAt), gte(focusSessions.endedAt, from), lt(focusSessions.endedAt, to)))
+      .where(
+        and(
+          eq(focusSessions.workspaceId, auth.workspaceId),
+          eq(focusSessions.state, "finished"),
+          isNotNull(focusSessions.endedAt),
+          gte(focusSessions.endedAt, from),
+          lt(focusSessions.endedAt, to),
+        ),
+      )
       .groupBy(sql`1`),
   ]);
   const doneBy = new Map(done.map((r) => [r.day, r.n]));
   const focusBy = new Map(focus.map((r) => [r.day, r]));
   const days = Array.from({ length: 7 }, (_, i) => {
     const date = addDays(input.start, i);
-    return { date, completedTasks: doneBy.get(date) ?? 0, focusMinutes: Math.round((focusBy.get(date)?.seconds ?? 0) / 60) };
+    return {
+      date,
+      completedTasks: doneBy.get(date) ?? 0,
+      focusMinutes: Math.round((focusBy.get(date)?.seconds ?? 0) / 60),
+    };
   });
-  const active = new Set(days.filter((d) => d.completedTasks > 0 || d.focusMinutes > 0).map((d) => d.date));
   return {
     start: input.start,
     end,
@@ -84,7 +94,6 @@ export async function getWeeklyReview(
       focusMinutes: days.reduce((s, d) => s + d.focusMinutes, 0),
       focusSessions: focus.reduce((s, r) => s + r.n, 0),
     },
-    streak: computeStreak(active, end, 7),
   };
 }
 
@@ -107,8 +116,22 @@ export async function listFinishedSessionsInWeek(
     })
     .from(focusSessions)
     .leftJoin(tasks, eq(tasks.id, focusSessions.taskId))
-    .where(and(eq(focusSessions.workspaceId, auth.workspaceId), eq(focusSessions.state, "finished"), isNotNull(focusSessions.endedAt), gte(focusSessions.endedAt, from), lt(focusSessions.endedAt, to)))
+    .where(
+      and(
+        eq(focusSessions.workspaceId, auth.workspaceId),
+        eq(focusSessions.state, "finished"),
+        isNotNull(focusSessions.endedAt),
+        gte(focusSessions.endedAt, from),
+        lt(focusSessions.endedAt, to),
+      ),
+    )
     .orderBy(focusSessions.endedAt)
     .limit(200);
-  return rows.map((r) => ({ endedAt: r.endedAt!.toISOString(), minutes: Math.round(r.seconds / 60), subject: r.subject, outcome: r.outcome, taskTitle: r.taskTitle }));
+  return rows.map((r) => ({
+    endedAt: r.endedAt!.toISOString(),
+    minutes: Math.round(r.seconds / 60),
+    subject: r.subject,
+    outcome: r.outcome,
+    taskTitle: r.taskTitle,
+  }));
 }
