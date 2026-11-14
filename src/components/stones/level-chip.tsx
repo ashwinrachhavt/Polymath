@@ -51,13 +51,16 @@ export function LevelChip({ balance, level, scope }: { balance: number; level: L
       <Link
         href="/learn/stones"
         title={`Level ${level.level}, ${level.name}. ${toNext}.`}
-        aria-label={`${formatCoins(balance)} coins, level ${level.level} ${level.name}. ${toNext}.`}
         className="text-muted-foreground hover:text-foreground mr-1 hidden items-center gap-2 rounded-md px-2 py-1 text-xs sm:flex"
       >
         <CoinGlyph />
         <span className="text-foreground tabular-nums">{formatCoins(balance)}</span>
         <span className="flex flex-col gap-0.5">
           <span className="leading-none tabular-nums">Lv {level.level}</span>
+          {/* Read after the visible text, so the link's name starts with what is on screen. */}
+          <span className="sr-only">
+            coins, {level.name}. {toNext}.
+          </span>
           <span aria-hidden className="bg-muted block h-0.5 w-10 overflow-hidden rounded-full">
             <span
               className="block h-full rounded-full bg-[oklch(0.74_0.12_80)] transition-[width] duration-700"
