@@ -9,9 +9,9 @@ import { isBrowserPreviewPath, isConversationSurface, destinations, destinationF
  * reference an app name that no longer exists in the interface.
  */
 describe("navigation", () => {
-  it("highlights Today for the Reports and stone collection screens it links to", () => {
+  it("highlights Today for the Reports screen it links to, and Learn for the stone collection", () => {
     expect(destinationForPath("/neuralflow/reports")?.href).toBe("/today");
-    expect(destinationForPath("/neuralflow/rewards")?.href).toBe("/today");
+    expect(destinationForPath("/learn/stones")?.href).toBe("/learn");
     // The retired /apps preview tools redirect away and name no destination.
     expect(destinationForPath("/apps/neuralflow/tasks")).toBeUndefined();
     expect(destinationForPath("/apps/polymath/not-a-screen")).toBeUndefined();

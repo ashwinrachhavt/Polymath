@@ -3,6 +3,8 @@
 import { useState, useTransition } from "react";
 import { rateDeckFlashcardAction } from "@/app/(workspace)/learn/actions";
 import { rateNotebookFlashcardAction } from "./flashcard-actions";
+import { CoinGlyph } from "@/components/stones/coin";
+import { CoinsEarned } from "@/components/stones/coins-earned";
 import { OutputRating } from "@/components/feedback/output-rating";
 import type { Rating } from "@/domains/feedback/ratings";
 
@@ -40,6 +42,8 @@ export function FlashcardSession({
   const [revealed, setRevealed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  // Coins this sitting earned, summed from each rating's server answer.
+  const [coins, setCoins] = useState(0);
   const card = cards[index];
 
   function rate(rating: (typeof RATINGS)[number]["value"]) {
@@ -54,6 +58,7 @@ export function FlashcardSession({
         setError(result.error);
         return;
       }
+      setCoins((total) => total + result.coinsEarned);
       const next = index + 1;
       setIndex(next);
       setRevealed(false);
@@ -62,7 +67,14 @@ export function FlashcardSession({
 
   return (
     <section aria-label="Flashcard review" className="mx-auto w-full max-w-2xl">
-      <p className="mb-3 text-xs text-muted-foreground">{title}</p>
+      <div className="mb-3 flex items-center justify-between gap-3 text-xs text-muted-foreground">
+        <p className="min-w-0 truncate">{title}</p>
+        {card && coins > 0 ? (
+          <span className="flex shrink-0 items-center gap-1.5" aria-label={`${coins} coins earned so far`}>
+            <CoinGlyph className="size-3" />+{coins}
+          </span>
+        ) : null}
+      </div>
       {card ? (
         <article className="rounded-xl border border-border p-6">
           <p className="mb-2 text-xs text-muted-foreground">
@@ -107,6 +119,11 @@ export function FlashcardSession({
           <p className="mt-2 text-sm text-muted-foreground">
             These cards are scheduled for review. More will appear here when they are due.
           </p>
+          {coins > 0 ? (
+            <div className="mt-3">
+              <CoinsEarned coins={coins} />
+            </div>
+          ) : null}
           <OutputRating
             output={{ surface: "flashcards", id: deckId }}
             initial={rating}

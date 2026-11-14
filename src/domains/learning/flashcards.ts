@@ -1,6 +1,7 @@
 import { and, asc, eq, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
 import type { AuthContext } from "@/domains/identity/resolve";
+import { awardCoins } from "@/domains/stones/coins";
 import { db } from "@/lib/db";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { conceptName, recentConceptNames } from "@/domains/knowledge/concepts";
@@ -372,14 +373,14 @@ export async function countDueFlashcards(auth: AuthContext): Promise<number> {
 export async function rateFlashcard(
   auth: AuthContext,
   input: { flashcardId: string; rating: ReviewRating },
-): Promise<{ dueAt: Date }> {
+): Promise<{ dueAt: Date; coinsEarned: number }> {
   const [card] = await db
     .select({ id: flashcards.id })
     .from(flashcards)
     .where(and(eq(flashcards.id, input.flashcardId), eq(flashcards.workspaceId, auth.workspaceId)))
     .limit(1);
   if (!card) throw new FlashcardError("card_not_found", "That flashcard is not available.");
-  const { dueAt } = await withTransaction(async (tx) => {
+  const { dueAt, coinsEarned } = await withTransaction(async (tx) => {
     const review = await recordReview(tx, auth, { flashcardId: card.id }, input.rating);
     await recordAudit(
       auth,
@@ -392,7 +393,8 @@ export async function rateFlashcard(
       },
       tx,
     );
-    return review;
+    const coinsEarned = await awardCoins(tx, auth, { kind: "flashcard", flashcardId: card.id });
+    return { dueAt: review.dueAt, coinsEarned };
   });
-  return { dueAt };
+  return { dueAt, coinsEarned };
 }

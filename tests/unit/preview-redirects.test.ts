@@ -30,7 +30,7 @@ describe("preview redirects", () => {
     ["/apps/neuralflow/boards", "/neuralflow/work?view=board"],
     ["/apps/neuralflow/focus", "/neuralflow/focus"],
     ["/apps/neuralflow/reports", "/neuralflow/reports"],
-    ["/apps/neuralflow/rewards", "/neuralflow/rewards"],
+    ["/apps/neuralflow/rewards", "/learn/stones"],
     ["/apps/polymath", "/polymath"],
     ["/apps/polymath/library?id=doc-1", "/polymath/knowledge"],
     ["/apps/polymath/zettels", "/polymath/ideas"],

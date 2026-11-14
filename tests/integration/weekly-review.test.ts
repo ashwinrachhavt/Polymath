@@ -6,8 +6,14 @@ const handle = makeTestDb();
 const suite = handle ? describe : describe.skip;
 let db: NonNullable<typeof handle>["db"];
 let reports: typeof import("@/domains/work/reports");
-beforeAll(async () => { if (!handle) return; ({ db } = handle); reports = await import("@/domains/work/reports"); });
-afterAll(async () => { await handle?.client.end(); });
+beforeAll(async () => {
+  if (!handle) return;
+  ({ db } = handle);
+  reports = await import("@/domains/work/reports");
+});
+afterAll(async () => {
+  await handle?.client.end();
+});
 
 suite("weekly review (D15)", () => {
   it("buckets completions by real timestamp in the user's timezone", async () => {
@@ -24,9 +30,8 @@ suite("weekly review (D15)", () => {
     expect(r.days[0].completedTasks).toBe(1);
     expect(r.days[2].completedTasks).toBe(1);
   });
-  it("week start and streak helpers", () => {
+  it("week start helper", () => {
     expect(reports.weekStartFor("2026-10-14", 1)).toBe("2026-10-12");
     expect(reports.weekStartFor("2026-10-14", 7)).toBe("2026-10-11");
-    expect(reports.computeStreak(new Set(["2026-10-18", "2026-10-17"]), "2026-10-18", 7)).toBe(2);
   });
 });

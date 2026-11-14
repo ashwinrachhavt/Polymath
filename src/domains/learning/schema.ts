@@ -24,7 +24,7 @@ import type { GenerationOutcome } from "./item-count";
 /*
  * The learning domain (learn-harness replication): a captured document's
  * succeeded extraction becomes a short graded quiz, and completing a quiz
- * earns a stone through the gamification ledger. The generation discipline
+ * earns coins (the stones domain). The generation discipline
  * is the reading summary's (ASH-292): the model proposes, the domain
  * disposes - a question survives only when its evidence quote is a verbatim
  * passage of the exact extraction it claims to describe.

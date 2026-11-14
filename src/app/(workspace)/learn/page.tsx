@@ -10,6 +10,8 @@ import { getConceptOverview } from "@/domains/learning/concept-overview";
 import { listMissions } from "@/domains/learning/missions";
 import { getFlashcardDueQueue } from "@/domains/learning/flashcards";
 import { deckReviewHref } from "@/domains/learning/review-href";
+import { getStoneProgress } from "@/domains/stones/queries";
+import { CoinGlyph, formatCoins } from "@/components/stones/coin";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ConceptOverviewSection } from "./concept-overview";
 import { MissionList } from "./missions/mission-list";
@@ -44,12 +46,13 @@ export default function LearnPage() {
 async function LearnSurface() {
   await connection();
   const auth = await getAuthContext();
-  const [library, dueCards, jobs, overview, missions] = await Promise.all([
+  const [library, dueCards, jobs, overview, missions, stones] = await Promise.all([
     getLearnLibrary(auth),
     getFlashcardDueQueue(auth, 40),
     listUnfinishedGenerationJobs(auth, { kindPrefix: LEARNING_JOB_KIND_PREFIX }),
     getConceptOverview(auth),
     listMissions(auth),
+    getStoneProgress(auth),
   ]);
   const quizzes = library.filter((item) => item.quizId);
 
@@ -57,7 +60,20 @@ async function LearnSurface() {
     <main className="page-content mx-auto w-full max-w-4xl">
       <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h1 className="min-w-0 text-2xl font-medium">Learn</h1>
-        <MakeLearningButton />
+        <div className="flex items-center gap-4">
+          <Link
+            href="/learn/stones"
+            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+            aria-label={`${stones.balance} coins, ${stones.owned} of ${stones.total} stones collected`}
+          >
+            <CoinGlyph />
+            <span className="tabular-nums text-foreground">{formatCoins(stones.balance)}</span>
+            <span className="tabular-nums">
+              · {stones.owned}/{stones.total} stones
+            </span>
+          </Link>
+          <MakeLearningButton />
+        </div>
       </header>
       <LearnJobs initialJobs={jobs} kindPrefix={LEARNING_JOB_KIND_PREFIX} />
       <MissionList missions={missions} />
