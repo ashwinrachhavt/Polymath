@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ConceptOverview, ConceptOverviewRow } from "@/domains/learning/concept-overview";
 import { CONCEPT_STATUS_COPY, coverageTotal } from "@/domains/learning/concept-status";
+import { relativeDay } from "@/lib/relative-day";
 
 /*
  * "What do I know and how well": every concept the person has actually
@@ -129,12 +130,3 @@ const STATUS_HINT: Record<ConceptOverviewRow["status"], string> = {
   practised: "You have worked on it, but no answer has been correct with the material closed yet.",
   proven: "You answered from memory and it was graded correct against your sources.",
 };
-
-/** "today", "yesterday", "4 days ago": enough for "when was this last seen". */
-function relativeDay(when: Date): string {
-  const days = Math.floor((Date.now() - when.getTime()) / 86_400_000);
-  if (days <= 0) return "today";
-  if (days === 1) return "yesterday";
-  if (days < 30) return `${days} days ago`;
-  return when.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}

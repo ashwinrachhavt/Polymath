@@ -7,6 +7,7 @@ import { focusSessions } from "@/domains/focus/schema";
 import { users, workspaces } from "@/domains/identity/schema";
 import { taskLinks, tasks } from "@/domains/work/schema";
 import { pristineDatabaseUrl } from "../helpers/pristine-database-url";
+import { truncateAll } from "../helpers/test-workspace";
 
 /*
  * The invariants the engineering guidelines says run against real Postgres, because * a mock proves the mock works. These are the ones a later caller can break
@@ -45,11 +46,7 @@ suite("reliability primitives", () => {
         "TEST_DATABASE_URL equals DATABASE_URL. This suite truncates every table; use a scratch database or a Neon branch.",
       );
     }
-    await client.unsafe(
-      `do $$ declare t text; begin for t in
-         select tablename from pg_tables where schemaname = 'public'
-       loop execute format('truncate table %I cascade', t); end loop; end $$;`,
-    );
+    await truncateAll(client);
   });
 
   async function seedWorkspace(slug: string) {

@@ -37,7 +37,7 @@ suite("work tasks", () => {
     expect(open.map((t) => t.id)).toContain(id);
     expect(open[0].status).toBe("inbox");
 
-    expect(await work.completeTask(a, { taskId: id })).toEqual({ id, quartzEarned: true });
+    expect(await work.completeTask(a, { taskId: id })).toEqual({ id, coinsEarned: 5 });
     expect(await work.listOpenTasks(a)).toHaveLength(0);
 
     // A second click is a no-op, not a second completion — and writes no
@@ -59,10 +59,7 @@ suite("work tasks", () => {
   it("links a task to a person and an organization", async () => {
     const { userId, workspaceId } = await seedWorkspace(db, `task-links-${Date.now()}`);
     const a = ownerAuth(userId, workspaceId);
-    const [person] = await db
-      .insert(people)
-      .values({ workspaceId, displayName: "Ada Lovelace" })
-      .returning();
+    const [person] = await db.insert(people).values({ workspaceId, displayName: "Ada Lovelace" }).returning();
 
     const { id } = await work.createOwnerTask(a, {
       title: "Follow up",
@@ -83,14 +80,10 @@ suite("work tasks", () => {
     expect(audit[0].action).toBe("task.created");
   });
 
-
   it("links a task to a person and an organization in one insert", async () => {
     const { userId, workspaceId } = await seedWorkspace(db, `task-links-org-${Date.now()}`);
     const a = ownerAuth(userId, workspaceId);
-    const [person] = await db
-      .insert(people)
-      .values({ workspaceId, displayName: "Ada Lovelace" })
-      .returning();
+    const [person] = await db.insert(people).values({ workspaceId, displayName: "Ada Lovelace" }).returning();
     const [organization] = await db
       .insert(organizations)
       .values({ workspaceId, name: "Analytical Engines" })
@@ -121,10 +114,7 @@ suite("work tasks", () => {
     const { userId, workspaceId } = await seedWorkspace(db, `task-cancelled-${Date.now()}`);
     const a = ownerAuth(userId, workspaceId);
     const { id } = await work.createOwnerTask(a, { title: "Dropped" });
-    await db
-      .update(tasks)
-      .set({ status: "cancelled", cancelledAt: new Date() })
-      .where(eq(tasks.id, id));
+    await db.update(tasks).set({ status: "cancelled", cancelledAt: new Date() }).where(eq(tasks.id, id));
 
     // A cancelled task is terminal: completing it would resurrect work the
     // owner explicitly dropped.
@@ -140,11 +130,7 @@ suite("work tasks", () => {
     await work.createOwnerTask(a, { title: "Later", dueAt: new Date("2026-12-01T00:00:00Z") });
     await work.createOwnerTask(a, { title: "Sooner", dueAt: new Date("2026-11-01T00:00:00Z") });
 
-    expect((await work.listOpenTasks(a)).map((t) => t.title)).toEqual([
-      "Sooner",
-      "Later",
-      "No date",
-    ]);
+    expect((await work.listOpenTasks(a)).map((t) => t.title)).toEqual(["Sooner", "Later", "No date"]);
   });
 
   it("refuses a link to a person in another workspace", async () => {

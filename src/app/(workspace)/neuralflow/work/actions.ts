@@ -174,7 +174,7 @@ export async function dismissSeedAction(input: z.input<typeof dismissSeedInput>)
 const completionSentence = z.string().trim().max(280, "Keep the sentence under 280 characters.").optional();
 
 export type CompleteTaskResult =
-  | { ok: true; quartzEarned: boolean }
+  | { ok: true; coinsEarned: number }
   // conflict: the task's real state already moved on - retrying the
   // completion is wrong, the list should reconcile instead. sentenceRecorded
   // is set only when a sentence was submitted AND the completed task's audit
@@ -193,7 +193,7 @@ export async function completeTaskAction(taskId: string, sentence?: string): Pro
   const auth = await authorize();
   const done = await completeTask(auth, { taskId: parsed.data, sentence: noted.data });
   revalidate(auth);
-  if (done) return { ok: true, quartzEarned: done.quartzEarned };
+  if (done) return { ok: true, coinsEarned: done.coinsEarned };
 
   // The guarded UPDATE matched no row. Find out why before saying anything:
   // a cancelled or inaccessible task is not "already completed", and when a
@@ -237,7 +237,7 @@ export async function completeTasksAction(taskIds: string[]): Promise<
       skipped: string[];
       unknown: string[];
       unattempted: string[];
-      quartzEarned: boolean;
+      coinsEarned: number;
     }
   | { ok: false; error: string }
 > {

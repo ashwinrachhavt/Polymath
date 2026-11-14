@@ -156,9 +156,6 @@ const NATIVE_TOOLS = [
   "github.issue.triage",
   // ASH-287: proposal-only; approval creates the contact locally.
   "crm.contact.create",
-  // Spec section 7 / ASH-137: proposal-only; the owner's Foundry approval
-  // applies the stone recipe locally.
-  "stones.foundry.create",
 ];
 const DEFERRED_PROVIDER_CAPABILITIES = ["calendar.read"];
 

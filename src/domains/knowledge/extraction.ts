@@ -84,13 +84,18 @@ export async function extractDocument(
   const claimedBy = `${process.pid}:${crypto.randomUUID()}`;
   const leaseSeconds = input.leaseSeconds ?? EXTRACTION_LEASE_SECONDS;
   const [document] = await db
-    .select({ id: documents.id, fileId: documents.fileId, mimeType: documents.mimeType })
+    .select({ id: documents.id, fileId: documents.fileId, mimeType: documents.mimeType, sourceUrl: documents.sourceUrl })
     .from(documents)
     .where(and(eq(documents.id, input.documentId), eq(documents.workspaceId, auth.workspaceId)))
     .limit(1);
   if (!document) throw new Error("document not found in workspace");
 
   if (!document.fileId) return { ok: false, error: "document has no file", extractionId: null };
+  // Fields, a document type and a statement ledger are read from files a
+  // person filed. A page that came from a web address (a crawl, a pasted
+  // link, a video transcript) is text to read: guessing it is a résumé or a
+  // bank statement only puts wrong labels on it.
+  const readAsFile = document.sourceUrl === null;
 
   // The file's blob content hash is the extraction version key; read it here,
   // where the workspace scope is already proven.
@@ -176,10 +181,11 @@ export async function extractDocument(
         extractionId: existing.id,
         text,
         spans: existing.spans as ExtractionSpan[],
+        readAsFile,
       });
       await embedAfterText(auth, existing.id, existing.embeddedAt);
       await enrichAfterText(auth, input.documentId);
-      await statementAfterText(auth, input.documentId);
+      if (readAsFile) await statementAfterText(auth, input.documentId);
       return { ok: true, extractionId: existing.id, text, deduplicated: true, proposals };
     }
     return {
@@ -272,10 +278,11 @@ export async function extractDocument(
     spans: result.spans,
     providerFields: result.fields,
     extractor: result.extractor,
+    readAsFile,
   });
   await embedAfterText(auth, row.id, null);
   await enrichAfterText(auth, input.documentId);
-  await statementAfterText(auth, input.documentId);
+  if (readAsFile) await statementAfterText(auth, input.documentId);
   await stalenessAfterText(auth, input.documentId);
   return { ok: true, extractionId: row.id, text: result.text, deduplicated: false, proposals };
 }
@@ -402,6 +409,8 @@ async function runProposalPass(
     spans: ExtractionSpan[];
     providerFields?: ExtractedField[];
     extractor?: string;
+    /** False for a document that came from a web address: no fields or classification are proposed. */
+    readAsFile: boolean;
   },
 ): Promise<ProposalOutcome> {
   const thisRow = and(
@@ -433,6 +442,16 @@ async function runProposalPass(
       .where(thisRow)
       .limit(1);
     return current?.proposalStatus === "succeeded" ? "already_done" : "in_progress";
+  }
+
+  if (!input.readAsFile) {
+    // Nothing to propose, and said so: the row is settled rather than left
+    // looking like fields are still to come.
+    await db
+      .update(documentExtractions)
+      .set({ proposalStatus: "succeeded", proposalError: null })
+      .where(thisRow);
+    return "succeeded";
   }
 
   // Provider fields win when a provider emits them; otherwise the rules read

@@ -277,6 +277,34 @@ describe("fetchTranscript", () => {
     expect(out.error).toMatch(/Sign in to confirm your age/);
   });
 
+  it("marks the bot-check wall as blocked, so the caller does not retry it", async () => {
+    const out = await fetchTranscript(ID, {
+      fetchImpl: fakeFetch([
+        {
+          ok: true,
+          status: 200,
+          body: playerBody([], { status: "LOGIN_REQUIRED", reason: "Sign in to confirm you\u2019re not a bot" }),
+        },
+      ]),
+    });
+    expect(out).toMatchObject({ ok: false, blocked: true });
+  });
+
+  it("marks a 403 or 429 as blocked, but a 404 and a network failure as not", async () => {
+    const refused = (status: number) => fetchTranscript(ID, { fetchImpl: fakeFetch([{ ok: false, status, body: "" }]) });
+    expect(await refused(403)).toMatchObject({ ok: false, blocked: true });
+    expect(await refused(429)).toMatchObject({ ok: false, blocked: true });
+    expect(await refused(404)).not.toHaveProperty("blocked");
+    expect(await refused(500)).not.toHaveProperty("blocked");
+    const track = await fetchTranscript(ID, {
+      fetchImpl: fakeFetch([
+        { ok: true, status: 200, body: playerBody([{ url: TRACK, language: "en" }]) },
+        { ok: false, status: 429, body: "" },
+      ]),
+    });
+    expect(track).toMatchObject({ ok: false, blocked: true });
+  });
+
   it("reports an unreadable player response", async () => {
     const out = await fetchTranscript(ID, {
       fetchImpl: fakeFetch([{ ok: true, status: 200, body: "<html>not json</html>" }]),

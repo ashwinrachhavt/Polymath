@@ -47,7 +47,7 @@ const screens: Record<string, Record<string, string>> = {
     focus: "/neuralflow/focus",
     "brain-dump": "/command-center/inbox",
     reports: "/neuralflow/reports",
-    rewards: "/neuralflow/rewards",
+    rewards: "/learn/stones",
     projects: "/projects",
     notes: "/polymath/notes",
   },

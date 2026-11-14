@@ -42,9 +42,8 @@ suite("bulk complete", () => {
     const outcome = await work.completeTasks(a, [one, doneAlready, foreign, two]);
     expect(outcome.completed).toEqual([one, two]);
     expect(outcome.skipped).toEqual([doneAlready, foreign]);
-    // The day's Quartz went to the earlier single completion, so the batch
-    // earns nothing - the Quartz rule is per item, not per batch.
-    expect(outcome.quartzEarned).toBe(false);
+    // Each completed task pays its own coins; the skipped ones pay nothing.
+    expect(outcome.coinsEarned).toBe(10);
 
     const rows = await db
       .select({ id: tasks.id, status: tasks.status, completedAt: tasks.completedAt })
@@ -79,10 +78,7 @@ suite("bulk complete", () => {
     // row lock, re-evaluates the predicate against the winner's committed
     // state, and matches nothing. One row, one audit, one completion - never
     // a double write or a second Quartz check.
-    const [first, second] = await Promise.all([
-      work.completeTasks(a, [id]),
-      work.completeTasks(a, [id]),
-    ]);
+    const [first, second] = await Promise.all([work.completeTasks(a, [id]), work.completeTasks(a, [id])]);
     expect(first.completed.length + second.completed.length).toBe(1);
     expect(first.skipped.length + second.skipped.length).toBe(1);
     expect(first.unknown).toEqual([]);
@@ -116,7 +112,7 @@ suite("bulk complete", () => {
     expect(after.status).toBe("inbox");
   });
 
-  it("earns the daily Quartz on the batch's first completion", async () => {
+  it("sums the coins every completion in the batch earned", async () => {
     const { userId, workspaceId } = await seedWorkspace(db, `bulk-quartz-${Date.now()}`);
     const a = ownerAuth(userId, workspaceId);
     const one = (await work.createOwnerTask(a, { title: "First" })).id;
@@ -125,7 +121,7 @@ suite("bulk complete", () => {
     const outcome = await work.completeTasks(a, [one, two]);
     expect(outcome.completed).toEqual([one, two]);
     expect(outcome.skipped).toEqual([]);
-    expect(outcome.quartzEarned).toBe(true);
+    expect(outcome.coinsEarned).toBe(10);
   });
 
   it("reports every id as skipped when nothing qualifies and writes no completion audit", async () => {
@@ -138,7 +134,7 @@ suite("bulk complete", () => {
     const outcome = await work.completeTasks(a, [cancelled, missing]);
     expect(outcome.completed).toEqual([]);
     expect(outcome.skipped).toEqual([cancelled, missing]);
-    expect(outcome.quartzEarned).toBe(false);
+    expect(outcome.coinsEarned).toBe(0);
 
     const completions = await db
       .select({ id: auditEvents.id })

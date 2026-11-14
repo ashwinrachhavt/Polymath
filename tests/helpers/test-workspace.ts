@@ -39,12 +39,15 @@ export function makeTestDb(options: { max?: number } = {}) {
   return { client, db: drizzle(client) };
 }
 
+/** Tables migrations seed with reference data; truncating them would break every later suite. */
+const SEEDED_REFERENCE_TABLES = ["stones"];
+
 export async function truncateAll(client: ReturnType<typeof postgres>) {
   await client.unsafe(`do $$ declare t text; begin for t in
     select tablename from pg_tables where schemaname = 'public'
+      and tablename not in (${SEEDED_REFERENCE_TABLES.map((t) => `'${t}'`).join(", ")})
     loop execute format('truncate table %I cascade', t); end loop; end $$;`);
 }
-void truncateAll; // exported for suites that opt into truncation; reliability.test.ts owns its own
 export async function seedWorkspace(
   db: ReturnType<typeof drizzle>,
   slug: string,

@@ -8,6 +8,8 @@ import { UserMenu } from "@/components/shell/user-menu";
 import { CommandLayerMount } from "@/components/shell/command-layer-mount";
 import { NotificationsPanel } from "@/components/shell/notifications-panel";
 import { JobsIndicator } from "@/components/jobs/jobs-indicator";
+import { LevelChip } from "@/components/stones/level-chip";
+import type { CoinStanding } from "@/domains/stones/queries";
 import type { TriageFeed } from "@/domains/notifications/triage";
 import type { ShellPreferencePatch, ShellPreferenceSnapshot } from "@/components/shell/shell-preferences";
 
@@ -27,11 +29,15 @@ export function TopBar({
   interfaceMode = "action",
   notifications,
   shellPreferences,
+  coinStanding = null,
+  storageScope = "anonymous",
 }: {
   clerkConfigured: boolean;
   interfaceMode?: "library" | "action";
   notifications: TriageFeed;
   shellPreferences: ShellPreferenceSnapshot;
+  coinStanding?: CoinStanding | null;
+  storageScope?: string;
 }) {
   const [currentPreferences, setCurrentPreferences] = useState(shellPreferences);
   const [savingPreferences, setSavingPreferences] = useState(false);
@@ -120,6 +126,9 @@ export function TopBar({
       </div>
 
       <div className="ml-auto flex min-w-0 items-center gap-1 max-[420px]:gap-0.5">
+        {coinStanding ? (
+          <LevelChip balance={coinStanding.balance} level={coinStanding.level} scope={storageScope} />
+        ) : null}
         <CommandLayerMount />
         <JobsIndicator />
         <NotificationsPanel feed={notifications} />

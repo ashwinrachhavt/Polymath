@@ -13,7 +13,6 @@ import notebook_open from "./notebook_open";
 import notion_propose_update from "./notion_propose_update";
 import records_browse from "./records_browse";
 import research_deepen from "./research_deepen";
-import stones_propose from "./stones_propose";
 import tasks_propose from "./tasks_propose";
 import tasks_read from "./tasks_read";
 import tasks_recent from "./tasks_recent";
@@ -53,7 +52,6 @@ const REAL_TOOLS = {
   notion_propose_update,
   records_browse,
   research_deepen,
-  stones_propose,
   tasks_propose,
   tasks_read,
   tasks_recent,

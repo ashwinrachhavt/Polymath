@@ -76,7 +76,6 @@ import { captures } from "@/domains/capture/schema";
 import { contacts, companies } from "@/domains/crm/schema";
 import { dayArtifactPins } from "@/domains/daybook/schema";
 import { focusSessions } from "@/domains/focus/schema";
-import { rewardDefinitions } from "@/domains/gamification/schema";
 import { externalAccounts } from "@/domains/integrations/schema";
 import { artifacts, documentExtractions, documents } from "@/domains/knowledge/schema";
 import { quizQuestions, quizzes } from "@/domains/learning/schema";
@@ -122,8 +121,8 @@ import * as daybookQueries from "@/domains/daybook/queries";
 import * as daybookCommands from "@/domains/daybook/commands";
 import * as focusQueries from "@/domains/focus/queries";
 import * as focusCommands from "@/domains/focus/commands";
-import * as gamificationQueries from "@/domains/gamification/queries";
-import * as gamificationCommands from "@/domains/gamification/commands";
+import * as stonesQueries from "@/domains/stones/queries";
+import * as stonesCoins from "@/domains/stones/coins";
 import * as integrationsQueries from "@/domains/integrations/queries";
 import * as integrationsCommands from "@/domains/integrations/commands";
 import * as knowledgeQueries from "@/domains/knowledge/queries";
@@ -171,8 +170,8 @@ const MODULES: ModuleEntry[] = [
   { name: "src/domains/daybook/commands.ts", mod: daybookCommands, domain: "daybook" },
   { name: "src/domains/focus/queries.ts", mod: focusQueries, domain: "focus" },
   { name: "src/domains/focus/commands.ts", mod: focusCommands, domain: "focus" },
-  { name: "src/domains/gamification/queries.ts", mod: gamificationQueries, domain: "gamification" },
-  { name: "src/domains/gamification/commands.ts", mod: gamificationCommands, domain: "gamification" },
+  { name: "src/domains/stones/queries.ts", mod: stonesQueries, domain: "stones" },
+  { name: "src/domains/stones/coins.ts", mod: stonesCoins, domain: "stones" },
   { name: "src/domains/integrations/queries.ts", mod: integrationsQueries, domain: "integrations" },
   { name: "src/domains/integrations/commands.ts", mod: integrationsCommands, domain: "integrations" },
   { name: "src/domains/knowledge/queries.ts", mod: knowledgeQueries, domain: "knowledge" },
@@ -357,18 +356,6 @@ async function seedTenantRows(workspaceId: string, userId: string, m: string): P
     .returning({ id: skills.id });
   out.skills = seeded(skillRows.map((r) => r.id));
 
-  const rewardRows = await db
-    .insert(rewardDefinitions)
-    .values({
-      workspaceId,
-      key: `iso-${m}-reward`,
-      kind: "points",
-      label: `Iso ${m} reward`,
-      description: "tenant isolation fixture",
-    })
-    .returning({ id: rewardDefinitions.id });
-  out.reward_definitions = seeded(rewardRows.map((r) => r.id));
-
   // One live session per workspace: the partial unique index admits exactly
   // one running+started row per workspace. Workspace b's second row is
   // scheduled-only (startedAt null), which the index does not count.
@@ -488,7 +475,6 @@ const TABLE_REGISTRY: Record<string, TenantTable> = {
   documents,
   opportunities,
   skills,
-  reward_definitions: rewardDefinitions,
   focus_sessions: focusSessions,
   events,
   agent_runs: agentRuns,
@@ -513,7 +499,7 @@ const DOMAIN_TABLES: Record<string, string[]> = {
   crm: ["contacts", "companies"],
   daybook: ["day_artifact_pins", "artifacts"],
   focus: ["focus_sessions"],
-  gamification: ["reward_definitions"],
+  stones: [],
   integrations: ["external_accounts"],
   knowledge: ["documents"],
   learning: ["documents", "quizzes", "quiz_questions"],
@@ -925,54 +911,14 @@ const FUNCTION_SHAPES: Record<
       ],
     },
   ],
-  "src/domains/gamification/commands.ts": (caller, foreign) => [
+  "src/domains/stones/coins.ts": (caller) => [
     {
-      shape: "(auth, create definition)",
-      args: [caller.auth, { key: `iso-${caller.marker}-reward-${probeSeq()}`, kind: "points", label: "Iso reward" }],
+      shape: "(tx, auth, own task completion)",
+      only: ["awardCoins"],
+      args: [db, caller.auth, { kind: "task", taskId: caller.rows.tasks.ids[0] }],
     },
-    {
-      shape: "(auth, award own)",
-      args: [
-        caller.auth,
-        { definitionKey: `iso-${caller.marker}-reward`, reason: "adjustment", idempotencyKey: `iso-${probeSeq()}` },
-      ],
-    },
-    {
-      shape: "(auth, award foreign)",
-      args: [
-        caller.auth,
-        { definitionKey: `iso-${foreign.marker}-reward`, reason: "adjustment", idempotencyKey: `iso-${probeSeq()}` },
-      ],
-    },
-    {
-      shape: "(tx, auth, quartz own task)",
-      only: ["recordDailyQuartz"],
-      args: [db, caller.auth, caller.rows.tasks.ids[0]],
-    },
-    {
-      shape: "(tx, auth, learning review own)",
-      only: ["recordLearningReview"],
-      args: [
-        db,
-        caller.auth,
-        { subjectId: caller.rows.quizzes.ids[0], idempotencyKey: `iso-${probeSeq()}`, correctCount: 1, totalCount: 1 },
-      ],
-    },
-    {
-      shape: "(tx, auth, focus own)",
-      only: ["recordFocusReward"],
-      args: [
-        db,
-        caller.auth,
-        {
-          id: caller.auth.userId,
-          accumulatedSeconds: 1800,
-          strictness: "strict",
-          linkedTaskPriority: null,
-          followedAbandon: false,
-        },
-      ],
-    },
+    { shape: "(auth, a catalog stone)", only: ["buyStone"], args: [caller.auth, "rose-quartz"] },
+    { shape: "(db, auth)", only: ["coinBalance", "lifetimeEarned", "earnedToday"], args: [db, caller.auth] },
   ],
   "src/domains/integrations/commands.ts": (caller, foreign) => [
     {

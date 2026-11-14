@@ -6,7 +6,7 @@ set `E2E_BASE_URL` to point the suite at an already-running one instead.
 
 ## Private-DB pattern: reset before you drive
 
-Every spec in a run shares one database, and writes accumulate — `reward_ledger`
+Every spec in a run shares one database, and writes accumulate — `coin_ledger`
 is append-only, workspaces and rows persist. A spec that assumes a pristine
 workspace reads whatever the previous spec (or the previous run) left behind,
 which is how order-dependent failures happen. So each e2e run gets a fresh

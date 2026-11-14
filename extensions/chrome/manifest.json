@@ -52,6 +52,7 @@
         "libs/readability.js",
         "libs/turndown.js",
         "extract.js",
+        "youtube-transcript-core.js",
         "api.js",
         "selection-toolbar-core.js",
         "content.js"
