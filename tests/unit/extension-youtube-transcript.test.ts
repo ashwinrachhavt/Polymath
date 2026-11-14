@@ -121,11 +121,11 @@ describe("buildTranscript", () => {
   it("cuts an over-long transcript at the server's ceiling instead of sending one it will refuse", () => {
     const long = Array.from({ length: Core.MAX_CUES + 50 }, (_, i) => ({ start: i, duration: 1, text: "word" }));
     const payload = Core.buildTranscript({ videoId: ID, cues: long });
-    expect(payload.cues).toHaveLength(Core.MAX_CUES);
+    expect(payload!.cues).toHaveLength(Core.MAX_CUES);
     expect(suppliedTranscriptSchema.safeParse(payload).success).toBe(true);
     const wide = Array.from({ length: 400 }, (_, i) => ({ start: i, duration: 1, text: "x".repeat(2000) }));
     const widePayload = Core.buildTranscript({ videoId: ID, cues: wide });
-    expect(widePayload.cues.length).toBeLessThan(400);
+    expect(widePayload!.cues.length).toBeLessThan(400);
     expect(suppliedTranscriptSchema.safeParse(widePayload).success).toBe(true);
   });
 });

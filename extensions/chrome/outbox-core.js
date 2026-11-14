@@ -153,8 +153,8 @@
    * server infers the mode from what it receives. The same rule carries the
    * extension's extraction metadata (`raw_markdown`, `quality`) to the server
    * as provenance when the entry holds it.
-   * @param {{ text: string|null, url: string|null, title: string|null, mode: string|null, raw_markdown: string|null, quality: string|null }} entry
-   * @returns {{ text: string|null, url?: string, title?: string, mode?: string, raw_markdown?: string, quality?: string }}
+   * @param {{ text: string|null, url: string|null, title: string|null, mode: string|null, raw_markdown: string|null, quality: string|null, youtube_transcript?: object|null }} entry
+   * @returns {{ text: string|null, url?: string, title?: string, mode?: string, raw_markdown?: string, quality?: string, youtube_transcript?: object }}
    */
   function deliveryBody(entry) {
     const body = { text: entry.text };
