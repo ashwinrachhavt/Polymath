@@ -1,14 +1,34 @@
-import { and, asc, count, eq } from "drizzle-orm";
+import { and, asc, count, eq, sql } from "drizzle-orm";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
-import { coinBalance } from "./coins";
-import { stoneOwnership, stones } from "./schema";
+import { coinLedger, stoneOwnership, stones } from "./schema";
+import { earnedToday } from "./coins";
+import { levelFor, type LevelProgress } from "./levels";
 
 export type CollectionStone = Omit<typeof stones.$inferSelect, "position"> & { ownedAt: Date | null };
 
-/** The whole catalog in wall order, each stone marked with when this person bought it, and their balance. */
-export async function getStoneCollection(auth: AuthContext): Promise<{ stones: CollectionStone[]; balance: number }> {
-  const [rows, balance] = await Promise.all([
+export type CoinStanding = { balance: number; level: LevelProgress };
+
+/** Balance and level in one read: the balance is every ledger row, the level's XP only the earnings. */
+export async function getCoinStanding(auth: AuthContext): Promise<CoinStanding> {
+  const [row] = await db
+    .select({
+      balance: sql<number>`coalesce(sum(${coinLedger.amount}), 0)::int`,
+      earned: sql<number>`coalesce(sum(${coinLedger.amount}) filter (where ${coinLedger.amount} > 0), 0)::int`,
+    })
+    .from(coinLedger)
+    .where(and(eq(coinLedger.workspaceId, auth.workspaceId), eq(coinLedger.userId, auth.userId)));
+  return { balance: row?.balance ?? 0, level: levelFor(row?.earned ?? 0) };
+}
+
+/** The whole catalog in wall order, each stone marked with when this person bought it, plus their standing and today's earnings. */
+export async function getStoneCollection(auth: AuthContext): Promise<{
+  stones: CollectionStone[];
+  balance: number;
+  level: LevelProgress;
+  earnedToday: Awaited<ReturnType<typeof earnedToday>>;
+}> {
+  const [rows, standing, today] = await Promise.all([
     db
       .select({
         slug: stones.slug,
@@ -34,20 +54,21 @@ export async function getStoneCollection(auth: AuthContext): Promise<{ stones: C
         ),
       )
       .orderBy(asc(stones.position)),
-    coinBalance(db, auth),
+    getCoinStanding(auth),
+    earnedToday(db, auth),
   ]);
-  return { stones: rows, balance };
+  return { stones: rows, balance: standing.balance, level: standing.level, earnedToday: today };
 }
 
 /** The quiet summary Learn shows in its header: balance and how much of the set is owned. */
-export async function getStoneProgress(auth: AuthContext): Promise<{ balance: number; owned: number; total: number }> {
-  const [balance, [owned], [total]] = await Promise.all([
-    coinBalance(db, auth),
+export async function getStoneProgress(auth: AuthContext): Promise<CoinStanding & { owned: number; total: number }> {
+  const [standing, [owned], [total]] = await Promise.all([
+    getCoinStanding(auth),
     db
       .select({ n: count() })
       .from(stoneOwnership)
       .where(and(eq(stoneOwnership.workspaceId, auth.workspaceId), eq(stoneOwnership.userId, auth.userId))),
     db.select({ n: count() }).from(stones),
   ]);
-  return { balance, owned: owned?.n ?? 0, total: total?.n ?? 0 };
+  return { ...standing, owned: owned?.n ?? 0, total: total?.n ?? 0 };
 }

@@ -7,6 +7,7 @@ import { PreviewStorageWarning, WorkspaceProvider } from "@/components/workspace
 import { SideNav } from "@/components/shell/side-nav";
 import { MobileNav } from "@/components/shell/mobile-nav";
 import { TopBar } from "@/components/shell/top-bar";
+import type { CoinStanding } from "@/domains/stones/queries";
 import type { TriageFeed } from "@/domains/notifications/triage";
 import { isBrowserPreviewPath, isConversationSurface, isFocusSurface } from "@/lib/navigation";
 import { FocusDock } from "@/components/shell/focus-dock";
@@ -39,6 +40,7 @@ export function AppShell({
   notifications,
   shellPreferences,
   workspaceSwitcher = null,
+  coinStanding = null,
 }: {
   children: ReactNode;
   storageScope?: string;
@@ -47,6 +49,8 @@ export function AppShell({
   notifications: TriageFeed;
   shellPreferences: ShellPreferenceSnapshot;
   workspaceSwitcher?: WorkspaceSwitcherData | null;
+  /** Balance and level for the header chip; null when it could not be read. */
+  coinStanding?: CoinStanding | null;
 }) {
   const pathname = usePathname();
   const hydrated = useSyncExternalStore(
@@ -85,6 +89,8 @@ export function AppShell({
               interfaceMode={interfaceMode}
               notifications={notifications}
               shellPreferences={shellPreferences}
+              coinStanding={coinStanding}
+              storageScope={storageScope}
             />
           ) : null}
           <main

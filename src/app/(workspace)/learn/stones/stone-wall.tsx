@@ -5,13 +5,15 @@ import Link from "next/link";
 import { motion } from "motion/react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import { LockIcon } from "lucide-react";
 import { cn } from "cn";
 import { CoinGlyph, formatCoins } from "@/components/stones/coin";
 import drawnStones from "@/components/stones/drawn-stones.json";
 import { StonePlaceholder } from "@/components/stones/stone-placeholder";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { COIN_RULES } from "@/domains/stones/awards";
+import { earnGuidance, waysToEarn } from "@/domains/stones/guidance";
+import { levelName, unlockLevel, type LevelProgress } from "@/domains/stones/levels";
 import type { CollectionStone } from "@/domains/stones/queries";
 import { buyStoneAction } from "./actions";
 
@@ -80,13 +82,28 @@ function StoneArt({
   );
 }
 
-export function StoneWall({ stones, balance: initialBalance }: { stones: CollectionStone[]; balance: number }) {
+type EarnedToday = Parameters<typeof waysToEarn>[0];
+
+export function StoneWall({
+  stones,
+  balance: initialBalance,
+  level,
+  earnedToday,
+}: {
+  stones: CollectionStone[];
+  balance: number;
+  level: LevelProgress;
+  earnedToday: EarnedToday;
+}) {
   const [balance, setBalance] = useState(initialBalance);
   const [justBought, setJustBought] = useState<Set<string>>(new Set());
   const [openSlug, setOpenSlug] = useState<string | null>(null);
   const isOwned = (stone: CollectionStone) => stone.ownedAt !== null || justBought.has(stone.slug);
   const ownedCount = stones.filter(isOwned).length;
   const open = stones.find((stone) => stone.slug === openSlug) ?? null;
+  const isLocked = (stone: CollectionStone) => !isOwned(stone) && unlockLevel(stone) > level.level;
+  // The stone to save for: the cheapest one not owned and not above the person's level.
+  const target = stones.filter((stone) => !isOwned(stone) && !isLocked(stone)).sort((a, b) => a.price - b.price)[0];
 
   return (
     <main className="page-content mx-auto w-full max-w-5xl">
@@ -102,6 +119,9 @@ export function StoneWall({ stones, balance: initialBalance }: { stones: Collect
             Two hundred real minerals and gems. Finishing quizzes, flashcards, mock interviews and tasks earns coins;
             spend them here.
           </p>
+          {target ? (
+            <p className="mt-1 text-sm">{earnGuidance({ balance, name: target.name, price: target.price })}</p>
+          ) : null}
         </div>
         <div className="flex items-center gap-4 text-sm">
           <span className="flex items-center gap-1.5" aria-label={`${balance} coins`}>
@@ -113,6 +133,29 @@ export function StoneWall({ stones, balance: initialBalance }: { stones: Collect
           </span>
         </div>
       </header>
+      <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+        <span className="font-medium">
+          Level {level.level} · {level.name}
+        </span>
+        <div
+          className="h-1 w-32 overflow-hidden rounded-full bg-muted"
+          role="progressbar"
+          aria-label={level.next ? `Progress to level ${level.next.level}` : "Top level"}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(level.fraction * 100)}
+        >
+          <div
+            className="h-full rounded-full bg-[oklch(0.74_0.12_80)] transition-[width] duration-700"
+            style={{ width: `${Math.round(level.fraction * 100)}%` }}
+          />
+        </div>
+        <span className="text-xs text-muted-foreground">
+          {level.next
+            ? `${formatCoins(level.toNext)} more coins earned to reach level ${level.next.level} (${level.next.name})`
+            : "You have reached the top."}
+        </span>
+      </div>
       <div
         className="mb-8 h-1 overflow-hidden rounded-full bg-muted"
         role="progressbar"
@@ -148,6 +191,7 @@ export function StoneWall({ stones, balance: initialBalance }: { stones: Collect
             >
               {group.map((stone) => {
                 const owned = isOwned(stone);
+                const locked = isLocked(stone);
                 return (
                   <li key={stone.slug}>
                     <button
@@ -155,7 +199,12 @@ export function StoneWall({ stones, balance: initialBalance }: { stones: Collect
                       onClick={() => setOpenSlug(stone.slug)}
                       className="group flex w-full flex-col items-center gap-1.5 rounded-xl p-1.5 text-center outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
-                      <span className="block w-full rounded-xl bg-muted/40 p-2 transition-colors group-hover:bg-muted/70">
+                      <span
+                        className={cn(
+                          "block w-full rounded-xl bg-muted/40 p-2 transition-colors group-hover:bg-muted/70",
+                          locked && "opacity-60",
+                        )}
+                      >
                         <StoneArt stone={stone} owned={owned} size={tier === "legendary" ? 224 : 160} />
                       </span>
                       <span className={cn("text-xs leading-tight", owned ? "" : "text-muted-foreground")}>
@@ -164,6 +213,11 @@ export function StoneWall({ stones, balance: initialBalance }: { stones: Collect
                       <span className="flex items-center gap-1 text-[11px] text-muted-foreground tabular-nums">
                         {owned ? (
                           "Collected"
+                        ) : locked ? (
+                          <>
+                            <LockIcon aria-hidden className="size-2.5" />
+                            Level {unlockLevel(stone)}
+                          </>
                         ) : (
                           <>
                             <CoinGlyph className="size-2.5" />
@@ -180,12 +234,13 @@ export function StoneWall({ stones, balance: initialBalance }: { stones: Collect
         );
       })}
 
-      <EarningRules />
+      <WaysToEarn earnedToday={earnedToday} />
 
       <StoneCard
         stone={open}
         owned={open ? isOwned(open) : false}
         balance={balance}
+        level={level}
         onClose={() => setOpenSlug(null)}
         onBought={(slug, nextBalance) => {
           setBalance(nextBalance);
@@ -200,12 +255,14 @@ function StoneCard({
   stone,
   owned,
   balance,
+  level,
   onClose,
   onBought,
 }: {
   stone: CollectionStone | null;
   owned: boolean;
   balance: number;
+  level: LevelProgress;
   onClose: () => void;
   onBought: (slug: string, balance: number) => void;
 }) {
@@ -232,6 +289,8 @@ function StoneCard({
   }
 
   const short = stone ? Math.max(0, stone.price - balance) : 0;
+  const needLevel = stone ? unlockLevel(stone) : 1;
+  const locked = stone !== null && !owned && needLevel > level.level;
 
   return (
     <Dialog
@@ -295,14 +354,14 @@ function StoneCard({
                 </p>
               ) : (
                 <>
-                  <Button disabled={pending || short > 0} onClick={() => buy(stone)} className="gap-2">
-                    <CoinGlyph />
-                    {pending ? "Buying…" : `Buy for ${formatCoins(stone.price)}`}
+                  <Button disabled={pending || short > 0 || locked} onClick={() => buy(stone)} className="gap-2">
+                    {locked ? <LockIcon aria-hidden className="size-3.5" /> : <CoinGlyph />}
+                    {locked ? `Reach level ${needLevel}` : pending ? "Buying…" : `Buy for ${formatCoins(stone.price)}`}
                   </Button>
-                  <p className="text-xs text-muted-foreground">
-                    {short > 0
-                      ? `${formatCoins(short)} more coins needed. You have ${formatCoins(balance)}.`
-                      : `You have ${formatCoins(balance)} coins.`}
+                  <p className="text-center text-xs text-muted-foreground">
+                    {locked
+                      ? `${levelName(needLevel)} opens ${TIER_LABEL[stone.tier].toLowerCase()} like this one. You are level ${level.level}${level.next ? `, ${formatCoins(level.toNext)} coins earned from level ${level.next.level}` : ""}.`
+                      : earnGuidance({ balance, name: stone.name, price: stone.price })}
                   </p>
                 </>
               )}
@@ -319,38 +378,25 @@ function StoneCard({
   );
 }
 
-function EarningRules() {
-  const rows = [
-    {
-      what: "Quiz",
-      pays: `${COIN_RULES.quiz.base} to ${COIN_RULES.quiz.base + COIN_RULES.quiz.forScore} coins by score, once per quiz a day`,
-      cap: COIN_RULES.quiz.dailyCap,
-    },
-    {
-      what: "Flashcard",
-      pays: `${COIN_RULES.flashcard.base} coins per card reviewed, once per card a day`,
-      cap: COIN_RULES.flashcard.dailyCap,
-    },
-    {
-      what: "Mock interview",
-      pays: `${COIN_RULES.mission_mock.base} to ${COIN_RULES.mission_mock.base + COIN_RULES.mission_mock.forScore} coins by readiness, once per mission a day`,
-      cap: COIN_RULES.mission_mock.dailyCap,
-    },
-    { what: "Task", pays: `${COIN_RULES.task.base} coins per task finished`, cap: COIN_RULES.task.dailyCap },
-  ];
+function WaysToEarn({ earnedToday }: { earnedToday: EarnedToday }) {
+  const rows = waysToEarn(earnedToday);
   return (
     <section aria-labelledby="earning-title" className="panel rounded-xl p-4">
       <h2 id="earning-title" className="text-sm font-medium">
-        How coins are earned
+        Ways to earn today
       </h2>
       <ul className="mt-3 divide-y divide-border text-sm">
         {rows.map((row) => (
-          <li key={row.what} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 py-2">
+          <li key={row.kind} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 py-2">
             <span>
-              <span className="font-medium">{row.what}</span>
-              <span className="text-muted-foreground"> · {row.pays}</span>
+              <span className="font-medium">{row.label}</span>
+              <span className="text-muted-foreground"> · {row.hint}</span>
             </span>
-            <span className="text-xs text-muted-foreground">up to {row.cap} a day</span>
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {row.remaining > 0
+                ? `${formatCoins(row.remaining)} of ${formatCoins(row.cap)} left today`
+                : "Today's limit reached"}
+            </span>
           </li>
         ))}
       </ul>

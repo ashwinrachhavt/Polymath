@@ -120,7 +120,7 @@ suite("buying stones", () => {
   it("refuses a purchase the balance cannot cover and writes nothing", async () => {
     const auth = await person();
     await grant(auth, 20);
-    await expect(coins.buyStone(auth, "diamond")).rejects.toMatchObject({ code: "insufficient_coins" });
+    await expect(coins.buyStone(auth, "moldavite")).rejects.toMatchObject({ code: "insufficient_coins" });
     expect(await ledgerOf(auth)).toHaveLength(1);
     expect(await db.select().from(stoneOwnership).where(eq(stoneOwnership.userId, auth.userId))).toHaveLength(0);
   });
@@ -168,6 +168,43 @@ suite("buying stones", () => {
   it("names an unknown stone", async () => {
     const auth = await person();
     await expect(coins.buyStone(auth, "kryptonite")).rejects.toMatchObject({ code: "stone_not_found" });
+  });
+});
+
+suite("levels", () => {
+  it("refuses a stone above the person's level however many coins they hold, and writes nothing", async () => {
+    const auth = await person();
+    await grant(auth, 100); // level 2: crystals only
+    await expect(coins.buyStone(auth, "citrine")).rejects.toMatchObject({ code: "level_locked" });
+    expect(await ledgerOf(auth)).toHaveLength(1);
+    expect(await db.select().from(stoneOwnership).where(eq(stoneOwnership.userId, auth.userId))).toHaveLength(0);
+  });
+
+  it("opens a tier once the earned coins reach its level", async () => {
+    const auth = await person();
+    await grant(auth, 300); // level 3: semi-precious opens
+    const bought = await coins.buyStone(auth, "citrine");
+    expect(bought).toMatchObject({ slug: "citrine", alreadyOwned: false });
+  });
+
+  it("counts lifetime earnings, not the balance: spending does not lower the level", async () => {
+    const auth = await person();
+    await grant(auth, 300);
+    await coins.buyStone(auth, "citrine");
+    expect(await coins.coinBalance(db as never, auth)).toBeLessThan(300);
+    expect(await coins.lifetimeEarned(db as never, auth)).toBe(300);
+    // Still level 3 after paying: a second semi-precious stone is not locked.
+    await grant(auth, 150);
+    await expect(coins.buyStone(auth, "iolite")).resolves.toMatchObject({ alreadyOwned: false });
+  });
+
+  it("reports what was earned today by activity, and the standing read agrees", async () => {
+    const auth = await person();
+    await award(auth, { kind: "task", taskId: crypto.randomUUID() });
+    await award(auth, { kind: "flashcard", flashcardId: crypto.randomUUID() });
+    expect(await coins.earnedToday(db as never, auth)).toEqual({ task_completed: 5, flashcard_reviewed: 2 });
+    const standing = await queries.getCoinStanding(auth);
+    expect(standing).toMatchObject({ balance: 7, level: { level: 1, earned: 7 } });
   });
 });
 
