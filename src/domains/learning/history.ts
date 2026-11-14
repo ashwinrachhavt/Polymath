@@ -13,7 +13,7 @@ import { flashcardDecks, flashcardReviews, flashcards, quizAttempts, quizzes } f
  */
 
 /** A card counts as "remembered" once its interval has grown to a week; "seen" is any review at all. */
-export const REMEMBERED_INTERVAL_DAYS = 7;
+const REMEMBERED_INTERVAL_DAYS = 7;
 const HISTORY_LIMIT = 100;
 
 export type FlashcardStack = {

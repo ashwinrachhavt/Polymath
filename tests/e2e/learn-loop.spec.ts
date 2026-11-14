@@ -10,6 +10,7 @@ import { waitSettled } from "./helpers/settled";
  */
 
 const DOC_TITLE = "Polymath learning notes";
+const QUIZ_TITLE = "Review queue fundamentals";
 const STILL_READING_TITLE = "Polymath learning notes (still reading)";
 
 const DOC_TEXT =
@@ -98,7 +99,7 @@ async function seedLearnFixture(): Promise<{ quizId: string; workspaceId: string
       values (
         ${owner.workspace_id}, ${doc.id},
         (select id from document_extractions where document_id = ${doc.id}),
-        'Review queue fundamentals', 'ready', ${QUESTIONS.length}, 'e2e-seed', 'e2e@1'
+        ${QUIZ_TITLE}, 'ready', ${QUESTIONS.length}, 'e2e-seed', 'e2e@1'
       )
       returning id`;
     let ordinal = 0;
@@ -186,7 +187,7 @@ test("the learning loop: library states, a sitting with instant feedback, and co
   // its honest state lives on its own quiz page.
   await expect(content.getByRole("heading", { name: "Learn", level: 1 })).toBeVisible();
   const quizzes = content.getByRole("region", { name: "Quizzes" });
-  const docRow = quizzes.getByRole("listitem").filter({ has: page.getByText(DOC_TITLE, { exact: true }) });
+  const docRow = quizzes.getByRole("listitem").filter({ has: page.getByText(QUIZ_TITLE, { exact: true }) });
   await expect(docRow).toContainText("Latest 1/3 · best 1/3 · 1 attempt");
   await expect(docRow.getByRole("link", { name: "Retake" })).toBeVisible();
   await expect(quizzes.getByText(STILL_READING_TITLE, { exact: true })).toHaveCount(0);
