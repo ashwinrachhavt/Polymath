@@ -34,7 +34,9 @@ async function DeckReview({ params }: { params: Promise<{ deckId: string }> }) {
   const { deckId } = await params;
   if (!z.uuid().safeParse(deckId).success) notFound();
   const auth = await getAuthContext();
-  const deck = await getFlashcardDeck(auth, deckId, true);
+  // Reopening a stack with nothing due studies the whole stack, ahead of schedule.
+  const due = await getFlashcardDeck(auth, deckId, true);
+  const deck = due && due.cards.length === 0 ? await getFlashcardDeck(auth, deckId) : due;
   if (!deck) notFound();
   if (deck.notebookId) redirect(deckReviewHref({ deckId: deck.id, notebookId: deck.notebookId }));
   const rating = await ratingOf(auth, { surface: "flashcards", id: deck.id });

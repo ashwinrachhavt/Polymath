@@ -115,7 +115,7 @@ async function seedLearnFixture(): Promise<{ quizId: string; workspaceId: string
         returning id`;
       questionIds.push(row.id);
     }
-    // One prior attempt gives the library its "Best score" state.
+    // One prior attempt gives the quiz history its scores.
     await client`
       insert into quiz_attempts (workspace_id, quiz_id, user_id, answers, correct_count, total_count, idempotency_key)
       values (
@@ -181,14 +181,14 @@ test("the learning loop: library states, a sitting with instant feedback, and co
   // first #content (the pattern the other specs use).
   const content = page.locator("#content").first();
 
-  // The Learn queue (PR #557): quizzes with their best score and a
-  // Continue link. A document still being read has no quiz, so it is not
-  // queued; its honest state lives on its own quiz page.
+  // Learn's history: one row per quiz with its latest and best score and a
+  // Retake link. A document still being read has no quiz, so it has no row;
+  // its honest state lives on its own quiz page.
   await expect(content.getByRole("heading", { name: "Learn", level: 1 })).toBeVisible();
   const quizzes = content.getByRole("region", { name: "Quizzes" });
   const docRow = quizzes.getByRole("listitem").filter({ has: page.getByText(DOC_TITLE, { exact: true }) });
-  await expect(docRow).toContainText("Best score 1/3");
-  await expect(docRow.getByRole("link", { name: "Continue" })).toBeVisible();
+  await expect(docRow).toContainText("Latest 1/3 · best 1/3 · 1 attempt");
+  await expect(docRow.getByRole("link", { name: "Retake" })).toBeVisible();
   await expect(quizzes.getByText(STILL_READING_TITLE, { exact: true })).toHaveCount(0);
 
   const client = db();
@@ -197,7 +197,7 @@ test("the learning loop: library states, a sitting with instant feedback, and co
 
   // Open the quiz: read first. The seeded text is short, so all three
   // questions share one passage, the source's own words, shown before them.
-  await docRow.getByRole("link", { name: "Continue" }).click();
+  await docRow.getByRole("link", { name: "Retake" }).click();
   await expect(content.getByText("Passage 1 of 1")).toBeVisible();
   await expect(content.getByRole("heading", { name: "Read this first" })).toBeVisible();
   await expect(content.getByText(DOC_TEXT)).toBeVisible();
@@ -259,7 +259,7 @@ test("the learning loop: library states, a sitting with instant feedback, and co
   await expect(page.locator("#content").first().getByRole("heading", { name: "Stones", level: 1 })).toBeVisible();
   await expect(page.getByLabel(`${coinsBefore + 23} coins`).first()).toBeVisible();
   await openLearn(page);
-  await expect(page.locator("#content").first().getByText("Best score 2/3")).toBeVisible();
+  await expect(page.locator("#content").first().getByText("best 2/3")).toBeVisible();
 });
 
 /*
