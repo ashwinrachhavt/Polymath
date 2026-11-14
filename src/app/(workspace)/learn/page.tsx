@@ -64,12 +64,12 @@ async function LearnSurface() {
           <Link
             href="/learn/stones"
             className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-            aria-label={`${stones.balance} coins, ${stones.owned} of ${stones.total} stones collected`}
+            aria-label={`${stones.balance} coins, level ${stones.level.level} ${stones.level.name}, ${stones.owned} of ${stones.total} stones collected`}
           >
             <CoinGlyph />
             <span className="tabular-nums text-foreground">{formatCoins(stones.balance)}</span>
             <span className="tabular-nums">
-              · {stones.owned}/{stones.total} stones
+              · Lv {stones.level.level} · {stones.owned}/{stones.total} stones
             </span>
           </Link>
           <MakeLearningButton />

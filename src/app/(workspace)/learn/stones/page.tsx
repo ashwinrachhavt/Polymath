@@ -31,5 +31,12 @@ async function StonesSurface() {
   await connection();
   const auth = await getAuthContext();
   const collection = await getStoneCollection(auth);
-  return <StoneWall stones={collection.stones} balance={collection.balance} />;
+  return (
+    <StoneWall
+      stones={collection.stones}
+      balance={collection.balance}
+      level={collection.level}
+      earnedToday={collection.earnedToday}
+    />
+  );
 }

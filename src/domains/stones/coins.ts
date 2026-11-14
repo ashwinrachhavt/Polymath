@@ -4,6 +4,7 @@ import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
 import { withTransaction, type TxDrizzle } from "@/lib/db-transaction";
 import { coinAwardFor, type Completion } from "./awards";
+import { levelFor, levelName, unlockLevel } from "./levels";
 import { coinLedger, stoneOwnership, stones } from "./schema";
 
 /*
@@ -87,7 +88,7 @@ export async function awardCoins(tx: TxDrizzle, auth: AuthContext, completion: C
 
 export class StonePurchaseError extends Error {
   constructor(
-    readonly code: "stone_not_found" | "insufficient_coins",
+    readonly code: "stone_not_found" | "insufficient_coins" | "level_locked",
     message: string,
   ) {
     super(message);
@@ -98,16 +99,57 @@ export class StonePurchaseError extends Error {
 export type StonePurchase = { slug: string; name: string; price: number; balance: number; alreadyOwned: boolean };
 
 /**
+ * Lifetime coins earned: every positive ledger row. It is a person's XP, so
+ * spending never lowers a level.
+ */
+export async function lifetimeEarned(tx: TxDrizzle | typeof db, auth: AuthContext): Promise<number> {
+  const [row] = await tx
+    .select({
+      earned: sql<number>`coalesce(sum(${coinLedger.amount}) filter (where ${coinLedger.amount} > 0), 0)::int`,
+    })
+    .from(coinLedger)
+    .where(and(eq(coinLedger.workspaceId, auth.workspaceId), eq(coinLedger.userId, auth.userId)));
+  return row?.earned ?? 0;
+}
+
+/** Coins earned so far today (the person's timezone), by what paid them. */
+export async function earnedToday(
+  tx: TxDrizzle | typeof db,
+  auth: AuthContext,
+): Promise<Partial<Record<(typeof coinLedger.$inferSelect)["reason"], number>>> {
+  const rows = await tx
+    .select({ reason: coinLedger.reason, earned: sql<number>`sum(${coinLedger.amount})::int` })
+    .from(coinLedger)
+    .where(
+      and(
+        eq(coinLedger.workspaceId, auth.workspaceId),
+        eq(coinLedger.userId, auth.userId),
+        sql`${coinLedger.amount} > 0`,
+        // Any timezone's "today" began less than two days ago; the bound keeps the scan on the index.
+        sql`${coinLedger.createdAt} > now() - interval '2 days'`,
+        sql`to_char(timezone(coalesce(
+          (select timezone from user_preferences where workspace_id = ${auth.workspaceId} and user_id = ${auth.userId} limit 1),
+          'UTC'), ${coinLedger.createdAt}), 'YYYY-MM-DD') = to_char(timezone(coalesce(
+          (select timezone from user_preferences where workspace_id = ${auth.workspaceId} and user_id = ${auth.userId} limit 1),
+          'UTC'), now()), 'YYYY-MM-DD')`,
+      ),
+    )
+    .groupBy(coinLedger.reason);
+  return Object.fromEntries(rows.map((row) => [row.reason, row.earned]));
+}
+
+/**
  * Buy one stone: the debit and the ownership row commit together or not at
  * all. Buying a stone already owned changes nothing and reports it, so a
  * double click or a retry never charges twice; a balance short of the price
- * throws `insufficient_coins` and writes nothing.
+ * throws `insufficient_coins`, and a stone above the person's level throws
+ * `level_locked`; neither writes anything.
  */
 export async function buyStone(auth: AuthContext, slug: string): Promise<StonePurchase> {
   return withTransaction(async (tx) => {
     await lockCoins(tx, auth);
     const [stone] = await tx
-      .select({ slug: stones.slug, name: stones.name, price: stones.price })
+      .select({ slug: stones.slug, name: stones.name, price: stones.price, tier: stones.tier })
       .from(stones)
       .where(eq(stones.slug, slug))
       .limit(1);
@@ -125,7 +167,16 @@ export async function buyStone(auth: AuthContext, slug: string): Promise<StonePu
       )
       .limit(1);
     const balance = await coinBalance(tx, auth);
-    if (owned) return { ...stone, balance, alreadyOwned: true };
+    const { tier, ...purchased } = stone;
+    if (owned) return { ...purchased, balance, alreadyOwned: true };
+    const needed = unlockLevel({ slug: stone.slug, tier });
+    const level = levelFor(await lifetimeEarned(tx, auth)).level;
+    if (level < needed) {
+      throw new StonePurchaseError(
+        "level_locked",
+        `${stone.name} opens at level ${needed} (${levelName(needed)}); you are level ${level}.`,
+      );
+    }
     if (balance < stone.price) {
       throw new StonePurchaseError(
         "insufficient_coins",
@@ -161,6 +212,6 @@ export async function buyStone(auth: AuthContext, slug: string): Promise<StonePu
       },
       tx,
     );
-    return { ...stone, balance: balance - stone.price, alreadyOwned: false };
+    return { ...purchased, balance: balance - stone.price, alreadyOwned: false };
   });
 }

@@ -918,7 +918,7 @@ const FUNCTION_SHAPES: Record<
       args: [db, caller.auth, { kind: "task", taskId: caller.rows.tasks.ids[0] }],
     },
     { shape: "(auth, a catalog stone)", only: ["buyStone"], args: [caller.auth, "rose-quartz"] },
-    { shape: "(db, auth)", only: ["coinBalance"], args: [db, caller.auth] },
+    { shape: "(db, auth)", only: ["coinBalance", "lifetimeEarned", "earnedToday"], args: [db, caller.auth] },
   ],
   "src/domains/integrations/commands.ts": (caller, foreign) => [
     {
