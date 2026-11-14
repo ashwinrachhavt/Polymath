@@ -6,9 +6,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * initialises once with the shared options. The SDK is mocked; what is under
  * test is the decision each instrumentation entry makes from the environment.
  */
-const { init } = vi.hoisted(() => ({ init: vi.fn() }));
+const { init, consoleLoggingIntegration } = vi.hoisted(() => ({
+  init: vi.fn(),
+  consoleLoggingIntegration: vi.fn((options: unknown) => ({ name: "ConsoleLogs", options })),
+}));
 vi.mock("@sentry/nextjs", () => ({
   init,
+  consoleLoggingIntegration,
   captureRequestError: vi.fn(),
   captureRouterTransitionStart: vi.fn(),
 }));
@@ -54,6 +58,11 @@ describe("client instrumentation", () => {
     const client = await import("@/instrumentation-client");
     expect(init).toHaveBeenCalledOnce();
     expect(init).toHaveBeenCalledWith(expect.objectContaining({ dsn: DSN }));
+    // Warnings and errors become Sentry logs; info and debug stay local.
+    expect(consoleLoggingIntegration).toHaveBeenCalledWith({ levels: ["warn", "error"] });
+    expect(init).toHaveBeenCalledWith(
+      expect.objectContaining({ integrations: [expect.objectContaining({ name: "ConsoleLogs" })] }),
+    );
     expect(client.onRouterTransitionStart).toBeTypeOf("function");
   });
 });

@@ -1,4 +1,4 @@
-import type { BrowserOptions, Event, NodeOptions } from "@sentry/nextjs";
+import type { BrowserOptions, Event, Log, NodeOptions } from "@sentry/nextjs";
 
 /*
  * One Sentry configuration for the browser, Node and edge runtimes. Each
@@ -44,7 +44,39 @@ export function sentryOptions(dsn: string): SentryOptions {
     },
     beforeSend: scrubEvent,
     beforeSendTransaction: scrubEvent,
+    // Logs are on whenever Sentry is (SDK v11 has no enableLogs switch); every
+    // init adds consoleLoggingIntegration for warn/error, so this scrubber sees
+    // arbitrary console text as well as our own structured logs.
+    beforeSendLog: scrubLog,
   };
+}
+
+// Console warnings and errors carry whatever their caller formatted: provider
+// error bodies, URLs with ids, sometimes a fragment of the person's content.
+// Logs keep their shape (level, message, the attributes we chose) and lose the
+// parts that identify a person or authorise anything.
+const LOG_MESSAGE_LIMIT = 500;
+const SECRET_ATTRIBUTE = /(token|secret|password|authorization|cookie|api[-_]?key|email|content|prompt|text|body)/i;
+
+export function scrubLog(log: Log): Log {
+  const message = typeof log.message === "string" ? scrubText(log.message) : log.message;
+  const attributes = log.attributes
+    ? Object.fromEntries(
+        Object.entries(log.attributes)
+          .filter(([key]) => !SECRET_ATTRIBUTE.test(key))
+          .map(([key, value]) => [key, typeof value === "string" ? scrubText(value) : value]),
+      )
+    : log.attributes;
+  return { ...log, message, attributes };
+}
+
+export function scrubText(text: string): string {
+  return text
+    .replace(/\b[\w.+-]+@[\w-]+(\.[\w-]+)+\b/g, "[email]")
+    .replace(/\b(bearer|basic)\s+[\w.~+/=-]+/gi, "$1 [redacted]")
+    .replace(/\b(sk|pk|axm|rk)_[\w-]{8,}/gi, "[key]")
+    .replace(/\bhttps?:\/\/([^\s/?#"']+)[^\s"']*/gi, "https://$1/…")
+    .slice(0, LOG_MESSAGE_LIMIT);
 }
 
 // A malformed override falls back to the default instead of silently turning

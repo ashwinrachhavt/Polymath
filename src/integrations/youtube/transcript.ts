@@ -1,3 +1,5 @@
+import * as Sentry from "@sentry/nextjs";
+
 /*
  * YouTube transcript transport.
  *
@@ -257,6 +259,21 @@ function pickCaptionTrack(tracks: CaptionTrack[], language: string): CaptionTrac
 export async function fetchTranscript(
   rawUrl: string,
   options: { fetchImpl?: FetchLike; language?: string; timeoutMs?: number } = {},
+): Promise<TranscriptResult> {
+  const result = await loadTranscript(rawUrl, options);
+  // For the Sentry Logs view: whether YouTube refused this server (a bot
+  // check, which needs the browser-side capture instead) or the video simply
+  // had no transcript. Never the URL or video id.
+  if (!result.ok) {
+    if (result.blocked) Sentry.logger.warn("youtube transcript blocked", { reason: "refused_server" });
+    else Sentry.logger.info("youtube transcript unavailable", { reason: "no_transcript" });
+  }
+  return result;
+}
+
+async function loadTranscript(
+  rawUrl: string,
+  options: { fetchImpl?: FetchLike; language?: string; timeoutMs?: number },
 ): Promise<TranscriptResult> {
   const videoId = parseVideoId(rawUrl);
   if (!videoId) return { ok: false, error: "That is not a YouTube video address." };

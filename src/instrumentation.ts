@@ -6,7 +6,13 @@ import { sentryOptions } from "@/lib/sentry";
 // carry its own DSN, and otherwise reuses the browser's.
 export function register() {
   const dsn = process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN;
-  if (dsn) Sentry.init(sentryOptions(dsn));
+  // Console warnings and errors become Sentry logs, so existing call sites
+  // report without being touched (scrubbed by beforeSendLog).
+  if (dsn)
+    Sentry.init({
+      ...sentryOptions(dsn),
+      integrations: [Sentry.consoleLoggingIntegration({ levels: ["warn", "error"] })],
+    });
 }
 
 // Server Component, route handler, server action and proxy errors. Without an

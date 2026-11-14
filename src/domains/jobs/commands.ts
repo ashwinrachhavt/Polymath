@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/nextjs";
 import { and, eq, inArray, or, sql, type SQL } from "drizzle-orm";
 import { enqueueOutbox, type OutboxHandler } from "@/domains/audit/outbox";
 import type { AuthContext } from "@/domains/identity/resolve";
@@ -184,6 +185,12 @@ export async function runGenerationJob(
     });
   if (!job) return;
 
+  // One line per lifecycle step, for the Sentry Logs view. Only the job's kind
+  // and timing: inputs, results and error text can hold the person's content.
+  const startedAt = Date.now();
+  const logged = { kind: job.kind, attempt: ref.attempt };
+  Sentry.logger.info("generation job started", logged);
+
   // Fenced by the attempt: a run that outlived its retry settles nothing.
   const mine = and(
     eq(generationJobs.id, ref.jobId),
@@ -243,8 +250,23 @@ export async function runGenerationJob(
   } finally {
     clearInterval(heartbeat);
   }
+  const durationMs = Date.now() - startedAt;
   // A cancelled run has nothing to settle: cancelGenerationJob already did.
-  if (!outcome) return;
+  if (!outcome) {
+    Sentry.logger.info("generation job cancelled", { ...logged, durationMs });
+    return;
+  }
+  if (outcome.status === "ready") {
+    Sentry.logger.info("generation job finished", { ...logged, durationMs });
+  } else {
+    Sentry.logger.warn("generation job failed", {
+      ...logged,
+      durationMs,
+      // "expected" failures (a runner's readable message, an exhausted
+      // allowance) are not bugs; "unexpected" ones also went to console.error.
+      failure: outcome.error === UNEXPECTED_FAILURE_COPY ? "unexpected" : "expected",
+    });
+  }
   await db
     .update(generationJobs)
     .set(
