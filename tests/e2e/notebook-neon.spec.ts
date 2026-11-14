@@ -79,7 +79,12 @@ test("create, autosave, recover and checkpoint a note, saved in the workspace", 
   // The note is always editable: open it by id and type with no Edit click.
   await page.goto(`/polymath/notes?id=${noteId}`);
   await page.getByLabel("Note title").waitFor();
-  await page.locator(".ProseMirror").first().click();
+  // Click the last list item, not the editor's middle: the middle can be the
+  // blank area under the list, which puts the caret in the empty trailing
+  // paragraph, and a space there is the Notion-style AI affordance (it opens
+  // Notebook AI instead of typing). The spec means to type into the note's text.
+  await page.locator(".ProseMirror li").last().click();
+  await page.keyboard.press("End");
   await page.keyboard.type(" hello");
   await expect(page.getByText("Unsaved changes", { exact: true })).toBeVisible();
   await expect(page.getByText("Saved", { exact: true })).toBeVisible();
