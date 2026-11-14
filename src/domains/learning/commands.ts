@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
-import { recordEmerald, recordLearningReview } from "@/domains/gamification/commands";
 import type { AuthContext } from "@/domains/identity/resolve";
+import { awardCoins } from "@/domains/stones/coins";
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { gradeAttempt } from "./grading";
@@ -10,10 +10,10 @@ import { quizAttempts, quizQuestions, quizzes, type SubmittedAnswer } from "./sc
 
 /*
  * The attempt completion command. The completeTask shape: one transaction
- * writes the attempt, the audit row, and the stone. The score is computed
- * server-side from the persisted questions - the client sends answers, never
- * a score - and the award's idempotency key names the attempt, so a replayed
- * completion reads the original attempt instead of earning a second stone.
+ * writes the attempt, the audit row, and the coins it earned. The score is
+ * computed server-side from the persisted questions - the client sends
+ * answers, never a score - and a replayed completion reads the original
+ * attempt instead of earning again.
  */
 
 export class QuizAttemptError extends Error {
@@ -30,10 +30,8 @@ export type CompleteQuizAttemptResult = {
   attemptId: string;
   correctCount: number;
   totalCount: number;
-  /** Whether this call's transaction wrote the ledger row. */
-  stoneEarned: boolean;
-  /** Whether a perfect sitting earned the gated emerald in this call. */
-  emeraldEarned: boolean;
+  /** Coins this call paid (0 on a replay, a repeat of the quiz today, or a spent daily ceiling). */
+  coinsEarned: number;
   /** True when the idempotency key matched an attempt that already happened. */
   replayed: boolean;
 };
@@ -74,8 +72,8 @@ function validateAnswers(
 }
 
 /**
- * Complete a quiz attempt: re-grade server-side, persist the attempt, award
- * the learning stone, and audit - all in one transaction. Replaying the same
+ * Complete a quiz attempt: re-grade server-side, persist the attempt, pay
+ * its coins, and audit - all in one transaction. Replaying the same
  * idempotency key returns the original attempt without awarding again.
  */
 export async function completeQuizAttempt(
@@ -116,8 +114,8 @@ export async function completeQuizAttempt(
       .returning({ id: quizAttempts.id });
 
     if (!attempt) {
-      // The attempt already happened. Return it rather than re-earning the
-      // stone; a mismatched quiz or user behind the same key is a client bug
+      // The attempt already happened. Return it rather than earning again;
+      // a mismatched quiz or user behind the same key is a client bug
       // worth naming, not folding.
       const [existing] = await tx
         .select({
@@ -139,8 +137,7 @@ export async function completeQuizAttempt(
         attemptId: existing.id,
         correctCount: existing.correctCount,
         totalCount: existing.totalCount,
-        stoneEarned: false,
-        emeraldEarned: false,
+        coinsEarned: 0,
         replayed: true,
       };
     }
@@ -151,19 +148,13 @@ export async function completeQuizAttempt(
     for (const result of graded.perQuestion) {
       await recordReview(tx, auth, { quizQuestionId: result.questionId }, ratingForAnswer(result.correct), now);
     }
-    const stoneEarned = await recordLearningReview(tx, auth, {
-      subjectId: attempt.id,
-      idempotencyKey: `quiz_attempt:${attempt.id}`,
-      correctCount: graded.correctCount,
-      totalCount: graded.totalCount,
+    const coinsEarned = await awardCoins(tx, auth, {
+      kind: "quiz",
+      quizId: quiz.id,
+      attemptId: attempt.id,
+      correct: graded.correctCount,
+      total: graded.totalCount,
     });
-    // Spec §5: the emerald is the gated learning stone - every answer
-    // correct, graded by the server. A dontKnow answer never grades
-    // correct, so a perfect sitting answered every question honestly.
-    const emeraldEarned =
-      graded.totalCount > 0 && graded.correctCount === graded.totalCount
-        ? await recordEmerald(tx, auth, attempt.id)
-        : false;
 
     await recordAudit(
       auth,
@@ -176,8 +167,7 @@ export async function completeQuizAttempt(
           quizId: quiz.id,
           correctCount: graded.correctCount,
           totalCount: graded.totalCount,
-          stoneEarned,
-          emeraldEarned,
+          coinsEarned,
         },
       },
       tx,
@@ -187,10 +177,7 @@ export async function completeQuizAttempt(
       attemptId: attempt.id,
       correctCount: graded.correctCount,
       totalCount: graded.totalCount,
-      stoneEarned,
-      // Returned so the sitting can celebrate it; it was computed and audited
-      // but never reached the learner.
-      emeraldEarned,
+      coinsEarned,
       replayed: false,
     };
   });

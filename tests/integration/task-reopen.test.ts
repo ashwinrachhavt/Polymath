@@ -1,7 +1,7 @@
 import { and, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { auditEvents } from "@/domains/audit/schema";
-import { rewardLedger } from "@/domains/gamification/schema";
+import { coinLedger } from "@/domains/stones/schema";
 import { taskDependencies, tasks } from "@/domains/work/schema";
 import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace";
 
@@ -209,17 +209,16 @@ suite("reopenTask - undo for terminal transitions", () => {
     expect(row.status).not.toBe("ready");
   });
 
-  it("re-complete after reopen settles edges once and earns no second stone the same day", async () => {
+  it("re-complete after reopen settles edges once and pays no second coins", async () => {
     const { a, workspaceId } = await setup("recomplete");
     const { id: blocker } = await work.createOwnerTask(a, { title: "Gate" });
     const { id: blocked } = await work.createOwnerTask(a, { title: "Behind" });
     await cmd.addDependency(a, { taskId: blocker, otherTaskId: blocked, kind: "blocks", idempotencyKey: key() });
     const first = await work.completeTask(a, { taskId: blocker });
-    expect(first?.quartzEarned).toBe(true);
+    expect(first?.coinsEarned).toBe(5);
     const ledgerCount = async () =>
-      (await db.select().from(rewardLedger).where(eq(rewardLedger.workspaceId, workspaceId))).length;
-    const stonesAfterFirst = await ledgerCount();
-    expect(stonesAfterFirst).toBe(1);
+      (await db.select().from(coinLedger).where(eq(coinLedger.workspaceId, workspaceId))).length;
+    expect(await ledgerCount()).toBe(1);
 
     // Reopening itself writes no ledger row: scoped undo, not history edits.
     expect(await work.reopenTask(a, { taskId: blocker, expectedVersion: 2 })).toEqual({
@@ -227,36 +226,28 @@ suite("reopenTask - undo for terminal transitions", () => {
       from: "done",
       skippedChangedEdges: 0,
     });
-    expect(await ledgerCount()).toBe(stonesAfterFirst);
+    expect(await ledgerCount()).toBe(1);
 
     const second = await work.completeTask(a, { taskId: blocker });
-    expect(second?.quartzEarned).toBe(false); // the user-scoped quartz key already spent today
-    expect(await ledgerCount()).toBe(stonesAfterFirst);
+    expect(second?.coinsEarned).toBe(0); // a task pays once, ever
+    expect(await ledgerCount()).toBe(1);
     expect((await queries.getTaskDetail(a, blocked))?.blockedBy).toHaveLength(0);
     const [row] = await db.select().from(tasks).where(eq(tasks.id, blocker));
     expect(row.status).toBe("done");
     expect(row.completedAt).not.toBeNull();
   });
 
-  it("next-day semantics: a re-completion on a later day earns that day's first stone", async () => {
+  it("a re-completion on a later day still pays nothing", async () => {
     const { a, workspaceId } = await setup("nextday");
     const { id } = await work.createOwnerTask(a, { title: "Daily" });
-    const first = await work.completeTask(a, { taskId: id });
-    expect(first?.quartzEarned).toBe(true);
-    // Simulate the first stone having been earned on an earlier day: the
-    // daily idempotency key is quartz:<userId>:<day>, so rename it to a past
-    // day for this user.
+    expect((await work.completeTask(a, { taskId: id }))?.coinsEarned).toBe(5);
+    // Move the first award to an earlier day: the task key has no day in it.
     await db
-      .update(rewardLedger)
-      .set({ idempotencyKey: "quartz:" + a.userId + ":2000-01-01" })
-      .where(eq(rewardLedger.workspaceId, workspaceId));
+      .update(coinLedger)
+      .set({ createdAt: new Date("2000-01-01T12:00:00Z") })
+      .where(eq(coinLedger.workspaceId, workspaceId));
     await work.reopenTask(a, { taskId: id, expectedVersion: 2 });
-    const second = await work.completeTask(a, { taskId: id });
-    // The stone belongs to the DAY's first completion, not the task's first
-    // ever completion - a re-completed task is a genuine completion that day,
-    // exactly as completing any other task would be.
-    expect(second?.quartzEarned).toBe(true);
-    const stones = await db.select().from(rewardLedger).where(eq(rewardLedger.workspaceId, workspaceId));
-    expect(stones).toHaveLength(2);
+    expect((await work.completeTask(a, { taskId: id }))?.coinsEarned).toBe(0);
+    expect(await db.select().from(coinLedger).where(eq(coinLedger.workspaceId, workspaceId))).toHaveLength(1);
   });
 });

@@ -1,5 +1,6 @@
 import { io } from "next/cache";
-import { listCaptureDocuments } from "@/domains/capture/children";
+import { getCaptureChildPage, listCaptureDocuments } from "@/domains/capture/children";
+import { CapturePageReader } from "./capture-page-reader";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { SITE_CRAWL_KIND } from "@/domains/knowledge/site-crawl";
 import { parseVideoId } from "@/integrations/youtube/transcript";
@@ -78,8 +79,12 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
   const selected = effectiveSelectedId ? await getCaptureForPage(auth, effectiveSelectedId) : null;
   const site =
     selected?.capture.captureMode === "url-reference" && selected.capture.url && !parseVideoId(selected.capture.url)
-      ? await loadCaptureSite(auth, selected.capture.id)
+      ? await loadCaptureSite(auth, selected.capture.id, query)
       : null;
+  // A page of the selected capture's site, opened to read in the detail pane.
+  const readId = typeof query.read === "string" && UUID.test(query.read) ? query.read : null;
+  const reader =
+    selected && readId ? await getCaptureChildPage(auth, { captureId: selected.capture.id, documentId: readId }) : null;
   const generation = capabilityStatus().find((c) => c.id === "generation");
   const pageSize = list.pageSize;
   redirectPastEnd("/command-center/inbox", query, list.page, pageSize, found.total);
@@ -215,37 +220,47 @@ async function Inbox({ searchParams }: { searchParams: Promise<Record<string, st
           aria-label="Capture detail"
           className="min-w-0 overflow-y-auto border-border px-5 py-6 max-md:min-h-[50dvh] md:px-10 md:py-10"
         >
-          <InboxDetail
-            capture={
-              selected
-                ? {
-                    id: selected.capture.id,
-                    processingState: selected.capture.processingState,
-                    parkedAt: selected.capture.parkedAt?.toISOString() ?? null,
-                    kind: selected.capture.kind,
-                    createdAt: selected.capture.createdAt.toISOString(),
-                    title: selected.capture.title,
-                    kindLabel: selected.capture.kindLabel,
-                    kindReason: selected.capture.kindReason,
-                    text: selected.capture.text,
-                    url: selected.capture.url,
-                    rawPayload: selected.capture.rawPayload,
-                    version: selected.capture.version,
-                    failureReason: selected.capture.failureReason,
-                    fetchOutcome: selected.capture.fetchOutcome,
-                    convertedType: selected.capture.convertedType,
-                    convertedId: selected.capture.convertedId,
-                  }
-                : null
-            }
-            priorWriting={selected?.priorWriting ?? null}
-            site={site}
-            zettelJobs={zettelJobs}
-            zettelProviderReady={generation?.configured ?? false}
-            zettelProviderReason={
-              generation?.reason ?? "Zettelize needs a model. Set OPENROUTER_API_KEY or GEMINI_API_KEY."
-            }
-          />
+          {selected && reader ? (
+            <CapturePageReader
+              key={reader.documentId}
+              page={reader}
+              backHref={listHref("/command-center/inbox", query, { id: selected.capture.id, read: undefined })}
+              siteTitle={selected.capture.title ?? selected.capture.url ?? "This site"}
+              zettelProviderReady={generation?.configured ?? false}
+            />
+          ) : (
+            <InboxDetail
+              capture={
+                selected
+                  ? {
+                      id: selected.capture.id,
+                      processingState: selected.capture.processingState,
+                      parkedAt: selected.capture.parkedAt?.toISOString() ?? null,
+                      kind: selected.capture.kind,
+                      createdAt: selected.capture.createdAt.toISOString(),
+                      title: selected.capture.title,
+                      kindLabel: selected.capture.kindLabel,
+                      kindReason: selected.capture.kindReason,
+                      text: selected.capture.text,
+                      url: selected.capture.url,
+                      rawPayload: selected.capture.rawPayload,
+                      version: selected.capture.version,
+                      failureReason: selected.capture.failureReason,
+                      fetchOutcome: selected.capture.fetchOutcome,
+                      convertedType: selected.capture.convertedType,
+                      convertedId: selected.capture.convertedId,
+                    }
+                  : null
+              }
+              priorWriting={selected?.priorWriting ?? null}
+              site={site}
+              zettelJobs={zettelJobs}
+              zettelProviderReady={generation?.configured ?? false}
+              zettelProviderReason={
+                generation?.reason ?? "Zettelize needs a model. Set OPENROUTER_API_KEY or GEMINI_API_KEY."
+              }
+            />
+          )}
         </section>
       </div>
     </div>
@@ -271,10 +286,19 @@ export default function InboxPage({
 }
 
 /** A link capture's child pages and its crawl job, read together. */
-async function loadCaptureSite(auth: AuthContext, captureId: string) {
-  const [pages, initialJobs] = await Promise.all([
+async function loadCaptureSite(
+  auth: AuthContext,
+  captureId: string,
+  query: Record<string, string | string[] | undefined>,
+) {
+  const [children, initialJobs] = await Promise.all([
     listCaptureDocuments(auth, captureId),
     listUnfinishedGenerationJobs(auth, { kindPrefix: SITE_CRAWL_KIND, subject: `capture:${captureId}`, limit: 1 }),
   ]);
+  // Each page opens in the reader beside the list, never in the Document Vault.
+  const pages = children.map((page) => ({
+    ...page,
+    readHref: listHref("/command-center/inbox", query, { id: captureId, read: page.documentId }),
+  }));
   return { pages, initialJobs };
 }

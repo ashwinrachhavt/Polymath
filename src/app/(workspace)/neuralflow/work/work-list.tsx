@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { parseQuickAdd } from "@/domains/work/quick-add";
-import { StoneCeremony } from "@/components/products/neuralflow/stone-ceremony";
+import { CoinsToast } from "@/components/stones/coins-earned";
 import { commitTaskAction, completeTaskAction, completeTasksAction, createTaskAction } from "./actions";
 import { pruneSelection, toggleSelection } from "./selection";
 import { STATUS_LABEL as statusLabel, STATUS_PILL as statusPill } from "./status-meta";
@@ -16,7 +16,7 @@ import { randomId } from "@/lib/random-id";
  * The Work list: rows, not cards. Adding from a list that means "today" writes
  * status ready, so the row the owner just typed appears in the list they typed
  * it into; nothing is silently filed somewhere else. Completion, the sentence
- * prompt, bulk selection and the stone ceremony are unchanged from the
+ * prompt, bulk selection and the coins moment are unchanged from the
  * previous list - this file owns presentation, the domain owns the writes.
  *
  * Each intent keeps one idempotency key until it succeeds, so a retry after a
@@ -79,7 +79,7 @@ export function WorkList({
   const [asking, setAsking] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [addError, setAddError] = useState<string | null>(null);
-  const [ceremony, setCeremony] = useState<{ sentence?: string } | null>(null);
+  const [coinsEarned, setCoinsEarned] = useState(0);
   const [selection, setSelection] = useState<string[]>([]);
   const [bulkResult, setBulkResult] = useState<{ kind: "info" | "error"; message: string } | null>(null);
   const [pending, startTransition] = useTransition();
@@ -100,12 +100,11 @@ export function WorkList({
       ok: boolean;
       error?: string;
       kind?: "conflict" | "validation";
-      quartzEarned?: boolean;
+      coinsEarned?: number;
       sentenceRecorded?: boolean;
     }>,
     applyChange: Change,
     onError?: (kind: "conflict" | "validation" | "retryable", sentenceRecorded?: boolean) => void,
-    sentence?: string,
   ) {
     setError(null);
     startTransition(async () => {
@@ -118,7 +117,7 @@ export function WorkList({
           onError?.(result.kind ?? "retryable", result.sentenceRecorded);
         } else {
           intent.current = null;
-          if (result.quartzEarned) setCeremony({ sentence });
+          if (result.coinsEarned) setCoinsEarned(result.coinsEarned);
         }
       } catch {
         // Network or server failure: keep the key so a retry is idempotent.
@@ -155,7 +154,6 @@ export function WorkList({
         }
         setAsking(id);
       },
-      sentence || undefined,
     );
   }
 
@@ -171,7 +169,7 @@ export function WorkList({
           setBulkResult({ kind: "error", message: result.error });
           return;
         }
-        if (result.quartzEarned) setCeremony({});
+        if (result.coinsEarned > 0) setCoinsEarned(result.coinsEarned);
         if (result.unknown.length > 0) {
           // The batch stopped early: known completions stand, the unknown ids
           // stay selected for a manual, looked-at retry - never an automatic
@@ -497,7 +495,7 @@ export function WorkList({
 
       {footer}
 
-      {ceremony ? <StoneCeremony sentence={ceremony.sentence} onDismiss={() => setCeremony(null)} /> : null}
+      {coinsEarned > 0 ? <CoinsToast coins={coinsEarned} onDone={() => setCoinsEarned(0)} /> : null}
     </>
   );
 }

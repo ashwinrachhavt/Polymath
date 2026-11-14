@@ -98,7 +98,6 @@ const LANE_POLICY: Record<TurnLane, LanePolicy> = {
       "tasks_propose",
       "notion_propose_update",
       "zettels_propose",
-      "stones_propose",
       "artifacts_propose_revision",
       "calendar_conflicts",
       "calendar_conflict_propose",

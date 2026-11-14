@@ -309,7 +309,7 @@ const AlfredAPI = {
    * ("authored" | "selection" | "page" | "url-reference"); omitted, the server
    * infers it. Server-side dedupe answers 409 for a repeated URL-only capture.
    */
-  async createCapture({ text, url, title, mode, raw_markdown, quality, idempotencyKey }) {
+  async createCapture({ text, url, title, mode, raw_markdown, quality, youtube_transcript, idempotencyKey }) {
     // Extraction metadata rides only when present: undefined keys drop out of
     // JSON.stringify, so a plain text save posts the exact body the server has
     // always accepted.
@@ -323,6 +323,7 @@ const AlfredAPI = {
         mode,
         ...(raw_markdown ? { raw_markdown } : {}),
         ...(quality ? { quality } : {}),
+        ...(youtube_transcript ? { youtube_transcript } : {}),
       }),
     });
   },
@@ -358,6 +359,22 @@ const AlfredAPI = {
     });
   },
 
+  /**
+   * A YouTube video with the transcript this browser read from the page. It
+   * is an address capture (the server files the transcript as the video's
+   * document), so no page text rides with it.
+   */
+  async captureVideoWithTranscript({ url, title, transcript, history }) {
+    return this.queueCapture({
+      mode: "url-reference",
+      text: "",
+      url,
+      title: title || url,
+      youtube_transcript: transcript,
+      history: history || { title: `[Video] ${title || url}`, url, type: "video-transcript" },
+    });
+  },
+
   /** Capture a text selection into the inbox. */
   async captureSelection({ url, title, selectedText, raw_markdown, history }) {
     const text = (selectedText || "").trim();
@@ -382,7 +399,7 @@ const AlfredAPI = {
    * Falls back to a direct POST only when the worker cannot be messaged at
    * all (e.g. an unpacked dashboard outside the extension runtime).
    */
-  async queueCapture({ text, url, title, mode, raw_markdown, quality, history, image }) {
+  async queueCapture({ text, url, title, mode, raw_markdown, quality, youtube_transcript, history, image }) {
     const canMessage =
       typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.id && chrome.runtime.sendMessage;
     if (canMessage) {
@@ -397,6 +414,7 @@ const AlfredAPI = {
             mode,
             raw_markdown: raw_markdown || null,
             quality: quality || null,
+            youtube_transcript: youtube_transcript || null,
             image: image || null,
             history: history || null,
           },
@@ -425,7 +443,7 @@ const AlfredAPI = {
     if (image) {
       await this.createClipboardCapture({ text, image });
     } else {
-      await this.createCapture({ text, url, title, mode, raw_markdown, quality });
+      await this.createCapture({ text, url, title, mode, raw_markdown, quality, youtube_transcript });
     }
     return { ok: true, delivered: true };
   },

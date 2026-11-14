@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { blobObjects } from "@/domains/audit/schema";
-import { rewardDefinitions, rewardLedger } from "@/domains/gamification/schema";
+import { coinLedger } from "@/domains/stones/schema";
 import { documents, documentExtractions, files } from "@/domains/knowledge/schema";
 import { quizAttempts, quizQuestions, quizzes } from "@/domains/learning/schema";
 import { makeTestDb, seedWorkspace, ownerAuth } from "../helpers/test-workspace";
@@ -19,7 +19,6 @@ let db: NonNullable<typeof handle>["db"];
 let generate: typeof import("@/domains/learning/generate-quiz");
 let commands: typeof import("@/domains/learning/commands");
 let learningQueries: typeof import("@/domains/learning/queries");
-let gamificationQueries: typeof import("@/domains/gamification/queries");
 
 beforeAll(async () => {
   if (!handle) return;
@@ -27,7 +26,6 @@ beforeAll(async () => {
   generate = await import("@/domains/learning/generate-quiz");
   commands = await import("@/domains/learning/commands");
   learningQueries = await import("@/domains/learning/queries");
-  gamificationQueries = await import("@/domains/gamification/queries");
 });
 
 afterAll(async () => {
@@ -239,8 +237,7 @@ suite("learning loop", () => {
     expect(questions!.questions).toHaveLength(3);
 
     // Two correct, one wrong: the server's grading decides the score - the
-    // client never sends one. Two of three clears the §6 score gate (a
-    // sitting below two-thirds correct earns nothing).
+    // client never sends one. Two of three pays 10 + 40 x 2/3 coins.
     const answers = questions!.questions.map((q, i) =>
       i === 2
         ? { questionId: q.id, selectedValue: q.choices.find((c) => c.value !== q.answerValue)!.value, dontKnow: false }
@@ -248,37 +245,23 @@ suite("learning loop", () => {
     );
     const idempotencyKey = `attempt-${crypto.randomUUID()}`;
     const first = await commands.completeQuizAttempt(auth, { quizId, answers, idempotencyKey });
-    expect(first).toMatchObject({ correctCount: 2, totalCount: 3, stoneEarned: true, replayed: false });
+    expect(first).toMatchObject({ correctCount: 2, totalCount: 3, coinsEarned: 37, replayed: false });
 
     const attempts = await db.select().from(quizAttempts).where(eq(quizAttempts.workspaceId, auth.workspaceId));
     expect(attempts).toHaveLength(1);
     expect(attempts[0].correctCount).toBe(2);
     expect(attempts[0].totalCount).toBe(3);
 
-    const ledger = await db.select().from(rewardLedger).where(eq(rewardLedger.workspaceId, auth.workspaceId));
+    const ledger = await db.select().from(coinLedger).where(eq(coinLedger.workspaceId, auth.workspaceId));
     expect(ledger).toHaveLength(1);
-    expect(ledger[0]).toMatchObject({
-      reason: "learning_reviewed",
-      points: 10,
-      subjectType: "quiz_attempt",
-      subjectId: first.attemptId,
-      idempotencyKey: `quiz_attempt:${first.attemptId}`,
-    });
-    const [definition] = await db
-      .select()
-      .from(rewardDefinitions)
-      .where(eq(rewardDefinitions.workspaceId, auth.workspaceId));
-    expect(definition.key).toBe("learning_reviewed");
+    expect(ledger[0]).toMatchObject({ reason: "quiz_completed", amount: 37, subjectId: first.attemptId });
+    expect(ledger[0].idempotencyKey).toMatch(new RegExp(`^quiz:${quizId}:\\d{4}-\\d{2}-\\d{2}$`));
 
-    // The score is a derivation: the overview reads the ledger, not a balance.
-    const overview = await gamificationQueries.getRewardsOverview(auth);
-    expect(overview.totalPoints).toBe(10);
-
-    // A lost response replayed: the attempt already happened, no second stone.
+    // A lost response replayed: the attempt already happened, nothing paid again.
     const replay = await commands.completeQuizAttempt(auth, { quizId, answers, idempotencyKey });
-    expect(replay).toMatchObject({ attemptId: first.attemptId, correctCount: 2, stoneEarned: false, replayed: true });
+    expect(replay).toMatchObject({ attemptId: first.attemptId, correctCount: 2, coinsEarned: 0, replayed: true });
     expect(await db.select().from(quizAttempts).where(eq(quizAttempts.workspaceId, auth.workspaceId))).toHaveLength(1);
-    expect(await db.select().from(rewardLedger).where(eq(rewardLedger.workspaceId, auth.workspaceId))).toHaveLength(1);
+    expect(await db.select().from(coinLedger).where(eq(coinLedger.workspaceId, auth.workspaceId))).toHaveLength(1);
   });
 
   it("cuts read-first passages from the quiz's own extraction, never another workspace's", async () => {
@@ -459,11 +442,10 @@ suite("learning loop", () => {
       idempotencyKey: `k-${crypto.randomUUID()}`,
     });
     // Completing in A stays in A: B's ledger is untouched, and A's holds the
-    // sitting award plus the first-time perfect-sitting emerald stone.
-    expect(await db.select().from(rewardLedger).where(eq(rewardLedger.workspaceId, authB.workspaceId))).toHaveLength(0);
-    const aLedger = await db.select().from(rewardLedger).where(eq(rewardLedger.workspaceId, authA.workspaceId));
-    expect(aLedger.filter((r) => r.points > 0)).toHaveLength(1); // the sitting award
-    expect(aLedger.filter((r) => r.points === 0)).toHaveLength(1); // first-time emerald
+    // perfect sitting's award.
+    expect(await db.select().from(coinLedger).where(eq(coinLedger.workspaceId, authB.workspaceId))).toHaveLength(0);
+    const aLedger = await db.select().from(coinLedger).where(eq(coinLedger.workspaceId, authA.workspaceId));
+    expect(aLedger.map((r) => r.amount)).toEqual([50]);
   });
 
   it("regeneration creates a new quiz rather than overwriting the first", async () => {
