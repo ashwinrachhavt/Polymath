@@ -8,6 +8,7 @@ import { canonicalVideoUrl, fetchTranscript, type TranscriptCue } from "@/integr
 import { db } from "@/lib/db";
 import { withTransaction } from "@/lib/db-transaction";
 import { sha256Hex } from "@/lib/hash";
+import { suppliedTranscriptSchema } from "./youtube-transcript-schema";
 import { DocumentAlreadyHasFileError, intakeFile } from "./intake";
 import { documentExtractions, documents, sources, videoTranscripts, youtubeTranscripts } from "./schema";
 import { recordSource } from "./sources";
@@ -16,10 +17,12 @@ import { recordSource } from "./sources";
  * Absorbing a YouTube video: one generation job ("knowledge.youtube") per
  * video document, which the person watches in the jobs panel.
  *
- *   1. the transcript: the shared cache (video_transcripts) first, then the
- *      video's own captions (free, well under a second). Whatever was found is
- *      cached by video id, so absorbing the same video again, anywhere, is
- *      instant;
+ *   1. the transcript: the one the person's browser sent with the capture
+ *      (the companion extension; used as sent, filed as this document's own
+ *      and never cached for others), else the shared cache (video_transcripts),
+ *      else the video's own captions fetched from here (free, well under a
+ *      second). Whatever was fetched is cached by video id, so absorbing the
+ *      same video again, anywhere, is instant;
  *   2. the text filed as the document's bytes, with its source identity;
  *   3. the cue table, so a citation can deep-link to ?t=<seconds>.
  *
@@ -27,6 +30,16 @@ import { recordSource } from "./sources";
  * plainly, and the document records why, so the notebook's source list shows
  * it. Transcribing speech was weighed and left out on purpose (cost and
  * moving parts for the minority of videos without captions).
+ *
+ * YouTube refuses some hosts outright (a "confirm you're not a bot" wall on
+ * datacenter addresses). That ends the job once, with BLOCKED_COPY pointing at
+ * the extension; nothing retries and nothing works around the wall.
+ *
+ * Seam, not built: a third-party transcript API (for example Supadata) would
+ * slot in at the `captions.blocked` branch of videoTranscript, behind an env
+ * key and off by default. It returns the same cues shape as fetchTranscript,
+ * and being a public transcript it may be cached by video id like captions.
+ * It stays unbuilt until someone opts into a provider.
  *
  * The job is ready once the transcript is filed. Extraction (chunking,
  * embeddings, zettel proposals) is the document pipeline's own work, queued by
@@ -42,11 +55,17 @@ export const YOUTUBE_ABSORB_KIND = "knowledge.youtube";
 /** What a skipped video says, on the job and on its document. */
 const NO_CAPTIONS_COPY = "No captions — skipped.";
 
+/** What a video says when YouTube refused this server (a bot check). Retrying from here cannot help. */
+const BLOCKED_COPY =
+  "YouTube blocked the server. Open the video and capture it with the Polymath extension to bring its transcript in.";
+
 const inputSchema = z.object({
   documentId: z.uuid(),
   videoId: z.string().regex(/^[A-Za-z0-9_-]{11}$/),
   /** The capture the video belongs to, when it was captured from the inbox. */
   captureId: z.uuid().optional(),
+  /** The transcript the person's own browser read; used instead of fetching one. */
+  transcript: suppliedTranscriptSchema.optional(),
 });
 
 export type YouTubeAbsorbInput = z.infer<typeof inputSchema>;
@@ -62,6 +81,8 @@ type Transcript = {
   generated: boolean;
   /** True when it came from the cache: nothing was fetched this time. */
   cached: boolean;
+  /** True when the person's browser sent it with the capture. */
+  supplied?: boolean;
 };
 
 export const youtubeAbsorbRunner =
@@ -82,7 +103,7 @@ export const youtubeAbsorbRunner =
     if (!doc.fileId) {
       let transcript: Transcript | null;
       try {
-        transcript = await videoTranscript(input.videoId, run.progress, deps);
+        transcript = await videoTranscript(input, run.progress, deps);
       } catch (cause) {
         // The source list shows why the video has no text, with a retry.
         if (cause instanceof GenerationJobFailure) await recordTranscriptFailure(auth, doc.id, cause.message);
@@ -105,18 +126,33 @@ export const youtubeAbsorbRunner =
 function transcriptNotice(transcript: Transcript): string {
   const minutes = Math.round((transcript.cues.at(-1)?.start ?? 0) / 60);
   const length = minutes > 0 ? `${minutes} min` : "short";
+  if (transcript.supplied) return `Read from the transcript your browser sent (${length}).`;
   return transcript.cached ? `Used the saved transcript (${length}).` : `Read from the video's captions (${length}).`;
 }
 
 /**
- * The cache, then the captions. Null when the video has none. Throws
- * GenerationJobFailure (with a retry) when YouTube could not answer.
+ * The transcript the person's browser sent, else the cache, else the video's
+ * captions from here. Null when the video has none. Throws GenerationJobFailure
+ * when YouTube could not answer, or refused this server (once: nothing here
+ * retries a refusal).
  */
 async function videoTranscript(
-  videoId: string,
+  input: YouTubeAbsorbInput,
   progress: (step: string) => Promise<void>,
   deps: YouTubeAbsorbDeps,
 ): Promise<Transcript | null> {
+  const { videoId, transcript: supplied } = input;
+  if (supplied) {
+    if (supplied.videoId !== videoId) throw new GenerationJobFailure("That transcript is for a different video.");
+    return {
+      title: supplied.title ?? null,
+      cues: supplied.cues,
+      language: supplied.language ?? null,
+      generated: supplied.generated ?? false,
+      cached: false,
+      supplied: true,
+    };
+  }
   const [cached] = await db.select().from(videoTranscripts).where(eq(videoTranscripts.videoId, videoId)).limit(1);
   if (cached) {
     return {
@@ -146,6 +182,7 @@ async function videoTranscript(
     await cacheTranscript(videoId, transcript);
     return transcript;
   }
+  if (captions.blocked) throw new GenerationJobFailure(BLOCKED_COPY);
   if (captions.error.includes("no captions")) return null;
   throw new GenerationJobFailure(captions.error);
 }

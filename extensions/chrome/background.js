@@ -335,6 +335,7 @@ async function enqueueCapture(msg) {
       // grade) travels with the entry and out in its delivery body.
       raw_markdown: msg.raw_markdown || null,
       quality: msg.quality || null,
+      youtube_transcript: msg.youtube_transcript || null,
       history: msg.history || null,
       destination: await currentDestination(),
     },

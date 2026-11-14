@@ -186,6 +186,13 @@ describe("capture outbox delivery body", () => {
     expect(body.quality).toBe("rich");
   });
 
+  it("carries a YouTube transcript read in the page, and only when the entry has one", () => {
+    const transcript = { videoId: "dQw4w9WgXcQ", title: "A talk", language: "en", generated: false, cues: [] };
+    expect(Outbox.deliveryBody(entry({ youtube_transcript: transcript })).youtube_transcript).toEqual(transcript);
+    expect(Outbox.deliveryBody(entry())).not.toHaveProperty("youtube_transcript");
+    expect(Outbox.makeEntry({ id: "x", text: "" }, 1).youtube_transcript).toBeNull();
+  });
+
   it("sends the exact body it always sent when the entry has neither", () => {
     // Entries queued by an older build (or a text-only note) deliver
     // byte-identical: the metadata keys appear only when present.
