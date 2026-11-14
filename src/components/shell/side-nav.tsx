@@ -371,7 +371,7 @@ export function SideNav({
           aria-label="Open menu"
           data-sidebar-drawer-opener
           className={cn(
-            "border-border bg-background/90 text-muted-foreground hover:bg-accent hover:text-foreground fixed top-2 left-2 z-30 flex size-8 items-center justify-center rounded-md border transition-colors outline-none md:hidden",
+            "border-border bg-background/90 text-muted-foreground hover:bg-accent hover:text-foreground fixed top-[calc(0.25rem+env(safe-area-inset-top))] left-1 z-30 flex size-11 items-center justify-center rounded-md transition-colors outline-none md:hidden",
             "focus-visible:ring-ring focus-visible:ring-3",
           )}
         >

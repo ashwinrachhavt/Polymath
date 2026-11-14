@@ -120,8 +120,12 @@ export function TopBar({
     // The sidebar's opener sits at the top left whenever the rail is not docked
     // (always under md, where the rail is a drawer); pl-12 keeps the
     // breadcrumb out from under it.
-    <header className="border-border bg-background/85 sticky top-0 z-20 flex h-12 shrink-0 items-center gap-2 border-b pr-3 pl-12 backdrop-blur sidebar-pinned:md:pl-3">
-      <div className="flex min-w-0 items-center gap-2">
+    <header
+      data-topbar
+      className="border-border bg-background/85 sticky top-0 z-20 flex h-[calc(3rem+env(safe-area-inset-top))] shrink-0 items-center gap-2 border-b pt-[env(safe-area-inset-top)] pr-3 pl-12 backdrop-blur sidebar-pinned:md:pl-3"
+    >
+      {/* On a phone the page's own heading and the bottom bar say where you are. */}
+      <div className="flex min-w-0 items-center gap-2 max-sm:hidden">
         <PathBreadcrumb />
       </div>
 
@@ -138,7 +142,9 @@ export function TopBar({
           onSave={savePreference}
         />
         <AppearanceMenu preferences={currentPreferences} disabled={savingPreferences} onSave={savePreference} />
-        <AppLauncher />
+        <span className="contents max-md:hidden">
+          <AppLauncher />
+        </span>
         <UserMenu configured={clerkConfigured} />
       </div>
     </header>

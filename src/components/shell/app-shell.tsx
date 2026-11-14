@@ -6,6 +6,7 @@ import { cn } from "cn";
 import { PreviewStorageWarning, WorkspaceProvider } from "@/components/workspace/workspace-provider";
 import { SideNav } from "@/components/shell/side-nav";
 import { MobileNav } from "@/components/shell/mobile-nav";
+import { ViewportSync } from "@/components/shell/viewport-sync";
 import { TopBar } from "@/components/shell/top-bar";
 import type { CoinStanding } from "@/domains/stones/queries";
 import type { TriageFeed } from "@/domains/notifications/triage";
@@ -80,6 +81,7 @@ export function AppShell({
         className={cn("flex flex-1", headerless || focusSurface ? "shell-conversation" : "min-h-dvh")}
         data-interface-mode={interfaceMode}
       >
+        <ViewportSync />
         <SideNav focusSurface={focusSurface} workspaceSwitcher={workspaceSwitcher} />
         <div className={cn("flex min-w-0 flex-1 flex-col", headerless && "min-h-0")}>
           {!headerless ? (
@@ -99,7 +101,9 @@ export function AppShell({
             className={cn("flex min-w-0 flex-1 flex-col", headerless && "min-h-0 overflow-hidden [flex-basis:0px]")}
             /* Sticky headers anchor below the top bar where one exists; /polymath routes
                render no top bar, so their anchor is the window's own top. */
-            style={{ "--topbar-h": headerless ? "0px" : "48px" } as React.CSSProperties}
+            style={
+              { "--topbar-h": headerless ? "0px" : "calc(48px + env(safe-area-inset-top))" } as React.CSSProperties
+            }
           >
             {/* Preview mutations are reachable from canonical routes, so the storage warning must be too. It renders null when empty. */}
             <PreviewStorageWarning />
