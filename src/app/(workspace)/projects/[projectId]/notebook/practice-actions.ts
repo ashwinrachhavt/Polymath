@@ -3,10 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { z } from "zod";
+import type { WorkState } from "@/components/work-status";
 import { projectDocumentIds } from "@/domains/knowledge/projects";
 import { CHALLENGE_FORMATS } from "@/domains/learning/challenge-content";
 import {
   ChallengeError,
+  challengeStatuses,
   prepareChallenge,
   showChallengeHint,
   startChallenge,
@@ -98,4 +100,31 @@ export async function submitPracticeAnswerAction(input: z.input<typeof answerSch
     if (error instanceof ChallengeError) return { ok: false as const, error: error.message };
     return { ok: false as const, error: actionError(error, "Could not check this answer.") };
   }
+}
+
+const statusSchema = z.object({ projectId: z.uuid(), challengeIds: z.array(z.uuid()).min(1).max(8) });
+
+const STATUS_COPY = {
+  preparing: "Writing your exercise from your sources.",
+  ready: "Your exercise is ready.",
+  failed: "The exercise could not be made just now. Try again.",
+} as const;
+
+/** Where exercises being prepared stand: a status read for the page that is waiting on them, never a mutation. */
+export async function practiceStatusAction(
+  input: z.input<typeof statusSchema>,
+): Promise<{ ok: true; states: Record<string, WorkState> } | { ok: false; error: string }> {
+  const parsed = statusSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "That exercise is not available." };
+  const auth = await getAuthContext();
+  requireRole(auth, "member");
+  const rows = await challengeStatuses(auth, parsed.data.projectId, parsed.data.challengeIds);
+  const states: Record<string, WorkState> = {};
+  for (const row of rows) {
+    states[row.id] = {
+      phase: row.status === "preparing" ? "working" : row.status === "ready" ? "done" : "failed",
+      label: row.status === "failed" ? (row.error ?? STATUS_COPY.failed) : STATUS_COPY[row.status],
+    };
+  }
+  return { ok: true, states };
 }

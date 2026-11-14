@@ -380,4 +380,37 @@ suite("practice challenges", () => {
       expect.objectContaining({ id: ctx.challengeId, status: "ready", attemptCount: 1 }),
     ]);
   });
+
+  it("reports where waiting and finished challenges stand from the row alone, and only to their learner", async () => {
+    const ctx = await readyChallenge();
+    const waiting = await challenges.startChallenge(ctx.auth, {
+      notebookId: ctx.notebookId,
+      documentIds: [ctx.documentId],
+      format: "bug_hunt",
+      idempotencyKey: crypto.randomUUID(),
+    });
+    const ids = [ctx.challengeId, waiting.challengeId];
+
+    expect(await challenges.challengeStatuses(ctx.auth, ctx.notebookId, [])).toEqual([]);
+    const statuses = await challenges.challengeStatuses(ctx.auth, ctx.notebookId, ids);
+    expect(statuses).toHaveLength(2);
+    expect(statuses).toEqual(
+      expect.arrayContaining([
+        { id: ctx.challengeId, status: "ready", error: null },
+        { id: waiting.challengeId, status: "preparing", error: null },
+      ]),
+    );
+
+    // A row whose run died is reported failed, the same word the page would read.
+    await db
+      .update(learningChallenges)
+      .set({ createdAt: new Date(Date.now() - 10 * 60_000) })
+      .where(eq(learningChallenges.id, waiting.challengeId));
+    const stale = await challenges.challengeStatuses(ctx.auth, ctx.notebookId, [waiting.challengeId]);
+    expect(stale).toEqual([expect.objectContaining({ id: waiting.challengeId, status: "failed" })]);
+
+    const foreign = await seedWorkspace(db, `challenge-status-${crypto.randomUUID().slice(0, 8)}`);
+    const foreignAuth = ownerAuth(foreign.userId, foreign.workspaceId);
+    expect(await challenges.challengeStatuses(foreignAuth, ctx.notebookId, ids)).toEqual([]);
+  });
 });

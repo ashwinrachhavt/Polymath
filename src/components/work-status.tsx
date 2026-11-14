@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { cn } from "cn";
 import { motionTransition } from "@/components/motion-config";
+import { pollWhileVisible } from "@/lib/poll-while-visible";
 
 /*
  * The shared presentation contract for background work (the wave-1 research's
@@ -118,16 +119,13 @@ export function useWorkPoll({ ids, read, intervalMs = 2_000, giveUpMs = 5 * 60_0
   useEffect(() => {
     if (!pendingKey) return;
     const pollIds = pendingKey.split(",");
-    const startedAt = Date.now();
-    let timer: ReturnType<typeof setInterval> | undefined;
-    const stop = () => {
-      if (timer) clearInterval(timer);
-      timer = undefined;
-    };
-    stopRef.current = stop;
+    let startedAt = Date.now();
     armIdsRef.current = pollIds;
 
-    const tick = async () => {
+    const stopPolling = pollWhileVisible(async ({ stop, resumed }) => {
+      // Time spent in a hidden tab owes the ceiling nothing: the read that
+      // greets the person coming back is the one that says how it went.
+      if (resumed) startedAt = Date.now();
       if (Date.now() - startedAt > giveUpMs) {
         // The ceiling is honesty under stall: say so, stop polling, and let
         // the surface catch up on its own.
@@ -166,11 +164,9 @@ export function useWorkPoll({ ids, read, intervalMs = 2_000, giveUpMs = 5 * 60_0
         }
         return changed ? next : prev;
       });
-    };
-
-    void tick();
-    timer = setInterval(() => void tick(), intervalMs);
-    return stop;
+    }, intervalMs);
+    stopRef.current = stopPolling;
+    return stopPolling;
   }, [pendingKey, read, intervalMs, giveUpMs, giveUpLabel]);
 
   // Terminal states stop the poll; a changed pending key re-arms it.

@@ -50,6 +50,7 @@ import { useZettelize, useZettelJobs } from "@/components/zettelize/zettel-jobs"
 import { MAX_ZETTELIZE_SOURCES, zettelJobSubject } from "@/domains/capture/zettel-job-names";
 import { isSettled, type GenerationJobView } from "@/domains/jobs/state";
 import { StatementStrip } from "./statement-section";
+import { pollWhileVisible } from "@/lib/poll-while-visible";
 import { randomId } from "@/lib/random-id";
 
 /*
@@ -793,11 +794,14 @@ export function DocumentVault({
   useEffect(() => {
     if (!pendingKey) return;
     const pollIds = pendingKey.split(",");
-    const startedAt = Date.now();
+    let startedAt = Date.now();
     const POLL_MS = 2_000;
     const GIVE_UP_MS = 5 * 60_000;
 
-    const tick = async () => {
+    return pollWhileVisible(async ({ resumed }) => {
+      // A hidden tab reads nothing, and the time it spent hidden owes the
+      // ceiling nothing: coming back is answered with a read, not a give-up.
+      if (resumed) startedAt = Date.now();
       if (Date.now() - startedAt > GIVE_UP_MS) {
         // Ceiling reached: these rows say honestly that the vault will catch up
         // on its own, and the poller drops them (gaveUp) instead of spinning
@@ -844,10 +848,7 @@ export function DocumentVault({
         // The poller is a status read, not a mutation: a failed tick is silent
         // and the next interval retries. Swallowing here is the honest choice.
       }
-    };
-    void tick();
-    const timer = setInterval(() => void tick(), POLL_MS);
-    return () => clearInterval(timer);
+    }, POLL_MS);
   }, [pendingKey]);
 
   // The whole surface is a dropzone. A directory drop carries entries with

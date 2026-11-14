@@ -166,4 +166,31 @@ describe("useWorkPoll", () => {
     });
     expect(read).toHaveBeenCalledTimes(calls);
   });
+
+  it("reads nothing while the tab is hidden, reads at once on return, and a long hide does not count toward the ceiling", async () => {
+    const read = vi.fn(async (ids: string[]) => Object.fromEntries(ids.map((id) => [id, WORKING])));
+    const { result } = renderHook(() => useWorkPoll({ ids: ["a"], read, giveUpMs: 5 * 60_000, giveUpLabel: GIVE_UP }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(read).toHaveBeenCalledTimes(1);
+
+    const setVisibility = (state: "visible" | "hidden") => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, get: () => state });
+      document.dispatchEvent(new Event("visibilitychange"));
+    };
+    setVisibility("hidden");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+    });
+    expect(read).toHaveBeenCalledTimes(1);
+
+    setVisibility("visible");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(read).toHaveBeenCalledTimes(2);
+    expect(result.current.gaveUp).toBe(false);
+    setVisibility("visible");
+  });
 });

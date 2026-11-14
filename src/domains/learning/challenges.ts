@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { recordAudit } from "@/domains/audit/record";
 import type { AuthContext } from "@/domains/identity/resolve";
 import { db } from "@/lib/db";
@@ -399,6 +399,32 @@ export async function listChallenges(auth: AuthContext, notebookId: string): Pro
     .orderBy(desc(learningChallenges.createdAt), desc(learningChallenges.id))
     .limit(8);
   return rows.map((row) => ({ ...row, ...readStatus(row) }));
+}
+
+/** Where some of the learner's challenges stand, read from the rows alone (no content, no attempts). */
+export async function challengeStatuses(
+  auth: AuthContext,
+  notebookId: string,
+  challengeIds: string[],
+): Promise<Array<{ id: string; status: ChallengeView["status"]; error: string | null }>> {
+  if (challengeIds.length === 0) return [];
+  const rows = await db
+    .select({
+      id: learningChallenges.id,
+      status: learningChallenges.status,
+      error: learningChallenges.error,
+      createdAt: learningChallenges.createdAt,
+    })
+    .from(learningChallenges)
+    .where(
+      and(
+        inArray(learningChallenges.id, challengeIds),
+        eq(learningChallenges.workspaceId, auth.workspaceId),
+        eq(learningChallenges.notebookId, notebookId),
+        eq(learningChallenges.userId, auth.userId),
+      ),
+    );
+  return rows.map((row) => ({ id: row.id, ...readStatus(row) }));
 }
 
 /** Shows the next hint. The answer being written is assisted from here on. */

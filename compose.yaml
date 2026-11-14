@@ -57,15 +57,30 @@ x-app-service: &app-service
     - .:/app
     - app_node_modules:/app/node_modules
     - app_next:/app/.next
-    # Hide folders the app never reads but agents write to constantly. Session
-    # worktrees (.claude/worktrees, each a full checkout with builds and test
-    # output), QA screenshots (.gstack) and the code graph (graphify-out) sat
-    # inside the bind mount, so every write made `next dev` recompile and
-    # reload every open tab: ~400 recompiles in 30 minutes with sessions
-    # running. Empty anonymous volumes mask them inside the container only.
+    # Hide folders the app never reads but tools write to constantly. Turbopack
+    # watches the whole bind mount and Next 16 has no ignore option, so a write
+    # anywhere under it recompiles and pushes a rebuild to every open tab.
+    # Session worktrees (.claude/worktrees, each a full checkout with builds and
+    # test output), QA screenshots (.gstack) and the code graph (graphify-out)
+    # alone caused ~400 recompiles in 30 minutes. Empty anonymous volumes mask
+    # them inside the container only. The list is pinned to .gitignore by
+    # tests/unit/dev-stack-watch-masks.test.ts: add a new tool-output folder
+    # to both.
     - /app/.claude
+    - /app/.codex
+    - /app/.cursor
+    - /app/.serena
     - /app/.gstack
+    - /app/.hallmark
+    - /app/.taste-skill
+    - /app/.superpowers
+    - /app/.playwright
+    - /app/.playwright-mcp
     - /app/graphify-out
+    - /app/test-results
+    - /app/playwright-report
+    - /app/blob-report
+    - /app/coverage
   extra_hosts:
     - "host.docker.internal:host-gateway"
   networks:
