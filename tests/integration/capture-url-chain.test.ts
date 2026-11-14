@@ -13,7 +13,10 @@ import { makeTestDb, ownerAuth, seedWorkspace } from "../helpers/test-workspace"
  */
 
 const scrape = vi.hoisted(() => ({ calls: 0, markdown: "" }));
-vi.mock("@/integrations/firecrawl/client", () => ({
+// Partial: only the scrape is faked, so exports added to the client later
+// (submitCrawl, pollCrawl, ...) stay real instead of missing from the mock.
+vi.mock("@/integrations/firecrawl/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/integrations/firecrawl/client")>()),
   scrapeToMarkdown: async () => {
     scrape.calls += 1;
     return { markdown: scrape.markdown, title: "A page", url: "", statusCode: 200, error: null };

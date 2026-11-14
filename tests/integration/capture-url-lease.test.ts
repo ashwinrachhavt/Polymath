@@ -16,7 +16,9 @@ const scrape = vi.hoisted(() => ({
   gate: null as null | Promise<void>,
   entered: null as null | (() => void),
 }));
-vi.mock("@/integrations/firecrawl/client", () => ({
+// Partial: only the scrape is faked, so exports added to the client later stay real.
+vi.mock("@/integrations/firecrawl/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/integrations/firecrawl/client")>()),
   scrapeToMarkdown: async () => {
     scrape.calls += 1;
     scrape.entered?.();

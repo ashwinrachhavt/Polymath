@@ -215,25 +215,40 @@ suite("study session", { timeout: 60_000 }, () => {
     const a = await seedCards(auth, { documentId: docA, title: "Doc A", count: 4, prefix: "A" });
     const b = await seedCards(auth, { documentId: docB, title: "Doc B", count: 2, prefix: "B" });
 
-    const plan = await getStudyPlan(auth);
-    expect(plan.items).toHaveLength(6);
-    expect(plan.dueNow).toBe(6);
-    const sources = plan.items.map((i) => i.source);
-    // Four from A and two from B: no two neighbours match until B runs out.
-    expect(sources.slice(0, 4).every((s, i) => i === 0 || s !== sources[i - 1])).toBe(true);
-    expect(plan.minutes).toBe(2);
+    // The "ten minutes later" lapse below must stay on today's side of the
+    // learner's day boundary. On the real clock a run in the last ten minutes
+    // before midnight put it on "tomorrow" (a CI run at 23:54 UTC did). Pin
+    // Date to the next noon UTC: never earlier than now, so the cards seeded
+    // above stay due, and far from any day boundary.
+    const now = Date.now();
+    const noon = new Date(now);
+    noon.setUTCHours(12, 0, 0, 0);
+    if (noon.getTime() < now) noon.setUTCDate(noon.getUTCDate() + 1);
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(noon);
+    try {
+      const plan = await getStudyPlan(auth);
+      expect(plan.items).toHaveLength(6);
+      expect(plan.dueNow).toBe(6);
+      const sources = plan.items.map((i) => i.source);
+      // Four from A and two from B: no two neighbours match until B runs out.
+      expect(sources.slice(0, 4).every((s, i) => i === 0 || s !== sources[i - 1])).toBe(true);
+      expect(plan.minutes).toBe(2);
 
-    await rateFlashcard(auth, { flashcardId: a[0]!.id, rating: "good" });
-    await rateFlashcard(auth, { flashcardId: b[0]!.id, rating: "again" });
-    const after = await getStudyPlan(auth);
-    expect(after.items.map((i) => i.id)).not.toContain(a[0]!.id);
-    expect(after.dueNow).toBe(4);
+      await rateFlashcard(auth, { flashcardId: a[0]!.id, rating: "good" });
+      await rateFlashcard(auth, { flashcardId: b[0]!.id, rating: "again" });
+      const after = await getStudyPlan(auth);
+      expect(after.items.map((i) => i.id)).not.toContain(a[0]!.id);
+      expect(after.dueNow).toBe(4);
 
-    // The good card comes back tomorrow; the lapsed one is due again in ten minutes.
-    const outlook = await getStudyOutlook(auth);
-    expect(outlook.dueNow).toBe(4);
-    expect(outlook.tomorrow).toBe(1);
-    expect((await getStudyOutlook(auth, new Date(Date.now() + 12 * MIN))).dueNow).toBe(5);
+      // The good card comes back tomorrow; the lapsed one is due again in ten minutes.
+      const outlook = await getStudyOutlook(auth);
+      expect(outlook.dueNow).toBe(4);
+      expect(outlook.tomorrow).toBe(1);
+      expect((await getStudyOutlook(auth, new Date(Date.now() + 12 * MIN))).dueNow).toBe(5);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("a mission with a near date moves its concept's items to the front", async () => {
