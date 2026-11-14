@@ -118,7 +118,8 @@ export function TopBar({
       data-topbar
       className="border-border bg-background/85 sticky top-0 z-20 flex h-[calc(3rem+env(safe-area-inset-top))] shrink-0 items-center gap-2 border-b pt-[env(safe-area-inset-top)] pr-3 pl-12 backdrop-blur sidebar-pinned:md:pl-3"
     >
-      <div className="flex min-w-0 items-center gap-2">
+      {/* On a phone the page's own heading and the bottom bar say where you are. */}
+      <div className="flex min-w-0 items-center gap-2 max-sm:hidden">
         <PathBreadcrumb />
       </div>
 
@@ -126,13 +127,11 @@ export function TopBar({
         <CommandLayerMount />
         <JobsIndicator />
         <NotificationsPanel feed={notifications} />
-        <span className="contents max-md:hidden">
-          <ModeToggle
-            resolved={interfaceMode}
-            disabled={savingPreferences || currentPreferences.kind !== "ready"}
-            onSave={savePreference}
-          />
-        </span>
+        <ModeToggle
+          resolved={interfaceMode}
+          disabled={savingPreferences || currentPreferences.kind !== "ready"}
+          onSave={savePreference}
+        />
         <AppearanceMenu preferences={currentPreferences} disabled={savingPreferences} onSave={savePreference} />
         <span className="contents max-md:hidden">
           <AppLauncher />
