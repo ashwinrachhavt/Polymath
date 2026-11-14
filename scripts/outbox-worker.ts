@@ -1,8 +1,21 @@
+import * as Sentry from "@sentry/nextjs";
 import postgres from "postgres";
 import { dispatchPendingOutbox, recoverStrandedOutbox } from "@/domains/audit/outbox";
 import { outboxHandlers } from "@/domains/audit/outbox-handlers";
 import { runSuperagentDispatch } from "@/domains/superagent/effects";
 import { superagentEffectHandlers, sweepSuperagentWorkspaces } from "@/domains/superagent/wiring";
+import { sentryOptions } from "@/lib/sentry";
+
+// The worker is its own process, so Next's instrumentation.ts never runs here:
+// without this, background jobs and their logs never reached Sentry. Off
+// without a DSN, as everywhere else.
+const sentryDsn = process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN;
+if (sentryDsn) {
+  Sentry.init({
+    ...sentryOptions(sentryDsn),
+    integrations: [Sentry.consoleLoggingIntegration({ levels: ["warn", "error"] })],
+  });
+}
 
 /*
  * The local queue drain (ASH-178).
@@ -95,6 +108,8 @@ async function main(): Promise<void> {
   }
 
   await client.end({ timeout: 5 });
+  // Logs are batched; send what is buffered before the process exits.
+  await Sentry.flush(2_000);
   console.log(`[${stamp()}] outbox worker stopped`);
 }
 

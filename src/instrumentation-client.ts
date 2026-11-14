@@ -5,6 +5,11 @@ import { sentryOptions } from "@/lib/sentry";
 // unset), so a build without it compiles both branches and the SDK away.
 const dsn = process.env.NEXT_PUBLIC_SENTRY_DSN;
 
-if (dsn) Sentry.init(sentryOptions(dsn));
+if (dsn) {
+  Sentry.init({
+    ...sentryOptions(dsn),
+    integrations: [Sentry.consoleLoggingIntegration({ levels: ["warn", "error"] })],
+  });
+}
 
 export const onRouterTransitionStart = dsn ? Sentry.captureRouterTransitionStart : undefined;

@@ -1,3 +1,5 @@
+import * as Sentry from "@sentry/nextjs";
+
 /*
  * The Firecrawl research surface the research flows need, behind one
  * interface: scrape one page to markdown, crawl a site to a depth, and extract
@@ -24,6 +26,12 @@ class FirecrawlError extends Error {
     super(message);
     this.name = "FirecrawlError";
   }
+}
+
+/** A non-2xx answer from Firecrawl, logged with the operation and status only (never the URL). */
+function firecrawlFailed(operation: "scrape" | "crawl" | "crawl status", status: number): FirecrawlError {
+  Sentry.logger.warn("firecrawl request failed", { operation, status });
+  return new FirecrawlError(`Firecrawl ${operation} returned ${status}`);
 }
 
 /** The deployment has no Firecrawl endpoint. Repeating the call cannot help, so callers must not offer a retry. */
@@ -70,7 +78,7 @@ export async function scrapeToMarkdown(
     body: JSON.stringify({ url, formats: ["markdown"], onlyMainContent: true }),
     signal: AbortSignal.timeout(FIRECRAWL_TIMEOUT_MS),
   });
-  if (!response.ok) throw new FirecrawlError(`Firecrawl scrape returned ${response.status}`);
+  if (!response.ok) throw firecrawlFailed("scrape", response.status);
   const body = (await response.json().catch(() => null)) as ScrapeBody | null;
   if (!body?.success || !body.data) {
     return { url, markdown: "", title: null, statusCode: 0, error: body?.error ?? "scrape failed" };
@@ -156,7 +164,7 @@ export async function submitCrawl(
     }),
     signal: AbortSignal.timeout(FIRECRAWL_TIMEOUT_MS),
   });
-  if (!submission.ok) throw new FirecrawlError(`Firecrawl crawl returned ${submission.status}`);
+  if (!submission.ok) throw firecrawlFailed("crawl", submission.status);
   const started = (await submission.json().catch(() => null)) as CrawlBody | null;
   if (!started?.id) throw new FirecrawlError(started?.error ?? "crawl did not start");
   return { jobId: started.id };
@@ -180,7 +188,7 @@ export async function pollCrawl(
   const pages: CrawlPage[] = [];
   for (let hop = 0; next && hop < MAX_RESULT_PAGES; hop += 1) {
     const response = await fetch(next, { headers: headers(cfg), signal: AbortSignal.timeout(FIRECRAWL_TIMEOUT_MS) });
-    if (!response.ok) throw new FirecrawlError(`Firecrawl crawl status returned ${response.status}`);
+    if (!response.ok) throw firecrawlFailed("crawl status", response.status);
     const body = (await response.json().catch(() => null)) as CrawlBody | null;
     if (!body) throw new FirecrawlError("Firecrawl crawl status returned no body");
     first ??= body;
